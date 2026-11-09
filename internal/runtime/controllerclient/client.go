@@ -23,6 +23,33 @@ func NewClient(url, token string) *Client {
 }
 
 func (c *Client) Capabilities(ctx context.Context) (protocol.RuntimeCapability, error) {
+	out, err := c.capabilities(ctx)
+	if err == nil && !validCapabilities(out) {
+		err = fmt.Errorf("invalid runtime capability response")
+	}
+	return out, err
+}
+
+func validCapabilities(out protocol.RuntimeCapability) bool {
+	return out.SchemaVersion == 1 && out.NetworkModes != nil && out.ID != "" && out.Version != "" && len(out.AgentKinds) > 0 && out.Resources.CPUCores > 0 && out.Resources.MemoryBytes > 0
+}
+
+// AgentKinds checks installed engines without treating the legacy host
+// controller's response as proof of resource or network-policy support.
+// Workspace admission must continue to use the strict Capabilities contract.
+func (c *Client) AgentKinds(ctx context.Context) ([]string, error) {
+	out, err := c.capabilities(ctx)
+	if err != nil {
+		return nil, err
+	}
+	legacy := out.SchemaVersion == 0 && out.ID == protocol.DevelopmentTemplate && out.Version == "firecracker-2" && len(out.AgentKinds) > 0
+	if !legacy && !validCapabilities(out) {
+		return nil, fmt.Errorf("invalid runtime capability response")
+	}
+	return out.AgentKinds, nil
+}
+
+func (c *Client) capabilities(ctx context.Context) (protocol.RuntimeCapability, error) {
 	var out protocol.RuntimeCapability
 	s, b, e := c.do(ctx, "GET", "/v1/capabilities", nil)
 	if e != nil {
@@ -32,9 +59,6 @@ func (c *Client) Capabilities(ctx context.Context) (protocol.RuntimeCapability, 
 		return out, fmt.Errorf("runtime capabilities unavailable: %d", s)
 	}
 	e = json.Unmarshal(b, &out)
-	if e == nil && (out.SchemaVersion != 1 || out.NetworkModes == nil || out.ID == "" || out.Version == "" || len(out.AgentKinds) == 0 || out.Resources.CPUCores <= 0 || out.Resources.MemoryBytes <= 0) {
-		e = fmt.Errorf("invalid runtime capability response")
-	}
 	return out, e
 }
 

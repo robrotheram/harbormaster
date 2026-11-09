@@ -16,6 +16,9 @@ type consoleRuntime interface {
 type runtimeCapabilities interface {
 	Capabilities(context.Context) (protocol.RuntimeCapability, error)
 }
+type runtimeAgentKinds interface {
+	AgentKinds(context.Context) ([]string, error)
+}
 type matrixCredentialStatus interface {
 	MatrixCredentialPresent(context.Context, string) bool
 }

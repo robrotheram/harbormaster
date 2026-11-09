@@ -1,14 +1,46 @@
 package api
 
 import (
+	"agent-workbench/internal/runtime/controllerclient"
 	runtime "agent-workbench/internal/runtime/protocol"
 	"agent-workbench/internal/shared"
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
+
+func TestHermesStatusThroughLegacyControllerClient(t *testing.T) {
+	s, _ := setup(t)
+	p := domainProject(t, s, "legacy-hermes-status")
+	controller := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/capabilities" || r.Header.Get("Authorization") != "Bearer management-token" {
+			t.Error("wrong runtime probe")
+		}
+		w.Write([]byte(`{"id":"development-v1","version":"firecracker-2","agent_kinds":["t3","codex","hermes"],"isolation_status":"jailed-vm","network_status":"no-nic-vsock","private_homes":true}`))
+	}))
+	defer controller.Close()
+	s.Runtime = controllerclient.NewClient(controller.URL, "management-token")
+	c := shared.HermesSetup{ProjectID: p.ID, Provider: "openai-codex", Mode: "workspace", Model: "approved-model"}
+	body, _ := json.Marshal(c)
+	path := "/v1/projects/" + p.ID + "/hermes"
+	if w := request(t, s, "POST", path, string(body)); w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	w := request(t, s, "GET", path, "")
+	var out struct {
+		Config    shared.HermesSetup `json:"config"`
+		Status    string             `json:"runtime_status"`
+		Available bool               `json:"runtime_available"`
+		Saved     bool               `json:"saved"`
+	}
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &out) != nil || out.Status != "available" || !out.Available || !out.Saved || out.Config.Model != c.Model || out.Config.Revision != 1 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+}
 
 type capabilityRuntime struct {
 	*embeddedRuntime

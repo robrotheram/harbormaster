@@ -141,6 +141,14 @@ permission to bypass policy. The control plane rejects unsupported startup
 policies before allocating compute. Kubernetes remains experimental until its
 network policy integration is implemented and accepted.
 
+Hermes installation status also accepts the legacy flat `development-v1` /
+`firecracker-2` agent-kind advertisement from host controllers installed before
+the versioned capability contract. This compatibility path reports installed
+engines only; workspace startup still requires the complete versioned resource
+and network contract. Remove this path once those host controllers have been
+upgraded. Unknown versions, malformed responses, and failed requests remain
+unavailable rather than claiming Hermes is installed.
+
 Controller workspace forwarding validates queries by endpoint. History requests
 on `GET /v1/tasks` accept the bounded history selector, paging cursors, ordering,
 episode and limit. Task result requests accept nonnegative offset/limit only.
