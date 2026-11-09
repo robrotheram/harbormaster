@@ -1,0 +1,44 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: workbench-sandbox-policy
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [agents.x-k8s.io]
+        apiVersions: [v1beta1]
+        operations: [CREATE, UPDATE]
+        resources: [sandboxes]
+  variables:
+    - name: pod
+      expression: object.spec.podTemplate.spec
+  validations:
+    - expression: has(object.metadata.labels) && object.metadata.labels['workbench.project'] == namespaceObject.metadata.labels['workbench.project']
+      message: Sandbox must belong to its namespace project.
+    - expression: has(variables.pod.runtimeClassName) && variables.pod.runtimeClassName == 'kata'
+      message: Kata runtime is mandatory.
+    - expression: has(variables.pod.automountServiceAccountToken) && variables.pod.automountServiceAccountToken == false && variables.pod.serviceAccountName == 'workspace'
+      message: Workspace Kubernetes credentials are prohibited.
+    - expression: (!has(variables.pod.hostNetwork) || !variables.pod.hostNetwork) && (!has(variables.pod.hostPID) || !variables.pod.hostPID) && (!has(variables.pod.hostIPC) || !variables.pod.hostIPC)
+      message: Host namespaces are prohibited.
+    - expression: variables.pod.containers.size() == 1 && (!has(variables.pod.initContainers) || variables.pod.initContainers.size() == 0)
+      message: Only the fixed workspace container is supported.
+    - expression: variables.pod.containers.all(c, c.image.matches('^.+@sha256:[a-f0-9]{64}$') && has(c.securityContext) && c.securityContext.readOnlyRootFilesystem && !c.securityContext.allowPrivilegeEscalation && (!has(c.securityContext.privileged) || !c.securityContext.privileged) && c.securityContext.capabilities.drop.exists(d, d == 'ALL'))
+      message: Pinned images and restricted container security are mandatory.
+    - expression: has(variables.pod.securityContext) && variables.pod.securityContext.runAsNonRoot && variables.pod.securityContext.runAsUser == 10001 && variables.pod.securityContext.seccompProfile.type == 'RuntimeDefault'
+      message: Workspace must run as the restricted runtime user.
+    - expression: !has(variables.pod.volumes) || variables.pod.volumes.all(v, !has(v.hostPath))
+      message: Host paths are prohibited.
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: workbench-sandbox-policy
+spec:
+  policyName: workbench-sandbox-policy
+  validationActions: [Deny]
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        workbench.security: enforced

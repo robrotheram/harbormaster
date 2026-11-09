@@ -1,0 +1,14 @@
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: kata
+# Install/configure this containerd handler on eligible nodes first.
+handler: kata-qemu
+scheduling:
+  nodeSelector:
+    workbench.kata-ready: 'true'
+  tolerations:
+    - key: workbench.kata
+      operator: Equal
+      value: 'true'
+      effect: NoSchedule

@@ -1,0 +1,9 @@
+.git
+.local
+.env
+bin
+coverage.out
+*.db*
+**/node_modules
+frontend/dist
+frontend/artifacts

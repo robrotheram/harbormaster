@@ -1,0 +1,28 @@
+# Configuration input for the future project assistant adapter. No tokens here.
+project_id: proj_RETURNED_ID
+agent:
+  kind: hermes
+  reviewed_release: v0.22.5
+  image: REQUIRED_IMMUTABLE_IMAGE_DIGEST
+  home: /opt/data
+  status: not_configured
+provider:
+  kind: openai-codex
+  authentication: native_user_oauth
+  api_key_fallback: false
+  purchased_overage_fallback: false
+  account_quota_validation: required
+matrix:
+  homeserver: https://YOUR_APPROVED_HOMESERVER
+  bot_identity: ONE_BOT_AND_CRYPTO_STORE_PER_PROJECT
+  room_ids: ['!YOUR_IMMUTABLE_PROJECT_ROOM:YOUR_HOMESERVER']
+  sender_ids: ['@YOUR_AUTHORIZED_USER:YOUR_HOMESERVER']
+  e2ee: required
+  accept_direct_messages: false
+  auto_join: false
+  room_sender_gate: required_not_implemented
+workbench_mcp:
+  endpoint: YOUR_APPROVED_INTERNAL_PROJECT_MCP_ENDPOINT
+  credential_file: YOUR_PROJECT_ONLY_BEARER_FILE
+  global_operator_credential: prohibited
+  project_argument_can_widen_authority: false

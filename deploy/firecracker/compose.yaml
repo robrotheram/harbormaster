@@ -1,0 +1,17 @@
+# Always use together with the base compose.yaml. The only privileged runtime
+# authority is the host Unix service; the bridge never receives the Docker socket.
+services:
+  runtime-controller:
+    volumes: !override
+      - /run/agent-workbench:/run/agent-workbench:ro
+    environment:
+      RUNTIME_BACKEND: firecracker
+      WORKSPACE_RUNTIME: firecracker
+      REQUIRE_VERIFIED_ISOLATION: "true"
+      FIRECRACKER_SOCKET: /run/agent-workbench/controller.sock
+  inference-gateway:
+    ports: ["127.0.0.1:18081:8080"]
+  credential-broker:
+    ports: ["127.0.0.1:18082:8080"]
+  egress-gateway:
+    ports: ["127.0.0.1:18083:8080"]

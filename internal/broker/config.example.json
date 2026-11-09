@@ -1,0 +1,33 @@
+{
+  "operations": {
+    "case_lookup": {
+      "origin": "https://records.example.invalid",
+      "path": "/v1/cases/lookup",
+      "method": "POST",
+      "network": {
+        "allowed_cidrs": ["203.0.113.20/32"],
+        "allow_private": false
+      },
+      "parameters": {
+        "record_id": {"type": "string", "required": true, "max_length": 128}
+      }
+    }
+  },
+  "principals": {
+    "local-operator": {
+      "operations": {
+        "case_lookup": {
+          "approved_cases": ["CASE-001"],
+          "vault_path": "identities/local-operator/case-lookup"
+        }
+      }
+    }
+  },
+  "vault": {
+    "mount": "secret",
+    "network": {
+      "allowed_cidrs": ["203.0.113.30/32"],
+      "allow_private": false
+    }
+  }
+}

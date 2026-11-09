@@ -1,0 +1,16 @@
+{
+  "operations": {
+    "case_lookup": {
+      "parameters": {
+        "record_id": {"type": "string", "required": true, "max_length": 128}
+      }
+    }
+  },
+  "principals": {
+    "local-operator": {
+      "operations": {
+        "case_lookup": {"approved_cases": ["DEMO-001"]}
+      }
+    }
+  }
+}

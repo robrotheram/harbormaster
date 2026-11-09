@@ -1,0 +1,24 @@
+[Unit]
+Description=Agent Workbench Firecracker host controller (no-NIC guests)
+After=local-fs.target
+
+[Service]
+Type=simple
+User=root
+UMask=0077
+Environment=CONTROLLER_TOKEN_FILE=/etc/agent-workbench/firecracker/controller_token
+Environment=GATEWAY_SERVICE_TOKEN_FILE=/etc/agent-workbench/firecracker/gateway_service_token
+Environment=GRANT_SECRET_FILE=/etc/agent-workbench/firecracker/grant_secret
+ExecStartPre=/opt/agent-workbench/firecracker/prepare-host
+ExecStart=/opt/agent-workbench/firecracker/controller
+ExecStopPost=/opt/agent-workbench/firecracker/cleanup
+RuntimeDirectory=agent-workbench
+RuntimeDirectoryMode=0700
+Delegate=cpu memory pids
+KillMode=control-group
+TimeoutStopSec=15
+Restart=no
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target

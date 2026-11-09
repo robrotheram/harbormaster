@@ -1,0 +1,199 @@
+name: ${COMPOSE_PROJECT_NAME:-agent-workbench}
+
+x-app: &app
+  restart: unless-stopped
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  tmpfs:
+    - "/tmp:rw,nosuid,nodev,noexec,size=64m"
+  logging:
+    driver: local
+    options: {max-size: "5m", max-file: "2"}
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: workbench
+      POSTGRES_USER: workbench
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets: [postgres_password]
+    volumes: [metadata:/var/lib/postgresql/data]
+    networks: [metadata]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U workbench -d workbench"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  controlplane:
+    <<: *app
+    build: {context: ., target: platform, args: {SERVICE: controlplane}}
+    environment:
+      WORKSPACE_MEMORY_BYTES: ${WORKSPACE_MEMORY_BYTES:-1073741824}
+      MEMORY_QUOTA_BYTES: ${MEMORY_QUOTA_BYTES:-4294967296}
+      CONTROL_TOKEN_FILE: /run/secrets/control_token
+      CONTROLLER_TOKEN_FILE: /run/secrets/controller_token
+      DATABASE_URL_FILE: /run/secrets/database_url
+      CONTROLLER_URL: http://runtime-controller:8080
+    secrets: [control_token, controller_token, database_url]
+    networks: [metadata, management, dashboard, ingress, host-access]
+    ports: ["127.0.0.1:${CONTROL_PORT:-8090}:8080"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      runtime-controller: {condition: service_started}
+
+  runtime-controller:
+    <<: *app
+    container_name: ${DEPLOYMENT_ID:-awb}-runtime-controller
+    build: {context: ., target: platform, args: {SERVICE: runtime-controller}}
+    # This trusted service owns the root-equivalent Docker socket. No agent,
+    # dashboard, MCP process, gateway or broker receives it.
+    user: "0:0"
+    volumes: [/var/run/docker.sock:/var/run/docker.sock]
+    environment:
+      CONTROLLER_TOKEN_FILE: /run/secrets/controller_token
+      GATEWAY_SERVICE_TOKEN_FILE: /run/secrets/gateway_service_token
+      GRANT_SECRET_FILE: /run/secrets/grant_secret
+      DEPLOYMENT_ID: ${DEPLOYMENT_ID:-awb}
+      CONTROLLER_CONTAINER: ${DEPLOYMENT_ID:-awb}-runtime-controller
+      INFERENCE_CONTAINER: ${DEPLOYMENT_ID:-awb}-inference-gateway
+      EGRESS_CONTAINER: ${DEPLOYMENT_ID:-awb}-egress-gateway
+      BROKER_CONTAINER: ${DEPLOYMENT_ID:-awb}-credential-broker
+      WORKSPACE_IMAGE: agent-workbench-workspace:dev
+      WORKSPACE_RUNTIME: ${WORKSPACE_RUNTIME:-docker}
+      RUNTIME_BACKEND: ${RUNTIME_BACKEND:-docker}
+      REQUIRE_VERIFIED_ISOLATION: ${REQUIRE_VERIFIED_ISOLATION:-false}
+      INFERENCE_MODEL: ${INFERENCE_MODEL:-fixture}
+      WORKSPACE_AGENT: ${WORKSPACE_AGENT:-}
+      WORKSPACE_T3: ${WORKSPACE_T3:-true}
+      WORKSPACE_MEMORY_BYTES: ${WORKSPACE_MEMORY_BYTES:-1073741824}
+      CODEX_MODEL: ${CODEX_MODEL:-gpt-6.1-sol}
+      CLAUDE_MODEL: ${CLAUDE_MODEL:-}
+    secrets: [controller_token, gateway_service_token, grant_secret]
+    networks: [management]
+
+  dashboard:
+    <<: *app
+    build: {context: ., target: dashboard, args: {SERVICE: dashboard}}
+    environment:
+      CONTROLPLANE_READ_URL: http://controlplane:8081
+      CONTROLPLANE_URL: http://controlplane:8080
+      CONTROL_TOKEN_FILE: /run/secrets/control_token
+    secrets: [control_token]
+    networks: [dashboard, ingress, host-access]
+    ports: ["127.0.0.1:${DASHBOARD_PORT:-8080}:8080"]
+    depends_on:
+      controlplane: {condition: service_healthy}
+
+  mcp:
+    <<: *app
+    build: {context: ., target: platform, args: {SERVICE: mcp}}
+    environment:
+      CONTROLPLANE_URL: http://controlplane:8080
+      CONTROL_TOKEN_FILE: /run/secrets/control_token
+      MCP_TOKEN_FILE: /run/secrets/mcp_token
+      MCP_ALLOWED_HOSTS: localhost,127.0.0.1,mcp
+    secrets: [control_token, mcp_token]
+    networks: [ingress, host-access]
+    ports: ["127.0.0.1:${MCP_PORT:-8082}:8080"]
+    depends_on:
+      controlplane: {condition: service_healthy}
+
+  inference-gateway:
+    <<: *app
+    container_name: ${DEPLOYMENT_ID:-awb}-inference-gateway
+    build: {context: ., target: platform, args: {SERVICE: inference-gateway}}
+    environment:
+      GATEWAY_MODE: ${GATEWAY_MODE:-fixture}
+      GATEWAY_CONFIG: /etc/workbench/inference.json
+      CONTROLLER_URL: http://runtime-controller:8080
+      GATEWAY_SERVICE_TOKEN_FILE: /run/secrets/gateway_service_token
+      SUBSCRIPTION_VAULT_ADDR: https://vault:8200
+      SUBSCRIPTION_VAULT_CA_FILE: /etc/workbench/vault-ca.pem
+      SUBSCRIPTION_VAULT_TOKEN_FILE: /run/secrets/subscription_vault_token
+    secrets: [gateway_service_token, subscription_vault_token]
+    volumes: ["${INFERENCE_POLICY_FILE:-./config/inference.json}:/etc/workbench/inference.json:ro", ./.local/vault-tls/cert.pem:/etc/workbench/vault-ca.pem:ro]
+    networks: [management, credentials, upstream]
+
+  egress-gateway:
+    <<: *app
+    container_name: ${DEPLOYMENT_ID:-awb}-egress-gateway
+    build: {context: ., target: platform, args: {SERVICE: egress-gateway}}
+    environment:
+      CONTROLLER_URL: http://runtime-controller:8080
+      GATEWAY_SERVICE_TOKEN_FILE: /run/secrets/gateway_service_token
+    secrets: [gateway_service_token]
+    networks: [management, upstream]
+
+  credential-broker:
+    <<: *app
+    container_name: ${DEPLOYMENT_ID:-awb}-credential-broker
+    build: {context: ., target: platform, args: {SERVICE: credential-broker}}
+    environment:
+      GATEWAY_MODE: ${GATEWAY_MODE:-fixture}
+      GATEWAY_CONFIG: /etc/workbench/broker.json
+      CONTROLLER_URL: http://runtime-controller:8080
+      GATEWAY_SERVICE_TOKEN_FILE: /run/secrets/gateway_service_token
+      VAULT_ADDR: https://vault:8200
+    secrets: [gateway_service_token]
+    volumes: [./config/broker.json:/etc/workbench/broker.json:ro]
+    networks: [management, credentials, upstream]
+
+  vault:
+    image: hashicorp/vault:1.21
+    user: vault
+    restart: unless-stopped
+    # The image entrypoint already loads /vault/config. Do not load it twice.
+    command: [server]
+    environment:
+      SKIP_CHOWN: "1"
+      SKIP_SETCAP: "1"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    volumes: [vault:/vault/file, ./config/vault.hcl:/vault/config/vault.hcl:ro, ./.local/vault-tls/cert.pem:/vault/tls/cert.pem:ro]
+    secrets: [vault_tls_key]
+    networks: [credentials]
+    # Sealed/uninitialized is expected until the operator provisions Vault.
+    # Exit 2 means its listener is available; exit 1 means a connection error.
+    healthcheck:
+      test: [CMD-SHELL, "VAULT_CACERT=/vault/tls/cert.pem vault status -address=https://vault:8200 >/dev/null 2>&1; status=$$?; [ $$status -eq 0 ] || [ $$status -eq 2 ]"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  workspace-image:
+    profiles: [build]
+    image: agent-workbench-workspace:dev
+    build: {context: ., target: workspace, args: {SERVICE: workspace}}
+    entrypoint: [/bin/true]
+    networks: [build-only]
+
+networks:
+  metadata: {internal: true}
+  management: {internal: true}
+  dashboard: {internal: true}
+  ingress: {internal: true}
+  credentials: {internal: true}
+  build-only: {internal: true}
+  upstream: {}
+  # Docker needs a non-internal bridge to publish these trusted entrypoints.
+  # Workspace networks remain internal and never join this network.
+  host-access: {}
+
+volumes:
+  metadata: {}
+  vault: {}
+
+secrets:
+  control_token: {file: ./.local/secrets/control_token}
+  controller_token: {file: ./.local/secrets/controller_token}
+  gateway_service_token: {file: ./.local/secrets/gateway_service_token}
+  grant_secret: {file: ./.local/secrets/grant_secret}
+  mcp_token: {file: ./.local/secrets/mcp_token}
+  postgres_password: {file: ./.local/secrets/postgres_password}
+  database_url: {file: ./.local/secrets/database_url}
+  subscription_vault_token: {file: ./.local/secrets/subscription_vault_token}
+  vault_tls_key: {file: ./.local/secrets/vault_tls_key}

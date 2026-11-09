@@ -1,0 +1,420 @@
+package kubernetes
+
+// Kubernetes delegates Pod/PVC lifecycle to Kubernetes SIGs Agent Sandbox.
+// The runtime controller remains the only holder of Kubernetes credentials.
+import (
+	"bytes"
+	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"os"
+	"regexp"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"agent-workbench/internal/runtime/protocol"
+	"agent-workbench/internal/shared"
+)
+
+const SandboxAPIVersion = "agents.x-k8s.io/v1beta1"
+const AgentSandboxRelease = "v1.0.9"
+
+type KubernetesConfig struct {
+	APIURL, APIToken, CAFile                            string
+	Token, GatewayServiceToken, GrantSecret, Deployment string
+	Image, RuntimeClass, StorageClass, ServiceAccount   string
+	InferenceURL, BrokerURL, CodexModel                 string
+	ProjectNamespaces                                   map[string]string
+	MemoryLimit                                         int64
+	RequireVerified                                     bool
+}
+
+type Kubernetes struct {
+	cfg                KubernetesConfig
+	apiHTTP, agentHTTP *http.Client
+	mu                 sync.Mutex
+}
+
+var dnsLabel = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
+var pinnedImage = regexp.MustCompile(`^[a-z0-9][a-z0-9._:/-]*@sha256:[a-f0-9]{64}$`)
+
+func NewKubernetes(c KubernetesConfig) (*Kubernetes, error) {
+	u, err := url.Parse(c.APIURL)
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || c.APIToken == "" || len(c.Token) < 32 || len(c.GatewayServiceToken) < 32 || len(c.GrantSecret) < 32 || !dnsLabel.MatchString(c.Deployment) || len(c.Deployment) > 20 || !pinnedImage.MatchString(c.Image) || c.RuntimeClass != "kata" || !dnsLabel.MatchString(c.ServiceAccount) || c.StorageClass == "" || len(c.ProjectNamespaces) == 0 {
+		return nil, errors.New("invalid Kubernetes runtime configuration")
+	}
+	seen := map[string]bool{}
+	for project, namespace := range c.ProjectNamespaces {
+		if !shared.ValidID(project) || !dnsLabel.MatchString(namespace) || seen[namespace] {
+			return nil, errors.New("invalid project namespace binding")
+		}
+		seen[namespace] = true
+	}
+	ca, err := os.ReadFile(c.CAFile)
+	if err != nil {
+		return nil, errors.New("Kubernetes CA unavailable")
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(ca) {
+		return nil, errors.New("invalid Kubernetes CA")
+	}
+	if c.MemoryLimit == 0 {
+		c.MemoryLimit = 1 << 30
+	}
+	for _, origin := range []string{c.InferenceURL, c.BrokerURL} {
+		u, err := url.Parse(origin)
+		if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.Path != "" || u.RawQuery != "" {
+			return nil, errors.New("invalid internal gateway origin")
+		}
+	}
+	denyRedirect := func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return &Kubernetes{cfg: c, apiHTTP: &http.Client{Timeout: 30 * time.Second, CheckRedirect: denyRedirect, Transport: &http.Transport{Proxy: nil, TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: pool}}}, agentHTTP: &http.Client{Timeout: 10 * time.Second, CheckRedirect: denyRedirect, Transport: &http.Transport{Proxy: nil}}}, nil
+}
+
+type kubeResource struct {
+	Metadata struct {
+		Name, Namespace string
+		Labels          map[string]string
+		Generation      int64  `json:"generation"`
+		ResourceVersion string `json:"resourceVersion"`
+	} `json:"metadata"`
+	Spec struct {
+		OperatingMode string `json:"operatingMode"`
+		PodTemplate   struct {
+			Spec struct {
+				RuntimeClassName string `json:"runtimeClassName"`
+				Containers       []struct {
+					Image string `json:"image"`
+				} `json:"containers"`
+			} `json:"spec"`
+		} `json:"podTemplate"`
+	} `json:"spec"`
+	Status struct {
+		Conditions []struct {
+			Type, Status       string
+			ObservedGeneration int64 `json:"observedGeneration"`
+		} `json:"conditions"`
+	} `json:"status"`
+}
+
+func (k *Kubernetes) call(ctx context.Context, method, path string, body any, out any) error {
+	var b []byte
+	var err error
+	if body != nil {
+		b, err = json.Marshal(body)
+		if err != nil {
+			return err
+		}
+	}
+	r, err := http.NewRequestWithContext(ctx, method, k.cfg.APIURL+path, bytes.NewReader(b))
+	if err != nil {
+		return err
+	}
+	r.Header.Set("Authorization", "Bearer "+k.cfg.APIToken)
+	r.Header.Set("Content-Type", "application/json")
+	if method == "PATCH" {
+		r.Header.Set("Content-Type", "application/merge-patch+json")
+	}
+	res, err := k.apiHTTP.Do(r)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		return protocol.APIError{Status: res.StatusCode}
+	}
+	if out != nil {
+		return json.NewDecoder(io.LimitReader(res.Body, 4<<20)).Decode(out)
+	}
+	return nil
+}
+
+func (k *Kubernetes) collection(namespace string) string {
+	return "/apis/" + SandboxAPIVersion + "/namespaces/" + namespace + "/sandboxes"
+}
+func (k *Kubernetes) name(id string) string {
+	return strings.ReplaceAll(k.cfg.Deployment+"-"+strings.ToLower(id), "_", "-")
+}
+func (k *Kubernetes) token(id, generation string) string {
+	return protocol.Grant(k.cfg.GrantSecret, id, generation)
+}
+func (k *Kubernetes) namespaces() []string {
+	ns := []string{}
+	for _, n := range k.cfg.ProjectNamespaces {
+		ns = append(ns, n)
+	}
+	sort.Strings(ns)
+	return ns
+}
+func (k *Kubernetes) owned(resource kubeResource, id string) bool {
+	l := resource.Metadata.Labels
+	return l["workbench.deployment"] == k.cfg.Deployment && l["workbench.workspace"] == id && k.cfg.ProjectNamespaces[protocol.ProjectOf(l)] == resource.Metadata.Namespace && resource.Metadata.Name == k.name(id)
+}
+func (k *Kubernetes) find(ctx context.Context, id string) (kubeResource, error) {
+	if !shared.ValidID(id) || !dnsLabel.MatchString(k.name(id)) {
+		return kubeResource{}, errors.New("invalid workspace")
+	}
+	var found *kubeResource
+	for _, namespace := range k.namespaces() {
+		var list struct {
+			Items []kubeResource `json:"items"`
+		}
+		selector := url.QueryEscape("workbench.deployment=" + k.cfg.Deployment + ",workbench.workspace=" + id)
+		if err := k.call(ctx, "GET", k.collection(namespace)+"?labelSelector="+selector, nil, &list); err != nil {
+			return kubeResource{}, err
+		}
+		for _, item := range list.Items {
+			if !k.owned(item, id) || found != nil {
+				return kubeResource{}, errors.New("ambiguous or invalid workspace ownership")
+			}
+			copy := item
+			found = &copy
+		}
+	}
+	if found == nil {
+		return kubeResource{}, protocol.APIError{Status: 404}
+	}
+	return *found, nil
+}
+func (k *Kubernetes) endpoint(resource kubeResource) string {
+	return "http://" + resource.Metadata.Name + "." + resource.Metadata.Namespace + ".svc:8080"
+}
+func (k *Kubernetes) agent(ctx context.Context, resource kubeResource, method, path string, body []byte) (int, []byte, error) {
+	r, err := http.NewRequestWithContext(ctx, method, k.endpoint(resource)+path, bytes.NewReader(body))
+	if err != nil {
+		return 0, nil, err
+	}
+	r.Header.Set("Authorization", "Bearer "+k.token(resource.Metadata.Labels["workbench.workspace"], resource.Metadata.Labels["workbench.generation"]))
+	r.Header.Set("Content-Type", "application/json")
+	res, err := k.agentHTTP.Do(r)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer res.Body.Close()
+	b, err := io.ReadAll(io.LimitReader(res.Body, (2<<20)+1))
+	if len(b) > 2<<20 {
+		return 0, nil, errors.New("workspace response too large")
+	}
+	return res.StatusCode, b, err
+}
+func sandboxReady(r kubeResource) bool {
+	if r.Spec.OperatingMode == "Suspended" {
+		return false
+	}
+	for _, c := range r.Status.Conditions {
+		if c.Type == "Ready" && c.Status == "True" && c.ObservedGeneration == r.Metadata.Generation {
+			return true
+		}
+	}
+	return false
+}
+func (k *Kubernetes) observe(ctx context.Context, r kubeResource) (shared.Observation, error) {
+	o := shared.Observation{RuntimeType: "kata", IsolationStatus: "unverified", NetworkStatus: "unverified", Running: true}
+	if r.Spec.OperatingMode == "Suspended" {
+		for _, condition := range r.Status.Conditions {
+			if condition.Type == "Suspended" && condition.Status == "True" && condition.ObservedGeneration == r.Metadata.Generation {
+				o.Running = false
+			}
+		}
+		return o, nil
+	}
+	if !sandboxReady(r) || k.cfg.RequireVerified {
+		return o, nil
+	}
+	status, b, err := k.agent(ctx, r, "GET", "/v1/activity", nil)
+	if err == nil && status == 200 && json.Unmarshal(b, &o.Activity) == nil {
+		o.Ready = true
+	}
+	return o, nil
+}
+func (k *Kubernetes) Start(ctx context.Context, id string) (shared.Observation, error) {
+	return k.StartConfigured(ctx, id, protocol.WorkspaceSpec{})
+}
+func (k *Kubernetes) StartConfigured(ctx context.Context, id string, spec protocol.WorkspaceSpec) (shared.Observation, error) {
+	if err := protocol.CheckResources(spec.Resources, protocol.ResourceLimits{CPUCores: 1, MemoryBytes: k.cfg.MemoryLimit}); err != nil {
+		return shared.Observation{}, err
+	}
+	spec, err := protocol.NormalizeSpec(spec)
+	if err != nil {
+		return shared.Observation{}, err
+	}
+	if spec.AgentKind == "hermes" {
+		return shared.Observation{}, errors.New("unsupported agent kind")
+	}
+	if k.cfg.RequireVerified {
+		return shared.Observation{}, errors.New("VERIFIED_ISOLATION_UNAVAILABLE")
+	}
+	if spec.ConnectionMode != "" && spec.ConnectionMode != "blocked" {
+		return shared.Observation{}, errors.New("NETWORK_POLICY_UNAVAILABLE")
+	}
+	if spec.ParentID != "" {
+		return shared.Observation{}, errors.New("KUBERNETES_BRANCH_SEED_UNAVAILABLE")
+	}
+	namespace, ok := k.cfg.ProjectNamespaces[spec.ProjectID]
+	if !ok || spec.HomeID == "" || !shared.ValidID(id) || !dnsLabel.MatchString(k.name(id)) {
+		return shared.Observation{}, errors.New("project runtime not provisioned")
+	}
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	resource, err := k.find(ctx, id)
+	var absent protocol.APIError
+	if err != nil && (!errors.As(err, &absent) || absent.Status != 404) {
+		return shared.Observation{}, err
+	}
+	if err == nil {
+		if protocol.CheckOwnership(resource.Metadata.Labels, spec) != nil || resource.Metadata.Labels["workbench.agent"] != spec.AgentKind || resource.Spec.PodTemplate.Spec.RuntimeClassName != k.cfg.RuntimeClass || len(resource.Spec.PodTemplate.Spec.Containers) != 1 || resource.Spec.PodTemplate.Spec.Containers[0].Image != k.cfg.Image {
+			return shared.Observation{}, errors.New("sandbox ownership or policy drift")
+		}
+		if err = k.call(ctx, "PATCH", k.collection(namespace)+"/"+resource.Metadata.Name, map[string]any{"spec": map[string]string{"operatingMode": "Running"}}, nil); err != nil {
+			return shared.Observation{}, err
+		}
+	} else {
+		labels := map[string]string{"workbench.deployment": k.cfg.Deployment, "workbench.workspace": id, "workbench.project": spec.ProjectID, "workbench.home": spec.HomeID, "workbench.agent": spec.AgentKind, "workbench.template": spec.TemplateID, "workbench.generation": shared.NewID("gen_")}
+		secretName := k.name(id) + "-grant"
+		secretPath := "/api/v1/namespaces/" + namespace + "/secrets/" + secretName
+		var secret kubeResource
+		secretErr := k.call(ctx, "GET", secretPath, nil, &secret)
+		if secretErr == nil {
+			if protocol.CheckOwnership(secret.Metadata.Labels, spec) != nil || secret.Metadata.Labels["workbench.workspace"] != id || secret.Metadata.Labels["workbench.deployment"] != k.cfg.Deployment {
+				return shared.Observation{}, errors.New("grant ownership mismatch")
+			}
+			labels["workbench.generation"] = secret.Metadata.Labels["workbench.generation"]
+			if labels["workbench.generation"] == "" {
+				return shared.Observation{}, errors.New("invalid grant generation")
+			}
+		} else {
+			var missing protocol.APIError
+			if !errors.As(secretErr, &missing) || missing.Status != 404 {
+				return shared.Observation{}, secretErr
+			}
+			body := map[string]any{"apiVersion": "v1", "kind": "Secret", "metadata": map[string]any{"name": secretName, "namespace": namespace, "labels": labels}, "type": "Opaque", "data": map[string][]byte{"token": []byte(k.token(id, labels["workbench.generation"]))}}
+			if err = k.call(ctx, "POST", "/api/v1/namespaces/"+namespace+"/secrets", body, nil); err != nil {
+				return shared.Observation{}, err
+			}
+		}
+		if err = k.call(ctx, "POST", k.collection(namespace), k.sandbox(id, spec, namespace, labels, secretName), nil); err != nil {
+			return shared.Observation{}, err
+		}
+	}
+	wait, cancel := context.WithTimeout(ctx, 25*time.Second)
+	defer cancel()
+	for {
+		resource, err = k.find(wait, id)
+		if err != nil {
+			return shared.Observation{}, err
+		}
+		if sandboxReady(resource) {
+			status, _, e := k.agent(wait, resource, "POST", "/v1/resume", nil)
+			if e == nil && status == 200 {
+				return k.observe(wait, resource)
+			}
+		}
+		select {
+		case <-wait.Done():
+			return shared.Observation{}, errors.New("NOT_READY")
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
+}
+func (k *Kubernetes) sandbox(id string, spec protocol.WorkspaceSpec, namespace string, labels map[string]string, secretName string) map[string]any {
+	mcps, _ := json.Marshal(spec.MCPs)
+	env := []map[string]any{{"name": "WORKSPACE_MCPS", "value": string(mcps)}}
+	for name, value := range map[string]string{"WORKSPACE_ID": id, "PROJECT_ID": spec.ProjectID, "AGENT_HOME_ID": spec.HomeID, "AGENT_KIND": spec.AgentKind, "WORKSPACE_NAME": spec.Name, "DATA_DIR": "/data", "MONITOR_PROCESSES": "true", "WORKSPACE_T3": fmt.Sprint(spec.AgentKind == "t3"), "WORKSPACE_AGENT": "codex", "CODEX_MODEL": k.cfg.CodexModel, "INFERENCE_URL": k.cfg.InferenceURL, "BROKER_URL": k.cfg.BrokerURL} {
+		env = append(env, map[string]any{"name": name, "value": value})
+	}
+	env = append(env, map[string]any{"name": "WORKSPACE_TOKEN", "valueFrom": map[string]any{"secretKeyRef": map[string]string{"name": secretName, "key": "token"}}})
+	container := map[string]any{"name": "workspace", "image": k.cfg.Image, "imagePullPolicy": "IfNotPresent", "env": env, "ports": []any{map[string]any{"containerPort": 8080, "name": "workspace"}}, "securityContext": map[string]any{"allowPrivilegeEscalation": false, "readOnlyRootFilesystem": true, "capabilities": map[string]any{"drop": []string{"ALL"}}}, "resources": map[string]any{"requests": map[string]string{"cpu": "1", "memory": fmt.Sprint(k.cfg.MemoryLimit)}, "limits": map[string]string{"cpu": "1", "memory": fmt.Sprint(k.cfg.MemoryLimit)}}, "volumeMounts": []any{map[string]string{"name": "data", "mountPath": "/data"}, map[string]string{"name": "tmp", "mountPath": "/tmp"}}, "readinessProbe": map[string]any{"httpGet": map[string]any{"path": "/healthz", "port": 8080}, "periodSeconds": 2}}
+	return map[string]any{"apiVersion": SandboxAPIVersion, "kind": "Sandbox", "metadata": map[string]any{"name": k.name(id), "namespace": namespace, "labels": labels}, "spec": map[string]any{"operatingMode": "Running", "service": true, "failedPodPolicy": "Retain", "podTemplate": map[string]any{"metadata": map[string]any{"labels": labels}, "spec": map[string]any{"runtimeClassName": k.cfg.RuntimeClass, "serviceAccountName": k.cfg.ServiceAccount, "automountServiceAccountToken": false, "restartPolicy": "Never", "securityContext": map[string]any{"runAsNonRoot": true, "runAsUser": 10001, "runAsGroup": 10001, "fsGroup": 10001, "seccompProfile": map[string]string{"type": "RuntimeDefault"}}, "containers": []any{container}, "volumes": []any{map[string]any{"name": "tmp", "emptyDir": map[string]string{"medium": "Memory", "sizeLimit": "64Mi"}}}}}, "volumeClaimTemplates": []any{map[string]any{"metadata": map[string]any{"name": "data", "labels": labels}, "spec": map[string]any{"accessModes": []string{"ReadWriteOncePod"}, "storageClassName": k.cfg.StorageClass, "resources": map[string]any{"requests": map[string]string{"storage": "10Gi"}}}}}}}
+}
+func (k *Kubernetes) Inspect(ctx context.Context, id string) (shared.Observation, error) {
+	r, err := k.find(ctx, id)
+	var missing protocol.APIError
+	if errors.As(err, &missing) && missing.Status == 404 {
+		return shared.Observation{RuntimeType: "kata", IsolationStatus: "unverified", NetworkStatus: "unverified"}, nil
+	}
+	if err != nil {
+		return shared.Observation{}, err
+	}
+	return k.observe(ctx, r)
+}
+func (k *Kubernetes) Stop(ctx context.Context, id string) error {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	r, err := k.find(ctx, id)
+	if err != nil {
+		return err
+	}
+	if r.Spec.OperatingMode == "Suspended" {
+		return nil
+	}
+	status, _, err := k.agent(ctx, r, "POST", "/v1/quiesce", nil)
+	if err != nil || status != 200 {
+		return errors.New("WORKSPACE_BUSY")
+	}
+	if err = k.call(ctx, "PATCH", k.collection(r.Metadata.Namespace)+"/"+r.Metadata.Name, map[string]any{"spec": map[string]string{"operatingMode": "Suspended"}}, nil); err != nil {
+		resume, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		_, _, _ = k.agent(resume, r, "POST", "/v1/resume", nil)
+		return err
+	}
+	wait, cancel := context.WithTimeout(ctx, 25*time.Second)
+	defer cancel()
+	for {
+		r, err = k.find(wait, id)
+		if err != nil {
+			return err
+		}
+		observation, _ := k.observe(wait, r)
+		if !observation.Running {
+			return nil
+		}
+		select {
+		case <-wait.Done():
+			return errors.New("STOP_UNCONFIRMED")
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
+}
+func (k *Kubernetes) Reconcile(ctx context.Context, id string) error {
+	_, err := k.find(ctx, id)
+	return err
+}
+func (k *Kubernetes) Agent(ctx context.Context, id, method, path string, b []byte) (int, []byte, error) {
+	if k.cfg.RequireVerified {
+		return 0, nil, errors.New("VERIFIED_ISOLATION_UNAVAILABLE")
+	}
+	clean := strings.SplitN(path, "?", 2)[0]
+	if !protocol.AllowedAgentPath(method, clean) {
+		return 0, nil, errors.New("workspace route denied")
+	}
+	r, err := k.find(ctx, id)
+	if err != nil {
+		return 0, nil, err
+	}
+	if !sandboxReady(r) {
+		return 0, nil, errors.New("NOT_READY")
+	}
+	return k.agent(ctx, r, method, path, b)
+}
+func (k *Kubernetes) proxy(w http.ResponseWriter, r *http.Request, id, path, route string) {
+	resource, err := k.find(r.Context(), id)
+	if err != nil || !sandboxReady(resource) || k.cfg.RequireVerified {
+		shared.Error(w, 503, "CONSOLE_UNAVAILABLE")
+		return
+	}
+	shared.Proxy(w, r, k.endpoint(resource), route+strings.TrimPrefix(path, "/"), k.token(id, resource.Metadata.Labels["workbench.generation"]))
+}
+func (k *Kubernetes) Console(w http.ResponseWriter, r *http.Request, id, path string) {
+	k.proxy(w, r, id, path, "/v1/t3/")
+}
+func (k *Kubernetes) Desktop(w http.ResponseWriter, r *http.Request, id, path string) {
+	k.proxy(w, r, id, path, "/v1/t3-desktop/")
+}

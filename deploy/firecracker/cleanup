@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+for group in /sys/fs/cgroup/awb-firecracker/fc-*; do
+  if [ -f "$group/cgroup.kill" ]; then echo 1 > "$group/cgroup.kill"; fi
+done
+# Empty namespaces carry no routes and are never reused across generations.
+for ns in /run/netns/awb-fc-*; do
+  if [ -e "$ns" ]; then ip netns delete "${ns##*/}"; fi
+done
