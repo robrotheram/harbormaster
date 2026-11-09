@@ -44,7 +44,7 @@ contracts run without importing the real SDK or contacting a provider.
 `frontend/src/app` owns bootstrap, routes, and the application shell. Screens are
 loaded by feature, rather than imported into the entry point. Feature folders
 own their clients, queries, forms, and views: workspaces, tasks, scheduling,
-history/activity, connection profiles, tool profiles, projects, project
+history/activity, connection profiles, projects, project
 assistants, and platform observations. Shared UI and HTTP utilities contain no
 feature workflow. Import another feature's data API rather than its screen to
 reuse a query.
@@ -60,7 +60,7 @@ mandatory. Private transcript/result queries have an explicit cache lifetime.
 ## Identity and content boundaries
 
 - A project is the immutable ownership and authorization boundary. Display names,
-  tool profiles, native thread names, and client-supplied IDs do not grant access.
+  native thread names, and client-supplied IDs do not grant access.
 - A workspace has stable identity and storage; its compute instance is replaceable.
   Each private home belongs to its workspace/project. Legacy empty home paths are
   preserved, not silently moved during startup.
@@ -136,3 +136,9 @@ when consolidating helpers. Remove compatibility code only after identifying its
 remaining consumers and migration path. Avoid generic repository frameworks,
 event buses, or one deployment per bounded context unless an actual requirement
 justifies them.
+
+Workspace tools are fixed: T3 and native Codex/Claude workers receive the bundled
+file and Git MCP servers. There is no tool-profile catalog, editor, or workspace
+selection. Hermes retains its own native toolsets. Old profile metadata is retained only to identify legacy workspaces;
+it does not select tools or require an old profile record to start. Connection
+profiles continue to control networking independently.

@@ -11,7 +11,6 @@ type Workspace struct {
 	AgentKind        string   `json:"agent_kind,omitempty"`
 	TemplateID       string   `json:"template_id,omitempty"`
 	Name             string   `json:"name,omitempty"`
-	ProfileID        string   `json:"profile_id,omitempty"`
 	ParentID         string   `json:"parent_id,omitempty"`
 	Branch           string   `json:"branch,omitempty"`
 	ID               string   `json:"id"`
@@ -65,7 +64,6 @@ type CreateInput struct {
 	ProjectID      string `json:"project_id,omitempty"`
 	AgentKind      string `json:"agent_kind,omitempty"`
 	Name           string `json:"name,omitempty"`
-	ProfileID      string `json:"profile_id,omitempty"`
 	ParentID       string `json:"parent_id,omitempty"`
 	Branch         string `json:"branch,omitempty"`
 	IdempotencyKey string `json:"idempotency_key"`

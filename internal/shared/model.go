@@ -35,26 +35,27 @@ type Workspace struct {
 	AgentKind                 string            `json:"agent_kind,omitempty"`
 	TemplateID                string            `json:"template_id,omitempty"`
 	Name                      string            `json:"name,omitempty"`
-	ProfileID                 string            `json:"profile_id,omitempty"`
-	ParentID                  string            `json:"parent_id,omitempty"`
-	Branch                    string            `json:"branch,omitempty"`
-	ID                        string            `json:"id"`
-	ProjectID                 string            `json:"project_id"`
-	State                     string            `json:"state"`
-	Ready                     bool              `json:"ready"`
-	ActiveRuns                int               `json:"active_runs"`
-	BackgroundJobs            int               `json:"background_jobs"`
-	CreatedAt                 time.Time         `json:"created_at"`
-	UpdatedAt                 time.Time         `json:"updated_at"`
-	IdleStopAt                *time.Time        `json:"idle_stop_at"`
-	RuntimeType               string            `json:"runtime_type"`
-	IsolationStatus           string            `json:"isolation_status"`
-	NetworkStatus             string            `json:"network_status"`
-	CPULimit                  float64           `json:"cpu_limit"`
-	MemoryLimitBytes          int64             `json:"memory_limit_bytes"`
-	CPUCores                  *float64          `json:"cpu_cores"`
-	MemoryBytes               *int64            `json:"memory_bytes"`
-	ObservedAt                *time.Time        `json:"observed_at"`
+	// ProfileID is read only as a legacy native-console marker; new workspaces never set it.
+	ProfileID        string     `json:"profile_id,omitempty"`
+	ParentID         string     `json:"parent_id,omitempty"`
+	Branch           string     `json:"branch,omitempty"`
+	ID               string     `json:"id"`
+	ProjectID        string     `json:"project_id"`
+	State            string     `json:"state"`
+	Ready            bool       `json:"ready"`
+	ActiveRuns       int        `json:"active_runs"`
+	BackgroundJobs   int        `json:"background_jobs"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+	IdleStopAt       *time.Time `json:"idle_stop_at"`
+	RuntimeType      string     `json:"runtime_type"`
+	IsolationStatus  string     `json:"isolation_status"`
+	NetworkStatus    string     `json:"network_status"`
+	CPULimit         float64    `json:"cpu_limit"`
+	MemoryLimitBytes int64      `json:"memory_limit_bytes"`
+	CPUCores         *float64   `json:"cpu_cores"`
+	MemoryBytes      *int64     `json:"memory_bytes"`
+	ObservedAt       *time.Time `json:"observed_at"`
 }
 type Task struct {
 	ID          string    `json:"id"`

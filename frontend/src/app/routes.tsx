@@ -41,17 +41,11 @@ const connectionsRoute = createRoute({
   path: "/connection-profiles",
   component: () => <ProjectShell globalSettings />,
 });
-const toolsRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/tool-profiles",
-  component: () => <ProjectShell globalSettings="tools" />,
-});
 export const router = createRouter({
   routeTree: rootRoute.addChildren([
     indexRoute,
     projectRoute,
     connectionsRoute,
-    toolsRoute,
   ]),
   basepath: "/app",
 });

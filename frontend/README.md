@@ -33,11 +33,13 @@ On a fresh Linux CI image, install browser system dependencies with `npx playwri
 - `src/features/history/`: private transcripts, activity and safe operational logs.
 - `src/features/connection-profiles/`: global profiles and pure connection-policy parsing/presentation.
 - `src/features/project-assistant/`: Hermes and Matrix configuration. Assistant startup is one backend operation.
-- `src/features/projects/`, `tool-profiles/`, `platform/`: feature-specific clients and views.
+- `src/features/projects/`, `platform/`: feature-specific clients and views.
 - `src/shared/`: HTTP/error handling, project query-key conventions, common transport types and presentation helpers.
 - `src/components/ui/`: reusable UI primitives. `src/styles.css` owns theme/layout recipes; `DESIGN.md` records the visual direction.
 
 Feature data and query definitions live beside their feature, in `api.ts` (or history's named API modules). Import another feature's data contract rather than its screen to obtain a query hook. The workspace view intentionally composes the public task and history panels. Shared production modules must not import features or application code.
+
+Every coding workspace has the same fixed confined file and Git MCP tooling; there is no tool-profile catalog or selector. Connection profiles control networking independently.
 
 The backend remains authoritative for project authorization, connection-policy enforcement, lifecycle coordination and scheduling. Frontend transition helpers supply presentation only. Keep project IDs in query keys and verify response ownership before displaying scoped data. Avoid placing workflow orchestration in forms.
 

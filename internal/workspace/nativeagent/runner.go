@@ -14,12 +14,10 @@ import (
 	"time"
 )
 
-type MCP struct{ Name, Mode string }
 type Config struct {
 	DataDir, HomeDir, AgentKind, Token, InferenceURL string
 	CodexModel, ClaudeModel, HermesModel             string
 	EgressURL, ConnectionMode                        string
-	MCPs                                             []MCP
 }
 type invocation struct {
 	executable string

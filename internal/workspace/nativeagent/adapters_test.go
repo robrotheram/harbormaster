@@ -11,7 +11,7 @@ func TestAdapterPlansUseOnlyExplicitWorkspaceAuthority(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "host-secret-must-not-cross")
 	t.Setenv("ANTHROPIC_API_KEY", "host-secret-must-not-cross")
 	root := t.TempDir()
-	cfg := Config{DataDir: root, HomeDir: root, AgentKind: "hermes", Token: "workspace-generation-grant", InferenceURL: "http://inference.internal", CodexModel: "approved-codex", ClaudeModel: "approved-claude", HermesModel: "approved-hermes", MCPs: []MCP{{Name: "workspace-files", Mode: "files"}}}
+	cfg := Config{DataDir: root, HomeDir: root, AgentKind: "hermes", Token: "workspace-generation-grant", InferenceURL: "http://inference.internal", CodexModel: "approved-codex", ClaudeModel: "approved-claude", HermesModel: "approved-hermes"}
 	for _, provider := range []string{"codex", "claude", "hermes"} {
 		plan, code := prepare(cfg, provider)
 		if code != "" {
@@ -26,8 +26,8 @@ func TestAdapterPlansUseOnlyExplicitWorkspaceAuthority(t *testing.T) {
 		}
 		if provider != "hermes" {
 			args := strings.Join(plan.args, " ")
-			if !strings.Contains(args, "workspace-files") || strings.Contains(args, "project-git") {
-				t.Fatal("adapter changed selected tool set", provider)
+			if !strings.Contains(args, "workspace-files") || !strings.Contains(args, "project-git") {
+				t.Fatal("adapter omitted bundled file/Git tools", provider)
 			}
 		}
 	}

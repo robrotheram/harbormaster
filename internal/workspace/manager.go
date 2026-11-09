@@ -26,7 +26,6 @@ import (
 )
 
 type Config struct {
-	MCPs                                               []string
 	HermesMatrix                                       *shared.HermesMatrix
 	HermesModel                                        string
 	ConnectionMode                                     string
@@ -87,9 +86,6 @@ type ToolCall struct {
 }
 
 func New(cfg Config) (*Manager, error) {
-	if !shared.ValidMCPs(cfg.MCPs) {
-		return nil, fmt.Errorf("invalid MCP selection")
-	}
 	if cfg.ID == "" || cfg.Token == "" || cfg.DataDir == "" {
 		return nil, fmt.Errorf("workspace configuration missing")
 	}

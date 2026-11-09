@@ -325,9 +325,8 @@ func (k *Kubernetes) StartConfigured(ctx context.Context, id string, spec protoc
 	}
 }
 func (k *Kubernetes) sandbox(id string, spec protocol.WorkspaceSpec, namespace string, labels map[string]string, secretName string) map[string]any {
-	mcps, _ := json.Marshal(spec.MCPs)
-	env := []map[string]any{{"name": "WORKSPACE_MCPS", "value": string(mcps)}}
-	for name, value := range map[string]string{"WORKSPACE_ID": id, "PROJECT_ID": spec.ProjectID, "AGENT_HOME_ID": spec.HomeID, "AGENT_KIND": spec.AgentKind, "WORKSPACE_NAME": spec.Name, "DATA_DIR": "/data", "MONITOR_PROCESSES": "true", "WORKSPACE_T3": fmt.Sprint(spec.AgentKind == "t3"), "WORKSPACE_AGENT": "codex", "CODEX_MODEL": k.cfg.CodexModel, "INFERENCE_URL": k.cfg.InferenceURL, "BROKER_URL": k.cfg.BrokerURL} {
+	env := []map[string]any{}
+	for name, value := range map[string]string{"WORKSPACE_ID": id, "PROJECT_ID": spec.ProjectID, "AGENT_HOME_ID": spec.HomeID, "AGENT_KIND": spec.AgentKind, "WORKSPACE_NAME": spec.Name, "DATA_DIR": "/data", "MONITOR_PROCESSES": "true", "WORKSPACE_T3": fmt.Sprint(spec.AgentKind == "t3" || spec.ConsoleEnabled), "WORKSPACE_AGENT": "codex", "CODEX_MODEL": k.cfg.CodexModel, "INFERENCE_URL": k.cfg.InferenceURL, "BROKER_URL": k.cfg.BrokerURL} {
 		env = append(env, map[string]any{"name": name, "value": value})
 	}
 	env = append(env, map[string]any{"name": "WORKSPACE_TOKEN", "valueFrom": map[string]any{"secretKeyRef": map[string]string{"name": secretName, "key": "token"}}})

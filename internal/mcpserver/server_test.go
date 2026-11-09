@@ -323,3 +323,39 @@ func TestNoRetryConflict(t *testing.T) {
 		t.Fatalf("error=%v calls=%d", e, calls)
 	}
 }
+
+func TestWorkspaceCreateSchemaHasNoRetiredProfileSelector(t *testing.T) {
+	hits := 0
+	session, _ := setup(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"id":"workspace_new","project_id":"default","state":"STOPPED"}`)
+	}))
+	tools, err := session.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, tool := range tools.Tools {
+		if tool.Name == "workspace_create" {
+			found = true
+			raw, err := json.Marshal(tool.InputSchema)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(string(raw), "profile_id") {
+				t.Fatalf("retired selector remains in MCP schema: %s", raw)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("workspace_create missing")
+	}
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "workspace_create", Arguments: map[string]any{"idempotency_key": "new", "profile_id": "general"}})
+	if err == nil && !result.IsError {
+		t.Fatal("retired selector was accepted by MCP")
+	}
+	if hits != 0 {
+		t.Fatal("invalid MCP create reached controlplane")
+	}
+}

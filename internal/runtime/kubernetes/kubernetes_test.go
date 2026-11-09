@@ -144,7 +144,7 @@ func kubeProvider(t *testing.T) (*Kubernetes, *fakeKubernetes) {
 func TestKubernetesFixedSandboxOwnershipPersistenceAndObservedReadiness(t *testing.T) {
 	k, fake := kubeProvider(t)
 	ctx := context.Background()
-	spec := protocol.WorkspaceSpec{ProjectID: "proj_one", HomeID: "home_one", AgentKind: "t3", ProfileID: "general"}
+	spec := protocol.WorkspaceSpec{ProjectID: "proj_one", HomeID: "home_one", AgentKind: "t3"}
 	o, err := k.StartConfigured(ctx, "ws_test", spec)
 	if err != nil || !o.Ready {
 		t.Fatalf("start: %+v %v", o, err)

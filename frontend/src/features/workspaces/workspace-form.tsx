@@ -9,16 +9,14 @@ import { Input } from "@/components/ui/input";
 
 import { NativeSelect } from "@/components/ui/native-select";
 import { useConnectionProfiles } from "@/features/connection-profiles/api";
-import type { Project, Workspace, Profile } from "@/shared/types";
+import type { Project, Workspace } from "@/shared/types";
 export function WorkspaceForm({
   project,
-  profiles,
   parent,
   onClose,
   onCreated,
 }: {
   project: Project;
-  profiles: Profile[];
   parent?: Workspace;
   onClose: () => void;
   onCreated: () => void;
@@ -30,7 +28,6 @@ export function WorkspaceForm({
   const [name, setName] = useState(
     parent ? (parent.name || "Project") + " branch" : "",
   );
-  const [profile, setProfile] = useState(parent?.profile_id || "general");
   const [agent, setAgent] = useState<string>(parent?.agent_kind || "t3");
   const [branch, setBranch] = useState("");
   const key = useRequestKey();
@@ -42,7 +39,6 @@ export function WorkspaceForm({
           ? { connection_profile_id: globalConnectionID }
           : {}),
         name: name.trim(),
-        profile_id: profile,
         agent_kind: agent,
         ...(parent ? { parent_id: parent.id, branch: branch.trim() } : {}),
       };
@@ -50,7 +46,6 @@ export function WorkspaceForm({
     },
     onSuccess: onCreated,
   });
-  const selected = profiles.find((item) => item.id === profile);
   return (
     <Modal
       title={parent ? "Branch workspace" : "Create workspace"}
@@ -79,55 +74,28 @@ export function WorkspaceForm({
             placeholder="Gallery development"
           />
         </label>
-        <div className="form-columns">
-          <label>
-            Tool profile
-            <NativeSelect
-              aria-label="Tool profile"
-              value={profile}
-              disabled={!!parent}
-              onChange={(event) => setProfile(event.target.value)}
-            >
-              {profiles.length ? (
-                profiles.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.title}
-                  </option>
-                ))
-              ) : (
-                <option value="general">Development</option>
-              )}
-            </NativeSelect>
-            <Link
-              to="/tool-profiles"
-              className="text-xs font-normal underline underline-offset-4"
-            >
-              Manage tool profiles
-            </Link>
-          </label>
-          <label>
-            Agent
-            <NativeSelect
-              aria-label="Agent"
-              value={agent}
-              disabled={!!parent}
-              onChange={(event) => setAgent(event.target.value)}
-            >
-              <option value="t3">T3 with Codex</option>
-              <option value="codex">Codex task worker</option>
-              <option value="hermes" disabled>
-                Hermes — start from Hermes setup
-              </option>
-            </NativeSelect>
-            <Link
-              to="/projects/$projectId/$section"
-              params={{ projectId: project.id, section: "hermes" }}
-              className="text-xs font-normal underline underline-offset-4"
-            >
-              Configure Hermes for this project
-            </Link>
-          </label>
-        </div>
+        <label>
+          Agent
+          <NativeSelect
+            aria-label="Agent"
+            value={agent}
+            disabled={!!parent}
+            onChange={(event) => setAgent(event.target.value)}
+          >
+            <option value="t3">T3 with Codex</option>
+            <option value="codex">Codex task worker</option>
+            <option value="hermes" disabled>
+              Hermes — start from Hermes setup
+            </option>
+          </NativeSelect>
+          <Link
+            to="/projects/$projectId/$section"
+            params={{ projectId: project.id, section: "hermes" }}
+            className="text-xs font-normal underline underline-offset-4"
+          >
+            Configure Hermes for this project
+          </Link>
+        </label>
         <label>
           Global connection profile
           <NativeSelect
@@ -143,12 +111,6 @@ export function WorkspaceForm({
             ))}
           </NativeSelect>
         </label>
-        {selected && (
-          <div className="profile-description">
-            <p>{selected.description}</p>
-            <p>Loaded MCP servers: {selected.mcps.join(", ")}</p>
-          </div>
-        )}
         {parent && (
           <label>
             New local Git branch

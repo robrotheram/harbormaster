@@ -13,8 +13,8 @@ type Runtime interface {
 }
 
 type WorkspaceSpec struct {
+	ConsoleEnabled bool                 `json:"console_enabled,omitempty"`
 	Resources      *ResourceLimits      `json:"resources,omitempty"`
-	MCPs           []string             `json:"mcps"`
 	HermesMatrix   *shared.HermesMatrix `json:"hermes_matrix,omitempty"`
 	HermesModel    string               `json:"hermes_model,omitempty"`
 	ConnectionMode string               `json:"connection_mode,omitempty"`
@@ -22,7 +22,6 @@ type WorkspaceSpec struct {
 	HomeID         string               `json:"home_id,omitempty"`
 	AgentKind      string               `json:"agent_kind,omitempty"`
 	TemplateID     string               `json:"template_id,omitempty"`
-	ProfileID      string               `json:"profile_id,omitempty"`
 	Name           string               `json:"name,omitempty"`
 	ParentID       string               `json:"parent_id,omitempty"`
 	Branch         string               `json:"branch,omitempty"`

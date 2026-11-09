@@ -14,11 +14,11 @@ Local primitives for an agent-operated workbench. Go services, Docker Compose, p
 workspace agent and an encrypted Matrix bot. [Hermes connection guide](deploy/hermes/README.md)
 covers starting the runtime and saving the host-held bot credential.
 
-**Develop in the browser:** open [the workspace launcher](http://127.0.0.1:8080/workspaces), create a project workspace and select **Open T3**. [Interactive workspace guide](docs/interactive-workspaces.md) covers project profiles, loaded MCP servers and separate branch workspaces.
+**Develop in the browser:** open [the workspace launcher](http://127.0.0.1:8080/workspaces), create a project workspace and select **Open T3**. [Interactive workspace guide](docs/interactive-workspaces.md) covers bundled workspace tools and separate branch workspaces.
 
 **Use T3 desktop or share files:** select **Connect desktop** and paste its one-use URL into desktop **Settings → Environments → Add environment**. The launcher also has **Share a file between workspaces** for explicit copies into another workspace. [Connection and sharing guide](docs/interactive-workspaces.md#connect-t3-code-desktop).
 
-**Development only:** the initial profile uses synthetic inference/data fixtures and ordinary Docker containers. VM isolation and complete host-level egress containment remain unverified. See [security boundaries](docs/security.md). Kubernetes is an experimental Agent Sandbox adapter; unsupported network policy fails closed before allocation. See [backend support](docs/architecture.md#backend-support).
+**Development only:** the development deployment uses synthetic inference/data fixtures and ordinary Docker containers. VM isolation and complete host-level egress containment remain unverified. See [security boundaries](docs/security.md). Kubernetes is an experimental Agent Sandbox adapter; unsupported network policy fails closed before allocation. See [backend support](docs/architecture.md#backend-support).
 
 **Firecracker sandbox:** [installation and acceptance checks](docs/firecracker.md)
 cover jailed microVMs with no network card and fixed gateway channels. This mode
@@ -111,5 +111,3 @@ versioned; linked workspaces show pending changes and adopt them on explicit
 open/start or settings save. Existing workspaces retain their current policy.
 
 See [private message history and JSONL evaluation exports](docs/workspace-history.md) for retained conversations, tool interactions and metadata.
-
-[Global tool profiles](docs/tool-profiles.md) configure reusable bundled MCP tool selections from Settings.

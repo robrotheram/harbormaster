@@ -49,7 +49,7 @@ func (s *Service) EnsureAssistant(ctx context.Context, repo AssistantRepository,
 			return ws, false, errors.New("QUOTA_EXCEEDED")
 		}
 		now := s.Now()
-		ws = shared.Workspace{ID: shared.NewID("ws_"), ProjectID: project, HomeID: shared.NewID("home_"), Name: "Hermes", AgentKind: "hermes", ProfileID: "general", State: "STOPPED", CreatedAt: now, UpdatedAt: now, RuntimeType: "docker", IsolationStatus: "unverified", NetworkStatus: "unverified", CPULimit: 1, MemoryLimitBytes: memory, ConnectionProfileID: config.ConnectionProfileID}
+		ws = shared.Workspace{ID: shared.NewID("ws_"), ProjectID: project, HomeID: shared.NewID("home_"), Name: "Hermes", AgentKind: "hermes", State: "STOPPED", CreatedAt: now, UpdatedAt: now, RuntimeType: "docker", IsolationStatus: "unverified", NetworkStatus: "unverified", CPULimit: 1, MemoryLimitBytes: memory, ConnectionProfileID: config.ConnectionProfileID}
 		if err = s.ResolveConnectionProfile(ctx, &ws); err != nil {
 			return ws, false, err
 		}

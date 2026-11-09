@@ -76,11 +76,6 @@ const Schedules = lazy(() =>
     default: m.Schedules,
   })),
 );
-const ToolProfiles = lazy(() =>
-  import("@/features/tool-profiles/tool-profiles").then((m) => ({
-    default: m.ToolProfiles,
-  })),
-);
 
 const sections: { id: Section; label: string; icon: LucideIcon }[] = [
   { id: "workspaces", label: "Workspaces", icon: Boxes },
@@ -110,7 +105,7 @@ export function ProjectShell({
   section = "workspaces",
 }: {
   projectID?: string;
-  globalSettings?: boolean | "tools";
+  globalSettings?: boolean;
   section?: string;
 }) {
   const projects = useQuery({
@@ -168,9 +163,7 @@ export function ProjectShell({
   const name = project?.id === "default" ? "Workspaces" : project?.name;
   const globalView = globalSettings || selected === "overview";
   const heading = globalSettings
-    ? globalSettings === "tools"
-      ? "Tool profiles"
-      : "Connection profiles"
+    ? "Connection profiles"
     : selected === "overview"
       ? "Runtime overview"
       : selected === "help"
@@ -273,18 +266,6 @@ export function ProjectShell({
         >
           <Network className="size-4" />
           Connection profiles
-        </Link>
-        <Link
-          to="/tool-profiles"
-          className={cn(
-            "rail-link",
-            globalSettings === "tools" && "rail-link-active",
-          )}
-          onClick={() => setMobile(false)}
-          aria-current={globalSettings === "tools" ? "page" : undefined}
-        >
-          <Network className="size-4" />
-          Tool profiles
         </Link>
         {project && (
           <>
@@ -419,11 +400,7 @@ export function ProjectShell({
           <Suspense fallback={<Skeleton className="h-72 w-full" />}>
             {projects.isError && <ErrorNotice error={projects.error} />}
             {globalSettings ? (
-              globalSettings === "tools" ? (
-                <ToolProfiles />
-              ) : (
-                <ConnectionProfiles />
-              )
+              <ConnectionProfiles />
             ) : projects.isPending ? (
               <div className="space-y-5">
                 <Skeleton className="h-10 w-56" />

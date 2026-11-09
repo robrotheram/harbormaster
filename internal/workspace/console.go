@@ -17,6 +17,7 @@ import (
 
 	"agent-workbench/internal/egress"
 	"agent-workbench/internal/shared"
+	"agent-workbench/internal/workspace/toolconfig"
 )
 
 type console struct {
@@ -39,9 +40,7 @@ func (m *Manager) startConsole() error {
 		return err
 	}
 	config := "model = " + tomlString(m.cfg.CodexModel) + "\nmodel_provider = \"workbench\"\n[model_providers.workbench]\nname = \"Workbench subscription\"\nbase_url = " + tomlString(strings.TrimRight(m.cfg.InferenceURL, "/")+"/codex") + "\nwire_api = \"responses\"\nenv_key = \"WORKBENCH_INFERENCE_GRANT\"\nsupports_websockets = false\n"
-	for _, entry := range m.mcpEntries() {
-		config += "\n[mcp_servers." + entry.name + "]\ncommand = \"/usr/local/bin/workspace-mcp\"\nargs = [\"--mode\", " + tomlString(entry.mode) + "]\n"
-	}
+	config += toolconfig.CodexTOML()
 	configPath := filepath.Join(codexHome, "config.toml")
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		if err = os.WriteFile(configPath, []byte(config), 0600); err != nil {
@@ -50,7 +49,7 @@ func (m *Manager) startConsole() error {
 	} else if err != nil {
 		return err
 	}
-	if err := m.syncMCPConfig(configPath); err != nil {
+	if err := toolconfig.SyncCodex(configPath); err != nil {
 		return err
 	}
 	base := filepath.Join(m.homePath(), "t3")

@@ -8,7 +8,7 @@ const workspace = (id, project, name) => ({
   id: "ws_" + id.repeat(32),
   project_id: project,
   name,
-  profile_id: "general",
+
   agent_kind: "t3",
   home_id: "home_" + id,
   ready: true,
@@ -87,21 +87,24 @@ test("project workflows preserve boundaries and UI behavior", async ({
           },
         ],
       };
-    else if (url.pathname === "/ui-api/profiles")
-      value = {
-        items: [
-          {
-            id: "general",
-            title: "Development",
-            description: "Project development tools",
-            mcps: ["workspace-files", "project-git"],
-          },
-        ],
-      };
     else if (url.pathname === "/ui-api/workspaces") {
       if (req.method() === "POST") {
         assert.equal(body.project_id, "p_a");
-        value = workspace("4", body.project_id, body.name);
+        assert.equal(
+          Object.hasOwn(body, "profile_id"),
+          false,
+          "workspace creation must not send a tool profile",
+        );
+        value = {
+          ...workspace(
+            String(workspaces.p_a.length + 2),
+            body.project_id,
+            body.name,
+          ),
+          agent_kind: body.agent_kind,
+          parent_id: body.parent_id,
+          branch: body.branch,
+        };
         workspaces.p_a.push(value);
         status = 201;
       } else {
@@ -189,6 +192,12 @@ test("project workflows preserve boundaries and UI behavior", async ({
   await page.getByText("Research worker A", { exact: true }).waitFor();
   assert.equal(
     await page
+      .getByRole("link", { name: "Tool profiles", exact: true })
+      .count(),
+    0,
+  );
+  assert.equal(
+    await page
       .getByRole("heading", { name: "Workspaces", exact: true })
       .count(),
     1,
@@ -208,6 +217,10 @@ test("project workflows preserve boundaries and UI behavior", async ({
   await page
     .getByRole("button", { name: "Create workspace", exact: true })
     .click();
+  assert.equal(
+    await page.getByLabel("Tool profile", { exact: true }).count(),
+    0,
+  );
   await page.keyboard.press("Escape");
   await page.getByRole("dialog").waitFor({ state: "detached" });
   await page.waitForFunction(() =>
@@ -225,8 +238,27 @@ test("project workflows preserve boundaries and UI behavior", async ({
     .click();
   await page.getByText("New project workspace", { exact: true }).waitFor();
   await page
-    .locator("tr[data-workspace]")
-    .filter({ hasText: "Research worker A" })
+    .getByRole("button", { name: "Actions for Research worker A", exact: true })
+    .click();
+  await page
+    .getByRole("menuitem", { name: "Branch workspace", exact: true })
+    .click();
+  assert.equal(
+    await page.getByLabel("Tool profile", { exact: true }).count(),
+    0,
+  );
+  assert.equal(
+    await page.getByLabel("Agent", { exact: true }).isDisabled(),
+    true,
+  );
+  await page.getByLabel(/New local Git branch/).fill("feature-cleanup");
+  await page
+    .getByRole("button", { name: "Create branch workspace", exact: true })
+    .click();
+  await page.getByText("Research worker A branch", { exact: true }).waitFor();
+
+  await page
+    .locator(`tr[data-workspace="${workspaces.p_a[0].id}"]`)
     .getByRole("button", { name: "Connect T3 desktop", exact: true })
     .click();
   await page.getByLabel("Private pairing URL").waitFor();
@@ -284,7 +316,7 @@ test("project workflows preserve boundaries and UI behavior", async ({
   await page.getByRole("link", { name: "Workspaces", exact: true }).click();
   await page.getByText("Research worker A", { exact: true }).waitFor();
   await page
-    .getByRole("button", { name: "Actions for Research worker A" })
+    .getByRole("button", { name: "Actions for Research worker A", exact: true })
     .click();
   await page.getByRole("menuitem", { name: "Run task", exact: true }).click();
   await page
@@ -400,6 +432,10 @@ test("project workflows preserve boundaries and UI behavior", async ({
   await page
     .getByRole("heading", { name: "Your project's first workspace" })
     .waitFor();
+  await page.goto(new URL("/app/tool-profiles", base).toString());
+  await page
+    .getByRole("heading", { name: "Page unavailable", exact: true })
+    .waitFor();
   assert.deepEqual(errors, []);
   assert(
     requests.some(
@@ -410,6 +446,15 @@ test("project workflows preserve boundaries and UI behavior", async ({
     requests.some(
       (r) => r.path === "/ui-api/workspaces" && r.project === "p_b",
     ),
+  );
+  assert.equal(
+    requests.some(
+      (r) =>
+        r.path === "/ui-api/profiles" ||
+        r.path.startsWith("/ui-api/tool-profiles"),
+    ),
+    false,
+    "removed tool profile APIs must never be requested",
   );
   console.log(
     "Browser checks passed: project switching has no stale cross-project rows; workspace creation, native desktop pairing, file handoff, homes, schedules, global profile assignment/editor, search, dark theme persistence, global navigation and mobile layout. Uncaught errors: 0.",

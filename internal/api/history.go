@@ -185,7 +185,7 @@ func (s *Server) registerHistory(mux *http.ServeMux) {
 		after := int64(0)
 		count := 0
 		digest := sha256.New()
-		if enc.Encode(map[string]any{"type": "manifest", "schema_version": 1, "export_id": shared.NewID("export_"), "workspace_id": ws.ID, "project_id": ws.ProjectID, "exported_at": time.Now().UTC(), "high_watermark": until, "capture_limited": page.CaptureLimited, "bytes_used": page.BytesUsed, "private_reasoning_excluded": true, "redaction": "best_effort_known_credentials", "feedback_source": "local_operator_only", "purpose_source": "operator_annotation", "agent_kind": ws.AgentKind, "runtime_type": ws.RuntimeType, "profile_id": ws.ProfileID, "branch": ws.Branch}) != nil {
+		if enc.Encode(map[string]any{"type": "manifest", "schema_version": 1, "export_id": shared.NewID("export_"), "workspace_id": ws.ID, "project_id": ws.ProjectID, "exported_at": time.Now().UTC(), "high_watermark": until, "capture_limited": page.CaptureLimited, "bytes_used": page.BytesUsed, "private_reasoning_excluded": true, "redaction": "best_effort_known_credentials", "feedback_source": "local_operator_only", "purpose_source": "operator_annotation", "agent_kind": ws.AgentKind, "runtime_type": ws.RuntimeType, "branch": ws.Branch}) != nil {
 			return
 		}
 		for {

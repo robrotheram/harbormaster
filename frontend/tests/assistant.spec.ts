@@ -12,7 +12,7 @@ test("starting the project assistant uses one backend workflow", async ({
     project_id: project.id,
     name: "Hermes",
     agent_kind: "hermes",
-    profile_id: "general",
+
     state: "READY",
     ready: true,
     active_runs: 0,
@@ -34,7 +34,6 @@ test("starting the project assistant uses one backend workflow", async ({
     const responses: Record<string, unknown> = {
       "/ui-api/projects": { items: [project] },
       "/ui-api/connection-profiles": { items: [] },
-      "/ui-api/profiles": { items: [] },
       "/ui-api/workspaces": { items: [workspace] },
       "/ui-api/projects/p_a/hermes": {
         config: {

@@ -250,7 +250,7 @@ func (f *Firecracker) launch(ctx context.Context, id string, spec protocol.Works
 	if err != nil {
 		return nil, err
 	}
-	if !shared.ValidID(id) || spec.ConnectionMode == "open" || spec.ParentID != "" || (spec.ProfileID != "" && !shared.ValidID(spec.ProfileID)) {
+	if !shared.ValidID(id) || spec.ConnectionMode == "open" || spec.ParentID != "" {
 		return nil, errors.New("unsupported sandbox spec (open networking and parent seeding are refused)")
 	}
 	f.mu.Lock()
@@ -354,8 +354,7 @@ func (f *Firecracker) launch(ctx context.Context, id string, spec protocol.Works
 	if err = os.Mkdir(configDir, 0700); err != nil {
 		return nil, err
 	}
-	mcps, _ := json.Marshal(spec.MCPs)
-	env := map[string]string{"WORKSPACE_MCPS": string(mcps), "WORKSPACE_ID": id, "PROJECT_ID": spec.ProjectID, "AGENT_HOME_ID": spec.HomeID, "AGENT_KIND": spec.AgentKind, "WORKSPACE_NAME": spec.Name, "WORKSPACE_BRANCH": spec.Branch, "WORKSPACE_TOKEN": f.grant(v), "WORKSPACE_CONNECTION_MODE": "blocked", "DATA_DIR": "/data", "INFERENCE_URL": "http://127.0.0.1:18081", "BROKER_URL": "http://127.0.0.1:18082", "EGRESS_URL": "http://127.0.0.1:18083", "WORKSPACE_AGENT": "codex", "CODEX_MODEL": "gpt-6.1-sol", "INFERENCE_MODEL": "fixture", "MONITOR_PROCESSES": "true", "WORKSPACE_T3": strconv.FormatBool(spec.AgentKind == "t3")}
+	env := map[string]string{"WORKSPACE_ID": id, "PROJECT_ID": spec.ProjectID, "AGENT_HOME_ID": spec.HomeID, "AGENT_KIND": spec.AgentKind, "WORKSPACE_NAME": spec.Name, "WORKSPACE_BRANCH": spec.Branch, "WORKSPACE_TOKEN": f.grant(v), "WORKSPACE_CONNECTION_MODE": "blocked", "DATA_DIR": "/data", "INFERENCE_URL": "http://127.0.0.1:18081", "BROKER_URL": "http://127.0.0.1:18082", "EGRESS_URL": "http://127.0.0.1:18083", "WORKSPACE_AGENT": "codex", "CODEX_MODEL": "gpt-6.1-sol", "INFERENCE_MODEL": "fixture", "MONITOR_PROCESSES": "true", "WORKSPACE_T3": strconv.FormatBool(spec.AgentKind == "t3" || spec.ConsoleEnabled)}
 	if isHermes {
 		env["WORKSPACE_AGENT"] = "hermes"
 		env["HERMES_MODEL"] = spec.HermesModel
@@ -889,7 +888,7 @@ func (f *Firecracker) Handler() http.Handler {
 			w.WriteHeader(status)
 			w.Write(b)
 		case strings.HasPrefix(action, "console/") || strings.HasPrefix(action, "desktop/"):
-			if v == nil || !f.observation(r.Context(), v).Ready || v.Spec.ProfileID == "" {
+			if v == nil || !f.observation(r.Context(), v).Ready {
 				shared.Error(w, 503, "CONSOLE_NOT_READY")
 				return
 			}

@@ -3,14 +3,6 @@ export interface Project {
   name: string;
   created_at: string;
 }
-export interface Profile {
-  revision: number;
-  updated_at: string;
-  id: string;
-  title: string;
-  description: string;
-  mcps: string[];
-}
 export interface ConnectionPolicy {
   mode: "blocked" | "allowlist" | "open";
   destinations: string[];
@@ -36,7 +28,6 @@ export interface Workspace {
   id: string;
   project_id: string;
   name?: string;
-  profile_id?: string;
   template_id?: string;
   agent_kind?: "t3" | "codex" | "hermes";
   home_id?: string;

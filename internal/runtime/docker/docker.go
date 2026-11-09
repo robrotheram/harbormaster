@@ -194,9 +194,6 @@ func (c *Controller) ensure(ctx context.Context, id string, spec protocol.Worksp
 		if info.HostConfig.Runtime != expected {
 			return info, errors.New("existing workspace runtime mismatch")
 		}
-		if spec.ProfileID != "" && info.Config.Labels["workbench.profile"] != spec.ProfileID {
-			return info, errors.New("workspace profile mismatch")
-		}
 		if protocol.CheckOwnership(info.Config.Labels, spec) != nil {
 			return info, errors.New("container project ownership mismatch")
 		}
@@ -209,7 +206,7 @@ func (c *Controller) ensure(ctx context.Context, id string, spec protocol.Worksp
 
 		// Upgrade stopped pre-proxy containers while keeping the same owned volume.
 		// Never replace a running container or request Docker volume removal.
-		if !info.State.Running && (mcpEnvironment(info) != mcpEnvironmentValue(spec.MCPs) || (c.cfg.EgressContainer != "" && !hasConnectionProxy(info)) || (connectionMode(info) == "open") != (spec.ConnectionMode == "open")) {
+		if !info.State.Running && (legacyToolSelection(info) || (c.cfg.EgressContainer != "" && !hasConnectionProxy(info)) || (connectionMode(info) == "open") != (spec.ConnectionMode == "open")) {
 			if e = c.Docker.call(ctx, "DELETE", "/containers/"+info.ID, nil, nil); e != nil {
 				return info, e
 			}
@@ -247,16 +244,14 @@ func (c *Controller) ensure(ctx context.Context, id string, spec protocol.Worksp
 	labels := c.ownedLabels(id, spec)
 	labels["workbench.agent"], labels["workbench.template"] = spec.AgentKind, spec.TemplateID
 	labels["workbench.generation"] = generation
-	labels["workbench.profile"] = spec.ProfileID
 	labels["workbench.parent"] = spec.ParentID
 	runtimeName := "runc"
 	if c.cfg.RuntimeType == "kata" {
 		runtimeName = "io.containerd.kata.v2"
 	}
-	mcps, _ := json.Marshal(spec.MCPs)
 	body := map[string]any{
 		"Image": c.cfg.Image, "User": "10001:10001", "Labels": labels,
-		"Env":              []string{"WORKSPACE_MCPS=" + string(mcps), "PROJECT_ID=" + spec.ProjectID, "AGENT_HOME_ID=" + spec.HomeID, "AGENT_KIND=" + spec.AgentKind, "WORKSPACE_ID=" + id, "WORKSPACE_TOKEN=" + c.token(id, generation), "INFERENCE_URL=http://inference-gateway:8080", "BROKER_URL=http://credential-broker:8080", "INFERENCE_MODEL=" + c.cfg.Model, "WORKSPACE_AGENT=" + c.cfg.DefaultProvider, "CODEX_MODEL=" + c.cfg.CodexModel, "CLAUDE_MODEL=" + c.cfg.ClaudeModel, "MONITOR_PROCESSES=true", "WORKSPACE_T3=" + fmt.Sprint(c.cfg.Console && spec.AgentKind == "t3"), "WORKSPACE_BRANCH=" + spec.Branch, "WORKSPACE_NAME=" + spec.Name},
+		"Env":              []string{"PROJECT_ID=" + spec.ProjectID, "AGENT_HOME_ID=" + spec.HomeID, "AGENT_KIND=" + spec.AgentKind, "WORKSPACE_ID=" + id, "WORKSPACE_TOKEN=" + c.token(id, generation), "INFERENCE_URL=http://inference-gateway:8080", "BROKER_URL=http://credential-broker:8080", "INFERENCE_MODEL=" + c.cfg.Model, "WORKSPACE_AGENT=" + c.cfg.DefaultProvider, "CODEX_MODEL=" + c.cfg.CodexModel, "CLAUDE_MODEL=" + c.cfg.ClaudeModel, "MONITOR_PROCESSES=true", "WORKSPACE_T3=" + fmt.Sprint(spec.ConsoleEnabled || c.cfg.Console && spec.AgentKind == "t3"), "WORKSPACE_BRANCH=" + spec.Branch, "WORKSPACE_NAME=" + spec.Name},
 		"HostConfig":       map[string]any{"Init": true, "Runtime": runtimeName, "NetworkMode": c.name(id), "Dns": []string{"127.0.0.1"}, "ReadonlyRootfs": true, "CapDrop": []string{"ALL"}, "SecurityOpt": []string{"no-new-privileges:true"}, "Memory": c.cfg.MemoryLimit, "MemorySwap": c.cfg.MemoryLimit, "NanoCpus": int64(1e9), "PidsLimit": 128, "Tmpfs": map[string]string{"/tmp": "rw,nosuid,nodev,noexec,size=64m"}, "Mounts": []any{map[string]any{"Type": "volume", "Source": volume, "Target": "/data"}}, "LogConfig": map[string]any{"Type": "none"}},
 		"NetworkingConfig": map[string]any{"EndpointsConfig": map[string]any{c.name(id): map[string]any{"Aliases": []string{"workspace"}}}},
 	}
@@ -436,7 +431,7 @@ func (c *Controller) Handler() http.Handler {
 			return
 		}
 		info, err := c.inspect(r.Context(), id)
-		if err != nil || !info.State.Running || info.Config.Labels["workbench.profile"] == "" {
+		if err != nil || !info.State.Running {
 			shared.Error(w, 503, "CONSOLE_NOT_READY")
 			return
 		}
@@ -454,7 +449,7 @@ func (c *Controller) Handler() http.Handler {
 			return
 		}
 		info, err := c.inspect(r.Context(), id)
-		if err != nil || !info.State.Running || info.Config.Labels["workbench.profile"] == "" {
+		if err != nil || !info.State.Running {
 			shared.Error(w, 503, "CONSOLE_NOT_READY")
 			return
 		}
@@ -491,7 +486,7 @@ func (c *Controller) Handler() http.Handler {
 			shared.Error(w, 400, "UNSUPPORTED_WORKSPACE_SPEC")
 			return
 		}
-		if (spec.ProfileID != "" && !shared.ValidID(spec.ProfileID)) || (spec.ParentID != "" && !shared.ValidID(spec.ParentID)) || (spec.Branch != "" && !shared.ValidBranch(spec.Branch)) {
+		if (spec.ParentID != "" && !shared.ValidID(spec.ParentID)) || (spec.Branch != "" && !shared.ValidBranch(spec.Branch)) {
 			shared.Error(w, 400, "INVALID_REQUEST")
 			return
 		}
@@ -675,12 +670,13 @@ func hasGitProxy(info containerInfo) bool {
 	return false
 }
 
-func mcpEnvironmentValue(names []string) string { b, _ := json.Marshal(names); return string(b) }
-func mcpEnvironment(info containerInfo) string {
-	for _, v := range info.Config.Env {
-		if strings.HasPrefix(v, "WORKSPACE_MCPS=") {
-			return strings.TrimPrefix(v, "WORKSPACE_MCPS=")
+// Presence marks a stopped container built with the retired selectable-tool
+// configuration. Running containers are preserved; replacement keeps its volume.
+func legacyToolSelection(info containerInfo) bool {
+	for _, value := range info.Config.Env {
+		if strings.HasPrefix(value, "WORKSPACE_MCPS=") {
+			return true
 		}
 	}
-	return "null"
+	return false
 }

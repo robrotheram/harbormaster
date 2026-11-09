@@ -9,8 +9,7 @@ All routes require `Authorization: Bearer <provisioned local control token>`. In
 - `GET /healthz`: `{"status":"ok"}` (public health only).
 - `GET /v1/workspaces`: `{"items":[Workspace]}`.
 - `GET /v1/workspaces/{workspace_id}`: Workspace.
-- `POST /v1/workspaces`: `{ "project_id":"default", "idempotency_key":"...", "name":"...", "profile_id":"general|research|banking|gallery", "parent_id":"...", "branch":"..." }` → Workspace (201, or 200 on replay). Name/profile/parent/branch are optional; a parent requires a new branch and an inherited profile. The source must be idle.
-- `GET /v1/profiles` → fixed project-profile and initial local-MCP catalog.
+- `POST /v1/workspaces`: `{ "project_id":"default", "idempotency_key":"...", "name":"...", "parent_id":"...", "branch":"..." }` → Workspace (201, or 200 on replay). Name/parent/branch are optional; a parent requires a new branch. The source must be idle.
 - `POST /v1/workspaces/{id}/start`: `{ "idempotency_key":"..." }` → Workspace. Synchronous bounded readiness (up to 30s), subsequent retries attach to the same runtime. MCP should use a bounded HTTP timeout and report NOT_READY/UNAVAILABLE safely.
 - `POST /v1/workspaces/{id}/stop`: `{ "idempotency_key":"..." }` → Workspace; reject busy or unknown activity. Storage persists.
 - `POST /v1/workspaces/{id}/tasks`: `{ "instruction":"...", "idempotency_key":"...", "provider":"codex|claude" }` → Task (202). Starts workspace as needed. Provider is optional and otherwise uses the container's configured default; a fixture default retains the original built-in runner. Changing provider with an accepted task key conflicts.
@@ -19,7 +18,7 @@ All routes require `Authorization: Bearer <provisioned local control token>`. In
 - `POST /v1/workspaces/{id}/tasks/{task_id}/cancel`: `{ "idempotency_key":"..." }` → Task.
 - `GET /v1/usage`: current aggregate quota and usage, no historical data.
 
-Workspace: `{id,project_id,state,ready,active_runs,background_jobs,created_at,updated_at,idle_stop_at,runtime_type,isolation_status,network_status,cpu_limit,memory_limit_bytes,cpu_cores,memory_bytes,observed_at}`. Nullable measurements are unknown, never fabricated zeros. State: STOPPED, STARTING, READY, BUSY, STOPPING, ERROR, UNKNOWN. runtime_type: docker or kata. Isolation/network: unverified, verified, failed. No image/path/identity parameters accepted from callers. Workspace metadata also carries optional `name`, `profile_id`, `parent_id` and `branch` fields.
+Workspace: `{id,project_id,state,ready,active_runs,background_jobs,created_at,updated_at,idle_stop_at,runtime_type,isolation_status,network_status,cpu_limit,memory_limit_bytes,cpu_cores,memory_bytes,observed_at}`. Nullable measurements are unknown, never fabricated zeros. State: STOPPED, STARTING, READY, BUSY, STOPPING, ERROR, UNKNOWN. runtime_type: docker or kata. Isolation/network: unverified, verified, failed. No image/path/identity parameters accepted from callers. Workspace metadata also carries optional `name`, `parent_id` and `branch` fields. Legacy stored records may still carry `profile_id`; it is not accepted when creating a workspace and no longer configures tools.
 
 Task: `{id,workspace_id,state,created_at,updated_at,error_code?}`. States queued,running,cancel_requested,succeeded,failed,cancelled. Task results and instructions exist only in workspace SQLite. Control-plane metadata mirrors status but must refresh from workspace; unreachable workspaces produce explicit unavailable responses.
 
@@ -152,3 +151,9 @@ Scheduled occurrence insertion and next-trigger advancement commit together.
 Pending traversal progresses past unavailable work; acknowledgement loss retries
 the same workspace acceptance key. The supported deployment has one
 control-plane owner; multiple replicas require additional durable coordination.
+
+Tool profiles are removed. `/v1/profiles` and `/v1/tool-profiles` are unavailable;
+workspace creation does not accept `profile_id`. T3 and native Codex/Claude
+workers use fixed bundled file/Git MCP servers. No caller-selected tool lists
+are passed through runtime specifications or workspace environment variables.
+Existing workspace/home ownership and legacy private storage paths are retained.

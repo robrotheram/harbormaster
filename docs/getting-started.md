@@ -228,7 +228,7 @@ Open **Workspaces → Settings → Connection profile**:
 - **Fully open**: direct networking and external DNS for all tools. This includes
   Internet, LAN and reachable host services. Use it only where that access is intended.
 
-Profiles are saved per workspace, separate from its baked-in MCP/tool profile.
+Connection policies are saved per workspace, independently of the bundled file/Git tools.
 Stop before switching into or out of Fully open. Older proxy containers also need
 one stop/start for custom rules. Finish active work and close terminals first;
 files, conversation history, project and private home remain intact. No network

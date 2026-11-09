@@ -54,7 +54,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { consoleURL, safePairing } from "@/features/workspaces/connections";
 import { keys } from "@/shared/query-keys";
 
-import { toolProfilesApi } from "@/features/tool-profiles/api";
 import { workspacesApi } from "@/features/workspaces/api";
 import { useConnectionProfiles } from "@/features/connection-profiles/api";
 import { bytes, date } from "@/shared/format";
@@ -70,11 +69,6 @@ export function Workspaces({ project }: { project: Project }) {
   const client = useQueryClient();
   const query = useQuery(workspaceOptions(project.id));
   const globalProfiles = useConnectionProfiles();
-  const profiles = useQuery({
-    queryKey: keys.profiles,
-    queryFn: ({ signal }) => toolProfilesApi.list(signal),
-    staleTime: 60000,
-  });
   const [search, setSearch] = useState("");
   const [view, setView] = useState<"all" | "running" | "stopped">("all");
   const [create, setCreate] = useState(false);
@@ -300,12 +294,8 @@ export function Workspaces({ project }: { project: Project }) {
             <TableBody className="max-md:block">
               {visible.map((workspace) => {
                 const console =
-                  workspace.console_enabled ||
-                  workspace.agent_kind === "t3" ||
-                  (!workspace.agent_kind && !!workspace.profile_id);
-                const kind =
-                  workspace.agent_kind ||
-                  (workspace.profile_id ? "t3" : "codex");
+                  workspace.console_enabled || workspace.agent_kind === "t3";
+                const kind = workspace.agent_kind || "codex";
                 const stopped =
                   workspace.state === "STOPPED" || workspace.state === "ERROR";
                 const linked = globalProfiles.data?.find(
@@ -632,7 +622,6 @@ export function Workspaces({ project }: { project: Project }) {
       {(create || parent) && (
         <WorkspaceForm
           project={project}
-          profiles={profiles.data || []}
           parent={parent}
           onClose={() => {
             setCreate(false);

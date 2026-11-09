@@ -28,6 +28,7 @@ func TestModuleDependencies(t *testing.T) {
 		"workspace/filetools":      {"net/http", "database/sql", "agent-workbench/internal/api", "agent-workbench/internal/store", "agent-workbench/internal/runtime", "agent-workbench/internal/workspace"},
 		"workspace/nativeagent":    {"net/http", "database/sql", "agent-workbench/internal/api", "agent-workbench/internal/store", "agent-workbench/internal/runtime", "agent-workbench/internal/workspace"},
 		"workspace/taskstore":      {"net/http", "os/exec", "agent-workbench/internal/api", "agent-workbench/internal/store", "agent-workbench/internal/runtime", "agent-workbench/internal/workspace"},
+		"workspace/toolconfig":     {"net/http", "database/sql", "os/exec", "agent-workbench/internal/api", "agent-workbench/internal/store", "agent-workbench/internal/runtime", "agent-workbench/internal/workspace"},
 	}
 	for module, forbidden := range rules {
 		t.Run(module, func(t *testing.T) {
@@ -49,6 +50,9 @@ func TestModuleDependencies(t *testing.T) {
 					}
 					// Protocol is the provider-neutral wire vocabulary, not a provider.
 					if name == "agent-workbench/internal/runtime/protocol" {
+						continue
+					}
+					if module == "workspace/nativeagent" && name == "agent-workbench/internal/workspace/toolconfig" {
 						continue
 					}
 					for _, prefix := range forbidden {

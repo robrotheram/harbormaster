@@ -1,6 +1,7 @@
 package nativeagent
 
 import (
+	"agent-workbench/internal/workspace/toolconfig"
 	"os"
 	"path/filepath"
 	"strings"
@@ -30,8 +31,8 @@ func prepareCodex(cfg Config, home string, env []string) (invocation, string) {
 		"-c", `model_providers.workbench.wire_api="responses"`, "-c", `model_providers.workbench.env_key="WORKBENCH_INFERENCE_GRANT"`,
 		"-c", `model_providers.workbench.supports_websockets=false`, "-o", resultFile, "-"}
 	args = args[:len(args)-1]
-	for _, entry := range cfg.MCPs {
-		args = append(args, "-c", "mcp_servers."+entry.Name+".command="+tomlString("/usr/local/bin/workspace-mcp"), "-c", "mcp_servers."+entry.Name+".args=[\"--mode\","+tomlString(entry.Mode)+"]")
+	for _, entry := range toolconfig.Bundled() {
+		args = append(args, "-c", "mcp_servers."+entry.Name+".command="+tomlString(toolconfig.Command), "-c", "mcp_servers."+entry.Name+".args=[\"--mode\","+tomlString(entry.Mode)+"]")
 	}
 	args = append(args, "-")
 

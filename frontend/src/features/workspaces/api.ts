@@ -9,7 +9,6 @@ import type {
 export type WorkspaceCreate = {
   project_id: string;
   name: string;
-  profile_id: string;
   agent_kind: string;
   connection_profile_id?: string;
   parent_id?: string;

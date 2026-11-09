@@ -1,28 +1,13 @@
-package workspace
+package toolconfig
 
 import (
+	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
-type mcpEntry struct{ name, mode string }
-
-func (m *Manager) mcpEntries() []mcpEntry {
-	names := m.cfg.MCPs
-	if names == nil {
-		names = []string{"workspace-files", "project-git"}
-	}
-	entries := []mcpEntry{}
-	for _, name := range names {
-		mode := "files"
-		if name == "project-git" {
-			mode = "git"
-		}
-		entries = append(entries, mcpEntry{name, mode})
-	}
-	return entries
-}
-func (m *Manager) syncMCPConfig(path string) error {
+func SyncCodex(path string) error {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return err
@@ -39,10 +24,8 @@ func (m *Manager) syncMCPConfig(path string) error {
 		}
 	}
 	content := strings.TrimSpace(strings.Join(lines, "\n")) + "\n"
-	for _, entry := range m.mcpEntries() {
-		content += "\n[mcp_servers." + entry.name + "]\ncommand = \"/usr/local/bin/workspace-mcp\"\nargs = [\"--mode\", " + tomlString(entry.mode) + "]\n"
-	}
-	temp, err := os.CreateTemp(strings.TrimSuffix(path, "/config.toml"), "config-*.toml")
+	content += CodexTOML()
+	temp, err := os.CreateTemp(filepath.Dir(path), "config-*.toml")
 	if err != nil {
 		return err
 	}
@@ -55,4 +38,16 @@ func (m *Manager) syncMCPConfig(path string) error {
 		return err
 	}
 	return os.Rename(temp.Name(), path)
+}
+
+func tomlString(s string) string { b, _ := json.Marshal(s); return string(b) }
+
+// CodexTOML is shared by initial T3 configuration and restoration of the pinned
+// local tools in an existing private native home.
+func CodexTOML() string {
+	var content strings.Builder
+	for _, entry := range Bundled() {
+		content.WriteString("\n[mcp_servers." + entry.Name + "]\ncommand = " + tomlString(Command) + "\nargs = [\"--mode\", " + tomlString(entry.Mode) + "]\n")
+	}
+	return content.String()
 }

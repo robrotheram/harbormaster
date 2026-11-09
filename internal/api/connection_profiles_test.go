@@ -143,7 +143,7 @@ func TestProjectAgentsCannotEditGlobalProfiles(t *testing.T) {
 }
 func TestGlobalProfileCreationAndValidation(t *testing.T) {
 	s, _ := setup(t)
-	result := request(t, s, "POST", "/v1/workspaces", `{"project_id":"default","name":"Global on create","agent_kind":"codex","profile_id":"general","idempotency_key":"global-create","connection_profile_id":"github"}`)
+	result := request(t, s, "POST", "/v1/workspaces", `{"project_id":"default","name":"Global on create","agent_kind":"codex","idempotency_key":"global-create","connection_profile_id":"github"}`)
 	if result.Code != 201 {
 		t.Fatal(result.Code, result.Body)
 	}

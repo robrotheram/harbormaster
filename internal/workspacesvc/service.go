@@ -17,7 +17,6 @@ import (
 type Repository interface {
 	Workspaces(context.Context) ([]shared.Workspace, error)
 	Save(context.Context, shared.Workspace) error
-	ToolProfile(context.Context, string) (shared.Profile, error)
 	ConnectionProfile(context.Context, string) (shared.ConnectionProfile, error)
 	HermesSetup(context.Context, string) (shared.HermesSetup, error)
 }
@@ -241,15 +240,7 @@ func (s *Service) reserve(ctx context.Context, w *shared.Workspace) error {
 func (s *Service) startReserved(ctx context.Context, w *shared.Workspace, hermesModel string, hermesMatrix *shared.HermesMatrix) error {
 	var e error
 	if configured, ok := s.Runtime.(ConfiguredRuntime); ok {
-		profileID := w.ProfileID
-		if profileID == "" {
-			profileID = "general"
-		}
-		profile, err := s.Store.ToolProfile(ctx, profileID)
-		if err != nil {
-			return errors.New("INVALID_REQUEST")
-		}
-		_, e = configured.StartConfigured(ctx, w.ID, protocol.WorkspaceSpec{Resources: &protocol.ResourceLimits{CPUCores: w.CPULimit, MemoryBytes: w.MemoryLimitBytes}, MCPs: profile.MCPs, HermesMatrix: hermesMatrix, HermesModel: hermesModel, ConnectionMode: w.EffectiveConnections().Mode, ProjectID: w.ProjectID, HomeID: w.HomeID, AgentKind: w.AgentKind, TemplateID: w.TemplateID, ProfileID: w.ProfileID, Name: w.Name, ParentID: w.ParentID, Branch: w.Branch})
+		_, e = configured.StartConfigured(ctx, w.ID, protocol.WorkspaceSpec{Resources: &protocol.ResourceLimits{CPUCores: w.CPULimit, MemoryBytes: w.MemoryLimitBytes}, HermesMatrix: hermesMatrix, HermesModel: hermesModel, ConnectionMode: w.EffectiveConnections().Mode, ProjectID: w.ProjectID, HomeID: w.HomeID, AgentKind: w.AgentKind, TemplateID: w.TemplateID, ConsoleEnabled: w.ConsoleEnabled, Name: w.Name, ParentID: w.ParentID, Branch: w.Branch})
 	} else {
 		_, e = s.Runtime.Start(ctx, w.ID)
 	}

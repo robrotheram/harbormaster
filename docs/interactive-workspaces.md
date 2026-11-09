@@ -7,7 +7,7 @@ Codex subscription setup must already be complete; see [subscription agents](sub
 ## Create a project workspace
 
 1. Enter a name, such as **Photo gallery**.
-2. Choose a project profile: Development, Vulnerability research, Banking project or Photo gallery.
+2. Choose the agent: T3 for browser/desktop development, or Codex for task execution.
 3. Leave **Start from** set to **An empty project**, then select **Create workspace**.
 4. Select **Open T3** on its row. Allow a new browser tab if prompted.
 
@@ -19,16 +19,16 @@ For a first real task, send:
 
 The agent, terminals and MCP subprocesses all run in that workspace. Files and T3's conversations, environment identity and execution history persist on its own volume. Closing the browser detaches the client; it does not cancel an agent run.
 
-Each profile starts two working local MCP servers:
+T3 and native Codex/Claude workers include the same two bundled MCP servers:
 
 | MCP server | Tools |
 | --- | --- |
 | `workspace-files` | Confined read, write and directory listing, up to 64 KiB per file |
 | `project-git` | Read-only Git status, diff summary and recent history |
 
-These are initial tool configurations, not separate credential authorities. Full-access coding agents can run programs in their own container; the network and credential boundaries are enforced outside it. Additional MCP software must be baked into an approved image, and remote MCP endpoints need their own allowlist and credential policy. No MCP receives a Docker socket, Vault token or provider subscription token.
+These are fixed workspace tools, not separate credential authorities. Full-access coding agents can run programs in their own container; the network and credential boundaries are enforced outside it. Additional MCP software must be baked into an approved image, and remote MCP endpoints need their own allowlist and credential policy. No MCP receives a Docker socket, Vault token or provider subscription token.
 
-Profiles name separate uses of a workspace; they do not configure external products by implication. The Banking profile has **no bank-account or transaction connector**. The Research profile grants **no external target access**. Configure specific approved integrations before using either for live work.
+Workspace names do not enable external integrations or grant network access. Tool-profile management and selection have been removed; T3 and native Codex/Claude workers use the bundled file/Git tools. Hermes retains its native toolsets. Existing private homes and workspace data are preserved.
 
 ## Separate workspaces for branches and PR work
 

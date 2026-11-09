@@ -8,6 +8,7 @@ export default defineConfig({
   use: {
     baseURL: "http://127.0.0.1:4173",
     headless: true,
+    actionTimeout: 15000,
     trace: "retain-on-failure",
   },
   outputDir: "artifacts/test-results",

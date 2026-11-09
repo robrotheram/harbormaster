@@ -60,7 +60,7 @@ func registerTools(s *mcp.Server, c *controlClient) {
 				}
 			}
 			b["agent_kind"] = in.AgentKind
-			b["name"], b["profile_id"], b["parent_id"], b["branch"] = in.Name, in.ProfileID, in.ParentID, in.Branch
+			b["name"], b["parent_id"], b["branch"] = in.Name, in.ParentID, in.Branch
 			err = c.do(ctx, "POST", "/v1/workspaces", b, &out)
 		}
 		return

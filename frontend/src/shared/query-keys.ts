@@ -1,6 +1,5 @@
 export const keys = {
   projects: ["projects"] as const,
-  profiles: ["profiles"] as const,
   project: (project: string) => ["project", project] as const,
   workspaces: (project: string) => ["project", project, "workspaces"] as const,
   homes: (project: string) => ["project", project, "homes"] as const,

@@ -10,18 +10,11 @@ const DevelopmentTemplate = "development-v1"
 
 // Runtime ownership comes from the authenticated control plane, never an agent.
 func NormalizeSpec(spec WorkspaceSpec) (WorkspaceSpec, error) {
-	if !shared.ValidMCPs(spec.MCPs) {
-		return spec, errors.New("unsupported MCP selection")
-	}
 	if spec.ProjectID == "" {
 		spec.ProjectID = "default"
 	}
 	if spec.AgentKind == "" {
-		if spec.ProfileID != "" {
-			spec.AgentKind = "t3"
-		} else {
-			spec.AgentKind = "codex"
-		}
+		spec.AgentKind = "codex"
 	}
 	if spec.TemplateID == "" {
 		spec.TemplateID = DevelopmentTemplate

@@ -147,7 +147,6 @@ func (s *Server) Handler() http.Handler {
 	})
 	secured := http.NewServeMux()
 	s.registerConnectionProfiles(secured)
-	s.registerToolProfiles(secured)
 	s.registerWorkspaceSettings(secured)
 	s.registerConsoleUpgrade(secured)
 	s.registerDomains(secured)
@@ -161,7 +160,7 @@ func (s *Server) Handler() http.Handler {
 		if !ok {
 			return
 		}
-		if ws.ProfileID == "" {
+		if ws.AgentKind != "t3" && !ws.ConsoleEnabled {
 			shared.Error(w, 409, "CONSOLE_UPGRADE_REQUIRED")
 			return
 		}
@@ -172,20 +171,12 @@ func (s *Server) Handler() http.Handler {
 		}
 		proxy.Desktop(w, r, ws.ID, r.PathValue("path"))
 	})
-	secured.HandleFunc("GET /v1/profiles", func(w http.ResponseWriter, r *http.Request) {
-		profiles, err := s.Store.ToolProfiles(r.Context())
-		if err != nil {
-			shared.Error(w, 503, "STORAGE_UNAVAILABLE")
-			return
-		}
-		shared.JSON(w, 200, map[string]any{"items": profiles})
-	})
 	secured.HandleFunc("/v1/workspaces/{id}/console/{path...}", func(w http.ResponseWriter, r *http.Request) {
 		ws, ok := s.workspace(w, r)
 		if !ok {
 			return
 		}
-		if ws.ProfileID == "" {
+		if ws.AgentKind != "t3" && !ws.ConsoleEnabled {
 			shared.Error(w, 409, "CONSOLE_UPGRADE_REQUIRED")
 			return
 		}
@@ -202,7 +193,6 @@ func (s *Server) Handler() http.Handler {
 			ConnectionProfileID string `json:"connection_profile_id,omitempty"`
 			Key                 string `json:"idempotency_key"`
 			Name                string `json:"name,omitempty"`
-			ProfileID           string `json:"profile_id,omitempty"`
 			ParentID            string `json:"parent_id,omitempty"`
 			Branch              string `json:"branch,omitempty"`
 			AgentKind           string `json:"agent_kind,omitempty"`
@@ -242,11 +232,7 @@ func (s *Server) Handler() http.Handler {
 			shared.Error(w, 400, "INVALID_REQUEST")
 			return
 		}
-		if req.ProfileID == "" {
-			req.ProfileID = "general"
-		}
-		_, profileErr := s.Store.ToolProfile(r.Context(), req.ProfileID)
-		if profileErr != nil || len(req.Name) > 80 || strings.ContainsAny(req.Name, "\r\n\x00") || (req.ParentID != "" && !shared.ValidID(req.ParentID)) || (req.Branch != "" && !shared.ValidBranch(req.Branch)) {
+		if len(req.Name) > 80 || strings.ContainsAny(req.Name, "\r\n\x00") || (req.ParentID != "" && !shared.ValidID(req.ParentID)) || (req.Branch != "" && !shared.ValidBranch(req.Branch)) {
 			shared.Error(w, 400, "INVALID_REQUEST")
 			return
 		}
@@ -258,7 +244,8 @@ func (s *Server) Handler() http.Handler {
 				shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
 				return
 			}
-			if old.ProfileID != "" && (old.Name != req.Name || old.ProfileID != req.ProfileID || old.ParentID != req.ParentID || old.Branch != req.Branch || old.AgentKind != req.AgentKind || old.TemplateID != req.TemplateID || old.ConnectionProfileID != req.ConnectionProfileID) {
+			// Legacy identities predate private home IDs and the modern create fingerprint.
+			if old.HomeID != "" && (old.Name != req.Name || old.ParentID != req.ParentID || old.Branch != req.Branch || old.AgentKind != req.AgentKind || old.TemplateID != req.TemplateID || old.ConnectionProfileID != req.ConnectionProfileID) {
 				shared.Error(w, 409, "IDEMPOTENCY_CONFLICT")
 				return
 			}
@@ -273,7 +260,7 @@ func (s *Server) Handler() http.Handler {
 			unlock := s.operations.Lock(req.ParentID)
 			defer unlock()
 			parent, err := s.Store.Workspace(r.Context(), req.ParentID)
-			if err != nil || parent.ProjectID != req.Project || (parent.ProfileID != req.ProfileID && !(parent.ProfileID == "" && req.ProfileID == "general")) {
+			if err != nil || parent.ProjectID != req.Project {
 				shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
 				return
 			}
@@ -307,7 +294,7 @@ func (s *Server) Handler() http.Handler {
 			shared.Error(w, 400, "INVALID_CONNECTION_PROFILE")
 			return
 		}
-		ws.Name, ws.ProfileID, ws.ParentID, ws.Branch = req.Name, req.ProfileID, req.ParentID, req.Branch
+		ws.Name, ws.ParentID, ws.Branch = req.Name, req.ParentID, req.Branch
 		if s.Store.Create(r.Context(), ws, req.Key) != nil {
 			shared.Error(w, 503, "STORAGE_UNAVAILABLE")
 			return

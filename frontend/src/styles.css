@@ -161,12 +161,6 @@
   [data-slot="native-select-wrapper"] {
     @apply w-full;
   }
-  .profile-description {
-    @apply space-y-2 rounded-lg border bg-muted/30 p-4 text-xs leading-5 text-muted-foreground;
-  }
-  .profile-description p:last-child {
-    @apply font-medium text-foreground;
-  }
   .pairing-url {
     @apply break-all font-mono text-xs leading-5;
   }
