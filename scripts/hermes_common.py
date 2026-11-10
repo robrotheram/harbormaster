@@ -63,7 +63,7 @@ def configure():
                 raise ValueError('MCP project binding expired or mismatched')
         config['mcp_servers'] = {'workbench': {'url': mcp_url,
             'headers': {'Authorization': 'Bearer ' + token},
-            'tools': {'include': ['work_create', 'work_list', 'exchange_publish',
+            'tools': {'include': ['work_create', 'work_list', 'work_run', 'work_attempts', 'work_cancel', 'exchange_publish',
                                   'exchange_read', 'exchange_submit', 'note_publish']}}}
     with tempfile.NamedTemporaryFile(mode='w', dir=home, delete=False) as stream:
         temporary = Path(stream.name)

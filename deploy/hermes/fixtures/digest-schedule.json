@@ -1,1 +1,1 @@
-{"project_id":"REPLACE_PROJECT","workspace_id":"REPLACE_HERMES_WORKSPACE","name":"Sourced digest fixture","instruction_path":"jobs/digest-task.md","provider":"codex","run_at":"2026-11-11T09:00:00Z","interval_seconds":0,"idempotency_key":"digest-fixture-v1"}
+{"project_id":"REPLACE_PROJECT","workspace_id":"REPLACE_HERMES_WORKSPACE","name":"Sourced digest fixture","instruction_path":"jobs/digest-task.md","provider":"hermes","run_at":"2026-11-11T09:00:00Z","interval_seconds":0,"idempotency_key":"digest-fixture-v1"}

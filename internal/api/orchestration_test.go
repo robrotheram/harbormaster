@@ -264,3 +264,31 @@ func TestLostScheduleAcknowledgementRetriesSameAcceptanceAfterControlRestart(t *
 	}
 	assertNoInstructionInMetadata(t, s, marker)
 }
+
+func TestHermesScheduleProviderRequiresHermesWorkspace(t *testing.T) {
+	s, base := setup(t)
+	project := domainProject(t, s, "hermes-schedules")
+	s.Runtime = &hermesRuntime{embeddedRuntime: base}
+	config := shared.HermesSetup{ProjectID: project.ID, Provider: "openai-codex", Mode: "workspace", Model: "approved-model"}
+	configBody, _ := json.Marshal(config)
+	if got := request(t, s, "POST", "/v1/projects/"+project.ID+"/hermes", string(configBody)); got.Code != 200 {
+		t.Fatal(got.Code, got.Body.String())
+	}
+	created := request(t, s, "POST", "/v1/workspaces", `{"project_id":"`+project.ID+`","agent_kind":"hermes","idempotency_key":"hermes-schedule-home"}`)
+	if created.Code != 201 {
+		t.Fatal(created.Code, created.Body.String())
+	}
+	var hermes shared.Workspace
+	json.Unmarshal(created.Body.Bytes(), &hermes)
+	other := domainWorkspace(t, s, "control-token", project.ID, "other-home")
+	for _, check := range []struct {
+		workspace string
+		status    int
+	}{{hermes.ID, 201}, {other.ID, 400}} {
+		body, _ := json.Marshal(map[string]any{"project_id": project.ID, "workspace_id": check.workspace, "name": "Daily digest", "instruction_path": "jobs/digest-task.md", "provider": "hermes", "run_at": time.Now().Add(time.Hour), "interval_seconds": 86400, "idempotency_key": "schedule-" + check.workspace})
+		got := request(t, s, "POST", "/v1/schedules", string(body))
+		if got.Code != check.status {
+			t.Fatal(got.Code, got.Body.String())
+		}
+	}
+}

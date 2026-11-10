@@ -2,9 +2,7 @@
 
 The Work section lives at /app/projects/:projectId/work. Existing shared request
 transport prefixes paths with /ui-api; ingress must map /ui-api/work-items and
-its subpaths to the corresponding /v1/work-items backend operations. No backend
-or ingress changes are included here. Adapt api.ts if the eventual UI gateway
-uses a different envelope.
+its subpaths to the corresponding /v1/work-items backend operations. The authenticated ingress maps these paths to the backend operations.
 
 Lists and attempt lists return {items: [...]}; detail and create return a work
 item directly. Mutations need a successful JSON response (an empty object is
@@ -27,3 +25,8 @@ Creation retries retain the key for the same form payload.
 Specifications are existing workspace paths and digests, not uploaded by this UI.
 Workspace links open the existing project workspace inventory and show the exact
 workspace ID. Attempt evidence and task IDs remain available for diagnostics.
+
+Creation accepts `artifact_paths` (up to 32 private workspace files). Each attempt
+publishes these paths with its own durable keys. Backend `/v1/` evidence URLs are
+translated to `/ui-api/` in the browser so credentials remain in the ingress.
+Review sends `expected_attempt_id`; a stale review cannot accept a newer attempt.

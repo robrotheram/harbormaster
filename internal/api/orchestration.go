@@ -58,7 +58,7 @@ func (s *Server) registerOrchestration(mux *http.ServeMux) {
 		if input.Provider == "" {
 			input.Provider = "codex"
 		}
-		if !shared.ValidID(input.WorkspaceID) || !shared.ValidKey(input.Key) || input.Name == "" || len(input.Name) > 80 || !shared.ValidProjectFile(input.InstructionPath) || input.Provider != "codex" || input.RunAt.IsZero() || input.Interval < 0 || (input.Interval > 0 && input.Interval < 60) || input.Interval > 31536000 {
+		if !shared.ValidID(input.WorkspaceID) || !shared.ValidKey(input.Key) || input.Name == "" || len(input.Name) > 80 || !shared.ValidProjectFile(input.InstructionPath) || (input.Provider != "codex" && input.Provider != "hermes") || input.RunAt.IsZero() || input.Interval < 0 || (input.Interval > 0 && input.Interval < 60) || input.Interval > 31536000 {
 			shared.Error(w, 400, "INVALID_REQUEST")
 			return
 		}
@@ -67,6 +67,10 @@ func (s *Server) registerOrchestration(mux *http.ServeMux) {
 		ws, err := s.Store.Workspace(r.Context(), input.WorkspaceID)
 		if err != nil || ws.ProjectID != input.ProjectID {
 			shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
+			return
+		}
+		if input.Provider == "hermes" && ws.AgentKind != "hermes" {
+			shared.Error(w, 400, "INVALID_REQUEST")
 			return
 		}
 		now := s.now()

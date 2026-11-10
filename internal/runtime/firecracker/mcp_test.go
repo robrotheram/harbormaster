@@ -36,7 +36,7 @@ func TestProjectMCPGenerationToolInvocation(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"work_items":[]}`))
+		w.Write([]byte(`{"items":[]}`))
 	}))
 	defer cp.Close()
 	handler, err := mcpserver.New(mcpserver.Config{ControlplaneURL: cp.URL, ControlToken: key, MCPToken: "operator-only", AllowedHosts: []string{"127.0.0.1"}})
@@ -70,7 +70,7 @@ func TestProjectMCPGenerationToolInvocation(t *testing.T) {
 	}
 	defer session.Close()
 	tools, err := session.ListTools(ctx, nil)
-	if err != nil || len(tools.Tools) != 6 {
+	if err != nil || len(tools.Tools) != 9 {
 		t.Fatalf("narrow discovery: %v %v", tools, err)
 	}
 	result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "work_list", Arguments: map[string]string{"project_id": "personal"}})

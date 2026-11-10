@@ -52,7 +52,7 @@ func registerOrchestrationTools(s *mcp.Server, c *controlClient) {
 		err = c.do(ctx, "GET", "/v1/schedules?project_id="+url.QueryEscape(in.ProjectID), nil, &out)
 		return
 	})
-	add(s, "schedule_create", "Schedule a native Codex task from a project-local instruction file. No API billing fallback.", func(ctx context.Context, in ScheduleInput) (out shared.Schedule, err error) {
+	add(s, "schedule_create", "Schedule a native Codex or project Hermes task from a project-local instruction file. No API billing fallback.", func(ctx context.Context, in ScheduleInput) (out shared.Schedule, err error) {
 		err = c.do(ctx, "POST", "/v1/schedules", in, &out)
 		return
 	})

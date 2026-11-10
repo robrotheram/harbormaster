@@ -224,7 +224,7 @@ function ScheduleForm({
   onCreated,
 }: {
   project: Project;
-  workspaces: { id: string; name?: string }[];
+  workspaces: { id: string; name?: string; agent_kind?: string }[];
   onClose: () => void;
   onCreated: () => void;
 }) {
@@ -241,7 +241,10 @@ function ScheduleForm({
         workspace_id: workspace,
         name: name.trim(),
         instruction_path: path.trim(),
-        provider: "codex",
+        provider:
+          workspaces.find((w) => w.id === workspace)?.agent_kind === "hermes"
+            ? "hermes"
+            : "codex",
         run_at: new Date(runAt).toISOString(),
         interval_seconds: interval,
       };

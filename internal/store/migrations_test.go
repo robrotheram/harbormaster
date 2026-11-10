@@ -78,10 +78,12 @@ func TestWorkMigrationUpgradesVersionTwoDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = original.DB.Exec(`DROP TABLE work_items`); err != nil {
-		t.Fatal(err)
+	for _, table := range []string{"work_attempts", "work_items", "project_coordination", "exchange_exports", "project_exchanges"} {
+		if _, err = original.DB.Exec(`DROP TABLE ` + table); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if _, err = original.DB.Exec(`DELETE FROM schema_migrations WHERE version=3`); err != nil {
+	if _, err = original.DB.Exec(`DELETE FROM schema_migrations WHERE version>=3`); err != nil {
 		t.Fatal(err)
 	}
 	if err = original.DB.Close(); err != nil {

@@ -9,9 +9,12 @@ import argparse
 import asyncio
 import json
 import os
+import re
 from pathlib import Path
 
 async def digest(client, project, workspace, occurrence, source, request_export=None):
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", occurrence):
+        raise ValueError("Invalid digest occurrence")
     async def call(name, arguments):
         result = await client.call_tool(name, arguments)
         if result.is_error:
@@ -19,7 +22,7 @@ async def digest(client, project, workspace, occurrence, source, request_export=
         return result
     receipt = await call('note_publish', {
         'project_id': project, 'workspace_id': workspace,
-        'write': {'path': 'digests/' + occurrence + '.md', 'body': source['body'],
+        'write': {'path': 'digest-' + occurrence + '.md', 'body': source['body'],
                   'sources': source['sources'], 'expected_digest': '', 'occurrence': occurrence}})
     if request_export:
         await call('exchange_submit', {'project_id': project, 'export_id': request_export})
@@ -31,12 +34,14 @@ async def main():
     import httpx2
     parser = argparse.ArgumentParser()
     parser.add_argument('--source', required=True)
-    parser.add_argument('--occurrence', required=True)
+    parser.add_argument('--occurrence', default=os.environ.get('WORKBENCH_TASK_ID'))
     parser.add_argument('--request-export')
     args = parser.parse_args()
+    if not args.occurrence:
+        parser.error("--occurrence or WORKBENCH_TASK_ID is required")
     # This is a fixed broker capability, never an arbitrary URL from a job file.
     token = os.environ['WORKSPACE_TOKEN']
-    async with httpx2.AsyncClient(headers={'Authorization': 'Bearer ' + token}) as http_client, streamable_http_client('http://127.0.0.1:18085/mcp', http_client=http_client) as (read, write, _):
+    async with httpx2.AsyncClient(headers={'Authorization': 'Bearer ' + token}) as http_client, streamable_http_client('http://127.0.0.1:18085/mcp', http_client=http_client) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
             result = await digest(session, os.environ['PROJECT_ID'], os.environ['WORKSPACE_ID'],

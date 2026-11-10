@@ -25,7 +25,7 @@ func (m *Manager) submitFile(w http.ResponseWriter, r *http.Request) {
 	if !shared.Decode(w, r, &input, 2048) {
 		return
 	}
-	if !shared.ValidProjectFile(input.Path) || !shared.ValidKey(input.Key) || (input.Provider != "" && input.Provider != "codex" && input.Provider != "claude") {
+	if !shared.ValidProjectFile(input.Path) || !shared.ValidKey(input.Key) || (input.Provider != "" && input.Provider != "codex" && input.Provider != "claude" && !(input.Provider == "hermes" && m.cfg.AgentKind == "hermes")) {
 		shared.Error(w, 400, "INVALID_REQUEST")
 		return
 	}

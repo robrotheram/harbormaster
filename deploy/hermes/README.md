@@ -114,7 +114,7 @@ its real pinned SDK; portable tests do not replace that image acceptance check.
 Firecracker Hermes guests use loopback port 18085, bridged over vsock to the
 VM-specific host listener. Only `POST /mcp` is accepted, with the current workspace
 generation grant. The host forwards only MCP initialization, ping, discovery and
-six tools: work_create, work_list, exchange_publish, exchange_read,
+nine tools: work_create, work_list, work_run, work_attempts, work_cancel, exchange_publish, exchange_read,
 exchange_submit, note_publish. The upstream target is compiled in:
 `http://127.0.0.1:18085/project-mcp`. No guest-selected host is accepted.
 The Compose Firecracker overlay publishes MCP there on host loopback.
@@ -153,17 +153,17 @@ Stage fixtures/digest-task.md and fixtures/digest-source.json into the owning
 Hermes guest's `files/jobs/` using the normal guest file transfer path. Substitute
 project/workspace/time in fixtures/digest-schedule.json, then POST that JSON to
 `/v1/schedules` using operator/project authorization. The existing scheduler
-accepts provider=codex; its native task runs the deterministic
+accepts provider=hermes for Hermes workspaces; its native task runs the deterministic
 `/usr/local/bin/hermes-digest` command inside the Hermes workspace. The command
 uses the same generation-scoped broker and the pinned MCP 2.x SDK, publishes a
 sourced note through note-publications, and optionally accepts --request-export
-for an explicitly granted exchange request. Repeating the fixed fixture occurrence
-returns the existing publication receipt. No Hermes cron is installed. The notes
+for an explicitly granted exchange request. The command defaults its occurrence to WORKBENCH_TASK_ID, supplied by the
+native adapter. Retrying an accepted task returns the same receipt; each newly
+scheduled task has a distinct occurrence. No Hermes cron is installed. The notes
 binding must already be enabled via POST /v1/projects/{id}/coordination.
 
 Remaining acceptance: actually register and execute this schedule on a booted,
 staged Firecracker host with a configured native Codex subscription; verify its
-run receipt, guest note and retry receipt. Production recurring jobs also need a
-stable per-run occurrence supplied to the command (the supplied fixture is a
-single occurrence). No external research collection, account access, Matrix live
+run receipt, guest note and retry receipt. Recurring occurrences use the same task-ID propagation (the supplied fixture
+remains a single scheduled run). No external research collection, account access, Matrix live
 session, or Obsidian live vault/sync acceptance is claimed by these local tests.

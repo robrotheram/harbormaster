@@ -38,3 +38,18 @@ func TestAdapterPlansUseOnlyExplicitWorkspaceAuthority(t *testing.T) {
 		t.Fatal("invalid provider prepared persistent state")
 	}
 }
+
+func TestHermesInvocationCarriesStableTaskOccurrence(t *testing.T) {
+	root := t.TempDir()
+	config := Config{DataDir: root, HomeDir: root, AgentKind: "hermes", Token: "workspace-generation-grant", ProjectID: "personal", WorkspaceID: "workspace_one", TaskID: "task_occurrence_one", HermesModel: "approved-model", InferenceURL: "http://inference.internal"}
+	plan, code := prepare(config, "hermes")
+	if code != "" {
+		t.Fatal(code)
+	}
+	env := strings.Join(plan.env, "\n")
+	for _, expected := range []string{"WORKBENCH_TASK_ID=task_occurrence_one", "PROJECT_ID=personal", "WORKSPACE_ID=workspace_one", "WORKBENCH_MCP_URL=http://127.0.0.1:18085/mcp"} {
+		if !strings.Contains(env, expected) {
+			t.Fatalf("missing occurrence/binding: %s", expected)
+		}
+	}
+}

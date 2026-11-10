@@ -87,7 +87,7 @@ func New(c Config) (http.Handler, error) {
 	projectServer := mcp.NewServer(&mcp.Implementation{Name: "workbench-project", Version: "1"}, nil)
 	registerCoordinationTools(projectServer, cp)
 	registerWorkTools(projectServer, cp)
-	projectServer.RemoveTools("work_run", "work_attempts", "work_cancel", "work_review")
+	projectServer.RemoveTools("work_review")
 	stream := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
 		if r.URL.Path == "/project-mcp" {
 			return projectServer
