@@ -5,7 +5,7 @@ import json
 import os
 import sys
 
-from hermes_common import configure, emit, record, runtime_identity
+from hermes_common import enabled_toolsets, configure, emit, record, runtime_identity
 
 def main():
     if sys.argv[1:] == ['--version']:
@@ -23,7 +23,7 @@ def main():
         from run_agent import AIAgent
         agent = AIAgent(model=model, provider='openai-codex', api_mode='codex_responses',
                         base_url=endpoint, api_key=grant, max_iterations=24,
-                        enabled_toolsets=['terminal', 'file', 'memory'], quiet_mode=True,
+                        enabled_toolsets=enabled_toolsets(), quiet_mode=True,
                         tool_start_callback=lambda call_id, name, args: (emit('tool.started', name), record('tool.call', args, tool=name, call_id=call_id)),
                         tool_complete_callback=lambda call_id, name, args, result: (emit('tool.completed', name), record('tool.result', result, tool=name, call_id=call_id)),
                         skip_background_review=True, fallback_model={}, cwd=os.getcwd(), run_budget_seconds=540)

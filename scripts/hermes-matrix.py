@@ -9,7 +9,7 @@ import sys
 import uuid
 import time
 
-from hermes_common import configure, emit, record
+from hermes_common import enabled_toolsets, configure, emit, record
 
 async def main():
     from gateway.config import PlatformConfig
@@ -62,7 +62,7 @@ async def main():
             if key not in agents:
                 agents[key] = AIAgent(model=model, provider='openai-codex', api_mode='codex_responses',
                     base_url=endpoint, api_key=grant, max_iterations=24,
-                    enabled_toolsets=['terminal', 'file', 'memory'], quiet_mode=True,
+                    enabled_toolsets=enabled_toolsets(), quiet_mode=True,
                     tool_start_callback=lambda call_id, name, *args: emit('tool.started', name),
                     tool_complete_callback=lambda call_id, name, *args: emit('tool.completed', name),
                     skip_background_review=True, fallback_model={}, cwd=os.getcwd(),

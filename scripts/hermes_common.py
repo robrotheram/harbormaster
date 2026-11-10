@@ -1,4 +1,7 @@
 """Shared policy and framing for the pinned workspace-local Hermes adapters."""
+import base64
+import time
+from urllib.parse import urlsplit
 import json
 import os
 from pathlib import Path
@@ -38,6 +41,26 @@ def configure():
         'terminal': {'backend': 'local', 'cwd': os.getcwd()},
         'gateway': {'trust_env': False},
     }
+    mcp_url = os.environ.get('WORKBENCH_MCP_URL')
+    token_file = os.environ.get('WORKBENCH_MCP_TOKEN_FILE')
+    if mcp_url or token_file:
+        if not mcp_url or not token_file:
+            raise ValueError('MCP URL and project credential file required together')
+        parsed = urlsplit(mcp_url)
+        if parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.query or parsed.fragment:
+            raise ValueError('MCP requires an explicit HTTPS endpoint')
+        token = Path(token_file).read_text().strip()
+        # Shape/binding check only. The MCP ingress verifies the signature.
+        parts = token.split('.')
+        if len(parts) != 3 or parts[0] != 'wpa1':
+            raise ValueError('MCP requires project access, never management credentials')
+        claims = json.loads(base64.urlsafe_b64decode(parts[1] + '=' * (-len(parts[1]) % 4)))
+        if claims.get('project_id') != os.environ.get('WORKBENCH_PROJECT_ID') or not claims.get('project_id') or claims.get('aud') != 'workbench-project' or claims.get('exp', 0) <= time.time():
+            raise ValueError('MCP project binding expired or mismatched')
+        config['mcp_servers'] = {'workbench': {'url': mcp_url,
+            'headers': {'Authorization': 'Bearer ' + token},
+            'tools': {'include': ['work_create', 'work_list', 'exchange_publish',
+                                  'exchange_read', 'exchange_submit', 'note_publish']}}}
     with tempfile.NamedTemporaryFile(mode='w', dir=home, delete=False) as stream:
         temporary = Path(stream.name)
         try:
@@ -53,3 +76,10 @@ def runtime_identity():
     """The staged manifest also pins the image source and host admission record."""
     manifest = json.loads(Path(__file__).with_name('hermes-runtime.json').read_text())
     return {key: manifest[key] for key in ('version', 'commit')}
+
+
+def enabled_toolsets():
+    tools = ['terminal', 'file', 'memory']
+    if os.environ.get('WORKBENCH_MCP_URL'):
+        tools.append('mcp-workbench')
+    return tools
