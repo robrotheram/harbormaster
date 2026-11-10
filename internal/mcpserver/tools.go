@@ -38,6 +38,7 @@ func keyBody(key string) (map[string]string, error) {
 func registerTools(s *mcp.Server, c *controlClient) {
 	registerOrchestrationTools(s, c)
 	registerWorkTools(s, c)
+	registerCoordinationTools(s, c)
 	add(s, "workspace_list", "List workspaces in this connection's authorized project.", func(ctx context.Context, _ Empty) (out WorkspaceList, err error) {
 		err = c.do(ctx, "GET", "/v1/workspaces", nil, &out)
 		return

@@ -540,6 +540,7 @@ func (m *Manager) Handler() http.Handler {
 	api.HandleFunc("POST /v1/artifacts", m.publishArtifact)
 	api.HandleFunc("GET /v1/artifacts", m.listArtifacts)
 	api.HandleFunc("GET /v1/artifacts/{id}/content", m.artifactContent)
+	m.registerCoordination(api)
 	api.HandleFunc("POST /v1/recipe-jobs", m.startRecipe)
 	api.HandleFunc("GET /v1/recipe-jobs/{id}", m.getRecipe)
 	api.HandleFunc("POST /v1/recipe-jobs/{id}/cancel", m.cancelRecipe)

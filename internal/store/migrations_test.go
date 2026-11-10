@@ -17,7 +17,7 @@ func TestStartupMigrationsAreVersionedAndRepeatable(t *testing.T) {
 		if err = s.DB.QueryRow(`SELECT count(*) FROM schema_migrations`).Scan(&count); err != nil {
 			t.Fatal(err)
 		}
-		if count != 3 {
+		if count != 4 {
 			t.Fatalf("migration versions: %d", count)
 		}
 		for _, table := range []string{"work_items", "schedules", "orchestration_runs", "workspaces", "agent_homes"} {

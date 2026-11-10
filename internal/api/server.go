@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"agent-workbench/internal/coordination"
 	"agent-workbench/internal/orchestration"
 	"agent-workbench/internal/runtime/protocol"
 	"agent-workbench/internal/shared"
@@ -28,6 +29,7 @@ type Config struct {
 	HealthEndpoints map[string]string
 }
 type Server struct {
+	coordination    *coordination.Service
 	schedulerCursor orchestration.Cursor
 	eventSeen       map[string]map[string]bool
 	eventState      map[string]string
@@ -64,7 +66,9 @@ func New(s *store.Store, rt protocol.Runtime, c Config) *Server {
 		tokens[token] = project
 	}
 	c.ProjectTokens = tokens
-	return &Server{Store: s, Runtime: rt, cfg: c, now: func() time.Time { return time.Now().UTC() }, health: map[string]map[string]any{}}
+	server := &Server{Store: s, Runtime: rt, cfg: c, now: func() time.Time { return time.Now().UTC() }, health: map[string]map[string]any{}}
+	server.coordination = &coordination.Service{DB: s.DB, Blobs: server.projectBlobStore}
+	return server
 }
 func reserved(w shared.Workspace) bool { return workspacesvc.Reserved(w) }
 func (s *Server) lifecycle() *workspacesvc.Service {
@@ -155,6 +159,7 @@ func (s *Server) Handler() http.Handler {
 	s.registerHistory(secured)
 	s.registerOrchestration(secured)
 	s.registerWork(secured)
+	s.registerCoordinationRuntime(secured)
 	secured.HandleFunc("POST /v1/file-handoffs", s.shareFile)
 	secured.HandleFunc("/v1/workspaces/{id}/desktop/{path...}", func(w http.ResponseWriter, r *http.Request) {
 		ws, ok := s.workspace(w, r)

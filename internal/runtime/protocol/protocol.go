@@ -31,6 +31,11 @@ func AllowedAgentPath(method, path string) bool {
 	partsFactory := strings.Split(strings.TrimPrefix(path, "/"), "/")
 	if len(partsFactory) >= 2 && partsFactory[0] == "v1" {
 		switch partsFactory[1] {
+		case "coordination":
+			if len(partsFactory) == 3 && partsFactory[2] == "notes" {
+				return method == "POST"
+			}
+			return len(partsFactory) == 4 && partsFactory[2] == "blobs" && shared.ValidID(partsFactory[3]) && (method == "GET" || method == "POST")
 		case "artifacts":
 			if len(partsFactory) == 2 {
 				return method == "GET" || method == "POST"
@@ -108,6 +113,9 @@ func AgentQuery(method, path, raw string) (string, error) {
 }
 
 func AgentBodyLimit(path string) int64 {
+	if strings.HasPrefix(path, "/v1/coordination/") {
+		return 100000
+	}
 	if path == "/v1/files/write-new" {
 		return 1500 << 10
 	}

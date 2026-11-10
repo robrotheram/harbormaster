@@ -3,8 +3,10 @@ package coordination
 import (
 	"context"
 	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/url"
 	"os"
 	"strings"
@@ -15,7 +17,7 @@ import (
 type Files struct{ Root *os.Root }
 
 func (f Files) Put(_ context.Context, key string, b []byte) error {
-	if len(key) != 64 || strings.ContainsAny(key, "/\\.") {
+	if !validBlobKey(key) {
 		return ErrInvalid
 	}
 
@@ -38,7 +40,7 @@ func (f Files) Put(_ context.Context, key string, b []byte) error {
 	}
 	e = f.Root.Link(temp, key)
 	if errors.Is(e, os.ErrExist) {
-		old, readErr := f.Root.ReadFile(key)
+		old, readErr := readBounded(f.Root, key)
 		if readErr != nil {
 			return readErr
 		}
@@ -59,10 +61,10 @@ func (f Files) Put(_ context.Context, key string, b []byte) error {
 }
 
 func (f Files) Get(_ context.Context, key string) ([]byte, error) {
-	if len(key) != 64 || strings.ContainsAny(key, "/\\.") {
+	if !validBlobKey(key) {
 		return nil, ErrDenied
 	}
-	return f.Root.ReadFile(key)
+	return readBounded(f.Root, key)
 }
 
 type NoteWrite struct {
@@ -84,6 +86,10 @@ type NoteReceipt struct {
 // dedicated bounded notes directory, not a home or inherited personal vault.
 // .awb-* is reserved for durable journals. flock coordinates service processes;
 // external editors must honor the same lock for atomic compare-and-write.
+type NotePublisher interface {
+	Publish(NoteWrite) (NoteReceipt, error)
+}
+
 type Notes struct{ Root *os.Root }
 
 func (n Notes) Publish(in NoteWrite) (NoteReceipt, error) {
@@ -116,7 +122,7 @@ func (n Notes) Publish(in NoteWrite) (NoteReceipt, error) {
 	}
 	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
 	journal := ".awb-" + in.Occurrence + ".json"
-	prior, e := n.Root.ReadFile(journal)
+	prior, e := readBounded(n.Root, journal)
 	if e == nil {
 		var receipt NoteReceipt
 		if json.Unmarshal(prior, &receipt) != nil || receipt != out {
@@ -125,7 +131,7 @@ func (n Notes) Publish(in NoteWrite) (NoteReceipt, error) {
 	} else if !errors.Is(e, os.ErrNotExist) {
 		return out, e
 	}
-	current, e := n.Root.ReadFile(in.Path)
+	current, e := readBounded(n.Root, in.Path)
 	if e != nil && !errors.Is(e, os.ErrNotExist) {
 		return out, e
 	}
@@ -168,7 +174,7 @@ func (n Notes) Publish(in NoteWrite) (NoteReceipt, error) {
 		return out, e
 	}
 	// Recheck after preparing the replacement to detect edits made during IO.
-	latest, e := n.Root.ReadFile(in.Path)
+	latest, e := readBounded(n.Root, in.Path)
 	if e != nil && !errors.Is(e, os.ErrNotExist) {
 		return out, e
 	}
@@ -188,4 +194,31 @@ func (n Notes) Publish(in NoteWrite) (NoteReceipt, error) {
 		dir.Close()
 	}
 	return out, e
+}
+
+func validBlobKey(key string) bool {
+	if len(key) != 64 {
+		return false
+	}
+	_, err := hex.DecodeString(key)
+	return err == nil
+}
+func readBounded(root *os.Root, path string) ([]byte, error) {
+	file, err := root.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() || info.Size() > 65536 {
+		return nil, ErrInvalid
+	}
+	body, err := io.ReadAll(io.LimitReader(file, 65537))
+	if len(body) > 65536 {
+		return nil, ErrInvalid
+	}
+	return body, err
 }

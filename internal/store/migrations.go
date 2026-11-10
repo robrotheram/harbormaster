@@ -1,9 +1,11 @@
 package store
 
 import (
+	"agent-workbench/internal/coordination"
 	"agent-workbench/internal/orchestration"
 	"context"
 	"fmt"
+	"strings"
 )
 
 // Migrations run before listeners or workers start. Existing prototype schemas
@@ -18,6 +20,17 @@ func (s *Store) migrate(ctx context.Context) error {
 	}{
 		{1, s.initMetadata}, {2, func(ctx context.Context) error { return (orchestration.Repository{DB: s.DB}).Init(ctx) }},
 		{3, func(ctx context.Context) error { return (orchestration.Repository{DB: s.DB}).InitWork(ctx) }},
+		{4, func(ctx context.Context) error {
+			for _, query := range strings.Split(coordination.Schema, ";") {
+				if strings.TrimSpace(query) != "" {
+					if _, err := s.DB.ExecContext(ctx, query); err != nil {
+						return err
+					}
+				}
+			}
+			_, err := s.DB.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS project_coordination(project_id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL,notes_enabled INTEGER NOT NULL DEFAULT 0)`)
+			return err
+		}},
 	}
 	for _, step := range steps {
 		var applied int

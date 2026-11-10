@@ -31,7 +31,7 @@ func TestExchangeRoutesSubmitThroughFactory(t *testing.T) {
 	}}
 	mux := http.NewServeMux()
 	s.registerWork(mux)
-	s.RegisterCoordination(mux, service, func(string, string) (coordination.Notes, error) { return coordination.Notes{}, coordination.ErrDenied })
+	s.RegisterCoordination(mux, service, func(string, string) (coordination.NotePublisher, error) { return nil, coordination.ErrDenied })
 	handler := s.authenticate(mux)
 	call := func(token, path, body string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest("POST", path, strings.NewReader(body))

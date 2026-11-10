@@ -145,3 +145,31 @@ func TestRecipeCancellationOwnsProcess(t *testing.T) {
 		t.Fatalf("cancellation did not settle: %+v", j)
 	}
 }
+
+func TestWorkspaceCoordinationIsPrivateAndBounded(t *testing.T) {
+	cfg := Config{ID: "ws_notes", DataDir: t.TempDir(), Token: "test-workspace-token"}
+	m, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	// Empty expected digest creates a new note; a repeated occurrence is safe.
+	body := `{"path":"daily.md","body":"Read the paper","expected_digest":"","occurrence":"daily-one","sources":["https://example.com/paper"]}`
+	first := invoke(t, m.Handler(), "POST", "/v1/coordination/notes", body)
+	if first.Code != 200 {
+		t.Fatal(first.Code, first.Body.String())
+	}
+	again := invoke(t, m.Handler(), "POST", "/v1/coordination/notes", body)
+	if again.Code != 200 || again.Body.String() != first.Body.String() {
+		t.Fatal("receipt changed", again.Code)
+	}
+	if err = os.WriteFile(filepath.Join(cfg.DataDir, "files", "coordination", "notes", "daily.md"), []byte("user edit"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if got := invoke(t, m.Handler(), "POST", "/v1/coordination/notes", body); got.Code != 409 {
+		t.Fatal("concurrent edit overwritten", got.Code)
+	}
+	if got := invoke(t, m.Handler(), "POST", "/v1/coordination/notes", `{"path":"../escape.md","body":"escape","occurrence":"escape-one","sources":["https://example.com"]}`); got.Code != 400 {
+		t.Fatal("note escaped root", got.Code)
+	}
+}

@@ -212,8 +212,8 @@ func (k *Kubernetes) agent(ctx context.Context, resource kubeResource, method, p
 		return 0, nil, err
 	}
 	defer res.Body.Close()
-	b, err := io.ReadAll(io.LimitReader(res.Body, (2<<20)+1))
-	if len(b) > 2<<20 {
+	b, err := io.ReadAll(io.LimitReader(res.Body, protocol.AgentResponseLimit(path)+1))
+	if int64(len(b)) > protocol.AgentResponseLimit(path) {
 		return 0, nil, errors.New("workspace response too large")
 	}
 	return res.StatusCode, b, err

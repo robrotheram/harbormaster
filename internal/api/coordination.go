@@ -13,7 +13,7 @@ import (
 // RegisterCoordination is wired by the composition root after installing Schema.
 // Project authorization applies to every call, including both grant endpoints.
 // Notes must resolve only explicitly configured project/workspace integrations.
-func (s *Server) RegisterCoordination(mux *http.ServeMux, service *coordination.Service, notes func(string, string) (coordination.Notes, error)) {
+func (s *Server) RegisterCoordination(mux *http.ServeMux, service *coordination.Service, notes func(string, string) (coordination.NotePublisher, error)) {
 	reply := func(w http.ResponseWriter, v any, e error) {
 		if e != nil {
 			status := 503
@@ -40,7 +40,7 @@ func (s *Server) RegisterCoordination(mux *http.ServeMux, service *coordination.
 			return
 		}
 		var in coordination.Grant
-		if !shared.Decode(w, r, &in, 4096) || !s.AuthorizeProject(w, r, in.Source) {
+		if !shared.Decode(w, r, &in, 4096) || !s.AuthorizeProject(w, r, in.Source) || !s.AuthorizeProject(w, r, in.Destination) {
 			return
 		}
 		reply(w, in, service.Create(r.Context(), in.Source, in))
