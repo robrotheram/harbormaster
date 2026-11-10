@@ -2,6 +2,8 @@ package mcpserver
 
 import (
 	"context"
+	"encoding/base64"
+	"fmt"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"net/url"
 )
@@ -57,6 +59,16 @@ func registerFactoryTools(s *mcp.Server, c *controlClient) {
 				body = map[string]any{}
 			}
 			err = c.do(ctx, op.method, endpoint, body, &out.Data)
+			// The SDK emits text and structured copies. Keep both inside the
+			// fixed project broker's 2 MiB response budget.
+			if err == nil && op.name == "factory_evidence_read" {
+				content, ok := out.Data["content"].(string)
+				decoded, decodeErr := base64.StdEncoding.DecodeString(content)
+				if !ok || decodeErr != nil || len(decoded) > 512*1024 {
+					out.Data = nil
+					err = fmt.Errorf("EVIDENCE_READ_BUDGET_EXCEEDED: use the authenticated artifact download for files larger than 512 KiB")
+				}
+			}
 			return
 		})
 	}

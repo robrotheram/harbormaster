@@ -119,7 +119,10 @@ Project MCP adds `factory_job_start/list/status/cancel`,
 `factory_evidence_list/read`, and `factory_preview_retain/status/revoke/release`.
 These call the project-authorized platform routes, never a guest-selected host.
 Retention takes an already registered dedicated workspace ID. Evidence read is
-JSON/base64, never executable HTML. `internal/shared/project-tools.json` is the
+JSON/base64, never executable HTML, with a 512 KiB decoded read budget so both
+SDK output copies fit the fixed 2 MiB project broker limit. HTTP evidence reads
+retain their 1 MiB budget. Job/evidence lists and reads wake stopped storage
+without replaying execution. `internal/shared/project-tools.json` is the
 single fixed host/cluster/Hermes policy, embedded in Go and installed beside the
 Python adapter. Admin tools and `work_review` remain excluded.
 
@@ -137,7 +140,9 @@ Operator-only `POST /v1/workspaces/{id}/delete` and
 `POST /v1/projects/{id}/delete` require `{confirm_id:<exact ID>}`. UI exposes
 confirmation controls. Project deletion includes its workspaces; legacy `default`
 is deliberately preserved. Lifecycle locks and the create lock fence admission;
-unknown/busy compute or unsuccessful stop prevents deletion. Migration 8 adds
+runtime state is refreshed even when metadata says stopped; unknown/busy compute
+or unsuccessful stop prevents deletion. Workspace insertion also rejects a
+tombstoned project inside its transaction. Migration 8 adds
 durable tombstones, preserving all migration 7 behavior, original identities,
 create keys and evidence. Deleted records disappear from normal workspace,
 project and agent-home reads and cannot be started through those APIs. These

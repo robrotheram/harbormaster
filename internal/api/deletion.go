@@ -65,11 +65,9 @@ func (s *Server) registerDeletion(mux *http.ServeMux) {
 					shared.Error(w, 409, "WORKSPACE_CHANGED")
 					return
 				}
-				if ws.State != "STOPPED" {
-					if err = s.stop(r.Context(), &ws); err != nil {
-						apiError(w, err)
-						return
-					}
+				if err = s.stop(r.Context(), &ws); err != nil {
+					apiError(w, err)
+					return
 				}
 				if ws.State != "STOPPED" {
 					shared.Error(w, 409, "STOP_WORKSPACE_FIRST")

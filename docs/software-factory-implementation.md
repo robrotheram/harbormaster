@@ -1,13 +1,18 @@
 # Software factory implementation status
 
 Updated 10 November 2026. Tracks delivery against
-[the plan](software-factory-plan.md). Implementation is in progress: GoGallery
-admission/retained previews and direct instruction/worker provisioning are being
-completed separately. Production acceptance remains gated on real infrastructure.
+[the plan](software-factory-plan.md). The first development workflow is integrated:
+work requests, approved workers, GoGallery/research jobs, evidence, independent
+retained previews, assistant handoffs, and operator UI. Production acceptance
+remains gated on real infrastructure; the running deployment has not been updated.
 
 ## Work execution and review
 
-Work items reference a private workspace specification and its SHA-256 digest.
+Work items accept an inline instruction (up to 64 KiB) or reference a private
+workspace specification and its SHA-256 digest. Omitting the worker provisions an
+approved private Codex workspace through the shared creation/quota policy.
+Inline instructions are published immutably to private storage; retry keys bind
+the original bytes and worker. Central SQL retains references and fingerprints.
 Creation stores a draft. Running creates a durable attempt with a stable delivery
 key; the existing scheduler dispatches through native workspace acceptance.
 The guest verifies specification bytes on first acceptance and retains receipts
@@ -27,11 +32,12 @@ Artifacts survive compute stop. A cold download wakes private storage through
 the runtime without replaying the task. Browser downloads use authenticated
 `/ui-api` routes and attachment responses.
 
-Startup migrations currently cover versions 1–6, including work records,
-attempts, exchange grants/bindings, and consumption receipts. Existing workspace
+Startup migrations currently cover versions 1–8, including work records,
+attempts, exchange grants/bindings, consumption receipts, immutable direct-request
+receipts, and deletion tombstones. Existing workspace
 ownership, homes, native histories, and schedules remain intact.
 
-## Research jobs
+## Approved jobs and retained environments
 
 The guest admits the built-in `research-v1` recipe through `/v1/recipe-jobs`.
 It executes the real standard-library regression baseline and regularisation
@@ -47,10 +53,30 @@ describe the exact guest endpoints and bounds.
 
 The [example workloads](../examples/factory/README.md) include versioned work
 specifications and recipe proposals. Their JSON files do not themselves authorise
-runtime images, privileges, mounts, or networking. The pinned GoGallery source
-built and passed its tests on the development host, and a synthetic nested-album
-gallery built successfully using absolute fixture paths. Managed preview
-acceptance is a separate requirement.
+runtime images, privileges, mounts, or networking. The trusted `workspace-gogallery` image admits pinned GoGallery build/test/gallery
+generation offline. Its real workload passed through the platform API in 618
+seconds; authenticated Docker guest acceptance also passed, including independent
+retention after coding compute stopped, revocation, and expiry. See the
+[contracts and recorded evidence](evidence/factory-retained-preview.md).
+
+The Environments UI starts approved jobs, lists status/evidence, and promotes an
+immutable gallery snapshot into a separately registered workspace. Promotion has
+durable retry receipts; one active service is admitted per retained allocation.
+Expiry/revocation and confirmed compute release are reconciled without treating a
+failed stop as released capacity. Evidence list/read wakes stopped private storage
+without replaying jobs. HTTP evidence reads allow 1 MiB; MCP reads allow 512 KiB
+to keep the SDK's duplicated output inside the fixed broker response budget.
+
+Local browser attachment uses a distinct service-specific `.localhost` origin,
+one-use tickets and host-only sessions. Every static fetch checks service state
+and expiry through the authenticated platform route. It does not expose guest
+ports or render guest HTML on the operator origin. Remote ingress and production
+k3s browser attachment remain deployment gates.
+
+Operator workspace/project deletion requires exact-ID confirmation and refreshes
+runtime state before confirming an idle stop. Project deletion fences concurrent
+creation and hides its workspaces. Tombstones preserve identities and receipts;
+**private disks remain on the host**. Physical disk purge is not implemented.
 
 ## Personal and project assistants
 
@@ -71,8 +97,9 @@ personal Obsidian vault.
 
 Hermes has a fixed generation-authenticated Firecracker MCP channel. The host
 issues short-lived project credentials per request; the signing authority stays
-host-only. The narrow toolset includes work create/list/run/attempts/cancel,
-exchange publish/inbox/read/submit, and note publication. Human grant administration
+host-only. The shared fixed tool policy includes work create/list/run/attempts/cancel,
+exchange publish/inbox/read/submit, note publication, and approved factory
+job/evidence/preview operations. Human grant administration
 and work review remain outside that toolset.
 
 The deterministic digest and destination consumer commands use Workbench-owned
@@ -89,7 +116,11 @@ ceilings and NetworkPolicy drift, and verifies retained PVC ownership and RWOP
 configuration. [k3s operations](k3s.md) include deployment rendering and
 backup/recovery/acceptance scripts. Runtime status remains unverified and required
 verified-isolation starts remain blocked until real enforcement evidence exists.
-Kubernetes Hermes support, multi-user membership/authentication, real CNI/Kata
+Kubernetes Hermes supports only an exact administrator-approved image digest and
+configured model. Its fixed cluster MCP endpoint checks generation grants through
+the trusted controller and derives project identity from sandbox metadata. See
+[k3s Hermes setup](k3s-hermes.md). Matrix remains unsupported on this backend.
+Live image acceptance, multi-user membership/authentication, real CNI/Kata
 acceptance and recovery drills remain production gates.
 
 The running Compose deployment still uses its installed images. Rebuild/restage
@@ -100,14 +131,16 @@ scheduled digest acceptance have not been established by the local tests.
 
 ## Verification
 
-The combined contributor checks passed through the scheduled-Hermes integration,
-including Go builds/race tests/architecture checks/vet, frontend checks/build,
-and portable Python fixtures. Later inbox and recovery changes have targeted
-race and real-SDK composition coverage; rerun the full checks after the remaining
-implementations are integrated.
+The integrated contributor checks passed: Go builds, full race suite,
+architecture checks and vet; frontend formatting, 33 unit tests, typecheck and
+production build; portable Python fixtures and real pinned Hermes SDK composition.
+Browser acceptance additionally covers work requests, jobs/previews/revocation,
+delete confirmation, assistant setup, profiles, and project switching. Final
+recovery guards have targeted race coverage.
 
 ```sh
-GOFLAGS=-p=1 make check
+HERMES_SOURCE=/path/to/pinned/hermes GOFLAGS=-p=1 make check
+make browser-check
 HERMES_SOURCE=/path/to/pinned/hermes go test -race -p 1 ./internal/api ./internal/runtime/firecracker
 ```
 

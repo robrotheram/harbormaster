@@ -1,7 +1,10 @@
 # Software factory and research platform delivery plan
 
-Status: proposed implementation plan, 9 November 2026. Product requirements below
-are confirmed; the delivery sequence and implementation choices are proposed.
+Status: implementation plan, established 9 November 2026. Development features
+are integrated as of 10 November; live-host and production acceptance remain open.
+See [implementation status](software-factory-implementation.md) for current
+capabilities and verification. The foundation/gap inventory below records the
+starting point, rather than the current runtime support.
 
 Workbench will provide persistent, isolated projects and on-demand compute for
 software development, experimental research, and personal planning. T3 desktop
@@ -369,9 +372,9 @@ provisioning, and explicit pinned Hermes discovery/readiness. The guest image
 installs the frozen MCP extra. A real pinned Hermes registry invocation is covered
 by the local broker fixture; foreign scope, retry, expiry and revocation checks
 are exercised. See deploy/hermes/README.md for exact provisioning requirements.
-The sourced digest command and single-owner Workbench schedule fixture are
-executable artifacts; a booted scheduled run, recurring occurrence plumbing,
-external accounts, Matrix live and Obsidian live acceptance remain unverified.
+The sourced digest command, recurring occurrence identity, and single-owner
+Workbench schedule fixture are implemented. A booted scheduled run, external
+accounts, Matrix live and Obsidian live acceptance remain unverified.
 
 ### M5 Complete and accept the k3s production path
 

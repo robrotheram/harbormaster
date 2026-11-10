@@ -257,3 +257,31 @@ func TestFactoryAPIProjectCredentialsCannotReachForeignEnvironments(t *testing.T
 		t.Fatal("foreign request allocated compute")
 	}
 }
+
+func TestFactoryEvidenceSurvivesColdStorage(t *testing.T) {
+	s, rt := setup(t)
+	ws := create(t, s, "cold-factory-evidence")
+	base := "/v1/workspaces/" + ws.ID
+	request(t, s, "POST", base+"/start", `{"idempotency_key":"cold-start"}`)
+	if err := os.WriteFile(filepath.Join(rt.base, ws.ID, "files", "evidence.txt"), []byte("retained evidence"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	status, b, err := rt.Agent(t.Context(), ws.ID, "POST", "/v1/artifacts", []byte(`{"source_path":"evidence.txt","idempotency_key":"cold-evidence"}`))
+	if err != nil || status != 201 {
+		t.Fatalf("%d %s %v", status, b, err)
+	}
+	var artifact struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(b, &artifact); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"/artifacts", "/recipe-jobs", "/artifacts/" + artifact.ID + "/content"} {
+		if res := request(t, s, "POST", base+"/stop", `{"idempotency_key":"cold-stop"}`); res.Code != 200 {
+			t.Fatalf("stop %d %s", res.Code, res.Body)
+		}
+		if res := request(t, s, "GET", base+path, ""); res.Code != 200 {
+			t.Fatalf("cold %s: %d %s", path, res.Code, res.Body)
+		}
+	}
+}

@@ -18,6 +18,16 @@ func (s *Server) registerFactoryEnvironments(mux *http.ServeMux) {
 			if !ok {
 				return
 			}
+			unlock := s.operations.Lock(ws.ID)
+			defer unlock()
+			ws, ok = s.workspace(w, r)
+			if !ok {
+				return
+			}
+			if err := s.lifecycle().ObserveTask(r.Context(), &ws); err != nil {
+				apiError(w, err)
+				return
+			}
 			s.factoryForward(w, r, ws.ID, "/v1/"+resource, nil)
 		})
 	}
@@ -29,6 +39,16 @@ func (s *Server) registerFactoryEnvironments(mux *http.ServeMux) {
 		id := r.PathValue("artifact")
 		if !shared.ValidID(id) {
 			shared.Error(w, 400, "INVALID_REQUEST")
+			return
+		}
+		unlock := s.operations.Lock(ws.ID)
+		defer unlock()
+		ws, ok = s.workspace(w, r)
+		if !ok {
+			return
+		}
+		if err := s.lifecycle().ObserveTask(r.Context(), &ws); err != nil {
+			apiError(w, err)
 			return
 		}
 		status, b, err := s.Runtime.Agent(r.Context(), ws.ID, "GET", "/v1/artifacts/"+id+"/content", nil)

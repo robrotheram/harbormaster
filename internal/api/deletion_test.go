@@ -59,3 +59,30 @@ func TestDeleteWorkspaceRequiresConfirmedIdleStop(t *testing.T) {
 		t.Fatal("workspace still accessible")
 	}
 }
+
+func TestDeleteRefreshesStaleStoppedMetadata(t *testing.T) {
+	s, rt := setup(t)
+	ws := create(t, s, "delete-stale")
+	request(t, s, "POST", "/v1/workspaces/"+ws.ID+"/start", `{"idempotency_key":"start-stale"}`)
+	ws, _ = s.Store.Workspace(t.Context(), ws.ID)
+	ws.State = "STOPPED"
+	if err := s.Store.Save(t.Context(), ws); err != nil {
+		t.Fatal(err)
+	}
+	rt.jobs = 1
+	path := "/v1/workspaces/" + ws.ID + "/delete"
+	payload := fmt.Sprintf(`{"confirm_id":%q}`, ws.ID)
+	if res := request(t, s, "POST", path, payload); res.Code == 200 {
+		t.Fatal("deleted busy runtime with stale metadata")
+	}
+	if _, err := s.Store.Workspace(t.Context(), ws.ID); err != nil {
+		t.Fatal(err)
+	}
+	rt.jobs = 0
+	if res := request(t, s, "POST", path, payload); res.Code != 200 {
+		t.Fatalf("%d %s", res.Code, res.Body)
+	}
+	if rt.managers[ws.ID] != nil {
+		t.Fatal("deleted workspace still running")
+	}
+}

@@ -145,7 +145,7 @@ func (s *Store) createWorkspace(ctx context.Context, w shared.Workspace, key str
 	}
 	defer tx.Rollback()
 	var exists string
-	if err = tx.QueryRowContext(ctx, s.query(`SELECT id FROM projects WHERE id=?`), w.ProjectID).Scan(&exists); err != nil {
+	if err = tx.QueryRowContext(ctx, s.query(`SELECT id FROM projects WHERE id=? AND NOT EXISTS (SELECT 1 FROM deleted_resources WHERE kind='project' AND deleted_resources.id=projects.id)`), w.ProjectID).Scan(&exists); err != nil {
 		return err
 	}
 	b, err := json.Marshal(w)
