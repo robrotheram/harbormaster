@@ -84,7 +84,16 @@ func New(c Config) (http.Handler, error) {
 	cp := &controlClient{base: strings.TrimRight(c.ControlplaneURL, "/"), token: c.ControlToken, client: &http.Client{Timeout: 35 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 	server := mcp.NewServer(&mcp.Implementation{Name: "agent-workbench", Version: "0.1.0"}, nil)
 	registerTools(server, cp)
-	stream := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, &mcp.StreamableHTTPOptions{
+	projectServer := mcp.NewServer(&mcp.Implementation{Name: "workbench-project", Version: "1"}, nil)
+	registerCoordinationTools(projectServer, cp)
+	registerWorkTools(projectServer, cp)
+	projectServer.RemoveTools("work_run", "work_attempts", "work_cancel", "work_review")
+	stream := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+		if r.URL.Path == "/project-mcp" {
+			return projectServer
+		}
+		return server
+	}, &mcp.StreamableHTTPOptions{
 		Stateless: true, JSONResponse: true, MaxRequestBodyBytes: 512 << 10,
 		PropagateRequestCancellation: true,
 		// The outer middleware enforces the explicit Host allowlist on every
@@ -96,7 +105,7 @@ func New(c Config) (http.Handler, error) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
-	mux.Handle("/mcp", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	authenticated := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		if !allowedAuthority(r.Host, c.AllowedHosts) || !allowedOrigin(r, c.AllowedHosts) {
 			http.Error(w, "forbidden", http.StatusForbidden)
@@ -120,7 +129,9 @@ func New(c Config) (http.Handler, error) {
 		r = r.WithContext(context.WithValue(r.Context(), accessContextKey{}, projectAccess{token: credential, project: project}))
 		r.Body = http.MaxBytesReader(w, r.Body, 512<<10)
 		stream.ServeHTTP(w, r)
-	}))
+	})
+	mux.Handle("/mcp", authenticated)
+	mux.Handle("/project-mcp", authenticated)
 	return mux, nil
 }
 

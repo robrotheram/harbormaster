@@ -262,7 +262,7 @@ func main() {
 		}
 	}
 	fmt.Println("SANDBOX_NETWORK_CHECK: no NIC; direct IPv4/IPv6/metadata/LAN and unapproved vsock ports unavailable")
-	for _, p := range []int{18081, 18082, 18083, 18084} {
+	for _, p := range []int{18081, 18082, 18083, 18084, 18085} {
 		go bridgeOut(p)
 	}
 	go bridgeIn()

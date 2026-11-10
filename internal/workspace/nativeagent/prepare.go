@@ -16,6 +16,10 @@ func prepare(cfg Config, provider string) (invocation, string) {
 	}
 	// Only a generation-bound workspace grant, never provider or Vault credentials.
 	env := []string{"PATH=/usr/local/bin:/usr/bin:/bin", "HOME=" + home, "LANG=C.UTF-8", "TMPDIR=/tmp", "DATA_DIR=" + cfg.DataDir, "DISABLE_AUTOUPDATER=1", "DISABLE_UPDATES=1", "USE_BUILTIN_RIPGREP=0"}
+
+	if cfg.AgentKind == "hermes" {
+		env = append(env, "WORKSPACE_TOKEN="+cfg.Token, "PROJECT_ID="+cfg.ProjectID, "WORKSPACE_ID="+cfg.WorkspaceID)
+	}
 	if cfg.EgressURL != "" && cfg.ConnectionMode != "open" {
 		env = egress.Environment(env)
 	}

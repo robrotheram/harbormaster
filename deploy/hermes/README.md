@@ -108,3 +108,62 @@ Run `python3 scripts/test-hermes-adapters.py` for portable routing, authorizatio
 delivery and failure tests with SDK import stubs and no network. The existing
 `test-hermes-runner.py` and `test-hermes-matrix.py` can also run in the guest with
 its real pinned SDK; portable tests do not replace that image acceptance check.
+
+### Fixed project MCP channel
+
+Firecracker Hermes guests use loopback port 18085, bridged over vsock to the
+VM-specific host listener. Only `POST /mcp` is accepted, with the current workspace
+generation grant. The host forwards only MCP initialization, ping, discovery and
+six tools: work_create, work_list, exchange_publish, exchange_read,
+exchange_submit, note_publish. The upstream target is compiled in:
+`http://127.0.0.1:18085/project-mcp`. No guest-selected host is accepted.
+The Compose Firecracker overlay publishes MCP there on host loopback.
+
+Install `/etc/agent-workbench/firecracker/project_mcp_signing_key` as a root-owned
+0600 file, with root-owned non-writable ancestors. Its content must equal the MCP
+and control-plane `CONTROL_TOKEN_FILE` signing authority. This is deliberately a
+host-only file; neither that key nor a global MCP/operator credential enters the
+guest. Missing provisioning prevents Hermes admission and capability advertisement.
+A mismatch with upstream is rejected during discovery, before model execution.
+Rebuild and restage the immutable image: it now includes both frozen `matrix` and
+`mcp` extras. Port 18085 must be allowed in MCP_ALLOWED_HOSTS (the existing
+`127.0.0.1` hostname entry allows this explicit port).
+
+Task and Matrix adapters write a private generation-grant file and supply
+WORKBENCH_MCP_URL=http://127.0.0.1:18085/mcp,
+WORKBENCH_MCP_TOKEN_FILE and WORKBENCH_PROJECT_ID. Hermes config uses
+mcp_servers.workbench.url, headers.Authorization and tools.include. Explicit
+pinned discovery registers mcp-workbench; a failed discovery fails the adapter.
+Every broker request checks VM identity/running/stopping state and its generation
+grant. Each accepted request receives a new host-only wpa1 credential expiring in
+60 seconds; there is no guest renewal endpoint or reusable project token in the
+guest. Stop/replacement revokes the channel immediately for subsequent requests.
+Already accepted operations retain their ordinary API idempotency semantics.
+
+`HERMES_SOURCE=/path/to/pinned/source go test ./internal/runtime/firecracker -run
+TestProjectMCP -v` runs real Hermes discovery/filtering/registry invocation through
+the broker and real Go MCP ingress. The fixture control-plane responds with a
+retryable failure, rejects foreign project scope, and tests generation revocation
+and expired application credentials. It does not claim Firecracker boot or a live
+provider/account test.
+
+### Digest fixture (one Workbench owner)
+
+Stage fixtures/digest-task.md and fixtures/digest-source.json into the owning
+Hermes guest's `files/jobs/` using the normal guest file transfer path. Substitute
+project/workspace/time in fixtures/digest-schedule.json, then POST that JSON to
+`/v1/schedules` using operator/project authorization. The existing scheduler
+accepts provider=codex; its native task runs the deterministic
+`/usr/local/bin/hermes-digest` command inside the Hermes workspace. The command
+uses the same generation-scoped broker and the pinned MCP 2.x SDK, publishes a
+sourced note through note-publications, and optionally accepts --request-export
+for an explicitly granted exchange request. Repeating the fixed fixture occurrence
+returns the existing publication receipt. No Hermes cron is installed. The notes
+binding must already be enabled via POST /v1/projects/{id}/coordination.
+
+Remaining acceptance: actually register and execute this schedule on a booted,
+staged Firecracker host with a configured native Codex subscription; verify its
+run receipt, guest note and retry receipt. Production recurring jobs also need a
+stable per-run occurrence supplied to the command (the supplied fixture is a
+single occurrence). No external research collection, account access, Matrix live
+session, or Obsidian live vault/sync acceptance is claimed by these local tests.

@@ -363,6 +363,16 @@ exchange blocks subsequent reads/submissions. Unshared histories and memories
 remain inaccessible. Concurrent note edits produce a visible conflict rather than
 silent replacement. Schedule retries do not duplicate runs or note publication.
 
+M4 runtime implementation now includes the fixed generation-scoped Firecracker
+MCP broker on vsock 18085, host-only short-lived project signing, private adapter
+provisioning, and explicit pinned Hermes discovery/readiness. The guest image
+installs the frozen MCP extra. A real pinned Hermes registry invocation is covered
+by the local broker fixture; foreign scope, retry, expiry and revocation checks
+are exercised. See deploy/hermes/README.md for exact provisioning requirements.
+The sourced digest command and single-owner Workbench schedule fixture are
+executable artifacts; a booted scheduled run, recurring occurrence plumbing,
+external accounts, Matrix live and Obsidian live acceptance remain unverified.
+
 ### M5 Complete and accept the k3s production path
 
 Run a small k3s compatibility exercise after M2 to catch routing/storage assumptions

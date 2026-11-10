@@ -47,16 +47,20 @@ def configure():
         if not mcp_url or not token_file:
             raise ValueError('MCP URL and project credential file required together')
         parsed = urlsplit(mcp_url)
-        if parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.query or parsed.fragment:
+        if mcp_url != 'http://127.0.0.1:18085/mcp' and (parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.query or parsed.fragment):
             raise ValueError('MCP requires an explicit HTTPS endpoint')
         token = Path(token_file).read_text().strip()
         # Shape/binding check only. The MCP ingress verifies the signature.
         parts = token.split('.')
-        if len(parts) != 3 or parts[0] != 'wpa1':
+        if mcp_url == 'http://127.0.0.1:18085/mcp':
+            if not token or not os.environ.get('WORKBENCH_PROJECT_ID'):
+                raise ValueError('Missing generation grant or project')
+        elif len(parts) != 3 or parts[0] != 'wpa1':
             raise ValueError('MCP requires project access, never management credentials')
-        claims = json.loads(base64.urlsafe_b64decode(parts[1] + '=' * (-len(parts[1]) % 4)))
-        if claims.get('project_id') != os.environ.get('WORKBENCH_PROJECT_ID') or not claims.get('project_id') or claims.get('aud') != 'workbench-project' or claims.get('exp', 0) <= time.time():
-            raise ValueError('MCP project binding expired or mismatched')
+        if mcp_url != 'http://127.0.0.1:18085/mcp':
+            claims = json.loads(base64.urlsafe_b64decode(parts[1] + '=' * (-len(parts[1]) % 4)))
+            if claims.get('project_id') != os.environ.get('WORKBENCH_PROJECT_ID') or not claims.get('project_id') or claims.get('aud') != 'workbench-project' or claims.get('exp', 0) <= time.time():
+                raise ValueError('MCP project binding expired or mismatched')
         config['mcp_servers'] = {'workbench': {'url': mcp_url,
             'headers': {'Authorization': 'Bearer ' + token},
             'tools': {'include': ['work_create', 'work_list', 'exchange_publish',
@@ -83,3 +87,12 @@ def enabled_toolsets():
     if os.environ.get('WORKBENCH_MCP_URL'):
         tools.append('mcp-workbench')
     return tools
+
+
+def discover_workbench():
+    """Use pinned Hermes discovery, which registers the mcp-workbench toolset."""
+    if os.environ.get('WORKBENCH_MCP_URL'):
+        from tools.mcp_tool_discovery import discover_mcp_tools, mcp_servers_ready
+        discover_mcp_tools(['workbench'])
+        if 'workbench' not in mcp_servers_ready():
+            raise RuntimeError('Workbench MCP discovery unavailable')

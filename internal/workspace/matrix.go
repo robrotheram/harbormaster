@@ -47,6 +47,13 @@ func (m *Manager) startMatrix(w http.ResponseWriter, r *http.Request) {
 	cmd := exec.Command("/usr/local/bin/hermes-matrix")
 	cmd.Dir = filepath.Join(m.cfg.DataDir, "files")
 	cmd.Env = []string{"PATH=/opt/hermes/.venv/bin:/usr/local/bin:/usr/bin:/bin", "HOME=" + home, "HERMES_HOME=" + home, "HERMES_MODEL=" + m.cfg.HermesModel, "INFERENCE_URL=" + m.cfg.InferenceURL, "WORKBENCH_INFERENCE_GRANT=" + m.cfg.Token, "HERMES_MATRIX_CONFIG=" + string(config), "PYTHONPATH=/opt/hermes", "TERMINAL_ENV=local", "LANG=C.UTF-8"}
+
+	credential := filepath.Join(home, "workbench-mcp-token")
+	if os.WriteFile(credential, []byte(m.cfg.Token), 0600) != nil {
+		shared.Error(w, 503, "MCP_CREDENTIAL_UNAVAILABLE")
+		return
+	}
+	cmd.Env = append(cmd.Env, "WORKBENCH_MCP_URL=http://127.0.0.1:18085/mcp", "WORKBENCH_MCP_TOKEN_FILE="+credential, "WORKBENCH_PROJECT_ID="+m.cfg.ProjectID)
 	if m.cfg.EgressURL != "" && m.cfg.ConnectionMode != "open" {
 		cmd.Env = egress.Environment(cmd.Env)
 	}

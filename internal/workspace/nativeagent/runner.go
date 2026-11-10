@@ -15,9 +15,9 @@ import (
 )
 
 type Config struct {
-	DataDir, HomeDir, AgentKind, Token, InferenceURL string
-	CodexModel, ClaudeModel, HermesModel             string
-	EgressURL, ConnectionMode                        string
+	DataDir, HomeDir, AgentKind, Token, InferenceURL, ProjectID, WorkspaceID string
+	CodexModel, ClaudeModel, HermesModel                                     string
+	EgressURL, ConnectionMode                                                string
 }
 type invocation struct {
 	executable string

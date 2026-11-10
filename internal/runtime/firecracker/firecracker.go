@@ -548,6 +548,24 @@ func (f *Firecracker) verifyVM(v *fcVM) error {
 }
 func (f *Firecracker) relays(v *fcVM) error {
 	v.slots = make(chan struct{}, 32)
+	if v.Spec.AgentKind == "hermes" {
+		secret := projectMCPSecret()
+		if secret == "" {
+			return errors.New("project MCP signing authority unavailable")
+		}
+		l, err := net.Listen("unix", v.Jail+"/v.sock_18085")
+		if err != nil {
+			return err
+		}
+		v.listeners = append(v.listeners, l)
+		if err = os.Chown(v.Jail+"/v.sock_18085", v.UID, v.UID); err != nil {
+			return err
+		}
+		client := &http.Client{Timeout: 40 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+		server := &http.Server{Handler: f.projectMCP(v, secret, client), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 45 * time.Second, MaxHeaderBytes: 16384}
+		go server.Serve(&budgetListener{Listener: l, local: v.slots, global: f.slots})
+	}
+
 	if v.Spec.AgentKind == "hermes" && v.Spec.HermesMatrix != nil {
 		l, err := net.Listen("unix", v.Jail+"/v.sock_18084")
 		if err != nil {
@@ -759,7 +777,7 @@ func (f *Firecracker) Handler() http.Handler {
 	})))
 	m.HandleFunc("GET /v1/capabilities", func(w http.ResponseWriter, r *http.Request) {
 		kinds := []string{"t3", "codex"}
-		if f.hermes {
+		if f.hermes && projectMCPSecret() != "" {
 			kinds = append(kinds, "hermes")
 		}
 		shared.JSON(w, 200, protocol.RuntimeCapability{Resources: protocol.ResourceLimits{CPUCores: 1, MemoryBytes: 1 << 30}, SchemaVersion: 1, Backend: "firecracker", NetworkModes: []string{"blocked", "allowlist"}, ID: protocol.DevelopmentTemplate, Version: "firecracker-2", AgentKinds: kinds, IsolationStatus: "jailed-vm", NetworkStatus: "no-nic-vsock", PrivateHomes: true})

@@ -9,7 +9,7 @@ import sys
 import uuid
 import time
 
-from hermes_common import enabled_toolsets, configure, emit, record
+from hermes_common import discover_workbench, enabled_toolsets, configure, emit, record
 
 async def main():
     from gateway.config import PlatformConfig
@@ -18,6 +18,7 @@ async def main():
     config = json.loads(os.environ['HERMES_MATRIX_CONFIG'])
     rooms, senders = set(config['room_ids']), set(config['sender_ids'])
     home, model, endpoint, grant = configure()
+    discover_workbench()
     os.environ['MATRIX_ALLOWED_ROOMS'] = ','.join(rooms)
     os.environ['MATRIX_ALLOWED_USERS'] = ','.join(senders)
     os.environ['MATRIX_REQUIRE_MENTION'] = 'false'

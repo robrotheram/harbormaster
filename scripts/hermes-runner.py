@@ -5,7 +5,7 @@ import json
 import os
 import sys
 
-from hermes_common import enabled_toolsets, configure, emit, record, runtime_identity
+from hermes_common import discover_workbench, enabled_toolsets, configure, emit, record, runtime_identity
 
 def main():
     if sys.argv[1:] == ['--version']:
@@ -16,6 +16,7 @@ def main():
         print(json.dumps(runtime_identity()))
         return
     home, model, endpoint, grant = configure()
+    discover_workbench()
     prompt = sys.stdin.read(65537)
     if not prompt or len(prompt.encode()) > 65536:
         raise ValueError('Invalid task input')
