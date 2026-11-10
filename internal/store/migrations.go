@@ -17,6 +17,7 @@ func (s *Store) migrate(ctx context.Context) error {
 		apply   func(context.Context) error
 	}{
 		{1, s.initMetadata}, {2, func(ctx context.Context) error { return (orchestration.Repository{DB: s.DB}).Init(ctx) }},
+		{3, func(ctx context.Context) error { return (orchestration.Repository{DB: s.DB}).InitWork(ctx) }},
 	}
 	for _, step := range steps {
 		var applied int

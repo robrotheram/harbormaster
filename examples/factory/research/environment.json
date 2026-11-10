@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "id": "research-cpu-v1",
+  "kind": "research",
+  "engine": "codex",
+  "resources": {"cpu_cores": 1, "memory_bytes": 1073741824},
+  "network_mode": "blocked",
+  "job_timeout_seconds": 600,
+  "services": [],
+  "commands": {
+    "baseline": ["python3", "experiment.py", "--output", "outputs/baseline.json"],
+    "variation": ["python3", "experiment.py", "--regularisation", "10", "--output", "outputs/variation.json"]
+  },
+  "artifacts": ["outputs/baseline.json", "outputs/variation.json"]
+}

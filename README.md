@@ -8,6 +8,8 @@ Local primitives for an agent-operated workbench. Go services, Docker Compose, p
 
 **New here?** Follow [Your first session](docs/getting-started.md) for a copy-and-paste walkthrough, expected results, MCP access and troubleshooting. The running dashboard also has a **Getting started** link.
 
+**Next development:** [Software factory and research delivery plan](docs/software-factory-plan.md) covers GoGallery, experimental research, personal/project Hermes assistants, Compose development, and k3s production.
+
 **Ready for real coding?** [Codex and Claude subscription setup](docs/subscription-agents.md) runs the native agent inside a workspace while Vault and the inference gateway keep provider credentials outside it.
 
 **Use Hermes:** select a project → **Hermes setup** to configure its sandboxed

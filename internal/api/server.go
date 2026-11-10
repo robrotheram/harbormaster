@@ -154,6 +154,7 @@ func (s *Server) Handler() http.Handler {
 	s.registerEvents(secured)
 	s.registerHistory(secured)
 	s.registerOrchestration(secured)
+	s.registerWork(secured)
 	secured.HandleFunc("POST /v1/file-handoffs", s.shareFile)
 	secured.HandleFunc("/v1/workspaces/{id}/desktop/{path...}", func(w http.ResponseWriter, r *http.Request) {
 		ws, ok := s.workspace(w, r)

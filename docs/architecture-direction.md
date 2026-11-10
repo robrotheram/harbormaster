@@ -2,6 +2,11 @@
 
 Status: architecture proposal, 1 November 2026. This records requirements and proposed decisions; it does not change deployment behavior or establish compliance certification.
 
+The [software factory and research delivery plan](software-factory-plan.md), dated
+9 November 2026, replaces this proposal's rollout sequence and EKS/k3s target with
+Compose development and k3s production. It adds GoGallery, experimental research,
+and personal/project assistants while preserving the isolation principles below.
+
 ## Confirmed requirements
 
 - Each **project** is a mandatory data and agent-memory isolation boundary.

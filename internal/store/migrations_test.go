@@ -17,10 +17,10 @@ func TestStartupMigrationsAreVersionedAndRepeatable(t *testing.T) {
 		if err = s.DB.QueryRow(`SELECT count(*) FROM schema_migrations`).Scan(&count); err != nil {
 			t.Fatal(err)
 		}
-		if count != 2 {
+		if count != 3 {
 			t.Fatalf("migration versions: %d", count)
 		}
-		for _, table := range []string{"schedules", "orchestration_runs", "workspaces", "agent_homes"} {
+		for _, table := range []string{"work_items", "schedules", "orchestration_runs", "workspaces", "agent_homes"} {
 			if _, err = s.DB.Exec(`SELECT 1 FROM ` + table + ` LIMIT 1`); err != nil {
 				t.Fatalf("schema unavailable before requests: %s: %v", table, err)
 			}
@@ -68,5 +68,34 @@ func TestToolProfileRetirementPreservesHistoricalRowsAndWorkspaceHome(t *testing
 	ws, err := s.Workspace(ctx, "ws_old_custom")
 	if err != nil || ws.HomeID != "home_private_original" || ws.AgentKind != "codex" || ws.ConsoleEnabled {
 		t.Fatal("legacy workspace reclassified", ws, err)
+	}
+}
+
+func TestWorkMigrationUpgradesVersionTwoDatabase(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "upgrade.db")
+	original, err := Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = original.DB.Exec(`DROP TABLE work_items`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = original.DB.Exec(`DELETE FROM schema_migrations WHERE version=3`); err != nil {
+		t.Fatal(err)
+	}
+	if err = original.DB.Close(); err != nil {
+		t.Fatal(err)
+	}
+	upgraded, err := Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer upgraded.DB.Close()
+	if _, err = upgraded.DB.Exec(`SELECT metadata FROM work_items LIMIT 1`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = upgraded.Project(ctx, "default"); err != nil {
+		t.Fatal("existing project lost", err)
 	}
 }
