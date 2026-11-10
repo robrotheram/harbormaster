@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -194,5 +195,88 @@ func TestAttemptStorageFailureIsNotReportedAsStateConflict(t *testing.T) {
 	stored, err := repo.Work(ctx, item.ProjectID, item.ID)
 	if err != nil || stored.State != "draft" || stored.LatestAttemptID != "" {
 		t.Fatal("failed transaction changed work", stored, err)
+	}
+}
+
+type retryRejectedWorkAgent struct {
+	workAgent
+	status     int
+	rejected   bool
+	deliveries []string
+}
+
+func (a *retryRejectedWorkAgent) Agent(ctx context.Context, workspace, method, path string, body []byte) (int, []byte, error) {
+	if path == "/v1/tasks/from-file" {
+		var request map[string]string
+		if err := json.Unmarshal(body, &request); err != nil {
+			return 0, nil, err
+		}
+		a.deliveries = append(a.deliveries, request["idempotency_key"])
+		if a.lost && !a.rejected {
+			a.rejected = true
+			return a.status, []byte(`{"code":"WORKSPACE_BUSY"}`), nil
+		}
+	}
+	return a.workAgent.Agent(ctx, workspace, method, path, body)
+}
+func TestUncertainDispatchCancellationSurvivesRetryableRejection(t *testing.T) {
+	for _, status := range []int{409, 429} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) {
+			ctx := context.Background()
+			db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "cancel-recovery.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+			repo := Repository{DB: db}
+			for _, init := range []func(context.Context) error{repo.Init, repo.InitWork, repo.InitWorkAttempts} {
+				if err = init(ctx); err != nil {
+					t.Fatal(err)
+				}
+			}
+			item, _, err := repo.CreateWork(ctx, shared.WorkItem{ProjectID: "project_a", WorkspaceID: "ws_a", SpecificationPath: "work.md", SpecificationDigest: strings.Repeat("a", 64), Kind: "software", CreatedAt: time.Now()}, "create")
+			if err != nil {
+				t.Fatal(err)
+			}
+			attempt, err := repo.RunWork(ctx, item.ProjectID, item.ID, "run", time.Now())
+			if err != nil {
+				t.Fatal(err)
+			}
+			agent := &retryRejectedWorkAgent{status: status}
+			scheduler := Scheduler{Repository: repo, Cursor: &Cursor{}, Workspaces: &recoveringWorkspaces{workspace: shared.Workspace{ID: item.WorkspaceID, ProjectID: item.ProjectID}}, Lifecycle: workLifecycle{}, Agent: agent, Now: time.Now, Lock: func(...string) func() { return func() {} }}
+			// The engine durably accepts work but its acknowledgement is lost.
+			if err = scheduler.Tick(ctx); err != nil {
+				t.Fatal(err)
+			}
+			if _, err = repo.CancelWork(ctx, item.ProjectID, item.ID, time.Now()); err != nil {
+				t.Fatal(err)
+			}
+			// A retryable rejection cannot turn the cancellation into normal queued work.
+			if err = scheduler.Tick(ctx); err != nil {
+				t.Fatal(err)
+			}
+			attempts, err := repo.Attempts(ctx, item.ProjectID, item.ID)
+			if err != nil || len(attempts) != 1 || attempts[0].State != "cancel_requested" {
+				t.Fatalf("cancellation lost after HTTP %d: %+v %v", status, attempts, err)
+			}
+			// Receipt recovery returns the original task, which must then be cancelled.
+			for i := 0; i < 2; i++ {
+				if err = scheduler.Tick(ctx); err != nil {
+					t.Fatal(err)
+				}
+			}
+			attempts, err = repo.Attempts(ctx, item.ProjectID, item.ID)
+			if err != nil || len(attempts) != 1 || attempts[0].ID != attempt.ID || attempts[0].State != "cancelled" || !agent.cancelled {
+				t.Fatalf("recovered task not cancelled: %+v %v", attempts, err)
+			}
+			if len(agent.deliveries) != 3 {
+				t.Fatal("unexpected dispatch deliveries", agent.deliveries)
+			}
+			for _, key := range agent.deliveries {
+				if key != "work:"+attempt.ID {
+					t.Fatal("recovery changed acceptance identity", key)
+				}
+			}
+		})
 	}
 }

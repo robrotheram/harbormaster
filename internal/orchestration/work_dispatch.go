@@ -180,8 +180,12 @@ func (r Repository) TickWork(ctx context.Context, s *Scheduler) error {
 				if e = s.Workspaces.SaveTask(ctx, task); e != nil {
 					failures = errors.Join(failures, e)
 				}
-			} else if status == 409 && acceptanceCode(reply) == "WORKSPACE_BUSY" || status == 429 {
-				a.State = "blocked"
+			} else if (status == 409 && acceptanceCode(reply) == "WORKSPACE_BUSY") || status == 429 {
+				// Reconcile the original acceptance key without dropping the
+				// user's cancellation intent when the guest asks us to retry.
+				if !cancelling {
+					a.State = "blocked"
+				}
 				a.ErrorCode = "WORKSPACE_BUSY"
 				if status == 429 {
 					a.ErrorCode = "QUEUE_FULL"
