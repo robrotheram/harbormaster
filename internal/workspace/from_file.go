@@ -2,7 +2,9 @@ package workspace
 
 import (
 	"agent-workbench/internal/workspace/taskstore"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"io"
 	"net/http"
@@ -15,6 +17,7 @@ import (
 
 func (m *Manager) submitFile(w http.ResponseWriter, r *http.Request) {
 	var input struct {
+		Digest   string `json:"specification_digest"`
 		Path     string `json:"instruction_path"`
 		Provider string `json:"provider"`
 		Key      string `json:"idempotency_key"`
@@ -26,12 +29,19 @@ func (m *Manager) submitFile(w http.ResponseWriter, r *http.Request) {
 		shared.Error(w, 400, "INVALID_REQUEST")
 		return
 	}
+	if input.Digest != "" {
+		b, e := hex.DecodeString(input.Digest)
+		if e != nil || len(b) != 32 || hex.EncodeToString(b) != input.Digest {
+			shared.Error(w, 400, "INVALID_SPECIFICATION_DIGEST")
+			return
+		}
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if input.Provider == "" {
 		input.Provider = m.cfg.DefaultProvider
 	}
-	task, err := m.tasks.FileAcceptance(r.Context(), input.Key, input.Path, input.Provider)
+	task, err := m.tasks.FileAcceptance(r.Context(), input.Key, input.Path, input.Provider, input.Digest)
 	if errors.Is(err, taskstore.ErrConflict) {
 		shared.Error(w, 409, "IDEMPOTENCY_CONFLICT")
 		return
@@ -60,7 +70,12 @@ func (m *Manager) submitFile(w http.ResponseWriter, r *http.Request) {
 		shared.Error(w, 400, "INVALID_INSTRUCTION_FILE")
 		return
 	}
-	task, status, err := m.submitLocked(submit{Instruction: string(b), Key: input.Key, Provider: input.Provider, SourcePath: input.Path})
+	sum := sha256.Sum256(b)
+	if input.Digest != "" && hex.EncodeToString(sum[:]) != input.Digest {
+		shared.Error(w, 409, "SPECIFICATION_DIGEST_MISMATCH")
+		return
+	}
+	task, status, err := m.submitLocked(submit{Instruction: string(b), Key: input.Key, Provider: input.Provider, SourcePath: input.Path, SpecificationDigest: input.Digest})
 	if err != nil {
 		shared.Error(w, status, err.Error())
 		return

@@ -75,3 +75,32 @@ func TestRestartPreservesAcceptanceAndInterruptsWithoutReplay(t *testing.T) {
 		t.Fatal("restart lost file acceptance", byFile, err)
 	}
 }
+
+func TestDigestReceiptAndLegacyMigration(t *testing.T) {
+	r, db := repository(t)
+	ctx := context.Background()
+	s := Submission{Key: "digest-one", Instruction: "original", Provider: "codex", SourcePath: "instructions.md", SpecificationDigest: "abc"}
+	a, err := r.Accept(ctx, s, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt, err := r.FileAcceptance(ctx, s.Key, s.SourcePath, s.Provider, "abc")
+	if err != nil || receipt.ID != a.Task.ID {
+		t.Fatalf("%+v %v", receipt, err)
+	}
+	if _, err = r.FileAcceptance(ctx, s.Key, s.SourcePath, s.Provider, "def"); !errors.Is(err, ErrConflict) {
+		t.Fatal(err)
+	}
+	if _, err = r.FileAcceptance(ctx, s.Key, s.SourcePath, s.Provider); !errors.Is(err, ErrConflict) {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`ALTER TABLE file_acceptances DROP COLUMN specification_digest`); err != nil {
+		t.Fatal(err)
+	}
+	if err = r.Init(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = r.FileAcceptance(ctx, s.Key, s.SourcePath, s.Provider); err != nil {
+		t.Fatal(err)
+	}
+}

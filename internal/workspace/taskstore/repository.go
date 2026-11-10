@@ -40,10 +40,36 @@ func (r *Repository) Init(ctx context.Context) error {
 			return err
 		}
 	}
+	// Additive migration: old receipts retain the empty digest contract.
+	var count int
+	rows, err := tx.QueryContext(ctx, `PRAGMA table_info(file_acceptances)`)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var cid, nn, pk int
+		var name, typ string
+		var def any
+		if err := rows.Scan(&cid, &name, &typ, &nn, &def, &pk); err != nil {
+			rows.Close()
+			return err
+		}
+		if name == "specification_digest" {
+			count++
+		}
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if count == 0 {
+		if _, err := tx.ExecContext(ctx, `ALTER TABLE file_acceptances ADD COLUMN specification_digest TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
 	return tx.Commit()
 }
 
-type Submission struct{ Instruction, Key, Provider, SourcePath string }
+type Submission struct{ Instruction, Key, Provider, SourcePath, SpecificationDigest string }
 type Acceptance struct {
 	Task    shared.Task
 	Created bool
@@ -68,12 +94,16 @@ func (r *Repository) scan(row scanner) (shared.Task, error) {
 func (r *Repository) Get(ctx context.Context, id string) (shared.Task, error) {
 	return r.scan(r.db.QueryRowContext(ctx, `SELECT id,state,error_code,created_at,updated_at FROM tasks WHERE id=?`, id))
 }
-func (r *Repository) FileAcceptance(ctx context.Context, key, path, provider string) (shared.Task, error) {
-	var oldPath, oldProvider, id string
-	if err := r.db.QueryRowContext(ctx, `SELECT instruction_path,provider,task_id FROM file_acceptances WHERE idem_key=?`, key).Scan(&oldPath, &oldProvider, &id); err != nil {
+func (r *Repository) FileAcceptance(ctx context.Context, key, path, provider string, digest ...string) (shared.Task, error) {
+	var oldPath, oldProvider, id, oldDigest string
+	if err := r.db.QueryRowContext(ctx, `SELECT instruction_path,provider,task_id,specification_digest FROM file_acceptances WHERE idem_key=?`, key).Scan(&oldPath, &oldProvider, &id, &oldDigest); err != nil {
 		return shared.Task{}, err
 	}
-	if path != oldPath || provider != oldProvider {
+	requested := ""
+	if len(digest) > 0 {
+		requested = digest[0]
+	}
+	if path != oldPath || provider != oldProvider || requested != oldDigest {
 		return shared.Task{}, ErrConflict
 	}
 	return r.Get(ctx, id)
@@ -120,7 +150,7 @@ func (r *Repository) Accept(ctx context.Context, s Submission, now time.Time) (A
 		return Acceptance{}, err
 	}
 	if s.SourcePath != "" {
-		if _, err = tx.ExecContext(ctx, `INSERT INTO file_acceptances(idem_key,instruction_path,provider,task_id) VALUES(?,?,?,?)`, s.Key, s.SourcePath, s.Provider, id); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO file_acceptances(idem_key,instruction_path,provider,task_id,specification_digest) VALUES(?,?,?,?,?)`, s.Key, s.SourcePath, s.Provider, id, s.SpecificationDigest); err != nil {
 			return Acceptance{}, err
 		}
 	}

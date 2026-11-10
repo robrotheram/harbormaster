@@ -65,10 +65,11 @@ type Manager struct {
 	console          *console
 }
 type submit struct {
-	SourcePath  string `json:"-"`
-	Instruction string `json:"instruction"`
-	Key         string `json:"idempotency_key"`
-	Provider    string `json:"provider,omitempty"`
+	SpecificationDigest string `json:"-"`
+	SourcePath          string `json:"-"`
+	Instruction         string `json:"instruction"`
+	Key                 string `json:"idempotency_key"`
+	Provider            string `json:"provider,omitempty"`
 }
 type Message struct {
 	Role       string     `json:"role"`
@@ -140,6 +141,11 @@ func New(cfg Config) (*Manager, error) {
 		return nil, e
 	}
 	m := &Manager{historyStop: make(chan struct{}), cfg: cfg, db: db, tasks: tasks, root: root, ownerLock: lock, cancels: map[string]context.CancelFunc{}, lastActivity: time.Now().UTC()}
+	if err := m.initFactory(); err != nil {
+		root.Close()
+		db.Close()
+		return nil, err
+	}
 	if cfg.EgressURL != "" {
 		listener, err := net.Listen("tcp", "127.0.0.1:8099")
 		if err != nil {
@@ -210,8 +216,15 @@ func (m *Manager) submitLocked(s submit) (shared.Task, int, error) {
 	if s.Provider != "" && s.Provider != "codex" && s.Provider != "claude" && !(s.Provider == "hermes" && m.cfg.AgentKind == "hermes") {
 		return shared.Task{}, 400, errors.New("INVALID_REQUEST")
 	}
+	var jobs int
+	if err := m.db.QueryRow(`SELECT count(*) FROM recipe_jobs WHERE state IN ('running','cancel_requested')`).Scan(&jobs); err != nil {
+		return shared.Task{}, 503, errors.New("STORAGE_UNAVAILABLE")
+	}
+	if jobs > 0 {
+		return shared.Task{}, 409, errors.New("WORKSPACE_BUSY")
+	}
 	now := time.Now().UTC()
-	accepted, err := m.tasks.Accept(context.Background(), taskstore.Submission{Instruction: s.Instruction, Key: s.Key, Provider: s.Provider, SourcePath: s.SourcePath}, now)
+	accepted, err := m.tasks.Accept(context.Background(), taskstore.Submission{Instruction: s.Instruction, Key: s.Key, Provider: s.Provider, SourcePath: s.SourcePath, SpecificationDigest: s.SpecificationDigest}, now)
 	if err != nil {
 		if errors.Is(err, taskstore.ErrConflict) {
 			return shared.Task{}, 409, err
@@ -355,6 +368,11 @@ func (m *Manager) Activity() shared.Activity {
 }
 func (m *Manager) activityLocked() shared.Activity {
 	a := shared.Activity{Known: true, LastActivity: m.lastActivity}
+	var recipes int
+	if err := m.db.QueryRow(`SELECT count(*) FROM recipe_jobs WHERE state IN ('running','cancel_requested')`).Scan(&recipes); err != nil {
+		a.Known = false
+	}
+	a.BackgroundJobs += recipes
 	if m.console != nil {
 		c := m.consoleActivity()
 		a.Known = c.Known
@@ -519,6 +537,12 @@ func (m *Manager) Handler() http.Handler {
 		shared.JSON(w, status, t)
 	})
 	api.HandleFunc("POST /v1/tasks/from-file", m.submitFile)
+	api.HandleFunc("POST /v1/artifacts", m.publishArtifact)
+	api.HandleFunc("GET /v1/artifacts", m.listArtifacts)
+	api.HandleFunc("GET /v1/artifacts/{id}/content", m.artifactContent)
+	api.HandleFunc("POST /v1/recipe-jobs", m.startRecipe)
+	api.HandleFunc("GET /v1/recipe-jobs/{id}", m.getRecipe)
+	api.HandleFunc("POST /v1/recipe-jobs/{id}/cancel", m.cancelRecipe)
 	api.HandleFunc("GET /v1/tasks", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("history") == "1" {
 			m.historyPage(w, r)
