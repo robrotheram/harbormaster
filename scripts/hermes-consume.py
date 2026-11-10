@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+from hermes_common import workbench_endpoint
 
 def payload(result):
     if result.is_error:
@@ -41,7 +42,7 @@ async def main():
     from mcp.client.streamable_http import streamable_http_client
     import httpx2
     async with httpx2.AsyncClient(headers={'Authorization': 'Bearer ' + os.environ['WORKSPACE_TOKEN']}) as http_client:
-        async with streamable_http_client('http://127.0.0.1:18085/mcp', http_client=http_client) as (read, write):
+        async with streamable_http_client(workbench_endpoint(), http_client=http_client) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
                 result = await consume(session, os.environ['PROJECT_ID'])

@@ -96,3 +96,11 @@ def discover_workbench():
         discover_mcp_tools(['workbench'])
         if 'workbench' not in mcp_servers_ready():
             raise RuntimeError('Workbench MCP discovery unavailable')
+
+
+def workbench_endpoint():
+    """Fixed runtime-owned routes for deterministic assistant commands."""
+    endpoint = os.environ.get('WORKBENCH_MCP_URL', 'http://127.0.0.1:18085/mcp')
+    if endpoint not in ('http://127.0.0.1:18085/mcp', 'http://hermes-mcp.workbench-egress.svc:8080/hermes-mcp'):
+        raise ValueError('Unsupported workspace MCP transport')
+    return endpoint

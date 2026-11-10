@@ -8,9 +8,17 @@ import tempfile
 import time
 import unittest
 from unittest.mock import patch
-from hermes_common import configure, enabled_toolsets
+from hermes_common import configure, enabled_toolsets, workbench_endpoint
 
 class CoordinationConfig(unittest.TestCase):
+    def test_fixed_runtime_command_transport(self):
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(workbench_endpoint(), 'http://127.0.0.1:18085/mcp')
+        with patch.dict(os.environ, {'WORKBENCH_MCP_URL': 'http://hermes-mcp.workbench-egress.svc:8080/hermes-mcp'}, clear=True):
+            self.assertEqual(workbench_endpoint(), os.environ['WORKBENCH_MCP_URL'])
+        with patch.dict(os.environ, {'WORKBENCH_MCP_URL': 'http://metadata.invalid/mcp'}, clear=True):
+            with self.assertRaises(ValueError):
+                workbench_endpoint()
     def test_project_mcp_opt_in(self):
         with tempfile.TemporaryDirectory() as directory:
             credential = Path(directory) / 'grant'

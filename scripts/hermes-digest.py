@@ -9,6 +9,7 @@ import argparse
 import asyncio
 import json
 import os
+from hermes_common import workbench_endpoint
 import re
 from pathlib import Path
 
@@ -42,7 +43,7 @@ async def main():
         parser.error("--occurrence or WORKBENCH_TASK_ID is required")
     # This is a fixed broker capability, never an arbitrary URL from a job file.
     token = os.environ['WORKSPACE_TOKEN']
-    async with httpx2.AsyncClient(headers={'Authorization': 'Bearer ' + token}) as http_client, streamable_http_client('http://127.0.0.1:18085/mcp', http_client=http_client) as (read, write):
+    async with httpx2.AsyncClient(headers={'Authorization': 'Bearer ' + token}) as http_client, streamable_http_client(workbench_endpoint(), http_client=http_client) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
             result = await digest(session, os.environ['PROJECT_ID'], os.environ['WORKSPACE_ID'],

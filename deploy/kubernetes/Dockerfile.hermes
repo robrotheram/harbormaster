@@ -14,7 +14,9 @@ COPY --from=hermes-build /usr/local/ /usr/local/
 COPY --from=hermes-build /opt/hermes /opt/hermes
 COPY scripts/hermes-runner.py /usr/local/bin/hermes-runner
 COPY scripts/hermes_common.py /usr/local/bin/hermes_common.py
+COPY scripts/hermes-digest.py /usr/local/bin/hermes-digest
+COPY scripts/hermes-consume.py /usr/local/bin/hermes-consume
 COPY deploy/hermes/runtime.json /usr/local/bin/hermes-runtime.json
-RUN chmod 755 /usr/local/bin/hermes-runner && PYTHONPATH=/opt/hermes /usr/local/bin/hermes-runner --version
+RUN chmod 755 /usr/local/bin/hermes-runner /usr/local/bin/hermes-digest /usr/local/bin/hermes-consume && PYTHONPATH=/opt/hermes /usr/local/bin/hermes-runner --version
 USER 10001:10001
 # Preserve workspace base ENTRYPOINT; never use the Firecracker init process.
