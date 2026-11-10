@@ -54,6 +54,13 @@ func (m *Manager) submitFile(w http.ResponseWriter, r *http.Request) {
 		shared.Error(w, 503, "STORAGE_UNAVAILABLE")
 		return
 	}
+	// Resolve receipts before checking activity: recovery of this task's lost
+	// acknowledgement must succeed while that same task is still executing.
+	activity := m.activityLocked()
+	if !activity.Known || activity.ActiveRuns > 0 || activity.BackgroundJobs > 0 {
+		shared.Error(w, 409, "WORKSPACE_BUSY")
+		return
+	}
 	f, err := m.root.OpenFile(input.Path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		shared.Error(w, 404, "INSTRUCTION_FILE_UNAVAILABLE")

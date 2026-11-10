@@ -100,9 +100,10 @@ type BlobStore interface {
 	Get(context.Context, string) ([]byte, error)
 }
 type Service struct {
-	DB    *sql.DB
-	Blobs func(project string) (BlobStore, error)
-	mu    sync.Mutex
+	DB     *sql.DB
+	Blobs  func(project string) (BlobStore, error)
+	mu     sync.Mutex
+	grants map[string]*exchangeLock
 }
 
 func valid(s string) bool {
@@ -128,8 +129,8 @@ func (s *Service) Create(ctx context.Context, actor string, g Grant) error {
 // Approve requires independent authentication as the approving endpoint. A
 // revoked grant is terminal: a fresh human-configured grant is required.
 func (s *Service) Approve(ctx context.Context, actor, id string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	unlock := s.lockGrant(id)
+	defer unlock()
 	r, e := s.DB.ExecContext(ctx, `UPDATE project_exchanges SET destination_approved=1 WHERE id=$1 AND destination=$2 AND revoked=0`, id, actor)
 	return affected(r, e)
 }
@@ -147,8 +148,8 @@ func affected(r sql.Result, e error) error {
 	return nil
 }
 func (s *Service) Revoke(ctx context.Context, actor, id string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	unlock := s.lockGrant(id)
+	defer unlock()
 	r, e := s.DB.ExecContext(ctx, `UPDATE project_exchanges SET revoked=1 WHERE id=$1 AND (source=$2 OR destination=$2)`, id, actor)
 	return affected(r, e)
 }
@@ -164,8 +165,8 @@ func (s *Service) grant(ctx context.Context, id string) (Grant, error) {
 // Publish accepts only an explicitly selected payload, never reads histories,
 // memories, or arbitrary project paths. Occurrence is the factory occurrence ID.
 func (s *Service) Publish(ctx context.Context, actor, id, occurrence string, body []byte) (Export, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	unlock := s.lockGrant(id)
+	defer unlock()
 	var x Export
 	g, e := s.grant(ctx, id)
 	if e != nil {
@@ -204,8 +205,12 @@ func (s *Service) export(ctx context.Context, id string) (x Export, e error) {
 	return
 }
 func (s *Service) Read(ctx context.Context, actor, id string) (Export, []byte, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	identity, err := s.export(ctx, id)
+	if err != nil {
+		return Export{}, nil, ErrDenied
+	}
+	unlock := s.lockGrant(identity.ExchangeID)
+	defer unlock()
 	return s.read(ctx, actor, id)
 }
 func (s *Service) read(ctx context.Context, actor, id string) (Export, []byte, error) {
@@ -233,8 +238,12 @@ func (s *Service) read(ctx context.Context, actor, id string) (Export, []byte, e
 
 // Consume serializes revocation against work submission for the single control-plane owner.
 func (s *Service) Consume(ctx context.Context, actor, id string, submit func([]byte, string) (string, error)) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	identity, err := s.export(ctx, id)
+	if err != nil {
+		return ErrDenied
+	}
+	unlock := s.lockGrant(identity.ExchangeID)
+	defer unlock()
 	x, body, e := s.read(ctx, actor, id)
 	if e != nil {
 		return e
@@ -252,4 +261,35 @@ func (s *Service) Consume(ctx context.Context, actor, id string, submit func([]b
 	// Work creation commits first. A lost receipt retries the same factory key.
 	_, err = s.DB.ExecContext(ctx, `INSERT INTO exchange_consumptions(export_id,destination,work_id) VALUES($1,$2,$3) ON CONFLICT(export_id) DO NOTHING`, x.ID, actor, workID)
 	return err
+}
+
+// Only operations on the same exchange serialize across private-store IO.
+// The map mutex is never held during a network call and idle entries are freed.
+type exchangeLock struct {
+	mu         sync.Mutex
+	references int
+}
+
+func (s *Service) lockGrant(id string) func() {
+	s.mu.Lock()
+	if s.grants == nil {
+		s.grants = map[string]*exchangeLock{}
+	}
+	entry := s.grants[id]
+	if entry == nil {
+		entry = &exchangeLock{}
+		s.grants[id] = entry
+	}
+	entry.references++
+	s.mu.Unlock()
+	entry.mu.Lock()
+	return func() {
+		entry.mu.Unlock()
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		entry.references--
+		if entry.references == 0 {
+			delete(s.grants, id)
+		}
+	}
 }

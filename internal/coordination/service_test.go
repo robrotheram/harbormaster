@@ -8,6 +8,7 @@ import (
 	"os"
 	"sync"
 	"testing"
+	"time"
 )
 
 func setup(t *testing.T) (*Service, context.Context) {
@@ -211,5 +212,69 @@ func TestInboxPaginationConsumptionRecovery(t *testing.T) {
 	}
 	if e := s.Consume(c, "personal", id, submit); !errors.Is(e, ErrDenied) {
 		t.Fatal(e)
+	}
+}
+
+type blockedBlobStore struct {
+	BlobStore
+	entered chan struct{}
+	release <-chan struct{}
+}
+
+func (b blockedBlobStore) Put(ctx context.Context, key string, body []byte) error {
+	close(b.entered)
+	select {
+	case <-b.release:
+		return b.BlobStore.Put(ctx, key, body)
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+func TestSlowExchangeDoesNotSerializeOtherProjects(t *testing.T) {
+	s, base := setup(t)
+	ctx, cancel := context.WithCancel(base)
+	defer cancel()
+	original := s.Blobs
+	source, err := original("source")
+	if err != nil {
+		t.Fatal(err)
+	}
+	entered, release := make(chan struct{}), make(chan struct{})
+	defer close(release)
+	s.Blobs = func(project string) (BlobStore, error) {
+		if project == "source" {
+			return blockedBlobStore{source, entered, release}, nil
+		}
+		return original(project)
+	}
+	for _, grant := range []Grant{{"slow", "source", "personal", "summary"}, {"free", "personal", "source", "summary"}} {
+		if err = s.Create(ctx, grant.Source, grant); err != nil {
+			t.Fatal(err)
+		}
+		if err = s.Approve(ctx, grant.Destination, grant.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	slow := make(chan error, 1)
+	go func() { _, err := s.Publish(ctx, "source", "slow", "one", []byte("selected")); slow <- err }()
+	<-entered
+	free := make(chan error, 1)
+	go func() { _, err := s.Publish(ctx, "personal", "free", "two", []byte("other selected")); free <- err }()
+	select {
+	case err := <-free:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("unrelated exchange blocked on private-store IO")
+	}
+	cancel()
+	if err = <-slow; !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.grants) != 0 {
+		t.Fatal("idle exchange locks leaked")
 	}
 }

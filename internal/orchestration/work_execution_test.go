@@ -167,3 +167,32 @@ func TestWorkExecutionRecoveryReviewAndRetry(t *testing.T) {
 		}
 	}
 }
+
+func TestAttemptStorageFailureIsNotReportedAsStateConflict(t *testing.T) {
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "storage-failure.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+	repo := Repository{DB: db}
+	for _, init := range []func(context.Context) error{repo.InitWork, repo.InitWorkAttempts} {
+		if err = init(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	item, _, err := repo.CreateWork(ctx, shared.WorkItem{ProjectID: "project", WorkspaceID: "workspace", SpecificationPath: "work.md", SpecificationDigest: strings.Repeat("a", 64), Kind: "research", CreatedAt: time.Now()}, "create")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`CREATE TRIGGER fail_attempt BEFORE INSERT ON work_attempts BEGIN SELECT RAISE(ABORT,'synthetic storage failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = repo.RunWork(ctx, item.ProjectID, item.ID, "attempt", time.Now()); err == nil || errors.Is(err, ErrConflict) {
+		t.Fatal("storage failure misclassified", err)
+	}
+	stored, err := repo.Work(ctx, item.ProjectID, item.ID)
+	if err != nil || stored.State != "draft" || stored.LatestAttemptID != "" {
+		t.Fatal("failed transaction changed work", stored, err)
+	}
+}

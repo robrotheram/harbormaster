@@ -180,6 +180,12 @@ func (r Repository) TickWork(ctx context.Context, s *Scheduler) error {
 				if e = s.Workspaces.SaveTask(ctx, task); e != nil {
 					failures = errors.Join(failures, e)
 				}
+			} else if status == 409 && acceptanceCode(reply) == "WORKSPACE_BUSY" || status == 429 {
+				a.State = "blocked"
+				a.ErrorCode = "WORKSPACE_BUSY"
+				if status == 429 {
+					a.ErrorCode = "QUEUE_FULL"
+				}
 			} else if status >= 400 && status < 500 {
 				a.State = "failed"
 				a.ErrorCode = "SPECIFICATION_ACCEPTANCE_FAILED"
@@ -188,4 +194,12 @@ func (r Repository) TickWork(ctx context.Context, s *Scheduler) error {
 		}()
 	}
 	return failures
+}
+
+func acceptanceCode(body []byte) string {
+	var response struct {
+		Code string `json:"code"`
+	}
+	_ = json.Unmarshal(body, &response)
+	return response.Code
 }

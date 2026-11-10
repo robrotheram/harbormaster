@@ -15,6 +15,7 @@ python-check:
 	python3 -m unittest discover -s examples/factory/research -v
 	python3 scripts/test-hermes-adapters.py
 	python3 scripts/test-hermes-coordination.py
+	python3 scripts/test-hermes-consume.py
 postgres-check:
 	@test -n "$$TEST_DATABASE_URL" || (echo 'Set TEST_DATABASE_URL to a test PostgreSQL URL'; exit 1)
 	go test -race ./internal/store -run TestPostgresMetadataContract -count=1

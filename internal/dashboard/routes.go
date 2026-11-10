@@ -22,7 +22,7 @@ func allowedUIRoute(method, path string) bool {
 		switch path {
 		case "/work-items", "/connection-profiles", "/projects", "/schedules", "/workspaces":
 			return true
-		case "/workspace-logs", "/templates", "/agent-homes", "/runs":
+		case "/exchange-inbox", "/workspace-logs", "/templates", "/agent-homes", "/runs":
 			return get
 		case "/project-exchanges", "/note-publications", "/file-handoffs":
 			return post

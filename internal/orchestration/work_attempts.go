@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"time"
 )
 
@@ -70,7 +71,10 @@ func (r Repository) RunWork(ctx context.Context, project, id, key string, now ti
 	a = shared.WorkAttempt{ID: shared.NewID("attempt_"), WorkItemID: id, WorkspaceID: item.WorkspaceID, State: "queued", Artifacts: []shared.WorkArtifact{}, CreatedAt: now.UTC(), UpdatedAt: now.UTC()}
 	ab, _ := json.Marshal(a)
 	if _, err = tx.ExecContext(ctx, `INSERT INTO work_attempts(id,work_item_id,project_id,workspace_id,delivery_key,active_workspace,metadata) VALUES($1,$2,$3,$4,$5,$4,$6)`, a.ID, id, project, item.WorkspaceID, key, string(ab)); err != nil {
-		return a, ErrConflict
+		if workUniqueConflict(err) {
+			return a, ErrConflict
+		}
+		return a, err
 	}
 	old := b
 	item.LatestAttemptID = a.ID
@@ -183,4 +187,13 @@ func (r Repository) CancelWork(ctx context.Context, project, id string, now time
 		}
 	}
 	return item, ErrConflict
+}
+
+func workUniqueConflict(err error) bool {
+	var postgres interface{ SQLState() string }
+	if errors.As(err, &postgres) && postgres.SQLState() == "23505" {
+		return true
+	}
+	var sqlite interface{ Code() int }
+	return errors.As(err, &sqlite) && (sqlite.Code() == 2067 || sqlite.Code() == 1555)
 }

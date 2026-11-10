@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"strconv"
 )
 
@@ -112,7 +111,7 @@ func (s *Server) RegisterCoordination(mux *http.ServeMux, service *coordination.
 		if !shared.Decode(w, r, &in, 1024) || !s.AuthorizeProject(w, r, in.ProjectID) {
 			return
 		}
-		var response *httptest.ResponseRecorder
+		var response *coordinationResponse
 		e := service.Consume(r.Context(), in.ProjectID, r.PathValue("id"), func(body []byte, key string) (string, error) {
 			var spec struct {
 				WorkspaceID   string   `json:"workspace_id"`
@@ -138,7 +137,7 @@ func (s *Server) RegisterCoordination(mux *http.ServeMux, service *coordination.
 			request.URL = &u
 			request.Body = io.NopCloser(bytes.NewReader(payload))
 			request.ContentLength = int64(len(payload))
-			response = httptest.NewRecorder()
+			response = &coordinationResponse{headers: make(http.Header)}
 			mux.ServeHTTP(response, request)
 			if response.Code < 200 || response.Code >= 300 {
 				return "", fmt.Errorf("work creation failed: %d", response.Code)
@@ -184,4 +183,25 @@ func (s *Server) RegisterCoordination(mux *http.ServeMux, service *coordination.
 		receipt, e := n.Publish(in.Write)
 		reply(w, receipt, e)
 	})
+}
+
+// Capture the fixed work-create adapter response before committing a consumption
+// receipt. A failed factory operation must remain retryable in the inbox.
+type coordinationResponse struct {
+	headers http.Header
+	Code    int
+	Body    bytes.Buffer
+}
+
+func (r *coordinationResponse) Header() http.Header { return r.headers }
+func (r *coordinationResponse) WriteHeader(status int) {
+	if r.Code == 0 {
+		r.Code = status
+	}
+}
+func (r *coordinationResponse) Write(body []byte) (int, error) {
+	if r.Code == 0 {
+		r.Code = http.StatusOK
+	}
+	return r.Body.Write(body)
 }
