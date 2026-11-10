@@ -36,6 +36,17 @@ func AllowedAgentPath(method, path string) bool {
 				return method == "POST"
 			}
 			return len(partsFactory) == 4 && partsFactory[2] == "blobs" && shared.ValidID(partsFactory[3]) && (method == "GET" || method == "POST")
+		case "services":
+			if len(partsFactory) == 2 {
+				return method == "POST"
+			}
+			if len(partsFactory) == 3 && partsFactory[2] == "reconcile" {
+				return method == "POST"
+			}
+			if !shared.ValidID(partsFactory[2]) {
+				return false
+			}
+			return len(partsFactory) == 3 && method == "GET" || len(partsFactory) == 4 && method == "POST" && (partsFactory[3] == "fetch" || partsFactory[3] == "revoke")
 		case "artifacts":
 			if len(partsFactory) == 2 {
 				return method == "GET" || method == "POST"
@@ -116,6 +127,9 @@ func AgentBodyLimit(path string) int64 {
 	if strings.HasPrefix(path, "/v1/coordination/") {
 		return 100000
 	}
+	if path == "/v1/services" {
+		return 24 << 20
+	}
 	if path == "/v1/files/write-new" {
 		return 1500 << 10
 	}
@@ -129,6 +143,9 @@ func AgentResponseLimit(path string) int64 {
 		path = "/" + tail
 	}
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
+	if len(parts) == 4 && parts[0] == "v1" && parts[1] == "services" && shared.ValidID(parts[2]) && parts[3] == "fetch" {
+		return 3 << 20
+	}
 	if len(parts) == 4 && parts[0] == "v1" && parts[1] == "artifacts" && shared.ValidID(parts[2]) && parts[3] == "content" {
 		return 32 << 20
 	}

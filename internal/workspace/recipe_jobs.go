@@ -71,6 +71,9 @@ func (m *Manager) startRecipe(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.Timeout == 0 {
 		in.Timeout = 600
+		if in.Template == "gogallery-v1" {
+			in.Timeout = 1800
+		}
 	}
 	if in.Resource == "" {
 		in.Resource = "cpu-small"
@@ -80,7 +83,7 @@ func (m *Manager) startRecipe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Only built-in executable recipes are admitted; repository JSON is never authority.
-	if in.Template != "research-v1" {
+	if in.Template != "research-v1" && in.Template != "gogallery-v1" {
 		shared.Error(w, 422, "UNSUPPORTED_APPROVED_TEMPLATE")
 		return
 	}
@@ -120,6 +123,12 @@ func (m *Manager) startRecipe(w http.ResponseWriter, r *http.Request) {
 		shared.Error(w, 422, "PYTHON_UNAVAILABLE")
 		return
 	}
+	if in.Template == "gogallery-v1" {
+		if _, err := os.Stat("/opt/workbench/gogallery/run"); err != nil {
+			shared.Error(w, 422, "APPROVED_GOGALLERY_IMAGE_REQUIRED")
+			return
+		}
+	}
 	id = shared.NewID("job_")
 
 	if err = m.root.MkdirAll("outputs/"+id, 0700); err != nil {
@@ -146,7 +155,10 @@ func (m *Manager) startRecipe(w http.ResponseWriter, r *http.Request) {
 	// Fresh output directory and fixed argv; no user command, host mount, or proxy.
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(in.Timeout)*time.Second)
 	cmd := exec.CommandContext(ctx, limit, "--as=1073741824", "--cpu=3600", "--nproc=64", "--fsize=33554432", "--", python, "-c", researchProgram+"\nimport json\nfrom pathlib import Path\nPath('variation.json').write_text(json.dumps(experiment(42, 10)))\n", "--output", "baseline.json")
-	cmd.Env = []string{"PATH=/usr/local/bin:/usr/bin:/bin", "OPENBLAS_NUM_THREADS=1"}
+	if in.Template == "gogallery-v1" {
+		cmd = exec.CommandContext(ctx, limit, "--as=4294967296", "--cpu=3600", "--nproc=256", "--fsize=134217728", "--", "/opt/workbench/gogallery/run")
+	}
+	cmd.Env = []string{"PATH=/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin", "OPENBLAS_NUM_THREADS=1", "HOME=/tmp", "GOTOOLCHAIN=local", "GOPROXY=off", "GOSUMDB=off", "GOMAXPROCS=1"}
 	cmd.Dir = fmt.Sprintf("/proc/%d/fd/%d", os.Getpid(), directory.Fd())
 	cmd.ExtraFiles = []*os.File{directory}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pdeathsig: syscall.SIGKILL}
@@ -186,6 +198,9 @@ func (m *Manager) startRecipe(w http.ResponseWriter, r *http.Request) {
 			if ctx.Err() == context.DeadlineExceeded {
 				state, code = "failed", "DEADLINE_EXCEEDED"
 			}
+		}
+		if archiveErr := m.archiveRecipeEvidence(id, in.Template, state == "succeeded"); archiveErr != nil {
+			state, code = "failed", "EVIDENCE_PUBLICATION_FAILED"
 		}
 		m.db.Exec(`UPDATE recipe_jobs SET state=?,error_code=? WHERE id=?`, state, code, id)
 		delete(m.cancels, id)

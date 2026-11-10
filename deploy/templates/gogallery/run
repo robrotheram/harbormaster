@@ -1,0 +1,16 @@
+#!/bin/sh
+set -eu
+cp -R /opt/workbench/gogallery/source source
+chmod -R u+w source
+export GOCACHE="$PWD/cache" GOMODCACHE=/opt/workbench/gogallery/modules
+(cd source && go test ./... && go build -o ../gogallery .)
+python3 /opt/workbench/gogallery/create_fixture.py "$PWD/fixture"
+(cd fixture && ../gogallery --config gallery.yaml build)
+python3 - <<'PY'
+import pathlib,tarfile,json
+root=pathlib.Path('fixture/site')
+assert list(root.rglob('*.html')), 'no HTML produced'
+with tarfile.open('gallery.tar','w') as t:
+    t.add(root,arcname='site')
+pathlib.Path('provenance.json').write_text(json.dumps({'source_revision':'5f1bfd6a41afec65bc7ab791a14863180d944ee0','template':'gogallery-v1','checks':['go test ./...','go build','synthetic gallery build']}))
+PY

@@ -22,6 +22,7 @@ type Artifact struct {
 
 func (m *Manager) initFactory() error {
 	for _, q := range []string{
+		`CREATE TABLE IF NOT EXISTS retained_services(id TEXT PRIMARY KEY,state TEXT NOT NULL,expires_at INTEGER NOT NULL,snapshot BLOB NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS artifacts(id TEXT PRIMARY KEY,idem_key TEXT UNIQUE NOT NULL,source_path TEXT NOT NULL,sha256 TEXT NOT NULL,size_bytes INTEGER NOT NULL,created_at TEXT NOT NULL,content BLOB NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS recipe_jobs(id TEXT PRIMARY KEY,idem_key TEXT UNIQUE NOT NULL,template TEXT NOT NULL,state TEXT NOT NULL,error_code TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL,timeout_seconds INTEGER NOT NULL)`,
 		`UPDATE recipe_jobs SET state='interrupted',error_code='SUPERVISOR_RESTART' WHERE state IN ('running','cancel_requested')`,

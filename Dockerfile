@@ -57,3 +57,14 @@ USER 10001:10001
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/service"]
 HEALTHCHECK --interval=10s --timeout=3s --start-period=20s CMD ["/usr/local/bin/healthcheck"]
+
+# Approved GoGallery template. Repository manifests cannot select packages or privileges.
+FROM workspace AS workspace-gogallery
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends util-linux gcc libc6-dev libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev && rm -rf /var/lib/apt/lists/*
+COPY --from=golang:1.26.0-bookworm /usr/local/go /usr/local/go
+ENV PATH=/usr/local/go/bin:$PATH
+RUN mkdir -p /opt/workbench/gogallery && git clone https://github.com/robrotheram/gogallery.git /opt/workbench/gogallery/source && cd /opt/workbench/gogallery/source && git checkout --detach 5f1bfd6a41afec65bc7ab791a14863180d944ee0 && GOMODCACHE=/opt/workbench/gogallery/modules go mod download && rm -rf .git
+COPY deploy/templates/gogallery/run deploy/templates/gogallery/create_fixture.py /opt/workbench/gogallery/
+RUN chmod -R a+rX /opt/workbench/gogallery && chmod 755 /opt/workbench/gogallery/run
+USER 10001:10001

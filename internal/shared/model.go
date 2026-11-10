@@ -21,6 +21,7 @@ func NewID(prefix string) string {
 }
 
 type Workspace struct {
+	RetainedPreview           *RetainedPreview  `json:"retained_preview,omitempty"`
 	ConnectionProfileID       string            `json:"connection_profile_id,omitempty"`
 	ConnectionProfileRevision int               `json:"connection_profile_revision,omitempty"`
 	Connections               *ConnectionPolicy `json:"connections,omitempty"`

@@ -1,4 +1,5 @@
 # Hermes and Python are baked into the immutable guest; no runtime downloads.
+ARG WORKSPACE_IMAGE=agent-workbench-workspace:dev
 FROM python:3.14-slim-bookworm AS hermes-build
 RUN apt-get update && apt-get install -y --no-install-recommends build-essential libolm-dev git && rm -rf /var/lib/apt/lists/*
 ARG HERMES_COMMIT
@@ -6,7 +7,7 @@ ARG HERMES_SOURCE_SHA256
 ADD --checksum=sha256:${HERMES_SOURCE_SHA256} https://codeload.github.com/NousResearch/hermes-agent/tar.gz/${HERMES_COMMIT} /tmp/hermes.tgz
 RUN mkdir /opt/hermes && tar -xzf /tmp/hermes.tgz -C /opt/hermes --strip-components=1 && rm /tmp/hermes.tgz && python -m pip install --no-cache-dir uv==0.13.7 && cd /opt/hermes && uv sync --frozen --no-dev --extra matrix --extra mcp
 
-FROM agent-workbench-workspace:dev
+FROM ${WORKSPACE_IMAGE}
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends iproute2 libolm3 && rm -rf /var/lib/apt/lists/* && mkdir -p /boot-config /run /data /proc /sys /dev /tmp
 COPY --from=hermes-build /usr/local/ /usr/local/

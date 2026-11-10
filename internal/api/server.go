@@ -160,6 +160,7 @@ func (s *Server) Handler() http.Handler {
 	s.registerOrchestration(secured)
 	s.registerWork(secured)
 	s.registerCoordinationRuntime(secured)
+	s.registerFactoryEnvironments(secured)
 	secured.HandleFunc("POST /v1/file-handoffs", s.shareFile)
 	secured.HandleFunc("/v1/workspaces/{id}/desktop/{path...}", func(w http.ResponseWriter, r *http.Request) {
 		ws, ok := s.workspace(w, r)
@@ -472,6 +473,7 @@ func (s *Server) Reconcile(ctx context.Context) {
 					}
 				}
 			}
+			s.reconcileRetainedPreview(ctx, ws)
 			if ws.State == "READY" && ws.IdleStopAt != nil && !s.now().Before(*ws.IdleStopAt) {
 				_ = s.stop(ctx, ws)
 			}

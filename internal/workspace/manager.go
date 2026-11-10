@@ -170,6 +170,8 @@ func New(cfg Config) (*Manager, error) {
 	owned = true
 	m.wg.Add(1)
 	go m.collectHistory()
+	m.wg.Add(1)
+	go m.expireServices()
 	return m, nil
 }
 func (m *Manager) Close() error {
@@ -373,6 +375,11 @@ func (m *Manager) activityLocked() shared.Activity {
 		a.Known = false
 	}
 	a.BackgroundJobs += recipes
+	var services int
+	if err := m.db.QueryRow(`SELECT count(*) FROM retained_services WHERE state='active' AND expires_at>?`, time.Now().Unix()).Scan(&services); err != nil {
+		a.Known = false
+	}
+	a.BackgroundJobs += services
 	if m.console != nil {
 		c := m.consoleActivity()
 		a.Known = c.Known
@@ -541,6 +548,11 @@ func (m *Manager) Handler() http.Handler {
 	api.HandleFunc("GET /v1/artifacts", m.listArtifacts)
 	api.HandleFunc("GET /v1/artifacts/{id}/content", m.artifactContent)
 	m.registerCoordination(api)
+	api.HandleFunc("POST /v1/services", m.createService)
+	api.HandleFunc("GET /v1/services/{id}", m.getService)
+	api.HandleFunc("POST /v1/services/{id}/revoke", m.revokeService)
+	api.HandleFunc("POST /v1/services/{id}/fetch", m.fetchService)
+	api.HandleFunc("POST /v1/services/reconcile", m.reconcileServices)
 	api.HandleFunc("POST /v1/recipe-jobs", m.startRecipe)
 	api.HandleFunc("GET /v1/recipe-jobs/{id}", m.getRecipe)
 	api.HandleFunc("POST /v1/recipe-jobs/{id}/cancel", m.cancelRecipe)

@@ -1,0 +1,36 @@
+{
+  "job": {
+    "id": "job_c5cbfd73973942b43701eacd3ba797f0",
+    "template": "gogallery-v1",
+    "state": "succeeded",
+    "error_code": "",
+    "created_at": "2026-11-10T20:51:03.72704153Z",
+    "timeout_seconds": 1800
+  },
+  "archived_artifacts": [
+    {
+      "id": "artifact_04b5f69063dba1494735a459a81642d4",
+      "source_path": "outputs/job_c5cbfd73973942b43701eacd3ba797f0/execution.log",
+      "sha256": "c9ab2bef582c0a717139f7f30d97520428ca61a35fe485b2927d50b70a28f2a5",
+      "size_bytes": 75359,
+      "created_at": "2026-11-10T21:02:14.598761171Z"
+    },
+    {
+      "id": "artifact_2c4ac3ee01ed3ed1884598fa6bd274cd",
+      "source_path": "outputs/job_c5cbfd73973942b43701eacd3ba797f0/gallery.tar",
+      "sha256": "b466d17af13f2834ff3502bf1e822bf925d078140faef568d8da0ed0c15c3a19",
+      "size_bytes": 276480,
+      "created_at": "2026-11-10T21:02:14.600354267Z"
+    },
+    {
+      "id": "artifact_a483beb6e15806a7d9662526e073ed72",
+      "source_path": "outputs/job_c5cbfd73973942b43701eacd3ba797f0/provenance.json",
+      "sha256": "91ef9d495b71eac27a734fd607a92979ec1eb3b51a9dc86bcf7c6ca497a75732",
+      "size_bytes": 159,
+      "created_at": "2026-11-10T21:02:14.601348299Z"
+    }
+  ],
+  "coding_stopped_preview_available": true,
+  "revocation": true,
+  "expiry": true
+}
