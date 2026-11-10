@@ -28,6 +28,24 @@ func Grant(secret, workspace, generation string) string {
 }
 
 func AllowedAgentPath(method, path string) bool {
+	partsFactory := strings.Split(strings.TrimPrefix(path, "/"), "/")
+	if len(partsFactory) >= 2 && partsFactory[0] == "v1" {
+		switch partsFactory[1] {
+		case "artifacts":
+			if len(partsFactory) == 2 {
+				return method == "GET" || method == "POST"
+			}
+			return len(partsFactory) == 4 && shared.ValidID(partsFactory[2]) && partsFactory[3] == "content" && method == "GET"
+		case "recipe-jobs":
+			if len(partsFactory) == 2 {
+				return method == "POST"
+			}
+			if !shared.ValidID(partsFactory[2]) {
+				return false
+			}
+			return len(partsFactory) == 3 && method == "GET" || len(partsFactory) == 4 && partsFactory[3] == "cancel" && method == "POST"
+		}
+	}
 	if (method == "POST" && (path == "/v1/matrix/start" || path == "/v1/matrix/stop")) || (method == "GET" && path == "/v1/matrix/status") {
 		return true
 	}
@@ -94,4 +112,17 @@ func AgentBodyLimit(path string) int64 {
 		return 1500 << 10
 	}
 	return 70 << 10
+}
+
+// AgentResponseLimit keeps large immutable artifact transfers bounded without
+// enlarging ordinary metadata/tool responses. Controller routes include /agent.
+func AgentResponseLimit(path string) int64 {
+	if _, tail, ok := strings.Cut(path, "/agent/"); ok {
+		path = "/" + tail
+	}
+	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
+	if len(parts) == 4 && parts[0] == "v1" && parts[1] == "artifacts" && shared.ValidID(parts[2]) && parts[3] == "content" {
+		return 32 << 20
+	}
+	return 2 << 20
 }

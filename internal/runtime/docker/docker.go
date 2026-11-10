@@ -289,8 +289,8 @@ func (c *Controller) agent(ctx context.Context, info containerInfo, method, path
 		return 0, nil, e
 	}
 	defer resp.Body.Close()
-	out, e := io.ReadAll(io.LimitReader(resp.Body, (2<<20)+1))
-	if len(out) > 2<<20 {
+	out, e := io.ReadAll(io.LimitReader(resp.Body, protocol.AgentResponseLimit(path)+1))
+	if int64(len(out)) > protocol.AgentResponseLimit(path) {
 		return 0, nil, errors.New("workspace response too large")
 	}
 	return resp.StatusCode, out, e

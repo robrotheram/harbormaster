@@ -76,3 +76,17 @@ func TestCapabilitiesRejectIncompleteOrUnsupportedWireContracts(t *testing.T) {
 		}
 	}
 }
+
+func TestArtifactTransferHasSeparateResponseBudget(t *testing.T) {
+	payload := make([]byte, 3<<20)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write(payload) }))
+	defer server.Close()
+	client := NewClient(server.URL, "controller-token")
+	status, body, err := client.Agent(context.Background(), "ws_one", "GET", "/v1/artifacts/artifact_one/content", nil)
+	if err != nil || status != 200 || len(body) != len(payload) {
+		t.Fatalf("artifact transfer %d %d %v", status, len(body), err)
+	}
+	if _, _, err = client.Agent(context.Background(), "ws_one", "GET", "/v1/tasks/task_one/result", nil); err == nil {
+		t.Fatal("metadata response budget widened")
+	}
+}

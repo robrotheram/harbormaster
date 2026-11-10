@@ -108,8 +108,8 @@ func (c *Client) do(ctx context.Context, method, path string, body []byte) (int,
 		return 0, nil, e
 	}
 	defer resp.Body.Close()
-	b, e := io.ReadAll(io.LimitReader(resp.Body, (2<<20)+1))
-	if len(b) > 2<<20 {
+	b, e := io.ReadAll(io.LimitReader(resp.Body, protocol.AgentResponseLimit(path)+1))
+	if int64(len(b)) > protocol.AgentResponseLimit(path) {
 		return 0, nil, fmt.Errorf("response too large")
 	}
 	return resp.StatusCode, b, e

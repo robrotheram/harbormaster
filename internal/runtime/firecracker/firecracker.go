@@ -651,8 +651,8 @@ func (f *Firecracker) agent(ctx context.Context, v *fcVM, method, path string, b
 		return 0, nil, err
 	}
 	defer resp.Body.Close()
-	b, err := io.ReadAll(io.LimitReader(resp.Body, (2<<20)+1))
-	if len(b) > 2<<20 {
+	b, err := io.ReadAll(io.LimitReader(resp.Body, protocol.AgentResponseLimit(path)+1))
+	if int64(len(b)) > protocol.AgentResponseLimit(path) {
 		return 0, nil, errors.New("workspace response too large")
 	}
 	return resp.StatusCode, b, err

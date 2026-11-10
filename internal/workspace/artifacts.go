@@ -24,7 +24,7 @@ func (m *Manager) initFactory() error {
 	for _, q := range []string{
 		`CREATE TABLE IF NOT EXISTS artifacts(id TEXT PRIMARY KEY,idem_key TEXT UNIQUE NOT NULL,source_path TEXT NOT NULL,sha256 TEXT NOT NULL,size_bytes INTEGER NOT NULL,created_at TEXT NOT NULL,content BLOB NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS recipe_jobs(id TEXT PRIMARY KEY,idem_key TEXT UNIQUE NOT NULL,template TEXT NOT NULL,state TEXT NOT NULL,error_code TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL,timeout_seconds INTEGER NOT NULL)`,
-		`UPDATE recipe_jobs SET state='interrupted',error_code='SUPERVISOR_RESTART' WHERE state='running'`,
+		`UPDATE recipe_jobs SET state='interrupted',error_code='SUPERVISOR_RESTART' WHERE state IN ('running','cancel_requested')`,
 	} {
 		if _, err := m.db.Exec(q); err != nil {
 			return err
@@ -85,7 +85,7 @@ func (m *Manager) publishArtifact(w http.ResponseWriter, r *http.Request) {
 	shared.JSON(w, 201, a)
 }
 func (m *Manager) listArtifacts(w http.ResponseWriter, r *http.Request) {
-	rows, err := m.db.Query(`SELECT id,source_path,sha256,size_bytes,created_at FROM artifacts ORDER BY created_at,id`)
+	rows, err := m.db.Query(`SELECT id,source_path,sha256,size_bytes,created_at FROM artifacts ORDER BY created_at,id LIMIT 200`)
 	if err != nil {
 		shared.Error(w, 503, "STORAGE_UNAVAILABLE")
 		return

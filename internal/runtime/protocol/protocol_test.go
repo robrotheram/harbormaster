@@ -22,3 +22,29 @@ func TestQueriesAreScopedToTheirWorkspaceOperation(t *testing.T) {
 		}
 	}
 }
+
+func TestFactoryAgentPathsAndResponseBounds(t *testing.T) {
+	for _, tt := range []struct {
+		method, path string
+		valid        bool
+	}{
+		{"POST", "/v1/artifacts", true}, {"GET", "/v1/artifacts", true},
+		{"GET", "/v1/artifacts/artifact_one/content", true}, {"POST", "/v1/artifacts/artifact_one/content", false},
+		{"GET", "/v1/artifacts/../content", false}, {"GET", "/v1/artifacts/artifact_one/content/more", false},
+		{"POST", "/v1/recipe-jobs", true}, {"GET", "/v1/recipe-jobs/job_one", true},
+		{"POST", "/v1/recipe-jobs/job_one/cancel", true}, {"GET", "/v1/recipe-jobs/job_one/cancel", false},
+		{"POST", "/v1/recipe-jobs/job_one/exec", false},
+	} {
+		if got := AllowedAgentPath(tt.method, tt.path); got != tt.valid {
+			t.Errorf("%s %s: %v", tt.method, tt.path, got)
+		}
+	}
+	for _, path := range []string{"/v1/artifacts/artifact_one/content", "/v1/workspaces/ws_one/agent/v1/artifacts/artifact_one/content"} {
+		if AgentResponseLimit(path) != 32<<20 {
+			t.Fatal("artifact limit", path)
+		}
+	}
+	if AgentResponseLimit("/v1/tasks/task_one/result") != 2<<20 {
+		t.Fatal("ordinary response budget widened")
+	}
+}

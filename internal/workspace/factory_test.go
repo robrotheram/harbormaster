@@ -83,7 +83,7 @@ func TestFactoryRestartEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = m.db.Exec(`INSERT INTO recipe_jobs(id,idem_key,template,state,created_at,timeout_seconds) VALUES('job_interrupted','interrupted-one','research-v1','running','2026-11-10T00:00:00Z',600)`)
+	_, err = m.db.Exec(`INSERT INTO recipe_jobs(id,idem_key,template,state,created_at,timeout_seconds) VALUES('job_interrupted','interrupted-one','research-v1','running','2026-11-10T00:00:00Z',600),('job_cancelled','cancelled-one','research-v1','cancel_requested','2026-11-10T00:00:00Z',600)`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,6 +93,10 @@ func TestFactoryRestartEvidence(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer m.Close()
+	cancelled, err := m.recipe("job_cancelled")
+	if err != nil || cancelled.State != "interrupted" || cancelled.ErrorCode != "SUPERVISOR_RESTART" {
+		t.Fatalf("cancel request stuck after restart: %+v %v", cancelled, err)
+	}
 	j, err := m.recipe("job_interrupted")
 	if err != nil || j.State != "interrupted" || j.ErrorCode != "SUPERVISOR_RESTART" {
 		t.Fatalf("%+v %v", j, err)
