@@ -77,7 +77,12 @@ const Schedules = lazy(() =>
   })),
 );
 
+const Work = lazy(() =>
+  import("@/features/work/work").then((m) => ({ default: m.Work })),
+);
+
 const sections: { id: Section; label: string; icon: LucideIcon }[] = [
+  { id: "work", label: "Work", icon: ListChecks },
   { id: "workspaces", label: "Workspaces", icon: Boxes },
   { id: "homes", label: "Agent homes", icon: Fingerprint },
   { id: "schedules", label: "Schedules", icon: CalendarClock },
@@ -139,6 +144,7 @@ export function ProjectShell({
   const selected: Section | undefined = globalSettings
     ? undefined
     : [
+          "work",
           "workspaces",
           "homes",
           "schedules",
@@ -467,6 +473,7 @@ function ProjectView({
   project: Project;
   section: Section;
 }) {
+  if (section === "work") return <Work project={project} />;
   if (section === "homes") return <AgentHomes project={project} />;
   if (section === "overview") return <RuntimeOverview />;
   if (section === "help") return <GettingStarted />;
