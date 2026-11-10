@@ -58,6 +58,8 @@ def main():
     (STAGE / 'hermes-matrix').chmod(0o755)
     shutil.copyfile(ROOT / 'scripts/hermes-digest.py', STAGE / 'hermes-digest')
     (STAGE / 'hermes-digest').chmod(0o755)
+    shutil.copyfile(ROOT / 'scripts/hermes-consume.py', STAGE / 'hermes-consume')
+    (STAGE / 'hermes-consume').chmod(0o755)
     shutil.copyfile(ROOT / 'scripts/hermes_common.py', STAGE / 'hermes_common.py')
     shutil.copyfile(ROOT / 'deploy/hermes/runtime.json', STAGE / 'hermes-runtime.json')
     run('docker', 'build', '--build-arg', 'HERMES_COMMIT=' + integration['commit'],

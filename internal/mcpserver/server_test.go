@@ -93,7 +93,7 @@ func TestSDKTools(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if len(list.Tools) != 28 {
+	if len(list.Tools) != 29 {
 		t.Fatalf("tools=%d", len(list.Tools))
 	}
 	for _, tool := range list.Tools {
@@ -113,6 +113,7 @@ func TestSDKTools(t *testing.T) {
 		{"workspace_stop", map[string]any{"workspace_id": "w1", "idempotency_key": "key-1"}, "POST /v1/workspaces/w1/stop"},
 		{"task_submit", map[string]any{"workspace_id": "w1", "idempotency_key": "key-1", "instruction": "hello"}, "POST /v1/workspaces/w1/tasks"},
 		{"task_status", map[string]any{"workspace_id": "w1", "task_id": "t1"}, "GET /v1/workspaces/w1/tasks/t1"},
+		{"exchange_inbox", map[string]any{"project_id": "p1", "after": "cursor", "limit": 2}, "GET /v1/exchange-inbox?project_id=p1&after=cursor&limit=2"},
 		{"task_result", map[string]any{"workspace_id": "w1", "task_id": "t1"}, "GET /v1/workspaces/w1/tasks/t1/result?offset=0&limit=65536"},
 		{"task_cancel", map[string]any{"workspace_id": "w1", "task_id": "t1", "idempotency_key": "key-1"}, "POST /v1/workspaces/w1/tasks/t1/cancel"},
 		{"usage_current", map[string]any{}, "GET /v1/usage"},

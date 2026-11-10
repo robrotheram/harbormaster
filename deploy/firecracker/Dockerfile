@@ -20,3 +20,4 @@ ENTRYPOINT ["/sbin/awb-init"]
 COPY hermes_common.py hermes-runtime.json /usr/local/bin/
 
 COPY hermes-digest /usr/local/bin/hermes-digest
+COPY hermes-consume /usr/local/bin/hermes-consume

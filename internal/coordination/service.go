@@ -28,6 +28,52 @@ const Schema = `CREATE TABLE IF NOT EXISTS project_exchanges (
  digest TEXT NOT NULL, actor TEXT NOT NULL, occurrence TEXT NOT NULL,
  UNIQUE(exchange_id, occurrence));`
 
+// ConsumptionSchema is installed by migration 6, never by runtime startup.
+const ConsumptionSchema = `CREATE TABLE IF NOT EXISTS exchange_consumptions (
+ export_id TEXT PRIMARY KEY, destination TEXT NOT NULL, work_id TEXT NOT NULL);
+ CREATE INDEX IF NOT EXISTS exchange_inbox_destination ON exchange_exports(destination,id);`
+
+type InboxPage struct {
+	Items []Export `json:"items"`
+	Next  string   `json:"next"`
+}
+
+// Inbox includes durable consumption receipts for recovery before work_run.
+// It uses a keyset cursor over immutable IDs. Consumers must finish every
+// page before restarting at the beginning; pending old requests cannot starve others.
+func (s *Service) Inbox(ctx context.Context, actor, after string, limit int) (InboxPage, error) {
+	page := InboxPage{Items: []Export{}}
+	if !valid(actor) || (after != "" && !valid(after)) || limit < 1 || limit > 100 {
+		return page, ErrInvalid
+	}
+	rows, err := s.DB.QueryContext(ctx, `SELECT x.id,x.exchange_id,x.source,x.destination,x.operation,x.reference,x.digest,x.actor,x.occurrence,COALESCE(c.work_id,'')
+ FROM exchange_exports x JOIN project_exchanges g ON g.id=x.exchange_id
+ LEFT JOIN exchange_consumptions c ON c.export_id=x.id
+ WHERE x.destination=$1 AND x.id>$2
+ AND g.source_approved=1 AND g.destination_approved=1 AND g.revoked=0
+ AND x.source=g.source AND x.destination=g.destination AND x.operation=g.operation AND x.actor=g.source
+ ORDER BY x.id LIMIT $3`, actor, after, limit+1)
+	if err != nil {
+		return page, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var x Export
+		if err = rows.Scan(&x.ID, &x.ExchangeID, &x.Source, &x.Destination, &x.Operation, &x.Reference, &x.Digest, &x.Actor, &x.Occurrence, &x.WorkID); err != nil {
+			return page, err
+		}
+		page.Items = append(page.Items, x)
+	}
+	if err = rows.Err(); err != nil {
+		return page, err
+	}
+	if len(page.Items) > limit {
+		page.Items = page.Items[:limit]
+		page.Next = page.Items[limit-1].ID
+	}
+	return page, nil
+}
+
 type Grant struct {
 	ID          string `json:"id"`
 	Source      string `json:"source"`
@@ -35,6 +81,7 @@ type Grant struct {
 	Operation   string `json:"operation"`
 }
 type Export struct {
+	WorkID      string `json:"work_id,omitempty"`
 	ID          string `json:"id"`
 	ExchangeID  string `json:"exchange_id"`
 	Source      string `json:"source"`
@@ -131,7 +178,7 @@ func (s *Service) Publish(ctx context.Context, actor, id, occurrence string, bod
 		return x, ErrInvalid
 	}
 	key := Digest([]byte(id + ":" + occurrence))
-	x = Export{key, id, g.Source, g.Destination, g.Operation, key, Digest(body), actor, occurrence}
+	x = Export{ID: key, ExchangeID: id, Source: g.Source, Destination: g.Destination, Operation: g.Operation, Reference: key, Digest: Digest(body), Actor: actor, Occurrence: occurrence}
 	old, e := s.export(ctx, key)
 	if e == nil {
 		if old.Digest != x.Digest {
@@ -170,7 +217,7 @@ func (s *Service) read(ctx context.Context, actor, id string) (Export, []byte, e
 	if e != nil {
 		return Export{}, nil, e
 	}
-	if actor != g.Destination || x.Source != g.Source || x.Destination != g.Destination || x.Operation != g.Operation {
+	if actor != g.Destination || x.Source != g.Source || x.Destination != g.Destination || x.Operation != g.Operation || x.Actor != g.Source {
 		return Export{}, nil, ErrDenied
 	}
 	b, e := s.Blobs(x.Source)
@@ -185,7 +232,7 @@ func (s *Service) read(ctx context.Context, actor, id string) (Export, []byte, e
 }
 
 // Consume serializes revocation against work submission for the single control-plane owner.
-func (s *Service) Consume(ctx context.Context, actor, id string, submit func([]byte, string) error) error {
+func (s *Service) Consume(ctx context.Context, actor, id string, submit func([]byte, string) (string, error)) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	x, body, e := s.read(ctx, actor, id)
@@ -195,5 +242,14 @@ func (s *Service) Consume(ctx context.Context, actor, id string, submit func([]b
 	if x.Operation != "work-request" {
 		return ErrDenied
 	}
-	return submit(body, "exchange-"+x.ID)
+	workID, err := submit(body, "exchange-"+x.ID)
+	if err != nil {
+		return err
+	}
+	if !valid(workID) {
+		return ErrInvalid
+	}
+	// Work creation commits first. A lost receipt retries the same factory key.
+	_, err = s.DB.ExecContext(ctx, `INSERT INTO exchange_consumptions(export_id,destination,work_id) VALUES($1,$2,$3) ON CONFLICT(export_id) DO NOTHING`, x.ID, actor, workID)
+	return err
 }

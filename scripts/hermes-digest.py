@@ -12,7 +12,7 @@ import os
 import re
 from pathlib import Path
 
-async def digest(client, project, workspace, occurrence, source, request_export=None):
+async def digest(client, project, workspace, occurrence, source, request_grant=None):
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", occurrence):
         raise ValueError("Invalid digest occurrence")
     async def call(name, arguments):
@@ -24,8 +24,9 @@ async def digest(client, project, workspace, occurrence, source, request_export=
         'project_id': project, 'workspace_id': workspace,
         'write': {'path': 'digest-' + occurrence + '.md', 'body': source['body'],
                   'sources': source['sources'], 'expected_digest': '', 'occurrence': occurrence}})
-    if request_export:
-        await call('exchange_submit', {'project_id': project, 'export_id': request_export})
+    if request_grant:
+        await call('exchange_publish', {'project_id': project, 'exchange_id': request_grant,
+            'occurrence': occurrence, 'body': json.dumps(source['request'], sort_keys=True)})
     return receipt
 
 async def main():
@@ -35,7 +36,7 @@ async def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--source', required=True)
     parser.add_argument('--occurrence', default=os.environ.get('WORKBENCH_TASK_ID'))
-    parser.add_argument('--request-export')
+    parser.add_argument('--request-grant')
     args = parser.parse_args()
     if not args.occurrence:
         parser.error("--occurrence or WORKBENCH_TASK_ID is required")
@@ -45,7 +46,7 @@ async def main():
         async with ClientSession(read, write) as session:
             await session.initialize()
             result = await digest(session, os.environ['PROJECT_ID'], os.environ['WORKSPACE_ID'],
-                args.occurrence, json.loads(Path(args.source).read_text()), args.request_export)
+                args.occurrence, json.loads(Path(args.source).read_text()), args.request_grant)
             print(result.model_dump_json())
 
 if __name__ == '__main__':

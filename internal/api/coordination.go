@@ -6,8 +6,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
+	"strconv"
 )
 
 // RegisterCoordination is wired by the composition root after installing Schema.
@@ -77,6 +80,23 @@ func (s *Server) RegisterCoordination(mux *http.ServeMux, service *coordination.
 		x, e := service.Publish(r.Context(), in.ProjectID, r.PathValue("id"), in.Occurrence, []byte(in.Body))
 		reply(w, x, e)
 	})
+	mux.HandleFunc("GET /v1/exchange-inbox", func(w http.ResponseWriter, r *http.Request) {
+		project, ok := s.ProjectForRequest(w, r, r.URL.Query().Get("project_id"))
+		if !ok {
+			return
+		}
+		limit := 50
+		if v := r.URL.Query().Get("limit"); v != "" {
+			var err error
+			limit, err = strconv.Atoi(v)
+			if err != nil {
+				reply(w, nil, coordination.ErrInvalid)
+				return
+			}
+		}
+		page, err := service.Inbox(r.Context(), project, r.URL.Query().Get("after"), limit)
+		reply(w, page, err)
+	})
 	mux.HandleFunc("GET /v1/exchange-exports/{id}", func(w http.ResponseWriter, r *http.Request) {
 		project, ok := s.ProjectForRequest(w, r, r.URL.Query().Get("project_id"))
 		if !ok {
@@ -92,8 +112,8 @@ func (s *Server) RegisterCoordination(mux *http.ServeMux, service *coordination.
 		if !shared.Decode(w, r, &in, 1024) || !s.AuthorizeProject(w, r, in.ProjectID) {
 			return
 		}
-		sent := false
-		e := service.Consume(r.Context(), in.ProjectID, r.PathValue("id"), func(body []byte, key string) error {
+		var response *httptest.ResponseRecorder
+		e := service.Consume(r.Context(), in.ProjectID, r.PathValue("id"), func(body []byte, key string) (string, error) {
 			var spec struct {
 				WorkspaceID   string   `json:"workspace_id"`
 				Path          string   `json:"specification_path"`
@@ -104,11 +124,11 @@ func (s *Server) RegisterCoordination(mux *http.ServeMux, service *coordination.
 			d := json.NewDecoder(bytes.NewReader(body))
 			d.DisallowUnknownFields()
 			if d.Decode(&spec) != nil {
-				return coordination.ErrInvalid
+				return "", coordination.ErrInvalid
 			}
 			var extra any
 			if d.Decode(&extra) != io.EOF {
-				return coordination.ErrInvalid
+				return "", coordination.ErrInvalid
 			}
 			payload, _ := json.Marshal(map[string]any{"project_id": in.ProjectID, "workspace_id": spec.WorkspaceID, "specification_path": spec.Path, "specification_digest": spec.Digest, "kind": spec.Kind, "idempotency_key": key, "artifact_paths": spec.ArtifactPaths})
 			request := r.Clone(r.Context())
@@ -118,13 +138,28 @@ func (s *Server) RegisterCoordination(mux *http.ServeMux, service *coordination.
 			request.URL = &u
 			request.Body = io.NopCloser(bytes.NewReader(payload))
 			request.ContentLength = int64(len(payload))
-			sent = true
-			mux.ServeHTTP(w, request)
-			return nil
+			response = httptest.NewRecorder()
+			mux.ServeHTTP(response, request)
+			if response.Code < 200 || response.Code >= 300 {
+				return "", fmt.Errorf("work creation failed: %d", response.Code)
+			}
+			var work struct {
+				ID string `json:"id"`
+			}
+			if err := json.Unmarshal(response.Body.Bytes(), &work); err != nil {
+				return "", err
+			}
+			return work.ID, nil
 		})
-		if !sent {
-			reply(w, nil, e)
+		if response != nil && (e == nil || response.Code >= 300) {
+			for k, values := range response.Header() {
+				w.Header()[k] = values
+			}
+			w.WriteHeader(response.Code)
+			_, _ = w.Write(response.Body.Bytes())
+			return
 		}
+		reply(w, nil, e)
 	})
 
 	mux.HandleFunc("POST /v1/note-publications", func(w http.ResponseWriter, r *http.Request) {

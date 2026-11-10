@@ -5,6 +5,7 @@ import (
 	"context"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"net/url"
+	"strconv"
 )
 
 // Register separately from general tools: assistant credentials must be bound to
@@ -18,6 +19,18 @@ func registerCoordinationTools(s *mcp.Server, c *controlClient) {
 	}
 	add(s, "exchange_publish", "Export explicitly selected content under a bilateral grant; occurrence makes retries idempotent.", func(ctx context.Context, in publish) (out coordination.Export, err error) {
 		err = c.do(ctx, "POST", "/v1/project-exchanges/"+url.PathEscape(in.ExchangeID)+"/exports", map[string]string{"project_id": in.ProjectID, "occurrence": in.Occurrence, "body": in.Body}, &out)
+		return
+	})
+	type inbox struct {
+		ProjectID string `json:"project_id"`
+		After     string `json:"after,omitempty"`
+		Limit     int    `json:"limit,omitempty"`
+	}
+	add(s, "exchange_inbox", "Discover pending selected exports for this project; follow next through all pages.", func(ctx context.Context, in inbox) (out coordination.InboxPage, err error) {
+		if in.Limit == 0 {
+			in.Limit = 50
+		}
+		err = c.do(ctx, "GET", "/v1/exchange-inbox?project_id="+url.QueryEscape(in.ProjectID)+"&after="+url.QueryEscape(in.After)+"&limit="+strconv.Itoa(in.Limit), nil, &out)
 		return
 	})
 	type read struct {

@@ -32,6 +32,16 @@ func (s *Store) migrate(ctx context.Context) error {
 			return err
 		}},
 		{5, func(ctx context.Context) error { return (orchestration.Repository{DB: s.DB}).InitWorkAttempts(ctx) }},
+		{6, func(ctx context.Context) error {
+			for _, q := range strings.Split(coordination.ConsumptionSchema, ";") {
+				if strings.TrimSpace(q) != "" {
+					if _, err := s.DB.ExecContext(ctx, q); err != nil {
+						return err
+					}
+				}
+			}
+			return nil
+		}},
 	}
 	for _, step := range steps {
 		var applied int

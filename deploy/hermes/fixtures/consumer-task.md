@@ -1,0 +1,1 @@
+Run the installed deterministic command /usr/local/bin/hermes-consume once. Retain its selected_status JSON as task output. Workbench owns this occurrence and any retries; do not install a Hermes cron job. Do not infer or publish private histories or memories.

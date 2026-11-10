@@ -3,6 +3,7 @@ package api
 import (
 	"agent-workbench/internal/coordination"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -30,7 +31,16 @@ func TestExchangeRoutesSubmitThroughFactory(t *testing.T) {
 		return coordination.Files{Root: root}, nil
 	}}
 	mux := http.NewServeMux()
-	s.registerWork(mux)
+	factory := http.NewServeMux()
+	s.registerWork(factory)
+	failCreation := true
+	mux.Handle("/v1/work-items", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if failCreation {
+			w.WriteHeader(503)
+			return
+		}
+		factory.ServeHTTP(w, r)
+	}))
 	s.RegisterCoordination(mux, service, func(string, string) (coordination.NotePublisher, error) { return nil, coordination.ErrDenied })
 	handler := s.authenticate(mux)
 	call := func(token, path, body string) *httptest.ResponseRecorder {
@@ -55,10 +65,54 @@ func TestExchangeRoutesSubmitThroughFactory(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
+	if w := call("dest-token", "/v1/exchange-exports/"+x.ID+"/submit", `{"project_id":"`+dest.ID+`"}`); w.Code != 503 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	for _, tc := range []struct {
+		token, project string
+		want           int
+	}{{"dest-token", dest.ID, 1}, {"source-token", source.ID, 0}} {
+		r := httptest.NewRequest("GET", "/v1/exchange-inbox?project_id="+tc.project+"&limit=1", nil)
+		r.Header.Set("Authorization", "Bearer "+tc.token)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		var page coordination.InboxPage
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &page) != nil || len(page.Items) != tc.want {
+			t.Fatal(w.Code, w.Body.String())
+		}
+	}
+	var count int
+	if e = s.Store.DB.QueryRow("SELECT count(*) FROM exchange_consumptions").Scan(&count); e != nil || count != 0 {
+		t.Fatal(count, e)
+	}
+	failCreation = false
+	// The factory commits but receipt persistence fails. Retry must recover the
+	// same item rather than creating another after this lost acknowledgement.
+	if _, e = s.Store.DB.Exec("DROP TABLE exchange_consumptions"); e != nil {
+		t.Fatal(e)
+	}
+	if w := call("dest-token", "/v1/exchange-exports/"+x.ID+"/submit", `{"project_id":"`+dest.ID+`"}`); w.Code != 503 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if _, e = s.Store.DB.Exec(coordination.ConsumptionSchema); e != nil {
+		t.Fatal(e)
+	}
+	var stable string
 	for i := 0; i < 2; i++ {
 		w := call("dest-token", "/v1/exchange-exports/"+x.ID+"/submit", `{"project_id":"`+dest.ID+`"}`)
-		if (i == 0 && w.Code != 201) || (i == 1 && w.Code != 200) {
+		if w.Code != 200 {
 			t.Fatal(w.Code, w.Body.String())
+		}
+		var item struct {
+			ID string `json:"id"`
+		}
+		if e = json.Unmarshal(w.Body.Bytes(), &item); e != nil {
+			t.Fatal(e)
+		}
+		if i == 0 {
+			stable = item.ID
+		} else if stable != item.ID {
+			t.Fatal("work changed")
 		}
 	}
 	if e = service.Revoke(c, source.ID, "g"); e != nil {

@@ -23,11 +23,12 @@ class Client:
 
 async def test():
     client = Client()
-    source = {'body': 'Sourced summary', 'sources': ['https://example.org/source']}
+    source = {'body': 'Sourced summary', 'sources': ['https://example.org/source'], 'request': {'kind': 'research'}}
     for _ in range(2):
         await module.digest(client, 'personal', 'workspace', 'fixture-day', source, 'granted-export')
     assert len(client.notes) == 1
-    assert client.calls[1] == ('exchange_submit', {'project_id': 'personal', 'export_id': 'granted-export'})
+    assert client.calls[1][0] == 'exchange_publish'
+    assert client.calls[1][1]['exchange_id'] == 'granted-export'
     print('PASS: pinned SDK digest types, stable occurrence, sourced note and explicit exchange')
 
 asyncio.run(test())
