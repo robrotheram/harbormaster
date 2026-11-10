@@ -44,6 +44,9 @@ func TestTransientWorkspaceReadDoesNotAbandonAcceptedRun(t *testing.T) {
 	if err := repo.Init(ctx); err != nil {
 		t.Fatal(err)
 	}
+	if err := repo.InitWorkAttempts(ctx); err != nil {
+		t.Fatal(err)
+	}
 	now := time.Now().UTC()
 	schedule := shared.Schedule{ID: "schedule_recovery", ProjectID: "project_recovery", WorkspaceID: "ws_recovery", CreatedAt: now}
 	if _, _, err := repo.CreateSchedule(ctx, schedule, "recovery"); err != nil {

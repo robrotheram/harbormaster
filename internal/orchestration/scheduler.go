@@ -51,6 +51,11 @@ func (s *Scheduler) Tick(ctx context.Context) error {
 	s.Cursor.mu.Lock()
 	defer s.Cursor.mu.Unlock()
 	var failures error
+	if work, ok := s.Repository.(interface {
+		TickWork(context.Context, *Scheduler) error
+	}); ok {
+		failures = work.TickWork(ctx, s)
+	}
 	report := func(stage, id string, err error) {
 		if err != nil {
 			slog.Error("scheduler persistence failed", "stage", stage, "resource_id", id, "code", "STORAGE_UNAVAILABLE")

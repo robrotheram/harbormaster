@@ -10,6 +10,7 @@ import (
 
 func (s *Server) registerWork(mux *http.ServeMux) {
 	repo := orchestration.Repository{DB: s.Store.DB}
+	s.registerWorkExecution(mux, repo)
 	mux.HandleFunc("GET /v1/work-items", func(w http.ResponseWriter, r *http.Request) {
 		project, ok := s.ProjectForRequest(w, r, r.URL.Query().Get("project_id"))
 		if !ok {
@@ -57,7 +58,9 @@ func (s *Server) registerWork(mux *http.ServeMux) {
 			shared.Error(w, 400, "INVALID_REQUEST")
 			return
 		}
-		item, err := repo.CancelDraft(r.Context(), input.ProjectID, r.PathValue("id"), s.now())
+		unlock := s.operations.Lock("work:" + r.PathValue("id"))
+		defer unlock()
+		item, err := repo.CancelWork(r.Context(), input.ProjectID, r.PathValue("id"), s.now())
 		if errors.Is(err, orchestration.ErrConflict) {
 			shared.Error(w, 409, "WORK_STATE_CONFLICT")
 			return
@@ -75,12 +78,13 @@ func (s *Server) registerWork(mux *http.ServeMux) {
 
 	mux.HandleFunc("POST /v1/work-items", func(w http.ResponseWriter, r *http.Request) {
 		var input struct {
-			ProjectID   string `json:"project_id"`
-			WorkspaceID string `json:"workspace_id"`
-			Path        string `json:"specification_path"`
-			Digest      string `json:"specification_digest"`
-			Kind        string `json:"kind"`
-			Key         string `json:"idempotency_key"`
+			ArtifactPaths []string `json:"artifact_paths"`
+			ProjectID     string   `json:"project_id"`
+			WorkspaceID   string   `json:"workspace_id"`
+			Path          string   `json:"specification_path"`
+			Digest        string   `json:"specification_digest"`
+			Kind          string   `json:"kind"`
+			Key           string   `json:"idempotency_key"`
 		}
 		if !shared.Decode(w, r, &input, 4096) || !s.AuthorizeProject(w, r, input.ProjectID) {
 			return
@@ -90,7 +94,7 @@ func (s *Server) registerWork(mux *http.ServeMux) {
 			shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
 			return
 		}
-		item, created, err := repo.CreateWork(r.Context(), shared.WorkItem{ProjectID: input.ProjectID, WorkspaceID: input.WorkspaceID, SpecificationPath: input.Path, SpecificationDigest: input.Digest, Kind: input.Kind, CreatedAt: s.now()}, input.Key)
+		item, created, err := repo.CreateWork(r.Context(), shared.WorkItem{ArtifactPaths: input.ArtifactPaths, ProjectID: input.ProjectID, WorkspaceID: input.WorkspaceID, SpecificationPath: input.Path, SpecificationDigest: input.Digest, Kind: input.Kind, CreatedAt: s.now()}, input.Key)
 		if errors.Is(err, orchestration.ErrConflict) {
 			shared.Error(w, 409, "IDEMPOTENCY_CONFLICT")
 			return

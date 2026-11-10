@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"agent-workbench/internal/shared"
@@ -22,10 +23,18 @@ func (r Repository) InitWork(ctx context.Context) error {
 // CreateWork durably creates a draft. Acceptance/execution is deliberately a
 // separate operation: saving a reference does not prove its bytes were verified.
 func (r Repository) CreateWork(ctx context.Context, item shared.WorkItem, key string) (shared.WorkItem, bool, error) {
-	if !shared.ValidID(item.ProjectID) || !shared.ValidID(item.WorkspaceID) || !shared.ValidKey(key) || !shared.ValidProjectFile(item.SpecificationPath) || len(item.SpecificationDigest) != 64 {
+	if !shared.ValidID(item.ProjectID) || !shared.ValidID(item.WorkspaceID) || !shared.ValidKey(key) || !shared.ValidProjectFile(item.SpecificationPath) || len(item.SpecificationDigest) != 64 || item.SpecificationDigest != strings.ToLower(item.SpecificationDigest) {
 		return shared.WorkItem{}, false, ErrInvalidWork
 	}
 	if _, err := hex.DecodeString(item.SpecificationDigest); err != nil {
+		return shared.WorkItem{}, false, ErrInvalidWork
+	}
+	for _, path := range item.ArtifactPaths {
+		if !shared.ValidProjectFile(path) {
+			return shared.WorkItem{}, false, ErrInvalidWork
+		}
+	}
+	if len(item.ArtifactPaths) > 32 {
 		return shared.WorkItem{}, false, ErrInvalidWork
 	}
 	switch item.Kind {
@@ -51,7 +60,7 @@ func (r Repository) CreateWork(ctx context.Context, item shared.WorkItem, key st
 		return item, false, err
 	}
 	stored, err := r.Work(ctx, item.ProjectID, item.ID)
-	if err == nil && (stored.WorkspaceID != item.WorkspaceID || stored.SpecificationPath != item.SpecificationPath || stored.SpecificationDigest != item.SpecificationDigest || stored.Kind != item.Kind) {
+	if err == nil && (stored.WorkspaceID != item.WorkspaceID || stored.SpecificationPath != item.SpecificationPath || stored.SpecificationDigest != item.SpecificationDigest || stored.Kind != item.Kind || !sameArtifactPaths(stored.ArtifactPaths, item.ArtifactPaths)) {
 		err = ErrConflict
 	}
 	return stored, n == 1, err
@@ -114,4 +123,16 @@ func (r Repository) CancelDraft(ctx context.Context, project, id string, now tim
 		err = ErrConflict
 	}
 	return item, err
+}
+
+func sameArtifactPaths(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

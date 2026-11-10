@@ -31,6 +31,7 @@ func (s *Store) migrate(ctx context.Context) error {
 			_, err := s.DB.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS project_coordination(project_id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL,notes_enabled INTEGER NOT NULL DEFAULT 0)`)
 			return err
 		}},
+		{5, func(ctx context.Context) error { return (orchestration.Repository{DB: s.DB}).InitWorkAttempts(ctx) }},
 	}
 	for _, step := range steps {
 		var applied int
