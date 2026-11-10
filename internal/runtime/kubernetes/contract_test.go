@@ -20,7 +20,7 @@ func TestCapabilitiesThroughClient(t *testing.T) {
 	server := httptest.NewServer(k.Handler())
 	defer server.Close()
 	caps, err := controllerclient.NewClient(server.URL, k.cfg.Token).Capabilities(context.Background())
-	if err != nil || caps.ID != protocol.DevelopmentTemplate || caps.SchemaVersion != 1 || caps.Backend != "kubernetes-agent-sandbox" || caps.NetworkModes == nil || len(caps.NetworkModes) != 0 || caps.BranchSeed {
+	if err != nil || caps.ID != protocol.DevelopmentTemplate || caps.SchemaVersion != 1 || caps.Backend != "kubernetes-agent-sandbox" || caps.NetworkModes == nil || len(caps.NetworkModes) != 2 || caps.BranchSeed {
 		t.Fatalf("capabilities contract: %+v, %v", caps, err)
 	}
 }
@@ -36,7 +36,7 @@ func TestKubernetesRefusesUnsupportedNetworkingBeforeAllocation(t *testing.T) {
 	server := httptest.NewServer(k.Handler())
 	defer server.Close()
 	client := controllerclient.NewClient(server.URL, k.cfg.Token)
-	for _, mode := range []string{"open", "allowlist"} {
+	for _, mode := range []string{"open"} {
 		_, err := client.StartConfigured(context.Background(), "ws_test", protocol.WorkspaceSpec{ProjectID: "proj_one", HomeID: "home_one", AgentKind: "codex", ConnectionMode: mode})
 		if err == nil || fake.creates != 0 {
 			t.Fatal("unsupported network policy allocated a sandbox")
@@ -44,5 +44,25 @@ func TestKubernetesRefusesUnsupportedNetworkingBeforeAllocation(t *testing.T) {
 	}
 	if err := client.ConfigureConnections(context.Background(), "ws_test", shared.ConnectionPolicy{Mode: "blocked"}); err == nil || !strings.Contains(err.Error(), "NETWORK_POLICY_UNAVAILABLE") {
 		t.Fatal("claimed blocked policy without an enforcement verifier", err)
+	}
+}
+
+func TestNetworkPolicyThroughRealClient(t *testing.T) {
+	k, _ := kubeProvider(t)
+	server := httptest.NewServer(k.Handler())
+	defer server.Close()
+	client := controllerclient.NewClient(server.URL, k.cfg.Token)
+	ctx := context.Background()
+	if _, err := client.StartConfigured(ctx, "ws_test", protocol.WorkspaceSpec{ProjectID: "proj_one", HomeID: "home_one", AgentKind: "codex", ConnectionMode: "blocked"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.ConfigureConnections(ctx, "ws_test", shared.ConnectionPolicy{Mode: "blocked"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.ConfigureConnections(ctx, "ws_test", shared.ConnectionPolicy{Mode: "allowlist", Destinations: []string{"github.com:443"}}); err == nil {
+		t.Fatal("project ceiling bypassed through client")
+	}
+	if err := client.Stop(ctx, "ws_test"); err != nil {
+		t.Fatal(err)
 	}
 }

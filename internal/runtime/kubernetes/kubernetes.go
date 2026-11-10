@@ -33,6 +33,8 @@ type KubernetesConfig struct {
 	Image, RuntimeClass, StorageClass, ServiceAccount   string
 	InferenceURL, BrokerURL, CodexModel                 string
 	ProjectNamespaces                                   map[string]string
+	ProjectAllowlists                                   map[string][]string
+	EgressURL                                           string
 	MemoryLimit                                         int64
 	RequireVerified                                     bool
 }
@@ -50,6 +52,17 @@ func NewKubernetes(c KubernetesConfig) (*Kubernetes, error) {
 	u, err := url.Parse(c.APIURL)
 	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || c.APIToken == "" || len(c.Token) < 32 || len(c.GatewayServiceToken) < 32 || len(c.GrantSecret) < 32 || !dnsLabel.MatchString(c.Deployment) || len(c.Deployment) > 20 || !pinnedImage.MatchString(c.Image) || c.RuntimeClass != "kata" || !dnsLabel.MatchString(c.ServiceAccount) || c.StorageClass == "" || len(c.ProjectNamespaces) == 0 {
 		return nil, errors.New("invalid Kubernetes runtime configuration")
+	}
+	if c.EgressURL == "" {
+		c.EgressURL = "http://egress-gateway.workbench-egress.svc:8080"
+	}
+	for project, destinations := range c.ProjectAllowlists {
+		if _, ok := c.ProjectNamespaces[project]; !ok {
+			return nil, errors.New("allowlist project not bound")
+		}
+		if !(shared.ConnectionPolicy{Mode: "allowlist", Destinations: destinations}).Valid() {
+			return nil, errors.New("invalid project allowlist")
+		}
 	}
 	seen := map[string]bool{}
 	for project, namespace := range c.ProjectNamespaces {
@@ -69,7 +82,7 @@ func NewKubernetes(c KubernetesConfig) (*Kubernetes, error) {
 	if c.MemoryLimit == 0 {
 		c.MemoryLimit = 1 << 30
 	}
-	for _, origin := range []string{c.InferenceURL, c.BrokerURL} {
+	for _, origin := range []string{c.InferenceURL, c.BrokerURL, c.EgressURL} {
 		u, err := url.Parse(origin)
 		if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.Path != "" || u.RawQuery != "" {
 			return nil, errors.New("invalid internal gateway origin")
@@ -252,7 +265,7 @@ func (k *Kubernetes) StartConfigured(ctx context.Context, id string, spec protoc
 	if k.cfg.RequireVerified {
 		return shared.Observation{}, errors.New("VERIFIED_ISOLATION_UNAVAILABLE")
 	}
-	if spec.ConnectionMode != "" && spec.ConnectionMode != "blocked" {
+	if spec.ConnectionMode != "" && spec.ConnectionMode != "blocked" && spec.ConnectionMode != "allowlist" {
 		return shared.Observation{}, errors.New("NETWORK_POLICY_UNAVAILABLE")
 	}
 	if spec.ParentID != "" {
@@ -262,6 +275,9 @@ func (k *Kubernetes) StartConfigured(ctx context.Context, id string, spec protoc
 	if !ok || spec.HomeID == "" || !shared.ValidID(id) || !dnsLabel.MatchString(k.name(id)) {
 		return shared.Observation{}, errors.New("project runtime not provisioned")
 	}
+	if err := k.networkEvidence(ctx, namespace, spec.ProjectID); err != nil {
+		return shared.Observation{}, err
+	}
 	k.mu.Lock()
 	defer k.mu.Unlock()
 	resource, err := k.find(ctx, id)
@@ -270,6 +286,9 @@ func (k *Kubernetes) StartConfigured(ctx context.Context, id string, spec protoc
 		return shared.Observation{}, err
 	}
 	if err == nil {
+		if err := k.storageEvidence(ctx, resource); err != nil {
+			return shared.Observation{}, err
+		}
 		if protocol.CheckOwnership(resource.Metadata.Labels, spec) != nil || resource.Metadata.Labels["workbench.agent"] != spec.AgentKind || resource.Spec.PodTemplate.Spec.RuntimeClassName != k.cfg.RuntimeClass || len(resource.Spec.PodTemplate.Spec.Containers) != 1 || resource.Spec.PodTemplate.Spec.Containers[0].Image != k.cfg.Image {
 			return shared.Observation{}, errors.New("sandbox ownership or policy drift")
 		}
@@ -326,7 +345,7 @@ func (k *Kubernetes) StartConfigured(ctx context.Context, id string, spec protoc
 }
 func (k *Kubernetes) sandbox(id string, spec protocol.WorkspaceSpec, namespace string, labels map[string]string, secretName string) map[string]any {
 	env := []map[string]any{}
-	for name, value := range map[string]string{"WORKSPACE_ID": id, "PROJECT_ID": spec.ProjectID, "AGENT_HOME_ID": spec.HomeID, "AGENT_KIND": spec.AgentKind, "WORKSPACE_NAME": spec.Name, "DATA_DIR": "/data", "MONITOR_PROCESSES": "true", "WORKSPACE_T3": fmt.Sprint(spec.AgentKind == "t3" || spec.ConsoleEnabled), "WORKSPACE_AGENT": "codex", "CODEX_MODEL": k.cfg.CodexModel, "INFERENCE_URL": k.cfg.InferenceURL, "BROKER_URL": k.cfg.BrokerURL} {
+	for name, value := range map[string]string{"WORKSPACE_ID": id, "PROJECT_ID": spec.ProjectID, "AGENT_HOME_ID": spec.HomeID, "AGENT_KIND": spec.AgentKind, "WORKSPACE_NAME": spec.Name, "DATA_DIR": "/data", "MONITOR_PROCESSES": "true", "WORKSPACE_T3": fmt.Sprint(spec.AgentKind == "t3" || spec.ConsoleEnabled), "WORKSPACE_AGENT": "codex", "CODEX_MODEL": k.cfg.CodexModel, "INFERENCE_URL": k.cfg.InferenceURL, "BROKER_URL": k.cfg.BrokerURL, "EGRESS_URL": k.cfg.EgressURL} {
 		env = append(env, map[string]any{"name": name, "value": value})
 	}
 	env = append(env, map[string]any{"name": "WORKSPACE_TOKEN", "valueFrom": map[string]any{"secretKeyRef": map[string]string{"name": secretName, "key": "token"}}})
@@ -383,8 +402,11 @@ func (k *Kubernetes) Stop(ctx context.Context, id string) error {
 	}
 }
 func (k *Kubernetes) Reconcile(ctx context.Context, id string) error {
-	_, err := k.find(ctx, id)
-	return err
+	r, err := k.find(ctx, id)
+	if err != nil {
+		return err
+	}
+	return k.networkEvidence(ctx, r.Metadata.Namespace, r.Metadata.Labels["workbench.project"])
 }
 func (k *Kubernetes) Agent(ctx context.Context, id, method, path string, b []byte) (int, []byte, error) {
 	if k.cfg.RequireVerified {

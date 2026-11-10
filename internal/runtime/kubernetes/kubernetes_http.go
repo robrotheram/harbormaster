@@ -20,11 +20,26 @@ func (k *Kubernetes) Handler() http.Handler {
 	})
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/capabilities", func(w http.ResponseWriter, r *http.Request) {
-		c := protocol.RuntimeCapability{Resources: protocol.ResourceLimits{CPUCores: 1, MemoryBytes: k.cfg.MemoryLimit}, SchemaVersion: 1, Backend: "kubernetes-agent-sandbox", Version: AgentSandboxRelease, ID: protocol.DevelopmentTemplate, AgentKinds: []string{"t3", "codex"}, NetworkModes: []string{}, IsolationStatus: "unverified", NetworkStatus: "unverified", PrivateHomes: true}
+		c := protocol.RuntimeCapability{Resources: protocol.ResourceLimits{CPUCores: 1, MemoryBytes: k.cfg.MemoryLimit}, SchemaVersion: 1, Backend: "kubernetes-agent-sandbox", Version: AgentSandboxRelease, ID: protocol.DevelopmentTemplate, AgentKinds: []string{"t3", "codex"}, NetworkModes: []string{"blocked", "allowlist"}, IsolationStatus: "unverified", NetworkStatus: "unverified", PrivateHomes: true}
 		shared.JSON(w, 200, c)
 	})
 	mux.HandleFunc("POST /v1/workspaces/{id}/network-policy", func(w http.ResponseWriter, r *http.Request) {
-		shared.Error(w, 503, "NETWORK_POLICY_UNAVAILABLE")
+		var input struct {
+			GitHubAccess bool                     `json:"github_access"`
+			Connections  *shared.ConnectionPolicy `json:"connections"`
+		}
+		if !shared.Decode(w, r, &input, 32768) {
+			return
+		}
+		p := shared.Workspace{GitHubAccess: input.GitHubAccess}.EffectiveConnections()
+		if input.Connections != nil {
+			p = *input.Connections
+		}
+		if k.ApplyNetwork(r.Context(), r.PathValue("id"), p) != nil {
+			shared.Error(w, 503, "NETWORK_POLICY_UNAVAILABLE")
+			return
+		}
+		shared.JSON(w, 200, map[string]bool{"applied": true})
 	})
 	mux.HandleFunc("POST /v1/workspaces/{id}/start", func(w http.ResponseWriter, r *http.Request) {
 		var spec protocol.WorkspaceSpec
@@ -109,7 +124,7 @@ func (k *Kubernetes) verify(w http.ResponseWriter, r *http.Request) {
 	if !shared.Decode(w, r, &request, 2048) {
 		return
 	}
-	if len(request.Token) != 64 || (request.Audience != "inference" && request.Audience != "broker") {
+	if len(request.Token) != 64 || (request.Audience != "inference" && request.Audience != "broker" && request.Audience != "egress") {
 		shared.Error(w, 403, "GRANT_REJECTED")
 		return
 	}
@@ -125,7 +140,20 @@ func (k *Kubernetes) verify(w http.ResponseWriter, r *http.Request) {
 			id := item.Metadata.Labels["workbench.workspace"]
 			generation := item.Metadata.Labels["workbench.generation"]
 			if generation != "" && k.owned(item, id) && sandboxReady(item) && subtle.ConstantTimeCompare([]byte(request.Token), []byte(k.token(id, generation))) == 1 {
-				shared.JSON(w, 200, map[string]string{"workspace_id": id, "project_id": protocol.ProjectOf(item.Metadata.Labels), "principal_id": "local-operator"})
+				if k.networkEvidence(r.Context(), namespace, protocol.ProjectOf(item.Metadata.Labels)) != nil {
+					shared.Error(w, 503, "NETWORK_POLICY_DRIFT")
+					return
+				}
+				identity := map[string]any{"workspace_id": id, "project_id": protocol.ProjectOf(item.Metadata.Labels), "principal_id": "local-operator"}
+				if request.Audience == "egress" {
+					p, err := k.readPolicy(r.Context(), item)
+					if err != nil || p.Mode == "blocked" {
+						shared.Error(w, 403, "GRANT_REJECTED")
+						return
+					}
+					identity["connections"] = p
+				}
+				shared.JSON(w, 200, identity)
 				return
 			}
 		}

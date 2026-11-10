@@ -28,8 +28,10 @@ spec:
       message: Pinned images and restricted container security are mandatory.
     - expression: has(variables.pod.securityContext) && variables.pod.securityContext.runAsNonRoot && variables.pod.securityContext.runAsUser == 10001 && variables.pod.securityContext.seccompProfile.type == 'RuntimeDefault'
       message: Workspace must run as the restricted runtime user.
-    - expression: !has(variables.pod.volumes) || variables.pod.volumes.all(v, !has(v.hostPath))
-      message: Host paths are prohibited.
+    - expression: has(object.spec.volumeClaimTemplates) && object.spec.volumeClaimTemplates.size() == 1 && object.spec.volumeClaimTemplates.all(v, v.metadata.name == 'data' && v.spec.accessModes == ['ReadWriteOncePod'] && has(v.spec.storageClassName) && v.spec.storageClassName != '' && !has(v.spec.volumeName) && !has(v.spec.dataSource))
+      message: Private RWOP claims with explicit CSI class are mandatory.
+    - expression: !has(variables.pod.volumes) || variables.pod.volumes.all(v, has(v.emptyDir))
+      message: Only ephemeral pod volumes are permitted outside the private claim template.
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding

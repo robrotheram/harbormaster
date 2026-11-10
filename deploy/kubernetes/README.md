@@ -60,12 +60,7 @@ Supply the existing controller/gateway/grant secret files through `CONTROLLER_TO
 - No warm-pool assignment or automatic dirty-guest reuse is implemented. Adopt the upstream claim/warm-pool API only after testing data-free capacity binding. Existing used Sandbox/PVC objects are never reassigned to a different project/home.
 - API acceptance of RuntimeClass and Pod readiness are not VM attestation. Isolation and network evidence always report `unverified`; the secure gate never silently falls back to runc.
 
-The controller capability contract now reports an empty `network_modes` list for
-this experimental backend. The control plane rejects starts before allocating a
-Sandbox because this adapter cannot yet acknowledge an enforced per-workspace
-connection policy. Its `/network-policy` endpoint explicitly returns
-`NETWORK_POLICY_UNAVAILABLE`; it does not silently accept Blocked. Raw backend
-lifecycle tests remain useful with the unverified test configuration, but are
-not evidence that a cluster CNI enforces the requested policy. An implementation
-and acceptance check of that policy boundary is required before enabling starts
-through the workbench.
+The adapter now advertises blocked/allowlist and implements persisted policy application,
+project destination ceilings and installed NetworkPolicy drift checks. Network status
+remains unverified. See [production operations](../../docs/k3s.md) for packaging,
+configuration, recovery and the outstanding external acceptance gates.

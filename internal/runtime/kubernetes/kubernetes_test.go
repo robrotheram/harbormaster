@@ -47,6 +47,29 @@ func (f *fakeKubernetes) serve(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	key := namespace + "/" + parts[len(parts)-1]
+	if strings.Contains(r.URL.Path, "/persistentvolumeclaims") {
+		items := []any{}
+		for key, b := range f.resources {
+			if strings.HasPrefix(key, namespace+"/") {
+				labels := b["metadata"].(map[string]any)["labels"]
+				items = append(items, map[string]any{"metadata": map[string]any{"labels": labels}, "spec": map[string]any{"storageClassName": "test-rwop", "accessModes": []string{"ReadWriteOncePod"}}})
+			}
+		}
+		shared.JSON(w, 200, map[string]any{"items": items})
+		return
+	}
+	if strings.Contains(r.URL.Path, "/networkpolicies") {
+		project := "proj_one"
+		if namespace == "project-two" {
+			project = "proj_two"
+		}
+		items := []any{}
+		for name, spec := range projectPolicies(project) {
+			items = append(items, map[string]any{"metadata": map[string]string{"name": name}, "spec": spec})
+		}
+		shared.JSON(w, 200, map[string]any{"items": items})
+		return
+	}
 	if strings.Contains(r.URL.Path, "/secrets") {
 		if r.Method == "GET" {
 			if s, ok := f.secrets[key]; ok {
@@ -193,5 +216,102 @@ func TestKubernetesDeniesUnprovisionedProjectAndUnsupportedBranchBeforeCreation(
 	}
 	if len(fake.requests) != 0 {
 		t.Fatal("denied claim touched Kubernetes state")
+	}
+}
+
+func TestProjectAllowlistPolicyPersistenceAndOwnership(t *testing.T) {
+	k, f := kubeProvider(t)
+	ctx := context.Background()
+	k.cfg.ProjectAllowlists = map[string][]string{"proj_one": {"github.com:443"}}
+	if _, err := k.StartConfigured(ctx, "ws_test", protocol.WorkspaceSpec{ProjectID: "proj_one", HomeID: "home_one", AgentKind: "t3"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := k.ApplyNetwork(ctx, "ws_test", shared.ConnectionPolicy{Mode: "allowlist", Destinations: []string{"evil.invalid:443"}}); err == nil {
+		t.Fatal("project ceiling bypass")
+	}
+	if err := k.ApplyNetwork(ctx, "ws_test", shared.ConnectionPolicy{Mode: "open"}); err == nil {
+		t.Fatal("open accepted")
+	}
+	p := shared.ConnectionPolicy{Mode: "allowlist", Destinations: []string{"github.com:443"}}
+	if err := k.ApplyNetwork(ctx, "ws_test", p); err != nil {
+		t.Fatal(err)
+	}
+	r, err := k.find(ctx, "ws_test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := k.readPolicy(ctx, r)
+	if err != nil || !got.Allows("github.com:443") {
+		t.Fatalf("policy lost: %+v %v", got, err)
+	}
+	f.secrets["project-one/test-ws-test-network"]["metadata"].(map[string]any)["labels"].(map[string]any)["workbench.home"] = "home_other"
+	if _, err = k.readPolicy(ctx, r); err == nil {
+		t.Fatal("foreign policy accepted")
+	}
+}
+
+func TestNetworkEvidenceRejectsAdditivePolicyAndAdmissionFailure(t *testing.T) {
+	for _, status := range []int{403, 409, 422, 429} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			k, _ := kubeProvider(t)
+			k.apiHTTP = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader("{}")), Header: http.Header{}}, nil
+			})}
+			if _, err := k.StartConfigured(context.Background(), "ws_test", protocol.WorkspaceSpec{ProjectID: "proj_one", HomeID: "home_one"}); err == nil {
+				t.Fatal("admission failure ignored")
+			}
+		})
+	}
+	k, _ := kubeProvider(t)
+	k.apiHTTP = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"items":[{"metadata":{"name":"allow-everything"},"spec":{}}]}`)), Header: http.Header{}}, nil
+	})}
+	if err := k.networkEvidence(context.Background(), "project-one", "proj_one"); err == nil {
+		t.Fatal("additive policy accepted")
+	}
+}
+
+func TestSandboxQuotaAndAdmissionDenialsDoNotCreateWorkspace(t *testing.T) {
+	for _, code := range []int{403, 422, 429} {
+		t.Run(http.StatusText(code), func(t *testing.T) {
+			k, f := kubeProvider(t)
+			original := k.apiHTTP.Transport
+			k.apiHTTP.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				if r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/sandboxes") {
+					return &http.Response{StatusCode: code, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{}`))}, nil
+				}
+				return original.RoundTrip(r)
+			})
+			if _, err := k.StartConfigured(context.Background(), "ws_test", protocol.WorkspaceSpec{ProjectID: "proj_one", HomeID: "home_one"}); err == nil {
+				t.Fatal("denial ignored")
+			}
+			if f.creates != 0 {
+				t.Fatal("workspace created after denial")
+			}
+		})
+	}
+}
+func TestStorageEvidenceRejectsForeignHomeAndWeakenedFence(t *testing.T) {
+	k, _ := kubeProvider(t)
+	var r kubeResource
+	r.Metadata.Namespace = "project-one"
+	r.Metadata.Labels = map[string]string{"workbench.workspace": "ws_test", "workbench.project": "proj_one", "workbench.home": "home_one", "workbench.deployment": "test", "workbench.generation": "gen_one"}
+	for _, home := range []string{"home_other", "home_one"} {
+		labels := map[string]string{}
+		for a, b := range r.Metadata.Labels {
+			labels[a] = b
+		}
+		labels["workbench.home"] = home
+		mode := "ReadWriteOncePod"
+		if home == "home_one" {
+			mode = "ReadWriteOnce"
+		}
+		b, _ := json.Marshal(map[string]any{"items": []any{map[string]any{"metadata": map[string]any{"labels": labels}, "spec": map[string]any{"storageClassName": "test-rwop", "accessModes": []string{mode}}}}})
+		k.apiHTTP = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(string(b)))}, nil
+		})}
+		if err := k.storageEvidence(context.Background(), r); err == nil {
+			t.Fatal("storage ownership/fence bypass")
+		}
 	}
 }
