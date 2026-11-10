@@ -161,6 +161,7 @@ func (s *Server) Handler() http.Handler {
 	s.registerWork(secured)
 	s.registerCoordinationRuntime(secured)
 	s.registerFactoryEnvironments(secured)
+	s.registerDeletion(secured)
 	secured.HandleFunc("POST /v1/file-handoffs", s.shareFile)
 	secured.HandleFunc("/v1/workspaces/{id}/desktop/{path...}", func(w http.ResponseWriter, r *http.Request) {
 		ws, ok := s.workspace(w, r)
@@ -640,6 +641,9 @@ func (s *Server) createProjectWorkspace(w http.ResponseWriter, r *http.Request, 
 	}
 	s.createMu.Lock()
 	defer s.createMu.Unlock()
+	if !s.AuthorizeProject(w, r, req.Project) {
+		return
+	}
 	old, e := s.Store.ByProjectKey(r.Context(), req.Project, req.Key)
 	if e == nil {
 		if old.ProjectID != req.Project {

@@ -15,7 +15,7 @@ var ErrOwnership = errors.New("immutable ownership mismatch")
 func (s *Store) Project(ctx context.Context, id string) (shared.Project, error) {
 	var p shared.Project
 	var b string
-	err := s.DB.QueryRowContext(ctx, s.query(`SELECT metadata FROM projects WHERE id=?`), id).Scan(&b)
+	err := s.DB.QueryRowContext(ctx, s.query(`SELECT metadata FROM projects WHERE id=? AND id NOT IN (SELECT id FROM deleted_resources WHERE kind='project')`), id).Scan(&b)
 	if err != nil {
 		return p, err
 	}
@@ -25,7 +25,7 @@ func (s *Store) Project(ctx context.Context, id string) (shared.Project, error) 
 func (s *Store) ProjectByKey(ctx context.Context, key string) (shared.Project, error) {
 	var p shared.Project
 	var b string
-	err := s.DB.QueryRowContext(ctx, s.query(`SELECT metadata FROM projects WHERE create_key=?`), key).Scan(&b)
+	err := s.DB.QueryRowContext(ctx, s.query(`SELECT metadata FROM projects WHERE create_key=? AND id NOT IN (SELECT id FROM deleted_resources WHERE kind='project')`), key).Scan(&b)
 	if err != nil {
 		return p, err
 	}
@@ -33,7 +33,7 @@ func (s *Store) ProjectByKey(ctx context.Context, key string) (shared.Project, e
 	return p, err
 }
 func (s *Store) Projects(ctx context.Context) ([]shared.Project, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT metadata FROM projects ORDER BY id`)
+	rows, err := s.DB.QueryContext(ctx, `SELECT metadata FROM projects WHERE id NOT IN (SELECT id FROM deleted_resources WHERE kind='project') ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +61,7 @@ func (s *Store) CreateProject(ctx context.Context, p shared.Project, key string)
 	return err
 }
 func (s *Store) AgentHomes(ctx context.Context, project string) ([]shared.AgentHome, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT metadata FROM agent_homes ORDER BY id`)
+	rows, err := s.DB.QueryContext(ctx, `SELECT metadata FROM agent_homes WHERE workspace_id NOT IN (SELECT id FROM deleted_resources WHERE kind='workspace') ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}

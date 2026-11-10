@@ -57,6 +57,9 @@ func allowedUIRoute(method, path string) bool {
 	case "exchange-exports":
 		return len(parts) == 2 && get || len(parts) == 3 && post && parts[2] == "submit"
 	case "projects":
+		if len(parts) == 3 && parts[2] == "delete" {
+			return post
+		}
 		if len(parts) == 3 && parts[2] == "coordination" {
 			return post
 		}
@@ -80,11 +83,19 @@ func allowedUIRoute(method, path string) bool {
 			return false
 		}
 		switch parts[2] {
+		case "recipe-jobs":
+			return len(parts) == 3 && (get || post) || len(parts) == 4 && shared.ValidID(parts[3]) && get || len(parts) == 5 && shared.ValidID(parts[3]) && parts[4] == "cancel" && post
+		case "artifacts":
+			return len(parts) == 3 && get || len(parts) == 5 && shared.ValidID(parts[3]) && parts[4] == "content" && get
+		case "retained-previews":
+			return len(parts) == 3 && post
+		case "services":
+			return len(parts) == 4 && shared.ValidID(parts[3]) && get || len(parts) == 5 && shared.ValidID(parts[3]) && (parts[4] == "revoke" || parts[4] == "release") && post
 		case "logs":
 			return len(parts) == 3 && get
 		case "history":
 			return len(parts) == 3 && get || len(parts) == 4 && (get && parts[3] == "export" || post && (parts[3] == "feedback" || parts[3] == "purpose"))
-		case "start", "stop", "desktop-pair", "enable-t3", "settings":
+		case "delete", "start", "stop", "desktop-pair", "enable-t3", "settings":
 			return len(parts) == 3 && post
 		case "tasks":
 			if len(parts) == 3 {

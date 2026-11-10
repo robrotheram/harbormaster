@@ -207,3 +207,26 @@ func (m *Manager) startRecipe(w http.ResponseWriter, r *http.Request) {
 	}()
 	shared.JSON(w, 202, j)
 }
+
+func (m *Manager) listRecipes(w http.ResponseWriter, r *http.Request) {
+	rows, err := m.db.Query(`SELECT id,template,state,error_code,created_at,timeout_seconds FROM recipe_jobs ORDER BY created_at DESC,id LIMIT 200`)
+	if err != nil {
+		shared.Error(w, 503, "STORAGE_UNAVAILABLE")
+		return
+	}
+	defer rows.Close()
+	items := []recipeJob{}
+	for rows.Next() {
+		var j recipeJob
+		if rows.Scan(&j.ID, &j.Template, &j.State, &j.ErrorCode, &j.CreatedAt, &j.Timeout) != nil {
+			shared.Error(w, 503, "STORAGE_UNAVAILABLE")
+			return
+		}
+		items = append(items, j)
+	}
+	if rows.Err() != nil {
+		shared.Error(w, 503, "STORAGE_UNAVAILABLE")
+		return
+	}
+	shared.JSON(w, 200, map[string]any{"items": items})
+}

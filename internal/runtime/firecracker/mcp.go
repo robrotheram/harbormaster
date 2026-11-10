@@ -52,9 +52,7 @@ func (f *Firecracker) projectMCP(v *fcVM, secret string, client *http.Client) ht
 		switch rpc.Method {
 		case "initialize", "notifications/initialized", "ping", "tools/list":
 		case "tools/call":
-			switch rpc.Params.Name {
-			case "work_run", "work_attempts", "work_cancel", "work_create", "work_list", "exchange_publish", "exchange_inbox", "exchange_read", "exchange_submit", "note_publish":
-			default:
+			if !shared.ProjectToolAllowed(rpc.Params.Name) {
 				http.Error(w, "forbidden tool", 403)
 				return
 			}

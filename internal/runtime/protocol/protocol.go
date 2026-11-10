@@ -40,7 +40,7 @@ func AllowedAgentPath(method, path string) bool {
 			if len(partsFactory) == 2 {
 				return method == "POST"
 			}
-			if len(partsFactory) == 3 && partsFactory[2] == "reconcile" {
+			if len(partsFactory) == 3 && (partsFactory[2] == "reconcile" || partsFactory[2] == "receipt") {
 				return method == "POST"
 			}
 			if !shared.ValidID(partsFactory[2]) {
@@ -54,7 +54,7 @@ func AllowedAgentPath(method, path string) bool {
 			return len(partsFactory) == 4 && shared.ValidID(partsFactory[2]) && partsFactory[3] == "content" && method == "GET"
 		case "recipe-jobs":
 			if len(partsFactory) == 2 {
-				return method == "POST"
+				return method == "POST" || method == "GET"
 			}
 			if !shared.ValidID(partsFactory[2]) {
 				return false

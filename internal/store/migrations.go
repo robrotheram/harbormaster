@@ -43,6 +43,10 @@ func (s *Store) migrate(ctx context.Context) error {
 			return nil
 		}},
 		{7, func(ctx context.Context) error { return (orchestration.Repository{DB: s.DB}).InitWorkRequests(ctx) }},
+		{8, func(ctx context.Context) error {
+			_, err := s.DB.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS deleted_resources(kind TEXT NOT NULL,id TEXT NOT NULL,PRIMARY KEY(kind,id))`)
+			return err
+		}},
 	}
 	for _, step := range steps {
 		var applied int
@@ -63,6 +67,7 @@ func (s *Store) migrate(ctx context.Context) error {
 }
 func (s *Store) initMetadata(ctx context.Context) error {
 	for _, q := range []string{
+		`CREATE TABLE IF NOT EXISTS deleted_resources(kind TEXT NOT NULL,id TEXT NOT NULL,PRIMARY KEY(kind,id))`,
 		`CREATE TABLE IF NOT EXISTS workspaces (id TEXT PRIMARY KEY, create_key TEXT UNIQUE NOT NULL, metadata TEXT NOT NULL)`,
 		// Historical schema retained for safe upgrades; no active profile readers or seeds.
 		`CREATE TABLE IF NOT EXISTS tool_profiles(id TEXT PRIMARY KEY,revision INTEGER NOT NULL,metadata TEXT NOT NULL)`,

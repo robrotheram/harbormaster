@@ -6,7 +6,11 @@ import (
 	"agent-workbench/internal/shared"
 	"archive/tar"
 	"bytes"
+	"crypto/sha256"
+	"database/sql"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"mime"
 	"net/http"
@@ -33,12 +37,14 @@ func (m *Manager) service(id string) (retainedService, error) {
 func (m *Manager) createService(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Snapshot []byte `json:"snapshot"`
+		Key      string `json:"idempotency_key"`
+		Source   string `json:"source_ref"`
 		TTL      int    `json:"ttl_seconds"`
 	}
 	if !shared.Decode(w, r, &in, 24<<20) {
 		return
 	}
-	if len(in.Snapshot) > 16<<20 || in.TTL < 1 || in.TTL > 86400 {
+	if len(in.Source) > 512 || len(in.Snapshot) > 16<<20 || in.TTL < 1 || in.TTL > 86400 {
 		shared.Error(w, 400, "INVALID_PREVIEW_BUDGET")
 		return
 	}
@@ -89,8 +95,55 @@ func (m *Manager) createService(w http.ResponseWriter, r *http.Request) {
 		shared.Error(w, 409, "WORKSPACE_STOPPING")
 		return
 	}
+	fingerprint := fmt.Sprintf("%x:%d:%s", sha256.Sum256(in.Snapshot), in.TTL, in.Source)
+	if in.Key != "" {
+		if !shared.ValidKey(in.Key) {
+			shared.Error(w, 400, "INVALID_RECEIPT_KEY")
+			return
+		}
+		var prior, id string
+		err := m.db.QueryRow(`SELECT fingerprint,service_id FROM retained_service_receipts WHERE idem_key=?`, in.Key).Scan(&prior, &id)
+		if err == nil {
+			if prior != fingerprint {
+				shared.Error(w, 409, "IDEMPOTENCY_CONFLICT")
+				return
+			}
+			service, err := m.service(id)
+			if err != nil {
+				shared.Error(w, 503, "STORAGE_UNAVAILABLE")
+				return
+			}
+			shared.JSON(w, 201, service)
+			return
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			shared.Error(w, 503, "STORAGE_UNAVAILABLE")
+			return
+		}
+	}
+	var active int
+	if err := m.db.QueryRow(`SELECT count(*) FROM retained_services WHERE state='active' AND expires_at>?`, time.Now().Unix()).Scan(&active); err != nil {
+		shared.Error(w, 503, "STORAGE_UNAVAILABLE")
+		return
+	}
+	if active != 0 {
+		shared.Error(w, 409, "ACTIVE_PREVIEW_EXISTS")
+		return
+	}
 	s := retainedService{shared.NewID("service_"), "active", time.Now().Unix() + int64(in.TTL)}
-	if _, err = m.db.Exec(`INSERT INTO retained_services VALUES(?,?,?,?)`, s.ID, s.State, s.ExpiresAt, snapshot); err != nil {
+	tx, err := m.db.Begin()
+	if err != nil {
+		shared.Error(w, 503, "STORAGE_UNAVAILABLE")
+		return
+	}
+	defer tx.Rollback()
+	if _, err = tx.Exec(`INSERT INTO retained_services VALUES(?,?,?,?)`, s.ID, s.State, s.ExpiresAt, snapshot); err == nil && in.Key != "" {
+		_, err = tx.Exec(`INSERT INTO retained_service_receipts VALUES(?,?,?,?,?)`, in.Key, fingerprint, s.ID, in.Source, in.TTL)
+	}
+	if err == nil {
+		err = tx.Commit()
+	}
+	if err != nil {
 		shared.Error(w, 503, "STORAGE_UNAVAILABLE")
 		return
 	}
@@ -178,4 +231,44 @@ func (m *Manager) expireServices() {
 			m.db.Exec(`UPDATE retained_services SET state='expired' WHERE state='active' AND expires_at<=?`, time.Now().Unix())
 		}
 	}
+}
+
+// Receipt lookup lets a caller recover a lost acknowledgement even after source
+// compute stopped. source_ref is the trusted platform immutable artifact binding.
+func (m *Manager) serviceReceipt(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Key    string `json:"idempotency_key"`
+		Source string `json:"source_ref"`
+		TTL    int    `json:"ttl_seconds"`
+	}
+	if !shared.Decode(w, r, &in, 2048) {
+		return
+	}
+	if !shared.ValidKey(in.Key) {
+		shared.Error(w, 400, "INVALID_REQUEST")
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var id, source string
+	var ttl int
+	err := m.db.QueryRow(`SELECT service_id,source_ref,ttl FROM retained_service_receipts WHERE idem_key=?`, in.Key).Scan(&id, &source, &ttl)
+	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			shared.Error(w, 503, "STORAGE_UNAVAILABLE")
+			return
+		}
+		shared.Error(w, 404, "RECEIPT_NOT_FOUND")
+		return
+	}
+	if source != in.Source || ttl != in.TTL {
+		shared.Error(w, 409, "IDEMPOTENCY_CONFLICT")
+		return
+	}
+	service, err := m.service(id)
+	if err != nil {
+		shared.Error(w, 503, "STORAGE_UNAVAILABLE")
+		return
+	}
+	shared.JSON(w, 200, service)
 }

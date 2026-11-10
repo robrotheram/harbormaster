@@ -1,0 +1,22 @@
+[
+  "work_create",
+  "work_list",
+  "work_run",
+  "work_attempts",
+  "work_cancel",
+  "exchange_publish",
+  "exchange_inbox",
+  "exchange_read",
+  "exchange_submit",
+  "note_publish",
+  "factory_job_start",
+  "factory_job_list",
+  "factory_job_status",
+  "factory_job_cancel",
+  "factory_evidence_list",
+  "factory_preview_retain",
+  "factory_preview_status",
+  "factory_preview_revoke",
+  "factory_preview_release",
+  "factory_evidence_read"
+]

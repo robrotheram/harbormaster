@@ -106,7 +106,7 @@ export function Workspaces({ project }: { project: Project }) {
 
   async function operate(
     workspace: Workspace,
-    action: "start" | "stop" | "pair" | "enable-t3",
+    action: "start" | "stop" | "pair" | "enable-t3" | "delete",
     open = false,
   ) {
     if (busy) return;
@@ -116,7 +116,18 @@ export function Workspaces({ project }: { project: Project }) {
     setActionError(undefined);
     setMessage("");
     try {
-      if (action === "enable-t3") {
+      if (action === "delete") {
+        if (
+          !window.confirm(
+            `Delete ${workspace.name || workspace.id} from the workbench? Compute must stop first. Private disks remain on the host.`,
+          )
+        )
+          return;
+        await workspacesApi.delete(workspace.id);
+        setMessage(
+          "Workspace deleted from the workbench. Private disks retained.",
+        );
+      } else if (action === "enable-t3") {
         await workspacesApi.enableConsole(workspace.id);
         setMessage(
           "T3 enabled. You can now open the browser or connect T3 desktop.",
@@ -538,6 +549,13 @@ export function Workspaces({ project }: { project: Project }) {
                                 Start workspace
                               </DropdownMenuItem>
                             )}
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              onSelect={() => operate(workspace, "delete")}
+                            >
+                              Delete workspace
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>

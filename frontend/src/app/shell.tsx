@@ -2,6 +2,7 @@ import { Input } from "@/components/ui/input";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Navigate, useNavigate } from "@tanstack/react-router";
+import { request } from "@/shared/http";
 import { keys } from "@/shared/query-keys";
 
 import { projectsApi } from "@/features/projects/api";
@@ -77,11 +78,15 @@ const Schedules = lazy(() =>
   })),
 );
 
+const Factory = lazy(() =>
+  import("@/features/factory/factory").then((m) => ({ default: m.Factory })),
+);
 const Work = lazy(() =>
   import("@/features/work/work").then((m) => ({ default: m.Work })),
 );
 
 const sections: { id: Section; label: string; icon: LucideIcon }[] = [
+  { id: "factory", label: "Jobs and previews", icon: Boxes },
   { id: "work", label: "Work", icon: ListChecks },
   { id: "workspaces", label: "Workspaces", icon: Boxes },
   { id: "homes", label: "Agent homes", icon: Fingerprint },
@@ -119,6 +124,16 @@ export function ProjectShell({
     staleTime: 15000,
   });
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const deletion = useMutation({
+    mutationFn: async (id: string) =>
+      request(`/projects/${encodeURIComponent(id)}/delete`, { confirm_id: id }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries();
+      await navigate({ to: "/" });
+    },
+  });
+
   const [create, setCreate] = useState(false);
   const [mobile, setMobile] = useState(false);
   const [dark, setDark] = useState(() => {
@@ -144,6 +159,7 @@ export function ProjectShell({
   const selected: Section | undefined = globalSettings
     ? undefined
     : [
+          "factory",
           "work",
           "workspaces",
           "homes",
@@ -383,6 +399,23 @@ export function ProjectShell({
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-3">
+            {project && project.id !== "default" && (
+              <Button
+                variant="outline"
+                disabled={deletion.isPending}
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      `Delete project ${project.name} and all its workspaces from the workbench? Compute must stop first. Private disks remain on the host.`,
+                    )
+                  )
+                    deletion.mutate(project.id);
+                }}
+              >
+                Delete project
+              </Button>
+            )}
+
             <Badge
               variant="outline"
               className="hidden gap-1.5 text-muted-foreground sm:inline-flex"
@@ -403,6 +436,7 @@ export function ProjectShell({
           </div>
         </header>
         <main id="main" className="mx-auto max-w-[1560px] p-4 sm:p-8 lg:p-9">
+          {deletion.isError && <ErrorNotice error={deletion.error} />}
           <Suspense fallback={<Skeleton className="h-72 w-full" />}>
             {projects.isError && <ErrorNotice error={projects.error} />}
             {globalSettings ? (
@@ -473,6 +507,7 @@ function ProjectView({
   project: Project;
   section: Section;
 }) {
+  if (section === "factory") return <Factory project={project} />;
   if (section === "work") return <Work project={project} />;
   if (section === "homes") return <AgentHomes project={project} />;
   if (section === "overview") return <RuntimeOverview />;

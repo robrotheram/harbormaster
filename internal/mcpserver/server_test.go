@@ -93,7 +93,7 @@ func TestSDKTools(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if len(list.Tools) != 29 {
+	if len(list.Tools) != 39 {
 		t.Fatalf("tools=%d", len(list.Tools))
 	}
 	for _, tool := range list.Tools {

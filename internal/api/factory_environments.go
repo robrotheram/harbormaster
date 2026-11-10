@@ -5,12 +5,44 @@ import (
 	"agent-workbench/internal/shared"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 )
 
 // Factory operations use ordinary project authentication and workspace lifecycle.
 // They are intentionally separate from work-attempt projection/dispatch.
 func (s *Server) registerFactoryEnvironments(mux *http.ServeMux) {
+	for _, resource := range []string{"recipe-jobs", "artifacts"} {
+		mux.HandleFunc("GET /v1/workspaces/{id}/"+resource, func(w http.ResponseWriter, r *http.Request) {
+			ws, ok := s.workspace(w, r)
+			if !ok {
+				return
+			}
+			s.factoryForward(w, r, ws.ID, "/v1/"+resource, nil)
+		})
+	}
+	mux.HandleFunc("GET /v1/workspaces/{id}/artifacts/{artifact}/content", func(w http.ResponseWriter, r *http.Request) {
+		ws, ok := s.workspace(w, r)
+		if !ok {
+			return
+		}
+		id := r.PathValue("artifact")
+		if !shared.ValidID(id) {
+			shared.Error(w, 400, "INVALID_REQUEST")
+			return
+		}
+		status, b, err := s.Runtime.Agent(r.Context(), ws.ID, "GET", "/v1/artifacts/"+id+"/content", nil)
+		if err != nil || status != 200 {
+			shared.Error(w, 503, "EVIDENCE_UNAVAILABLE")
+			return
+		}
+		if len(b) > 1<<20 {
+			shared.Error(w, 413, "EVIDENCE_READ_BUDGET_EXCEEDED")
+			return
+		}
+		shared.JSON(w, 200, map[string]any{"artifact_id": id, "content": b})
+	})
+
 	mux.HandleFunc("POST /v1/workspaces/{id}/recipe-jobs", func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
 			Template string `json:"template"`
@@ -78,6 +110,7 @@ func (s *Server) registerFactoryEnvironments(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/workspaces/{id}/retained-previews", func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
 			Retained string `json:"retained_workspace_id"`
+			Key      string `json:"idempotency_key"`
 			Artifact string `json:"artifact_id"`
 			TTL      int    `json:"ttl_seconds"`
 		}
@@ -108,8 +141,15 @@ func (s *Server) registerFactoryEnvironments(mux *http.ServeMux) {
 			return
 		}
 		svc := previewsvc.Service{Runtime: s.Runtime, Lifecycle: s.lifecycle()}
-		body, err := svc.Retain(r.Context(), coding, &retained, in.Artifact, in.TTL)
+		if in.Key == "" {
+			in.Key = "retain-" + coding.ID + "-" + in.Artifact
+		}
+		body, err := svc.Retain(r.Context(), coding, &retained, in.Artifact, in.TTL, in.Key)
 		if err != nil {
+			if errors.Is(err, previewsvc.ErrConflict) {
+				shared.Error(w, 409, "IDEMPOTENCY_CONFLICT")
+				return
+			}
 			shared.Error(w, 503, "RETAINED_PREVIEW_UNAVAILABLE")
 			return
 		}

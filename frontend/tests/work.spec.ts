@@ -60,7 +60,7 @@ test("runs work and reviews retained evidence", async ({ page }) => {
   await page.getByRole("button", { name: "Run work", exact: true }).click();
   await expect(
     page.getByRole("link", { name: "Report", exact: true }),
-  ).toHaveAttribute("href", "/v1/artifacts/report?project_id=A");
+  ).toHaveAttribute("href", "/ui-api/artifacts/report?project_id=A");
   await page
     .getByRole("button", { name: "Accept result", exact: true })
     .click();
@@ -69,6 +69,6 @@ test("runs work and reviews retained evidence", async ({ page }) => {
   ).toHaveCount(0);
   expect(posts).toEqual([
     { project_id: "A", idempotency_key: expect.any(String) },
-    { project_id: "A", accepted: true },
+    { project_id: "A", accepted: true, expected_attempt_id: "attempt-one" },
   ]);
 });

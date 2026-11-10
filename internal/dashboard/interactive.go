@@ -37,6 +37,7 @@ func NewInteractiveHandler(readURL, controlURL, token string) (http.Handler, err
 	var ticketsMu sync.Mutex
 	tickets := map[string]ticket{}
 	client := &http.Client{Timeout: 35 * time.Second, Transport: &http.Transport{Proxy: nil}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	previews := newPreviewIngress(client, controlURL, token)
 	sign := func(id, expires string) string {
 		mac := hmac.New(sha256.New, []byte(token))
 		mac.Write([]byte("console:" + id + ":" + expires))
@@ -66,6 +67,10 @@ func NewInteractiveHandler(readURL, controlURL, token string) (http.Handler, err
 			r.Header.Del("Cookie")
 			w.Header().Set("Cache-Control", "no-store")
 			shared.Proxy(w, r, controlURL, "/v1/workspaces/"+id+"/desktop"+r.URL.Path, token)
+			return
+		}
+		if strings.HasPrefix(host, "preview-") && strings.HasSuffix(host, ".localhost") {
+			previews.serve(w, r)
 			return
 		}
 		if strings.HasSuffix(host, ".localhost") {
@@ -153,6 +158,14 @@ func NewInteractiveHandler(readURL, controlURL, token string) (http.Handler, err
 			}
 			path := strings.TrimPrefix(r.URL.Path, "/ui-api")
 			parts := strings.Split(strings.Trim(path, "/"), "/")
+			if len(parts) == 5 && parts[0] == "workspaces" && parts[2] == "services" && parts[4] == "connect" && r.Method == "POST" {
+				if r.Header.Get("X-Workbench-Request") != "1" {
+					writeError(w, 403, "ORIGIN_REJECTED")
+					return
+				}
+				previews.issue(w, r, parts[1], parts[3])
+				return
+			}
 			if !allowedUIRoute(r.Method, path) {
 				writeError(w, 404, "NOT_FOUND")
 				return

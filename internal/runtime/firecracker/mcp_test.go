@@ -70,7 +70,7 @@ func TestProjectMCPGenerationToolInvocation(t *testing.T) {
 	}
 	defer session.Close()
 	tools, err := session.ListTools(ctx, nil)
-	if err != nil || len(tools.Tools) != 10 {
+	if err != nil || len(tools.Tools) != 20 {
 		t.Fatalf("narrow discovery: %v %v", tools, err)
 	}
 	result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "work_list", Arguments: map[string]string{"project_id": "personal"}})

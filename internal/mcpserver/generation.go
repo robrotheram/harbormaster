@@ -67,9 +67,7 @@ func generationMCP(c Config, next http.Handler) (http.Handler, error) {
 		switch rpc.Method {
 		case "initialize", "notifications/initialized", "ping", "tools/list":
 		case "tools/call":
-			switch rpc.Params.Name {
-			case "work_create", "work_list", "work_run", "work_attempts", "work_cancel", "exchange_publish", "exchange_inbox", "exchange_read", "exchange_submit", "note_publish":
-			default:
+			if !shared.ProjectToolAllowed(rpc.Params.Name) {
 				http.Error(w, "forbidden tool", 403)
 				return
 			}

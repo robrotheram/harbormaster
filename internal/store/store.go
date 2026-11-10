@@ -69,7 +69,7 @@ func (s *Store) Create(ctx context.Context, w shared.Workspace, key string) erro
 func (s *Store) ByKey(ctx context.Context, key string) (shared.Workspace, error) {
 	var b string
 	var w shared.Workspace
-	e := s.DB.QueryRowContext(ctx, s.query(`SELECT metadata FROM workspaces WHERE create_key=?`), key).Scan(&b)
+	e := s.DB.QueryRowContext(ctx, s.query(`SELECT metadata FROM workspaces WHERE create_key=? AND id NOT IN (SELECT id FROM deleted_resources WHERE kind='workspace')`), key).Scan(&b)
 	if e != nil {
 		return w, e
 	}
@@ -77,7 +77,7 @@ func (s *Store) ByKey(ctx context.Context, key string) (shared.Workspace, error)
 	return shared.NormalizeWorkspace(w), e
 }
 func (s *Store) Workspaces(ctx context.Context) ([]shared.Workspace, error) {
-	rows, e := s.DB.QueryContext(ctx, `SELECT metadata FROM workspaces ORDER BY id`)
+	rows, e := s.DB.QueryContext(ctx, `SELECT metadata FROM workspaces WHERE id NOT IN (SELECT id FROM deleted_resources WHERE kind='workspace') ORDER BY id`)
 	if e != nil {
 		return nil, e
 	}
@@ -99,7 +99,7 @@ func (s *Store) Workspaces(ctx context.Context) ([]shared.Workspace, error) {
 func (s *Store) Workspace(ctx context.Context, id string) (shared.Workspace, error) {
 	var b string
 	var w shared.Workspace
-	e := s.DB.QueryRowContext(ctx, s.query(`SELECT metadata FROM workspaces WHERE id=?`), id).Scan(&b)
+	e := s.DB.QueryRowContext(ctx, s.query(`SELECT metadata FROM workspaces WHERE id=? AND id NOT IN (SELECT id FROM deleted_resources WHERE kind='workspace')`), id).Scan(&b)
 	if e != nil {
 		return w, e
 	}

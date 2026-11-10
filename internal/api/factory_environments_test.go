@@ -1,11 +1,14 @@
 package api
 
 import (
+	"agent-workbench/internal/dashboard"
 	"archive/tar"
 	"bytes"
 	"context"
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -117,17 +120,88 @@ func testFactoryAPIRetention(t *testing.T, expire bool) {
 		ID string `json:"id"`
 	}
 	json.Unmarshal(res.Body.Bytes(), &service)
+
+	// Retry after a simulated lost acknowledgement must return the same service.
+	retry := request(t, s, "POST", "/v1/workspaces/"+coding.ID+"/retained-previews", string(payload))
+	var replay struct {
+		ID string `json:"id"`
+	}
+	json.Unmarshal(retry.Body.Bytes(), &replay)
+	if retry.Code != 201 || replay.ID != service.ID {
+		t.Fatalf("promotion replay: %d %s", retry.Code, retry.Body)
+	}
+	upstream := httptest.NewServer(s.Handler())
+	defer upstream.Close()
+	ingress, err := dashboard.NewInteractiveHandler(upstream.URL, upstream.URL, "control-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	invokeBrowser := func(method, target, host, body string, cookie *http.Cookie) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, target, strings.NewReader(body))
+		req.Host = host
+		if method == "POST" {
+			req.Header.Set("Origin", "http://"+host)
+			req.Header.Set("X-Workbench-Request", "1")
+			req.Header.Set("Content-Type", "application/json")
+		}
+		if cookie != nil {
+			req.AddCookie(cookie)
+		}
+		out := httptest.NewRecorder()
+		ingress.ServeHTTP(out, req)
+		return out
+	}
+	issued := invokeBrowser("POST", "/ui-api/workspaces/"+retained.ID+"/services/"+service.ID+"/connect", "localhost:8088", "{}", nil)
+	var link struct {
+		URL string `json:"preview_url"`
+	}
+	json.Unmarshal(issued.Body.Bytes(), &link)
+	u, err := url.Parse(link.URL)
+	if err != nil || u.Host == "" {
+		t.Fatalf("attachment %d %s", issued.Code, issued.Body)
+	}
+	ticket, _ := url.ParseQuery(u.Fragment)
+	connectBody, _ := json.Marshal(map[string]string{"ticket": ticket.Get("ticket")})
+	connected := invokeBrowser("POST", "/connect", u.Host, string(connectBody), nil)
+	if connected.Code != 200 || len(connected.Result().Cookies()) != 1 {
+		t.Fatalf("connect %d %s", connected.Code, connected.Body)
+	}
+	cookie := connected.Result().Cookies()[0]
+	if !cookie.HttpOnly || cookie.Domain != "" || cookie.SameSite != http.SameSiteStrictMode {
+		t.Fatal("unsafe preview cookie")
+	}
+	if again := invokeBrowser("POST", "/connect", u.Host, string(connectBody), nil); again.Code != 403 {
+		t.Fatal("ticket reused")
+	}
+	if foreign := invokeBrowser("GET", "/", "preview-foreign.localhost:8088", "", cookie); foreign.Code != 401 {
+		t.Fatal("session crossed origins")
+	}
 	res = request(t, s, "POST", "/v1/workspaces/"+coding.ID+"/stop", `{"idempotency_key":"stop-coding"}`)
 	if res.Code != 200 {
 		t.Fatalf("stop %d %s", res.Code, res.Body)
+	}
+	replayAfterStop := request(t, s, "POST", "/v1/workspaces/"+coding.ID+"/retained-previews", string(payload))
+	if replayAfterStop.Code != 201 {
+		t.Fatalf("lost ACK after coding stopped: %d %s", replayAfterStop.Code, replayAfterStop.Body)
 	}
 	base := "/v1/workspaces/" + retained.ID + "/services/" + service.ID
 	res = request(t, s, "POST", base+"/fetch", `{"path":"index.html"}`)
 	if res.Code != 200 {
 		t.Fatalf("retained fetch %d %s", res.Code, res.Body)
 	}
+
+	rendered := invokeBrowser("GET", "/", u.Host, "", cookie)
+	if rendered.Code != 200 || rendered.Body.String() != "<h1>hello</h1>" {
+		t.Fatalf("isolated render after coding stop: %d %s", rendered.Code, rendered.Body)
+	}
+	if strings.Contains(rendered.Body.String(), "control-token") {
+		t.Fatal("credential leaked")
+	}
 	if expire {
 		time.Sleep(3 * time.Second)
+		if expired := invokeBrowser("GET", "/", u.Host, "", cookie); expired.Code != 401 {
+			t.Fatalf("expired browser %d", expired.Code)
+		}
 		restarted := New(s.Store, s.Runtime, s.cfg)
 		restarted.Reconcile(context.Background())
 		saved, err := s.Store.Workspace(context.Background(), retained.ID)
@@ -143,6 +217,9 @@ func testFactoryAPIRetention(t *testing.T, expire bool) {
 	res = request(t, s, "POST", base+"/fetch", `{"path":"index.html"}`)
 	if res.Code != 410 {
 		t.Fatalf("revoked fetch %d", res.Code)
+	}
+	if revoked := invokeBrowser("GET", "/", u.Host, "", cookie); revoked.Code != 410 {
+		t.Fatalf("revoked browser %d", revoked.Code)
 	}
 	res = request(t, s, "POST", base+"/release", `{}`)
 	if res.Code != 200 {

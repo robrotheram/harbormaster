@@ -76,3 +76,103 @@ The first command exercises real platform authentication, SQLite metadata, norma
 The live platform API invocation passed in 618.15 seconds (`factory-platform-gallery.txt`): the authenticated project workspace route admitted `gogallery-v1`, observed actual successful build/test/gallery generation and automatic evidence publication, then returned the same job on an idempotent retry. No host GoGallery executable or runtime library was mounted; only the statically compiled platform API test harness was mounted read-only.
 
 Integration baseline: rebased onto parent `69947c9`, preserving coordination API/supervisor registrations, coordination protocol routes and its 100000-byte body limit. No parent work, coordination/auth-helper or Kubernetes files were changed. Integrated `GOFLAGS=-p=1 make check` passed. An earlier parallel run's dashboard vet process was killed; the complete serialized rerun passed without a code change. Targeted factory API/workspace/client/protocol race tests also passed. All acceptance containers have exited and been removed.
+
+## Isolated local dashboard workflow
+
+The dashboard now exposes **Jobs and previews** per project. Its independent
+factory feature starts Research/GoGallery, polls and cancels jobs, lists archived
+evidence, reads bounded text outputs, creates a separate retained workspace via
+the normal workspace creation API, promotes a gallery, and opens/revokes/releases
+it. Existing project-scoped workspace listing supplies retained environment
+metadata after reload. Query keys include project and workspace; changing project
+unmounts all feature drafts.
+
+Additional authenticated contracts:
+
+- `GET /v1/workspaces/{id}/recipe-jobs`: latest 200 guest jobs.
+- `GET /v1/workspaces/{id}/artifacts`: latest 200 archived artifact metadata.
+- `GET /v1/workspaces/{id}/artifacts/{artifact}/content`: JSON/base64 read, at most
+  1 MiB of decoded evidence; larger outputs return 413 (snapshots are promoted
+  internally through the original artifact transport).
+- Retention accepts `idempotency_key`. Retry the same key and immutable artifact,
+  target workspace and TTL. Legacy callers derive a stable coding/artifact key.
+  Intentional replacement uses a new key, after terminating the prior service.
+  Guest receipts atomically bind snapshot SHA-256 and TTL to service ID and
+  survive restart; conflicting delivery returns 409. At most one active service
+  is admitted per retained workspace. Platform JSON metadata remains unchanged.
+- `POST /ui-api/workspaces/{id}/services/{service}/connect` returns
+  `{preview_url}`. Only the local operator ingress issues this URL. Each
+  workspace/service pair has a distinct deterministic hashed `.localhost` host,
+  separate from operator, native desktop and console hosts. The fragment holds a
+  one-use 60-second ticket, stripped before exchange. Exchange requires exact
+  Origin and the CSRF header; it establishes a host-only HttpOnly SameSite=Strict
+  random session bound to project/workspace/service and bounded by service expiry
+  and one hour. Sessions/tickets are memory-only, capped, and lost on restart.
+  Every content request uses bounded authenticated JSON/base64 service fetch;
+  guest state and expiry are checked before returning bytes. Cross-origin browser
+  resource requests are rejected using Origin and Fetch Metadata. Only GET/HEAD
+  static paths render, with an explicit MIME allowlist, no redirects, workers,
+  frames, forms, WebSocket or target forwarding. Relative files, directory index
+  routes and asset query strings work. Arbitrary SPA fallback is not implied.
+
+Project MCP adds `factory_job_start/list/status/cancel`,
+`factory_evidence_list/read`, and `factory_preview_retain/status/revoke/release`.
+These call the project-authorized platform routes, never a guest-selected host.
+Retention takes an already registered dedicated workspace ID. Evidence read is
+JSON/base64, never executable HTML. `internal/shared/project-tools.json` is the
+single fixed host/cluster/Hermes policy, embedded in Go and installed beside the
+Python adapter. Admin tools and `work_review` remain excluded.
+
+The standalone `previewsvc.Attach` compatibility method still returns unsupported;
+browser attachment is owned by the new dashboard preview/session module instead.
+The earlier statement that no browser attachment exists is superseded for this
+local operator workflow. Remote ingress and production k3s attachment are not
+claimed: deployment needs the trusted image/rootfs and a local dashboard listener
+reachable on its generated localhost origins. No ten-minute GoGallery workload
+was rerun because recipe code is unchanged.
+
+## Workspace and project deletion
+
+Operator-only `POST /v1/workspaces/{id}/delete` and
+`POST /v1/projects/{id}/delete` require `{confirm_id:<exact ID>}`. UI exposes
+confirmation controls. Project deletion includes its workspaces; legacy `default`
+is deliberately preserved. Lifecycle locks and the create lock fence admission;
+unknown/busy compute or unsuccessful stop prevents deletion. Migration 8 adds
+durable tombstones, preserving all migration 7 behavior, original identities,
+create keys and evidence. Deleted records disappear from normal workspace,
+project and agent-home reads and cannot be started through those APIs. These
+operations are excluded from guest MCP authority.
+
+**Deletion is removal from the workbench, not physical disk erasure.** The runtime
+contract has no portable volume/home purge operation. Private disks and archived
+receipts remain on the deployment host; the API reports `private_disks:retained`
+and UI confirmation explicitly states this limit. Physical purge requires a
+separate deployment-specific implementation.
+
+Guest `POST /v1/services/receipt` accepts `{idempotency_key,source_ref,ttl_seconds}`
+and returns the original service (200), absent receipt (404), or changed source/TTL
+(409). Promotion checks this bounded neutral route before reading source artifact
+bytes, allowing lost-ACK recovery even after coding compute has stopped. The
+trusted platform binds `source_ref` to project/workspace/immutable artifact IDs;
+full snapshot fingerprints are also enforced on creation.
+
+Validation for the isolated workflow implementation:
+
+- `GOFLAGS=-p=1 make check`: passed (full race suite, command builds, frontend
+  format/unit/build checks, Python adapter/consumer contracts, Go vet).
+- `npm run test:browser`: all seven tests passed, including factory job-to-preview
+  and revoke, deletion confirmation, existing direct-work/assistant/profile flows,
+  and project-switch isolation. Updated two stale direct-work test assertions to
+  the baseline's existing UI ingress URL and expected-attempt review contract;
+  direct-work implementation was unchanged.
+- Cross-component retention tests compose the actual dashboard handler, real
+  platform API/store/lifecycle, and actual workspace managers. They cover coding
+  stop, lost-ACK receipt replay (including source stopped), cookie host boundaries,
+  one-use tickets, service expiry/revoke, and confirmed release. Guest receipt
+  restart/conflict and dashboard request/response-budget/CSRF/method tests pass.
+
+No provider credentials, runner/model authentication or k3s network policies were
+changed. The administrator must rebuild/install Hermes adapter assets for the
+shared policy and deploy the new supervisor/dashboard/API binaries together.
+Actual Firecracker/rootfs installation, remote ingress, production k3s attachment,
+and physical private-disk erasure remain deployment gates, not simulated claims.

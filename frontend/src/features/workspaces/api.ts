@@ -20,6 +20,8 @@ export type WorkspaceSettings = {
   connections?: import("@/shared/types").ConnectionPolicy;
 };
 export const workspacesApi = {
+  delete: (id: string) =>
+    request(`/workspaces/${encodeURIComponent(id)}/delete`, { confirm_id: id }),
   create: (payload: WorkspaceCreate, idempotency_key: string) =>
     request<Workspace>("/workspaces", { ...payload, idempotency_key }),
   settings: (id: string, payload: WorkspaceSettings) =>

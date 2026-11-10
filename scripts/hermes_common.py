@@ -63,8 +63,7 @@ def configure():
                 raise ValueError('MCP project binding expired or mismatched')
         config['mcp_servers'] = {'workbench': {'url': mcp_url,
             'headers': {'Authorization': 'Bearer ' + token},
-            'tools': {'include': ['work_create', 'work_list', 'work_run', 'work_attempts', 'work_cancel', 'exchange_publish',
-                                  'exchange_inbox', 'exchange_read', 'exchange_submit', 'note_publish']}}}
+            'tools': {'include': project_tool_names()}}}
     with tempfile.NamedTemporaryFile(mode='w', dir=home, delete=False) as stream:
         temporary = Path(stream.name)
         try:
@@ -104,3 +103,7 @@ def workbench_endpoint():
     if endpoint not in ('http://127.0.0.1:18085/mcp', 'http://hermes-mcp.workbench-egress.svc:8080/hermes-mcp'):
         raise ValueError('Unsupported workspace MCP transport')
     return endpoint
+def project_tool_names():
+    deployed = Path(__file__).with_name('project-tools.json')
+    source = Path(__file__).resolve().parent.parent / 'internal/shared/project-tools.json'
+    return json.loads((deployed if deployed.exists() else source).read_text())

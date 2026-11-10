@@ -16,6 +16,12 @@ export interface GlobalConnectionProfile {
   updated_at: string;
 }
 export interface Workspace {
+  retained_preview?: {
+    service_id: string;
+    source_workspace_id: string;
+    artifact_id: string;
+    expires_at: number;
+  };
   connection_profile_id?: string;
   connection_profile_revision?: number;
   connections?: ConnectionPolicy;
@@ -89,6 +95,7 @@ export interface Pairing {
   expires_at: string;
 }
 export type Section =
+  | "factory"
   | "work"
   | "workspaces"
   | "homes"

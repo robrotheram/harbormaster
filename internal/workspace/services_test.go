@@ -120,3 +120,39 @@ func TestRetainedPreviewRejectsHostTargetsAndArchiveLinks(t *testing.T) {
 		t.Fatal("host target admitted")
 	}
 }
+
+func TestRetainedReceiptsSurviveRestartAndRejectChangedPayload(t *testing.T) {
+	cfg := Config{ID: "ws_receipts", DataDir: t.TempDir(), Token: "test-workspace-token"}
+	m, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b bytes.Buffer
+	tw := tar.NewWriter(&b)
+	tw.WriteHeader(&tar.Header{Name: "index.html", Mode: 0600, Size: 2})
+	tw.Write([]byte("ok"))
+	tw.Close()
+	payload, _ := json.Marshal(map[string]any{"snapshot": b.Bytes(), "ttl_seconds": 60, "idempotency_key": "delivery-one"})
+	first := invoke(t, m.Handler(), "POST", "/v1/services", string(payload))
+	if first.Code != 201 {
+		t.Fatalf("%d %s", first.Code, first.Body)
+	}
+	m.Close()
+	m, err = New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	replay := invoke(t, m.Handler(), "POST", "/v1/services", string(payload))
+	if replay.Code != 201 || first.Body.String() != replay.Body.String() {
+		t.Fatalf("lost ACK replay: %d %s", replay.Code, replay.Body)
+	}
+	changed, _ := json.Marshal(map[string]any{"snapshot": b.Bytes(), "ttl_seconds": 61, "idempotency_key": "delivery-one"})
+	if res := invoke(t, m.Handler(), "POST", "/v1/services", string(changed)); res.Code != 409 {
+		t.Fatalf("changed TTL %d", res.Code)
+	}
+	changed, _ = json.Marshal(map[string]any{"snapshot": b.Bytes(), "ttl_seconds": 60, "idempotency_key": "delivery-two"})
+	if res := invoke(t, m.Handler(), "POST", "/v1/services", string(changed)); res.Code != 409 {
+		t.Fatalf("untracked active service %d", res.Code)
+	}
+}

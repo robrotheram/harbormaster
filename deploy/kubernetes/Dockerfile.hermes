@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends libolm3 && rm -
 COPY --from=hermes-build /usr/local/ /usr/local/
 COPY --from=hermes-build /opt/hermes /opt/hermes
 COPY scripts/hermes-runner.py /usr/local/bin/hermes-runner
+COPY internal/shared/project-tools.json /usr/local/bin/project-tools.json
 COPY scripts/hermes_common.py /usr/local/bin/hermes_common.py
 COPY scripts/hermes-digest.py /usr/local/bin/hermes-digest
 COPY scripts/hermes-consume.py /usr/local/bin/hermes-consume
