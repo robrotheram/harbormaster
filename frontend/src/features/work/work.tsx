@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import {
@@ -125,6 +126,7 @@ function Create({
   const [workspace, setWorkspace] = useState("");
   const [path, setPath] = useState("");
   const [digest, setDigest] = useState("");
+  const [artifacts, setArtifacts] = useState("");
   const [kind, setKind] = useState<WorkCreate["kind"]>("software");
   const key = useRequestKey(),
     client = useQueryClient();
@@ -136,6 +138,10 @@ function Create({
         specification_path: path.trim(),
         specification_digest: digest.trim(),
         kind,
+        artifact_paths: artifacts
+          .split(/\r?\n/)
+          .map((p) => p.trim())
+          .filter(Boolean),
       };
       return workApi.create(payload, key(payload));
     },
@@ -195,6 +201,18 @@ function Create({
             onChange={(e) => setDigest(e.target.value)}
           />
         </label>
+        <label>
+          Retained output paths
+          <Textarea
+            value={artifacts}
+            onChange={(e) => setArtifacts(e.target.value)}
+            placeholder="outputs/report.json"
+          />
+          <span className="form-note">
+            One workspace file per line, up to 32. Outputs are published for
+            each attempt.
+          </span>
+        </label>
         {mutation.isError && <ErrorNotice error={mutation.error} />}
         <div className="form-actions">
           <Button type="button" variant="outline" onClick={close}>
@@ -243,7 +261,12 @@ function Details({
         ? workApi.run(project, id, runKey)
         : action === "cancel"
           ? workApi.cancel(project, id)
-          : workApi.review(project, id, action === "accept"),
+          : workApi.review(
+              project,
+              id,
+              action === "accept",
+              query.data?.latest_attempt_id,
+            ),
     onSuccess: async () => {
       setRunKey(crypto.randomUUID());
       await client.invalidateQueries({ queryKey: workKeys.list(project) });

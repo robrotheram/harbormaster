@@ -89,6 +89,15 @@ func (r Repository) TickWork(ctx context.Context, s *Scheduler) error {
 				return
 			}
 			if a.TaskID != "" {
+				// A stopped guest must be woken to observe its durable receipt.
+				// Read-like observation avoids renewing an explicit user-open.
+				if observer, ok := s.Lifecycle.(interface {
+					ObserveTask(context.Context, *shared.Workspace) error
+				}); ok {
+					if e = observer.ObserveTask(ctx, &ws); e != nil {
+						return
+					}
+				}
 				if a.State == "cancel_requested" {
 					status, _, e := s.Agent.Agent(ctx, ws.ID, "POST", "/v1/tasks/"+a.TaskID+"/cancel", []byte(`{}`))
 					if e != nil || status >= 300 {
@@ -137,7 +146,7 @@ func (r Repository) TickWork(ctx context.Context, s *Scheduler) error {
 					return
 				}
 			}
-			if e = s.Lifecycle.Refresh(ctx, &ws); e != nil || ws.State == "BUSY" || ws.State == "UNKNOWN" {
+			if e = s.Lifecycle.Refresh(ctx, &ws); e != nil || (ws.State == "BUSY" && !a.DispatchStarted) || ws.State == "UNKNOWN" {
 				return
 			}
 			if e = s.Lifecycle.Start(ctx, &ws); e != nil {

@@ -86,7 +86,7 @@ describe("work lifecycle contract", () => {
   });
   it("uses only returned safe evidence links", () => {
     expect(evidenceURL("/v1/artifacts/a?project_id=A")).toBe(
-      "/v1/artifacts/a?project_id=A",
+      "/ui-api/artifacts/a?project_id=A",
     );
     expect(evidenceURL("https://evidence.example/report")).toBe(
       "https://evidence.example/report",

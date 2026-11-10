@@ -77,3 +77,21 @@ func TestAssistantIngressKeepsOperatorAuthority(t *testing.T) {
 		t.Fatalf("untrusted request reached control plane: %d calls", calls)
 	}
 }
+
+func TestFactoryWorkIngressIsExplicit(t *testing.T) {
+	for _, test := range []struct {
+		method, path string
+		allowed      bool
+	}{
+		{"GET", "/work-items", true}, {"POST", "/work-items", true},
+		{"GET", "/work-items/work_1", true}, {"POST", "/work-items/work_1", false},
+		{"GET", "/work-items/work_1/attempts", true}, {"POST", "/work-items/work_1/attempts", false},
+		{"POST", "/work-items/work_1/run", true}, {"POST", "/work-items/work_1/cancel", true},
+		{"POST", "/work-items/work_1/review", true}, {"GET", "/work-items/work_1/run", false},
+		{"POST", "/work-items/work_1/exec", false}, {"GET", "/work-items/work_1/attempts/other", false},
+	} {
+		if got := allowedUIRoute(test.method, test.path); got != test.allowed {
+			t.Errorf("%s %s: allowed=%v", test.method, test.path, got)
+		}
+	}
+}

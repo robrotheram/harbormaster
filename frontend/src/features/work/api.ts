@@ -14,6 +14,7 @@ export type WorkItem = {
   specification_digest: string;
   kind: "software" | "research" | "digest";
   state: string;
+  artifact_paths?: string[];
   latest_attempt_id?: string;
   error_code?: string;
   created_at: string;
@@ -37,7 +38,7 @@ export type WorkCreate = Pick<
   | "specification_path"
   | "specification_digest"
   | "kind"
->;
+> & { artifact_paths?: string[] };
 const path = (id: string) => "/work-items/" + encodeURIComponent(id);
 const scope = (project: string) => "?project_id=" + encodeURIComponent(project);
 export const workKeys = {
@@ -76,8 +77,17 @@ export const workApi = {
     request(path(id) + "/run", { project_id: project, idempotency_key }),
   cancel: (project: string, id: string) =>
     request(path(id) + "/cancel", { project_id: project }),
-  review: (project: string, id: string, accepted: boolean) =>
-    request(path(id) + "/review", { project_id: project, accepted }),
+  review: (
+    project: string,
+    id: string,
+    accepted: boolean,
+    expected_attempt_id?: string,
+  ) =>
+    request(path(id) + "/review", {
+      project_id: project,
+      accepted,
+      expected_attempt_id,
+    }),
 };
 export const workOptions = (project: string) => ({
   queryKey: workKeys.list(project),
@@ -89,7 +99,7 @@ export const workOptions = (project: string) => ({
 export function evidenceURL(value?: string) {
   if (!value || value.trim() !== value) return undefined;
   if (/^\/(?:v1|ui-api|dashboard-api)\//.test(value) && !value.includes("\\"))
-    return value;
+    return value.startsWith("/v1/") ? "/ui-api/" + value.slice(4) : value;
   try {
     const url = new URL(value);
     return url.protocol === "https:" || url.protocol === "http:"

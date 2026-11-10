@@ -42,9 +42,10 @@ type WorkRun struct {
 	IdempotencyKey string `json:"idempotency_key"`
 }
 type WorkReview struct {
-	ProjectID string `json:"project_id"`
-	ID        string `json:"id"`
-	Accepted  bool   `json:"accepted"`
+	ProjectID         string `json:"project_id"`
+	ID                string `json:"id"`
+	Accepted          bool   `json:"accepted"`
+	ExpectedAttemptID string `json:"expected_attempt_id"`
 }
 
 func registerWorkExecutionTools(s *mcp.Server, c *controlClient) {
@@ -63,7 +64,7 @@ func registerWorkExecutionTools(s *mcp.Server, c *controlClient) {
 		return
 	})
 	add(s, "work_review", "Accept or reject retained execution evidence.", func(ctx context.Context, in WorkReview) (out shared.WorkItem, err error) {
-		err = c.do(ctx, "POST", "/v1/work-items/"+url.PathEscape(in.ID)+"/review", map[string]any{"project_id": in.ProjectID, "accepted": in.Accepted}, &out)
+		err = c.do(ctx, "POST", "/v1/work-items/"+url.PathEscape(in.ID)+"/review", map[string]any{"project_id": in.ProjectID, "accepted": in.Accepted, "expected_attempt_id": in.ExpectedAttemptID}, &out)
 		return
 	})
 }

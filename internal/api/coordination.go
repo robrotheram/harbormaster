@@ -95,10 +95,11 @@ func (s *Server) RegisterCoordination(mux *http.ServeMux, service *coordination.
 		sent := false
 		e := service.Consume(r.Context(), in.ProjectID, r.PathValue("id"), func(body []byte, key string) error {
 			var spec struct {
-				WorkspaceID string `json:"workspace_id"`
-				Path        string `json:"specification_path"`
-				Digest      string `json:"specification_digest"`
-				Kind        string `json:"kind"`
+				WorkspaceID   string   `json:"workspace_id"`
+				Path          string   `json:"specification_path"`
+				Digest        string   `json:"specification_digest"`
+				Kind          string   `json:"kind"`
+				ArtifactPaths []string `json:"artifact_paths"`
 			}
 			d := json.NewDecoder(bytes.NewReader(body))
 			d.DisallowUnknownFields()
@@ -109,7 +110,7 @@ func (s *Server) RegisterCoordination(mux *http.ServeMux, service *coordination.
 			if d.Decode(&extra) != io.EOF {
 				return coordination.ErrInvalid
 			}
-			payload, _ := json.Marshal(map[string]string{"project_id": in.ProjectID, "workspace_id": spec.WorkspaceID, "specification_path": spec.Path, "specification_digest": spec.Digest, "kind": spec.Kind, "idempotency_key": key})
+			payload, _ := json.Marshal(map[string]any{"project_id": in.ProjectID, "workspace_id": spec.WorkspaceID, "specification_path": spec.Path, "specification_digest": spec.Digest, "kind": spec.Kind, "idempotency_key": key, "artifact_paths": spec.ArtifactPaths})
 			request := r.Clone(r.Context())
 			u := *r.URL
 			u.Path = "/v1/work-items"

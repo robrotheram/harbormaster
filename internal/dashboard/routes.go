@@ -20,11 +20,11 @@ func allowedUIRoute(method, path string) bool {
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 	if len(parts) == 1 {
 		switch path {
-		case "/connection-profiles", "/projects", "/schedules", "/workspaces":
+		case "/work-items", "/connection-profiles", "/projects", "/schedules", "/workspaces":
 			return true
 		case "/workspace-logs", "/templates", "/agent-homes", "/runs":
 			return get
-		case "/file-handoffs":
+		case "/project-exchanges", "/note-publications", "/file-handoffs":
 			return post
 		}
 		return false
@@ -33,9 +33,33 @@ func allowedUIRoute(method, path string) bool {
 		return false
 	}
 	switch parts[0] {
+	case "work-items":
+		if len(parts) == 5 && parts[2] == "artifacts" && shared.ValidID(parts[3]) && parts[4] == "content" {
+			return get
+		}
+		if len(parts) == 2 {
+			return get
+		}
+		if len(parts) != 3 {
+			return false
+		}
+		switch parts[2] {
+		case "attempts":
+			return get
+		case "run", "cancel", "review":
+			return post
+		}
+		return false
 	case "connection-profiles":
 		return len(parts) == 2 && post
+	case "project-exchanges":
+		return len(parts) == 3 && post && (parts[2] == "approve" || parts[2] == "revoke" || parts[2] == "exports")
+	case "exchange-exports":
+		return len(parts) == 2 && get || len(parts) == 3 && post && parts[2] == "submit"
 	case "projects":
+		if len(parts) == 3 && parts[2] == "coordination" {
+			return post
+		}
 		if len(parts) < 3 || parts[2] != "hermes" {
 			return false
 		}

@@ -56,8 +56,9 @@ func (s *Server) registerWorkExecution(mux *http.ServeMux, repo orchestration.Re
 	})
 	mux.HandleFunc("POST /v1/work-items/{id}/review", func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
-			ProjectID string `json:"project_id"`
-			Accepted  *bool  `json:"accepted"`
+			ProjectID         string `json:"project_id"`
+			Accepted          *bool  `json:"accepted"`
+			ExpectedAttemptID string `json:"expected_attempt_id"`
 		}
 		if !shared.Decode(w, r, &in, 1024) || !s.AuthorizeProject(w, r, in.ProjectID) {
 			return
@@ -68,6 +69,15 @@ func (s *Server) registerWorkExecution(mux *http.ServeMux, repo orchestration.Re
 		}
 		unlock := s.operations.Lock("work:" + r.PathValue("id"))
 		defer unlock()
+		current, err := repo.Work(r.Context(), in.ProjectID, r.PathValue("id"))
+		if err != nil {
+			workError(w, err)
+			return
+		}
+		if (current.State == "awaiting_review" || in.ExpectedAttemptID != "") && (in.ExpectedAttemptID == "" || current.LatestAttemptID != in.ExpectedAttemptID) {
+			shared.Error(w, 409, "WORK_STATE_CONFLICT")
+			return
+		}
 		item, err := repo.ReviewWork(r.Context(), in.ProjectID, r.PathValue("id"), *in.Accepted, s.now())
 		if err != nil {
 			workError(w, err)
@@ -101,7 +111,7 @@ func (s *Server) registerWorkExecution(mux *http.ServeMux, repo orchestration.Re
 				}
 				unlock := s.operations.Lock(ws.ID)
 				defer unlock()
-				if err := s.lifecycle().Start(r.Context(), &ws); err != nil {
+				if err := s.lifecycle().ObserveTask(r.Context(), &ws); err != nil {
 					shared.Error(w, 503, "WORKSPACE_UNAVAILABLE")
 					return
 				}
@@ -115,6 +125,7 @@ func (s *Server) registerWorkExecution(mux *http.ServeMux, repo orchestration.Re
 					return
 				}
 				w.Header().Set("Content-Type", "application/octet-stream")
+				w.Header().Set("Content-Disposition", "attachment")
 				w.Header().Set("Cache-Control", "private, no-store")
 				w.Header().Set("X-Content-Type-Options", "nosniff")
 				w.Write(b)
