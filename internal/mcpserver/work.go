@@ -11,11 +11,12 @@ type WorkList struct {
 	Items []shared.WorkItem `json:"items"`
 }
 type WorkCreate struct {
+	Instruction         *string  `json:"instruction,omitempty"`
 	ArtifactPaths       []string `json:"artifact_paths,omitempty"`
 	ProjectID           string   `json:"project_id"`
-	WorkspaceID         string   `json:"workspace_id"`
-	SpecificationPath   string   `json:"specification_path"`
-	SpecificationDigest string   `json:"specification_digest"`
+	WorkspaceID         string   `json:"workspace_id,omitempty"`
+	SpecificationPath   string   `json:"specification_path,omitempty"`
+	SpecificationDigest string   `json:"specification_digest,omitempty"`
 	Kind                string   `json:"kind"`
 	IdempotencyKey      string   `json:"idempotency_key"`
 }
@@ -26,7 +27,7 @@ func registerWorkTools(s *mcp.Server, c *controlClient) {
 		err = c.do(ctx, "GET", "/v1/work-items?project_id="+url.QueryEscape(in.ProjectID), nil, &out)
 		return
 	})
-	add(s, "work_create", "Save a draft referencing a private workspace specification and SHA-256 digest. Does not verify or execute that specification.", func(ctx context.Context, in WorkCreate) (out shared.WorkItem, err error) {
+	add(s, "work_create", "Save a draft with an inline instruction (up to 64 KiB) or a private specification path and SHA-256 digest. Omit workspace_id to provision an approved private Codex worker for inline input. Running requires work_run.", func(ctx context.Context, in WorkCreate) (out shared.WorkItem, err error) {
 		err = c.do(ctx, "POST", "/v1/work-items", in, &out)
 		return
 	})

@@ -4,6 +4,7 @@ import (
 	"agent-workbench/internal/coordination"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +13,11 @@ import (
 )
 
 func TestExchangeRoutesSubmitThroughFactory(t *testing.T) {
+	for _, inline := range []bool{false, true} {
+		t.Run(fmt.Sprint(inline), func(t *testing.T) { testExchangeWorkRequest(t, inline) })
+	}
+}
+func testExchangeWorkRequest(t *testing.T, inline bool) {
 	s, _ := setup(t)
 	source, dest := domainProject(t, s, "exchange-source"), domainProject(t, s, "exchange-destination")
 	s.cfg.ProjectTokens = map[string]string{"source-token": source.ID, "dest-token": dest.ID}
@@ -61,6 +67,9 @@ func TestExchangeRoutesSubmitThroughFactory(t *testing.T) {
 		t.Fatal(e)
 	}
 	body := `{"workspace_id":"` + ws.ID + `","specification_path":"specs/daily.json","specification_digest":"` + strings.Repeat("a", 64) + `","kind":"research"}`
+	if inline {
+		body = `{"instruction":"Selected novel request","kind":"research","artifact_paths":["outputs/report.json"]}`
+	}
 	x, e := service.Publish(c, source.ID, "g", "daily", []byte(body))
 	if e != nil {
 		t.Fatal(e)

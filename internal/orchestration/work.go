@@ -16,7 +16,11 @@ var ErrInvalidWork = errors.New("INVALID_REQUEST")
 
 // InitWork is called only by the startup migration owner.
 func (r Repository) InitWork(ctx context.Context) error {
-	_, err := r.DB.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS work_items (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, create_key TEXT NOT NULL, metadata TEXT NOT NULL, UNIQUE(project_id,create_key))`)
+	_, err := r.DB.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS work_create_requests (project_id TEXT NOT NULL, create_key TEXT NOT NULL, fingerprint TEXT NOT NULL, PRIMARY KEY(project_id,create_key))`)
+	if err != nil {
+		return err
+	}
+	_, err = r.DB.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS work_items (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, create_key TEXT NOT NULL, metadata TEXT NOT NULL, UNIQUE(project_id,create_key))`)
 	return err
 }
 
@@ -135,4 +139,19 @@ func sameArtifactPaths(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// ClaimWorkRequest retains only a fingerprint, allowing partial provisioning to
+// reconcile without accepting a different request under the same delivery key.
+func (r Repository) ClaimWorkRequest(ctx context.Context, project, key, fingerprint string) error {
+	_, err := r.DB.ExecContext(ctx, `INSERT INTO work_create_requests(project_id,create_key,fingerprint) VALUES($1,$2,$3) ON CONFLICT(project_id,create_key) DO NOTHING`, project, key, fingerprint)
+	if err != nil {
+		return err
+	}
+	var prior string
+	err = r.DB.QueryRowContext(ctx, `SELECT fingerprint FROM work_create_requests WHERE project_id=$1 AND create_key=$2`, project, key).Scan(&prior)
+	if err == nil && prior != fingerprint {
+		return ErrConflict
+	}
+	return err
 }

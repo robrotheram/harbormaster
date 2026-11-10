@@ -101,3 +101,19 @@ describe("work lifecycle contract", () => {
       expect(evidenceURL(value)).toBeUndefined();
   });
 });
+
+it("submits a selected inline instruction without a pre-existing worker", async () => {
+  reply(item);
+  const payload = {
+    project_id: "A",
+    instruction: "Build the report",
+    kind: "research" as const,
+    artifact_paths: ["outputs/report.json"],
+  };
+  await workApi.create(payload, "delivery");
+  const [, init] = vi.mocked(fetch).mock.calls[0];
+  expect(JSON.parse(init!.body as string)).toEqual({
+    ...payload,
+    idempotency_key: "delivery",
+  });
+});

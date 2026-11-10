@@ -194,118 +194,11 @@ func (s *Server) Handler() http.Handler {
 		proxy.Console(w, r, ws.ID, r.PathValue("path"))
 	})
 	secured.HandleFunc("POST /v1/workspaces", func(w http.ResponseWriter, r *http.Request) {
-		var req struct {
-			Project             string `json:"project_id"`
-			ConnectionProfileID string `json:"connection_profile_id,omitempty"`
-			Key                 string `json:"idempotency_key"`
-			Name                string `json:"name,omitempty"`
-			ParentID            string `json:"parent_id,omitempty"`
-			Branch              string `json:"branch,omitempty"`
-			AgentKind           string `json:"agent_kind,omitempty"`
-			TemplateID          string `json:"template_id,omitempty"`
-		}
+		var req workspaceCreate
 		if !shared.Decode(w, r, &req, 1024) {
 			return
 		}
-		if req.Project == "" {
-			if p, ok := r.Context().Value(principalKey{}).(principal); ok && p.projectID != "" {
-				req.Project = p.projectID
-			} else {
-				req.Project = "default"
-			}
-		}
-		if !s.AuthorizeProject(w, r, req.Project) {
-			return
-		}
-		if req.AgentKind == "" {
-			req.AgentKind = "t3"
-		}
-		if !shared.ValidAgentKind(req.AgentKind) || (req.TemplateID != "" && req.TemplateID != "development-v1") {
-			shared.Error(w, 400, "INVALID_REQUEST")
-			return
-		}
-		if req.AgentKind == "hermes" {
-			c, err := s.Store.HermesSetup(r.Context(), req.Project)
-			if err != nil || !s.hermesAvailable(r.Context()) {
-				shared.Error(w, 409, "HERMES_SETUP_REQUIRED")
-				return
-			}
-			if req.ConnectionProfileID == "" {
-				req.ConnectionProfileID = c.ConnectionProfileID
-			}
-		}
-		if !shared.ValidKey(req.Key) {
-			shared.Error(w, 400, "INVALID_REQUEST")
-			return
-		}
-		if len(req.Name) > 80 || strings.ContainsAny(req.Name, "\r\n\x00") || (req.ParentID != "" && !shared.ValidID(req.ParentID)) || (req.Branch != "" && !shared.ValidBranch(req.Branch)) {
-			shared.Error(w, 400, "INVALID_REQUEST")
-			return
-		}
-		s.createMu.Lock()
-		defer s.createMu.Unlock()
-		old, e := s.Store.ByProjectKey(r.Context(), req.Project, req.Key)
-		if e == nil {
-			if old.ProjectID != req.Project {
-				shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
-				return
-			}
-			// Legacy identities predate private home IDs and the modern create fingerprint.
-			if old.HomeID != "" && (old.Name != req.Name || old.ParentID != req.ParentID || old.Branch != req.Branch || old.AgentKind != req.AgentKind || old.TemplateID != req.TemplateID || old.ConnectionProfileID != req.ConnectionProfileID) {
-				shared.Error(w, 409, "IDEMPOTENCY_CONFLICT")
-				return
-			}
-			shared.JSON(w, 200, old)
-			return
-		}
-		if e != sql.ErrNoRows {
-			shared.Error(w, 503, "STORAGE_UNAVAILABLE")
-			return
-		}
-		if req.ParentID != "" {
-			unlock := s.operations.Lock(req.ParentID)
-			defer unlock()
-			parent, err := s.Store.Workspace(r.Context(), req.ParentID)
-			if err != nil || parent.ProjectID != req.Project {
-				shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
-				return
-			}
-			if req.Branch == "" {
-				shared.Error(w, 400, "BRANCH_REQUIRED")
-				return
-			}
-			if err = s.start(r.Context(), &parent); err != nil {
-				apiError(w, err)
-				return
-			}
-			if parent.State != "READY" || parent.ActiveRuns > 0 || parent.BackgroundJobs > 0 {
-				shared.Error(w, 409, "WORKSPACE_BUSY")
-				return
-			}
-		}
-		all, e := s.Store.Workspaces(r.Context())
-		if e != nil {
-			shared.Error(w, 503, "STORAGE_UNAVAILABLE")
-			return
-		}
-		if len(all) >= 100 {
-			shared.Error(w, 429, "QUOTA_EXCEEDED")
-			return
-		}
-		now := s.now()
-		ws := shared.Workspace{ID: shared.NewID("ws_"), ProjectID: req.Project, HomeID: shared.NewID("home_"), AgentKind: req.AgentKind, TemplateID: req.TemplateID, State: "STOPPED", CreatedAt: now, UpdatedAt: now, RuntimeType: "docker", IsolationStatus: "unverified", NetworkStatus: "unverified", CPULimit: 1, MemoryLimitBytes: 512 << 20}
-		ws.MemoryLimitBytes = s.cfg.WorkspaceMemory
-		ws.ConnectionProfileID = req.ConnectionProfileID
-		if err := s.resolveConnectionProfile(r.Context(), &ws); err != nil {
-			shared.Error(w, 400, "INVALID_CONNECTION_PROFILE")
-			return
-		}
-		ws.Name, ws.ParentID, ws.Branch = req.Name, req.ParentID, req.Branch
-		if s.Store.Create(r.Context(), ws, req.Key) != nil {
-			shared.Error(w, 503, "STORAGE_UNAVAILABLE")
-			return
-		}
-		shared.JSON(w, 201, ws)
+		s.createProjectWorkspace(w, r, req)
 	})
 	secured.HandleFunc("GET /v1/workspaces", func(w http.ResponseWriter, r *http.Request) {
 		items, e := s.Store.Workspaces(r.Context())
@@ -694,4 +587,117 @@ func (s *Server) DashboardHandler() http.Handler {
 		shared.JSON(w, 200, map[string]any{"schema_version": 1, "generated_at": now, "mode": "development", "workspaces": map[string]any{"observed_at": observed, "status": status, "items": safeItems}, "active_tasks": map[string]any{"observed_at": observed, "status": status, "items": active}, "usage": usage, "services": map[string]any{"observed_at": now, "status": serviceStatus, "items": services}})
 	})
 	return mux
+}
+
+type workspaceCreate struct {
+	Project             string `json:"project_id"`
+	ConnectionProfileID string `json:"connection_profile_id,omitempty"`
+	Key                 string `json:"idempotency_key"`
+	Name                string `json:"name,omitempty"`
+	ParentID            string `json:"parent_id,omitempty"`
+	Branch              string `json:"branch,omitempty"`
+	AgentKind           string `json:"agent_kind,omitempty"`
+	TemplateID          string `json:"template_id,omitempty"`
+}
+
+func (s *Server) createProjectWorkspace(w http.ResponseWriter, r *http.Request, req workspaceCreate) {
+	if req.Project == "" {
+		if p, ok := r.Context().Value(principalKey{}).(principal); ok && p.projectID != "" {
+			req.Project = p.projectID
+		} else {
+			req.Project = "default"
+		}
+	}
+	if !s.AuthorizeProject(w, r, req.Project) {
+		return
+	}
+	if req.AgentKind == "" {
+		req.AgentKind = "t3"
+	}
+	if !shared.ValidAgentKind(req.AgentKind) || (req.TemplateID != "" && req.TemplateID != "development-v1") {
+		shared.Error(w, 400, "INVALID_REQUEST")
+		return
+	}
+	if req.AgentKind == "hermes" {
+		c, err := s.Store.HermesSetup(r.Context(), req.Project)
+		if err != nil || !s.hermesAvailable(r.Context()) {
+			shared.Error(w, 409, "HERMES_SETUP_REQUIRED")
+			return
+		}
+		if req.ConnectionProfileID == "" {
+			req.ConnectionProfileID = c.ConnectionProfileID
+		}
+	}
+	if !shared.ValidKey(req.Key) {
+		shared.Error(w, 400, "INVALID_REQUEST")
+		return
+	}
+	if len(req.Name) > 80 || strings.ContainsAny(req.Name, "\r\n\x00") || (req.ParentID != "" && !shared.ValidID(req.ParentID)) || (req.Branch != "" && !shared.ValidBranch(req.Branch)) {
+		shared.Error(w, 400, "INVALID_REQUEST")
+		return
+	}
+	s.createMu.Lock()
+	defer s.createMu.Unlock()
+	old, e := s.Store.ByProjectKey(r.Context(), req.Project, req.Key)
+	if e == nil {
+		if old.ProjectID != req.Project {
+			shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
+			return
+		}
+		// Legacy identities predate private home IDs and the modern create fingerprint.
+		if old.HomeID != "" && (old.Name != req.Name || old.ParentID != req.ParentID || old.Branch != req.Branch || old.AgentKind != req.AgentKind || old.TemplateID != req.TemplateID || old.ConnectionProfileID != req.ConnectionProfileID) {
+			shared.Error(w, 409, "IDEMPOTENCY_CONFLICT")
+			return
+		}
+		shared.JSON(w, 200, old)
+		return
+	}
+	if e != sql.ErrNoRows {
+		shared.Error(w, 503, "STORAGE_UNAVAILABLE")
+		return
+	}
+	if req.ParentID != "" {
+		unlock := s.operations.Lock(req.ParentID)
+		defer unlock()
+		parent, err := s.Store.Workspace(r.Context(), req.ParentID)
+		if err != nil || parent.ProjectID != req.Project {
+			shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
+			return
+		}
+		if req.Branch == "" {
+			shared.Error(w, 400, "BRANCH_REQUIRED")
+			return
+		}
+		if err = s.start(r.Context(), &parent); err != nil {
+			apiError(w, err)
+			return
+		}
+		if parent.State != "READY" || parent.ActiveRuns > 0 || parent.BackgroundJobs > 0 {
+			shared.Error(w, 409, "WORKSPACE_BUSY")
+			return
+		}
+	}
+	all, e := s.Store.Workspaces(r.Context())
+	if e != nil {
+		shared.Error(w, 503, "STORAGE_UNAVAILABLE")
+		return
+	}
+	if len(all) >= 100 {
+		shared.Error(w, 429, "QUOTA_EXCEEDED")
+		return
+	}
+	now := s.now()
+	ws := shared.Workspace{ID: shared.NewID("ws_"), ProjectID: req.Project, HomeID: shared.NewID("home_"), AgentKind: req.AgentKind, TemplateID: req.TemplateID, State: "STOPPED", CreatedAt: now, UpdatedAt: now, RuntimeType: "docker", IsolationStatus: "unverified", NetworkStatus: "unverified", CPULimit: 1, MemoryLimitBytes: 512 << 20}
+	ws.MemoryLimitBytes = s.cfg.WorkspaceMemory
+	ws.ConnectionProfileID = req.ConnectionProfileID
+	if err := s.resolveConnectionProfile(r.Context(), &ws); err != nil {
+		shared.Error(w, 400, "INVALID_CONNECTION_PROFILE")
+		return
+	}
+	ws.Name, ws.ParentID, ws.Branch = req.Name, req.ParentID, req.Branch
+	if s.Store.Create(r.Context(), ws, req.Key) != nil {
+		shared.Error(w, 503, "STORAGE_UNAVAILABLE")
+		return
+	}
+	shared.JSON(w, 201, ws)
 }

@@ -31,14 +31,15 @@ export type Attempt = {
   created_at: string;
   updated_at: string;
 };
-export type WorkCreate = Pick<
-  WorkItem,
-  | "project_id"
-  | "workspace_id"
-  | "specification_path"
-  | "specification_digest"
-  | "kind"
-> & { artifact_paths?: string[] };
+export type WorkCreate = {
+  project_id: string;
+  workspace_id?: string;
+  instruction?: string;
+  specification_path?: string;
+  specification_digest?: string;
+  kind: WorkItem["kind"];
+  artifact_paths?: string[];
+};
 const path = (id: string) => "/work-items/" + encodeURIComponent(id);
 const scope = (project: string) => "?project_id=" + encodeURIComponent(project);
 export const workKeys = {

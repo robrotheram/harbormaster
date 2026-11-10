@@ -14,6 +14,7 @@ import {
   State,
   useRequestKey,
 } from "@/shared/components";
+import { keys } from "@/shared/query-keys";
 import { date, label } from "@/shared/format";
 import type { Project } from "@/shared/types";
 import { workspaceOptions } from "@/features/workspaces/api";
@@ -88,7 +89,7 @@ function WorkProject({ project }: { project: Project }) {
         </div>
       ) : query.data ? (
         <Empty title="No work items yet">
-          Create an item from a specification already stored in this project's
+          Write an instruction or select a specification in this project's
           workspace.
         </Empty>
       ) : null}
@@ -124,6 +125,8 @@ function Create({
 }) {
   const workspaces = useQuery(workspaceOptions(project));
   const [workspace, setWorkspace] = useState("");
+  const [mode, setMode] = useState("inline");
+  const [instruction, setInstruction] = useState("");
   const [path, setPath] = useState("");
   const [digest, setDigest] = useState("");
   const [artifacts, setArtifacts] = useState("");
@@ -135,8 +138,12 @@ function Create({
       const payload = {
         project_id: project,
         workspace_id: workspace,
-        specification_path: path.trim(),
-        specification_digest: digest.trim(),
+        ...(mode === "inline"
+          ? { instruction }
+          : {
+              specification_path: path.trim(),
+              specification_digest: digest.trim(),
+            }),
         kind,
         artifact_paths: artifacts
           .split(/\r?\n/)
@@ -146,7 +153,10 @@ function Create({
       return workApi.create(payload, key(payload));
     },
     onSuccess: async (item) => {
-      await client.invalidateQueries({ queryKey: workKeys.list(project) });
+      await Promise.all([
+        client.invalidateQueries({ queryKey: workKeys.list(project) }),
+        client.invalidateQueries({ queryKey: keys.workspaces(project) }),
+      ]);
       created(item.id);
     },
   });
@@ -154,18 +164,35 @@ function Create({
     <Modal title="Create work item" onClose={close}>
       <Form onSubmit={() => mutation.mutate()}>
         <p className="form-note">
-          The specification must already exist in the selected workspace. Its
-          digest records the exact inputs for this work.
+          Save a private instruction or reference an existing file. Running work
+          is a separate action.
         </p>
         {workspaces.isError && <ErrorNotice error={workspaces.error} />}
         <label>
+          Input mode
+          <NativeSelect value={mode} onChange={(e) => setMode(e.target.value)}>
+            <option value="inline">Write instruction</option>
+            <option value="file">Existing file</option>
+          </NativeSelect>
+        </label>
+        {mode === "inline" && (
+          <label>
+            Instruction
+            <Textarea
+              required
+              value={instruction}
+              onChange={(e) => setInstruction(e.target.value)}
+            />
+          </label>
+        )}
+        <label>
           Workspace
           <NativeSelect
-            required
+            required={mode === "file"}
             value={workspace}
             onChange={(e) => setWorkspace(e.target.value)}
           >
-            <option value="">Choose workspace</option>
+            <option value="">Create approved Codex worker</option>
             {workspaces.data?.map((w) => (
               <option key={w.id} value={w.id}>
                 {w.name}
@@ -184,23 +211,27 @@ function Create({
             <option value="digest">Digest</option>
           </NativeSelect>
         </label>
-        <label>
-          Specification path
-          <Input
-            required
-            value={path}
-            onChange={(e) => setPath(e.target.value)}
-            placeholder="specifications/gallery.md"
-          />
-        </label>
-        <label>
-          Specification digest
-          <Input
-            required
-            value={digest}
-            onChange={(e) => setDigest(e.target.value)}
-          />
-        </label>
+        {mode === "file" && (
+          <>
+            <label>
+              Specification path
+              <Input
+                required
+                value={path}
+                onChange={(e) => setPath(e.target.value)}
+                placeholder="specifications/gallery.md"
+              />
+            </label>
+            <label>
+              Specification digest
+              <Input
+                required
+                value={digest}
+                onChange={(e) => setDigest(e.target.value)}
+              />
+            </label>
+          </>
+        )}
         <label>
           Retained output paths
           <Textarea
@@ -221,9 +252,10 @@ function Create({
           <Button
             disabled={
               mutation.isPending ||
-              !workspaces.data?.some((w) => w.id === workspace) ||
-              !path.trim() ||
-              !digest.trim()
+              (mode === "inline"
+                ? !instruction ||
+                  new TextEncoder().encode(instruction).length > 65536
+                : !workspace || !path.trim() || !digest.trim())
             }
           >
             Create draft
