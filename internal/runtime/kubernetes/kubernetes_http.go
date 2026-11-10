@@ -21,6 +21,9 @@ func (k *Kubernetes) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/capabilities", func(w http.ResponseWriter, r *http.Request) {
 		c := protocol.RuntimeCapability{Resources: protocol.ResourceLimits{CPUCores: 1, MemoryBytes: k.cfg.MemoryLimit}, SchemaVersion: 1, Backend: "kubernetes-agent-sandbox", Version: AgentSandboxRelease, ID: protocol.DevelopmentTemplate, AgentKinds: []string{"t3", "codex"}, NetworkModes: []string{"blocked", "allowlist"}, IsolationStatus: "unverified", NetworkStatus: "unverified", PrivateHomes: true}
+		if k.hermesEnabled() {
+			c.AgentKinds = append(c.AgentKinds, "hermes")
+		}
 		shared.JSON(w, 200, c)
 	})
 	mux.HandleFunc("POST /v1/workspaces/{id}/network-policy", func(w http.ResponseWriter, r *http.Request) {
@@ -124,7 +127,7 @@ func (k *Kubernetes) verify(w http.ResponseWriter, r *http.Request) {
 	if !shared.Decode(w, r, &request, 2048) {
 		return
 	}
-	if len(request.Token) != 64 || (request.Audience != "inference" && request.Audience != "broker" && request.Audience != "egress") {
+	if len(request.Token) != 64 || (request.Audience != "inference" && request.Audience != "broker" && request.Audience != "egress" && request.Audience != "hermes-mcp") {
 		shared.Error(w, 403, "GRANT_REJECTED")
 		return
 	}
@@ -142,6 +145,10 @@ func (k *Kubernetes) verify(w http.ResponseWriter, r *http.Request) {
 			if generation != "" && k.owned(item, id) && sandboxReady(item) && subtle.ConstantTimeCompare([]byte(request.Token), []byte(k.token(id, generation))) == 1 {
 				if k.networkEvidence(r.Context(), namespace, protocol.ProjectOf(item.Metadata.Labels)) != nil {
 					shared.Error(w, 503, "NETWORK_POLICY_DRIFT")
+					return
+				}
+				if request.Audience == "hermes-mcp" && (item.Metadata.Labels["workbench.agent"] != "hermes" || !k.hermesEnabled() || item.Spec.OperatingMode == "Suspended" || len(item.Spec.PodTemplate.Spec.Containers) != 1 || item.Spec.PodTemplate.Spec.Containers[0].Image != k.cfg.Image) {
+					shared.Error(w, 403, "GRANT_REJECTED")
 					return
 				}
 				identity := map[string]any{"workspace_id": id, "project_id": protocol.ProjectOf(item.Metadata.Labels), "principal_id": "local-operator"}

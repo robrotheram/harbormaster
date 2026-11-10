@@ -1,0 +1,53 @@
+# Replace project and image placeholders before applying. Provision the named
+# Secret out of band with control_token, mcp_token, gateway_service_token.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hermes-mcp
+  namespace: workbench-egress
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: hermes-mcp}
+  template:
+    metadata:
+      labels:
+        app: hermes-mcp
+        workbench.role: gateway
+        workbench.project: REPLACE_PROJECT_ID
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: mcp
+          image: REPLACE_MCP_IMAGE_WITH_DIGEST
+          ports: [{containerPort: 8080}]
+          env:
+            - {name: CONTROLPLANE_URL, value: 'http://controlplane.workbench-system.svc:8080'}
+            - {name: HERMES_CONTROLLER_URL, value: 'http://runtime-controller.workbench-system.svc:8080'}
+            - {name: MCP_ALLOWED_HOSTS, value: 'hermes-mcp.workbench-egress.svc:8080'}
+            - {name: CONTROL_TOKEN_FILE, value: /run/secrets/control_token}
+            - {name: MCP_TOKEN_FILE, value: /run/secrets/mcp_token}
+            - {name: GATEWAY_SERVICE_TOKEN_FILE, value: /run/secrets/gateway_service_token}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: '1', memory: 1Gi}
+          readinessProbe:
+            httpGet: {path: /healthz, port: 8080}
+          volumeMounts:
+            - {name: secrets, mountPath: /run/secrets, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: secrets
+          secret: {secretName: hermes-mcp-secrets, defaultMode: 288}
+        - name: tmp
+          emptyDir: {sizeLimit: 64Mi}

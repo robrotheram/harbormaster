@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"agent-workbench/internal/workspace/nativeagent"
 	"bytes"
 	"context"
 	"database/sql"
@@ -26,6 +27,8 @@ import (
 )
 
 type Config struct {
+	HermesMCPTransport nativeagent.MCPTransport
+
 	HermesMatrix                                       *shared.HermesMatrix
 	HermesModel                                        string
 	ConnectionMode                                     string

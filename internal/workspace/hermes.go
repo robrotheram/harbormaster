@@ -23,8 +23,9 @@ func (m *Manager) runtimeCapabilities(w http.ResponseWriter, r *http.Request) {
 	err := c.Run()
 	var identity struct {
 		Version string `json:"version"`
+		Commit  string `json:"commit"`
 	}
-	available := err == nil && !out.Overflow && json.Unmarshal(out.Data, &identity) == nil && identity.Version == "v0.23.0"
+	available := err == nil && !out.Overflow && json.Unmarshal(out.Data, &identity) == nil && identity.Version == "v0.23.0" && identity.Commit == "2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19"
 	reason := ""
 	if ctx.Err() != nil {
 		reason = "IMPORT_TIMEOUT"

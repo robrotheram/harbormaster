@@ -1,0 +1,14 @@
+# Dedicated project-scoped MCP deployment must carry these selector labels.
+# This reuses the canonical gateway TCP/8080 allowance; no extra workspace
+# egress rules, host proxies, or API connectivity are required.
+apiVersion: v1
+kind: Service
+metadata:
+  name: hermes-mcp
+  namespace: workbench-egress
+spec:
+  selector:
+    app: hermes-mcp
+  ports:
+    - port: 8080
+      targetPort: 8080

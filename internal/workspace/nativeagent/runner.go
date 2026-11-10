@@ -14,7 +14,14 @@ import (
 	"time"
 )
 
+type MCPTransport string
+
+const KubernetesGeneration MCPTransport = "kubernetes-generation"
+const KubernetesMCPURL = "http://hermes-mcp.workbench-egress.svc:8080/hermes-mcp"
+
 type Config struct {
+	HermesMCPTransport MCPTransport
+
 	DataDir, HomeDir, AgentKind, Token, InferenceURL, ProjectID, WorkspaceID, TaskID string
 	CodexModel, ClaudeModel, HermesModel                                             string
 	EgressURL, ConnectionMode                                                        string

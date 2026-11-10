@@ -37,6 +37,7 @@ type KubernetesConfig struct {
 	EgressURL                                           string
 	MemoryLimit                                         int64
 	RequireVerified                                     bool
+	HermesApprovedImage, HermesModel                    string
 }
 
 type Kubernetes struct {
@@ -245,6 +246,13 @@ func (k *Kubernetes) observe(ctx context.Context, r kubeResource) (shared.Observ
 	status, b, err := k.agent(ctx, r, "GET", "/v1/activity", nil)
 	if err == nil && status == 200 && json.Unmarshal(b, &o.Activity) == nil {
 		o.Ready = true
+		if r.Metadata.Labels["workbench.agent"] == "hermes" {
+			status, body, e := k.agent(ctx, r, "GET", "/v1/runtime-capabilities", nil)
+			var caps struct {
+				Hermes bool `json:"hermes"`
+			}
+			o.Ready = k.hermesEnabled() && e == nil && status == 200 && json.Unmarshal(body, &caps) == nil && caps.Hermes
+		}
 	}
 	return o, nil
 }
@@ -259,8 +267,8 @@ func (k *Kubernetes) StartConfigured(ctx context.Context, id string, spec protoc
 	if err != nil {
 		return shared.Observation{}, err
 	}
-	if spec.AgentKind == "hermes" {
-		return shared.Observation{}, errors.New("unsupported agent kind")
+	if spec.AgentKind == "hermes" && (!k.hermesEnabled() || spec.HermesMatrix != nil) {
+		return shared.Observation{}, errors.New("HERMES_RUNTIME_NOT_APPROVED_OR_MATRIX_UNSUPPORTED")
 	}
 	if k.cfg.RequireVerified {
 		return shared.Observation{}, errors.New("VERIFIED_ISOLATION_UNAVAILABLE")
@@ -345,8 +353,15 @@ func (k *Kubernetes) StartConfigured(ctx context.Context, id string, spec protoc
 }
 func (k *Kubernetes) sandbox(id string, spec protocol.WorkspaceSpec, namespace string, labels map[string]string, secretName string) map[string]any {
 	env := []map[string]any{}
-	for name, value := range map[string]string{"WORKSPACE_ID": id, "PROJECT_ID": spec.ProjectID, "AGENT_HOME_ID": spec.HomeID, "AGENT_KIND": spec.AgentKind, "WORKSPACE_NAME": spec.Name, "DATA_DIR": "/data", "MONITOR_PROCESSES": "true", "WORKSPACE_T3": fmt.Sprint(spec.AgentKind == "t3" || spec.ConsoleEnabled), "WORKSPACE_AGENT": "codex", "CODEX_MODEL": k.cfg.CodexModel, "INFERENCE_URL": k.cfg.InferenceURL, "BROKER_URL": k.cfg.BrokerURL, "EGRESS_URL": k.cfg.EgressURL} {
+	provider := "codex"
+	if spec.AgentKind == "hermes" {
+		provider = "hermes"
+	}
+	for name, value := range map[string]string{"WORKSPACE_ID": id, "PROJECT_ID": spec.ProjectID, "AGENT_HOME_ID": spec.HomeID, "AGENT_KIND": spec.AgentKind, "WORKSPACE_NAME": spec.Name, "DATA_DIR": "/data", "MONITOR_PROCESSES": "true", "WORKSPACE_T3": fmt.Sprint(spec.AgentKind == "t3" || spec.ConsoleEnabled), "WORKSPACE_AGENT": provider, "CODEX_MODEL": k.cfg.CodexModel, "INFERENCE_URL": k.cfg.InferenceURL, "BROKER_URL": k.cfg.BrokerURL, "EGRESS_URL": k.cfg.EgressURL} {
 		env = append(env, map[string]any{"name": name, "value": value})
+	}
+	if spec.AgentKind == "hermes" {
+		env = append(env, map[string]any{"name": "HERMES_MODEL", "value": k.cfg.HermesModel}, map[string]any{"name": "HERMES_MCP_TRANSPORT", "value": "kubernetes-generation"})
 	}
 	env = append(env, map[string]any{"name": "WORKSPACE_TOKEN", "valueFrom": map[string]any{"secretKeyRef": map[string]string{"name": secretName, "key": "token"}}})
 	container := map[string]any{"name": "workspace", "image": k.cfg.Image, "imagePullPolicy": "IfNotPresent", "env": env, "ports": []any{map[string]any{"containerPort": 8080, "name": "workspace"}}, "securityContext": map[string]any{"allowPrivilegeEscalation": false, "readOnlyRootFilesystem": true, "capabilities": map[string]any{"drop": []string{"ALL"}}}, "resources": map[string]any{"requests": map[string]string{"cpu": "1", "memory": fmt.Sprint(k.cfg.MemoryLimit)}, "limits": map[string]string{"cpu": "1", "memory": fmt.Sprint(k.cfg.MemoryLimit)}}, "volumeMounts": []any{map[string]string{"name": "data", "mountPath": "/data"}, map[string]string{"name": "tmp", "mountPath": "/tmp"}}, "readinessProbe": map[string]any{"httpGet": map[string]any{"path": "/healthz", "port": 8080}, "periodSeconds": 2}}
@@ -438,4 +453,9 @@ func (k *Kubernetes) Console(w http.ResponseWriter, r *http.Request, id, path st
 }
 func (k *Kubernetes) Desktop(w http.ResponseWriter, r *http.Request, id, path string) {
 	k.proxy(w, r, id, path, "/v1/t3-desktop/")
+}
+
+// Approval binds the exact digest to the pinned v0.23 runtime contract.
+func (k *Kubernetes) hermesEnabled() bool {
+	return pinnedImage.MatchString(k.cfg.Image) && k.cfg.HermesApprovedImage == k.cfg.Image && k.cfg.HermesModel != ""
 }

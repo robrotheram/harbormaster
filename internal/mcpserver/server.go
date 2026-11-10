@@ -16,16 +16,18 @@ import (
 )
 
 type Config struct {
-	ControlplaneURL string
-	ControlToken    string
-	MCPToken        string
-	AllowedHosts    []string
+	ControllerURL       string
+	GatewayServiceToken string
+	ControlplaneURL     string
+	ControlToken        string
+	MCPToken            string
+	AllowedHosts        []string
 }
 
 // ConfigFromEnv only accepts file-provisioned credentials. It never falls back
 // to inline environment tokens or caller-supplied control-plane identities.
 func ConfigFromEnv() (Config, error) {
-	c := Config{ControlplaneURL: os.Getenv("CONTROLPLANE_URL")}
+	c := Config{ControlplaneURL: os.Getenv("CONTROLPLANE_URL"), ControllerURL: os.Getenv("HERMES_CONTROLLER_URL")}
 	if c.ControlplaneURL == "" {
 		c.ControlplaneURL = "http://controlplane:8080"
 	}
@@ -45,6 +47,11 @@ func ConfigFromEnv() (Config, error) {
 		return s, nil
 	}
 	var err error
+	if c.ControllerURL != "" {
+		if c.GatewayServiceToken, err = read("GATEWAY_SERVICE_TOKEN_FILE"); err != nil {
+			return c, err
+		}
+	}
 	if c.ControlToken, err = read("CONTROL_TOKEN_FILE"); err != nil {
 		return c, err
 	}
@@ -132,6 +139,13 @@ func New(c Config) (http.Handler, error) {
 	})
 	mux.Handle("/mcp", authenticated)
 	mux.Handle("/project-mcp", authenticated)
+	if c.ControllerURL != "" {
+		h, err := generationMCP(c, authenticated)
+		if err != nil {
+			return nil, err
+		}
+		mux.Handle("/hermes-mcp", h)
+	}
 	return mux, nil
 }
 

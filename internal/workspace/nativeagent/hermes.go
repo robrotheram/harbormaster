@@ -7,6 +7,14 @@ import (
 
 func prepareHermes(cfg Config, home string, env []string) (invocation, string) {
 	var args []string
+	mcpURL := "http://127.0.0.1:18085/mcp"
+	switch cfg.HermesMCPTransport {
+	case "":
+	case KubernetesGeneration:
+		mcpURL = KubernetesMCPURL
+	default:
+		return invocation{}, "MCP_TRANSPORT_UNSUPPORTED"
+	}
 
 	if cfg.AgentKind != "hermes" || cfg.HermesModel == "" {
 		return invocation{}, "PROVIDER_NOT_CONFIGURED"
@@ -18,7 +26,7 @@ func prepareHermes(cfg Config, home string, env []string) (invocation, string) {
 		if os.WriteFile(credential, []byte(cfg.Token), 0600) != nil {
 			return invocation{}, "MCP_CREDENTIAL_UNAVAILABLE"
 		}
-		env = append(env, "WORKBENCH_MCP_URL=http://127.0.0.1:18085/mcp", "WORKBENCH_MCP_TOKEN_FILE="+credential, "WORKBENCH_PROJECT_ID="+project)
+		env = append(env, "WORKBENCH_MCP_URL="+mcpURL, "WORKBENCH_MCP_TOKEN_FILE="+credential, "WORKBENCH_PROJECT_ID="+project)
 	}
 	return invocation{executable: "/usr/local/bin/hermes-runner", args: args, env: env, resultFile: ""}, ""
 }
