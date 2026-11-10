@@ -42,6 +42,7 @@ func (s *Store) migrate(ctx context.Context) error {
 			}
 			return nil
 		}},
+		{7, func(ctx context.Context) error { return (orchestration.Repository{DB: s.DB}).InitWorkRequests(ctx) }},
 	}
 	for _, step := range steps {
 		var applied int

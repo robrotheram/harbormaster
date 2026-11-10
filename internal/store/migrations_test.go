@@ -17,7 +17,7 @@ func TestStartupMigrationsAreVersionedAndRepeatable(t *testing.T) {
 		if err = s.DB.QueryRow(`SELECT count(*) FROM schema_migrations`).Scan(&count); err != nil {
 			t.Fatal(err)
 		}
-		if count != 6 {
+		if count != 7 {
 			t.Fatalf("migration versions: %d", count)
 		}
 		for _, table := range []string{"work_items", "work_attempts", "schedules", "orchestration_runs", "workspaces", "agent_homes"} {
@@ -78,7 +78,7 @@ func TestWorkMigrationUpgradesVersionTwoDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, table := range []string{"work_attempts", "work_items", "project_coordination", "exchange_exports", "project_exchanges"} {
+	for _, table := range []string{"work_create_requests", "work_attempts", "work_items", "project_coordination", "exchange_exports", "project_exchanges"} {
 		if _, err = original.DB.Exec(`DROP TABLE ` + table); err != nil {
 			t.Fatal(err)
 		}
@@ -99,5 +99,39 @@ func TestWorkMigrationUpgradesVersionTwoDatabase(t *testing.T) {
 	}
 	if _, err = upgraded.Project(ctx, "default"); err != nil {
 		t.Fatal("existing project lost", err)
+	}
+}
+
+func TestInlineWorkRequestMigrationUpgradesVersionSix(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "version-six.db")
+	database, err := Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata := `{"id":"work_legacy","project_id":"default","workspace_id":"ws_legacy","state":"draft"}`
+	if _, err = database.DB.Exec(`INSERT INTO work_items(id,project_id,create_key,metadata) VALUES('work_legacy','default','legacy',$1)`, metadata); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.DB.Exec(`DROP TABLE work_create_requests`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.DB.Exec(`DELETE FROM schema_migrations WHERE version=7`); err != nil {
+		t.Fatal(err)
+	}
+	if err = database.DB.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.DB.Close()
+	if _, err = reopened.DB.Exec(`INSERT INTO work_create_requests(project_id,create_key,fingerprint) VALUES('default','request','fingerprint')`); err != nil {
+		t.Fatal("request journal missing after upgrade", err)
+	}
+	var saved string
+	if err = reopened.DB.QueryRow(`SELECT metadata FROM work_items WHERE id='work_legacy'`).Scan(&saved); err != nil || saved != metadata {
+		t.Fatal("legacy work changed during upgrade", saved, err)
 	}
 }

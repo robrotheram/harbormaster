@@ -162,6 +162,9 @@ func NewInteractiveHandler(readURL, controlURL, token string) (http.Handler, err
 				return
 			}
 			limit := int64(4096)
+			if parts[0] == "work-items" && len(parts) == 1 {
+				limit = 400000
+			}
 			if parts[0] == "note-publications" || (parts[0] == "project-exchanges" && len(parts) == 3 && parts[2] == "exports") {
 				limit = 100000
 			}
