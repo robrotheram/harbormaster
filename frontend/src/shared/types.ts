@@ -101,6 +101,7 @@ export type Section =
   | "homes"
   | "schedules"
   | "runs"
+  | "settings"
   | "hermes"
   | "overview"
   | "help";

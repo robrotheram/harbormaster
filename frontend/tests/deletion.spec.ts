@@ -17,6 +17,20 @@ test("deletes a project only after the operator confirms", async ({ page }) => {
     await route.fulfill({ json: value });
   });
   await page.goto("/app/projects/A/factory");
+  await expect(
+    page
+      .getByRole("banner")
+      .getByRole("button", { name: "Delete project", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Delete project", exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("link", { name: "Project settings", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Project settings", exact: true }),
+  ).toBeVisible();
   page.once("dialog", (dialog) => dialog.dismiss());
   await page
     .getByRole("button", { name: "Delete project", exact: true })

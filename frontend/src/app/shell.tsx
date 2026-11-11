@@ -2,7 +2,6 @@ import { Input } from "@/components/ui/input";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Navigate, useNavigate } from "@tanstack/react-router";
-import { request } from "@/shared/http";
 import { keys } from "@/shared/query-keys";
 
 import { projectsApi } from "@/features/projects/api";
@@ -30,6 +29,7 @@ import {
   Fingerprint,
   CalendarClock,
   ListChecks,
+  Settings,
   type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -39,6 +39,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import type { Project, Section } from "@/shared/types";
+const ProjectSettings = lazy(() =>
+  import("@/features/projects/settings").then((m) => ({
+    default: m.ProjectSettings,
+  })),
+);
 const HermesSettings = lazy(() =>
   import("@/features/project-assistant/hermes").then((m) => ({
     default: m.HermesSettings,
@@ -93,6 +98,7 @@ const sections: { id: Section; label: string; icon: LucideIcon }[] = [
   { id: "schedules", label: "Schedules", icon: CalendarClock },
   { id: "runs", label: "Scheduled runs", icon: ListChecks },
   { id: "hermes", label: "Hermes setup", icon: Bot },
+  { id: "settings", label: "Project settings", icon: Settings },
 ];
 function savedProject() {
   try {
@@ -124,15 +130,6 @@ export function ProjectShell({
     staleTime: 15000,
   });
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const deletion = useMutation({
-    mutationFn: async (id: string) =>
-      request(`/projects/${encodeURIComponent(id)}/delete`, { confirm_id: id }),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries();
-      await navigate({ to: "/" });
-    },
-  });
 
   const [create, setCreate] = useState(false);
   const [mobile, setMobile] = useState(false);
@@ -166,6 +163,7 @@ export function ProjectShell({
           "schedules",
           "runs",
           "hermes",
+          "settings",
           "overview",
           "help",
         ].includes(section)
@@ -399,23 +397,6 @@ export function ProjectShell({
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-3">
-            {project && project.id !== "default" && (
-              <Button
-                variant="outline"
-                disabled={deletion.isPending}
-                onClick={() => {
-                  if (
-                    window.confirm(
-                      `Delete project ${project.name} and all its workspaces from the workbench? Compute must stop first. Private disks remain on the host.`,
-                    )
-                  )
-                    deletion.mutate(project.id);
-                }}
-              >
-                Delete project
-              </Button>
-            )}
-
             <Badge
               variant="outline"
               className="hidden gap-1.5 text-muted-foreground sm:inline-flex"
@@ -436,7 +417,6 @@ export function ProjectShell({
           </div>
         </header>
         <main id="main" className="mx-auto max-w-[1560px] p-4 sm:p-8 lg:p-9">
-          {deletion.isError && <ErrorNotice error={deletion.error} />}
           <Suspense fallback={<Skeleton className="h-72 w-full" />}>
             {projects.isError && <ErrorNotice error={projects.error} />}
             {globalSettings ? (
@@ -507,6 +487,7 @@ function ProjectView({
   project: Project;
   section: Section;
 }) {
+  if (section === "settings") return <ProjectSettings project={project} />;
   if (section === "factory") return <Factory project={project} />;
   if (section === "work") return <Work project={project} />;
   if (section === "homes") return <AgentHomes project={project} />;
