@@ -1,12 +1,104 @@
 const messages: Record<string, string> = {
+  HISTORY_EXPORT_INCOMPLETE:
+    "The history export did not finish correctly. No file was downloaded. Check that the worker is running, then try exporting again.",
+  EVIDENCE_UNAVAILABLE:
+    "This saved file could not be read. Check the worker's status and try again.",
+  EVIDENCE_READ_BUDGET_EXCEEDED:
+    "This file is too large for the built-in reader. Inspect it in the worker instead.",
+  RETAINED_PREVIEW_UNAVAILABLE:
+    "The preview could not be prepared. Check the source and preview workers in Workers, then try again.",
+  RETENTION_METADATA_UNAVAILABLE:
+    "The preview may have started, but its details could not be saved. Check Workers before creating another preview.",
+  INVALID_SERVICE_RESPONSE:
+    "Workbench could not verify the preview's status. Refresh and check the preview worker before trying again.",
+  PREVIEW_RELEASE_NOT_CONFIRMED:
+    "Workbench could not confirm that preview access has ended. Refresh its status, revoke access if it is still active, then release the environment again.",
+  UNSUPPORTED_APPROVED_TEMPLATE_OR_BUDGET:
+    "This recipe or its resource limits are unavailable. Choose another recipe or ask your administrator to check the configured recipes.",
+  WORK_STATE_CONFLICT:
+    "This work changed since you opened it. Reopen the conversation or review to inspect the latest result before trying again.",
+  WORKSPACE_UNAVAILABLE:
+    "The worker is unavailable. Open Workers to check its status and start it if needed, then try again.",
+  INSTRUCTION_UNAVAILABLE:
+    "The original instructions could not be loaded. Check that the worker is running and the instruction file still exists.",
+  ARTIFACT_UNAVAILABLE:
+    "This output could not be loaded. Check the worker's status and try again. If it was not retained, inspect the original work conversation.",
+  OUTPUT_NOT_RETAINED:
+    "This output was not saved with the run. Open the conversation to inspect available files or ask the agent to generate it again.",
+  PRIVATE_PUBLICATION_FAILED:
+    "The instructions could not be saved to the worker. Check its status before trying again.",
+  PRIVATE_PUBLICATION_UNCONFIRMED:
+    "Workbench could not confirm that the instructions were saved. Check the conversation's current state before submitting again.",
+  SPECIFICATION_DIGEST_MISMATCH:
+    "The instruction file changed after this work was created. Review the current file and submit a new work request with the intended instructions.",
+  NETWORK_UNAVAILABLE:
+    "Workbench could not reach the server. Check your connection and try again. If you submitted a change, check its current state before resubmitting.",
+  REQUEST_TIMEOUT:
+    "The server took too long to respond. Check the current state before trying again; your request may still have completed.",
+  SESSION_REQUIRED:
+    "Your session is unavailable or has expired. Reopen Workbench through your signed-in operator session, then try again.",
+  SERVICE_UNAVAILABLE:
+    "The service is temporarily unavailable. Try again shortly. If this continues, ask your administrator to check Platform → Platform services.",
+  RATE_LIMITED: "Too many requests were sent. Wait a moment, then try again.",
+  BOARD_REVISION_CONFLICT:
+    "This issue changed in another session. The board has refreshed; retry your change.",
+  BOARD_SYNC_CONFLICT:
+    "The repository issue changed since the last sync. Your edits have been kept. Open issue details to resolve the conflict.",
+  BOARD_SYNC_LOCAL_CHANGES:
+    "This issue has unsynced local edits. Sync them first, or choose Use repository version in issue details to discard them.",
+  FORGE_CONNECTION_REMOVED:
+    "The repository connection was removed. Reconnect the repository before syncing this issue.",
+  FORGE_ACCOUNT_INVALID:
+    "Check the account name, provider, HTTPS server address and access token.",
+  FORGE_ACCOUNT_CONFLICT:
+    "This account name is already in use or its settings changed. Refresh the accounts and retry; use a new name for a different server.",
+  FORGE_CREDENTIAL_UNAVAILABLE:
+    "The saved token could not be decrypted. Update the account token and retry.",
+  STORAGE_UNAVAILABLE:
+    "The server could not access its saved data. Try again shortly. If this continues, share the support details with your administrator so they can check the database.",
+  FORGE_HOST_REQUIRED:
+    "This provider account is unavailable. Ask the operator to check the server configuration.",
+  FORGE_CONFIG_UNAVAILABLE:
+    "The control plane cannot read its repository account configuration.",
+  FORGE_CONFIG_INVALID:
+    "The repository account configuration is invalid. Check the provider, HTTPS API URL and token.",
+  FORGE_UNAVAILABLE:
+    "The repository provider could not be reached. Check its address, network access and TLS certificate.",
+  FORGE_HTTP_401:
+    "The provider rejected this account credential. Rotate its token and retry.",
+  FORGE_HTTP_403:
+    "The provider denied access. Check token permissions and provider rate limits.",
+  FORGE_HTTP_404:
+    "The repository or ticket was not found, or this account cannot access it.",
+  FORGE_HTTP_429: "The provider rate limit was reached. Wait before retrying.",
+  FORGE_HTTP_302:
+    "The provider redirected this request. Configure its canonical API address.",
+  INVALID_REPOSITORY:
+    "Enter owner/repository for GitHub or group/project for GitLab. Nested GitLab groups are supported.",
+  DESKTOP_NOT_INSTALLED:
+    "Desktop support is not installed in this worker image. Install the updated runtime before starting a desktop.",
+  APPLICATION_PORT_UNAVAILABLE:
+    "The detected server is no longer listening. Start it again in the worker, then retry detection.",
+  APPLICATION_PORT_BUSY:
+    "An application already uses this port. Use its detected preview or choose a different port.",
+  APPLICATION_LIMIT:
+    "Four preview sessions are already active. Disconnect or stop one before opening another.",
+  SCHEDULE_REVISION_CONFLICT:
+    "This schedule changed in another session. Close this dialog, refresh the list and reopen it before saving.",
+  SCHEDULE_HAS_UNFINISHED_RUNS:
+    "This schedule has unfinished runs. Disable future triggers and let those runs finish before editing. Deleting the schedule cancels queued runs and preserves accepted work.",
+  SCHEDULE_WORKSPACE_UNAVAILABLE:
+    "This schedule’s worker is no longer available. Edit the schedule and select an existing worker before enabling or running it.",
   RESOURCE_LIMIT_UNAVAILABLE:
-    "This workspace requires resources unavailable in the current runtime template. Check the deployment configuration.",
+    "This worker requires resources unavailable in the current runtime template. Check the deployment configuration.",
   ASSISTANT_WORKSPACE_AMBIGUOUS:
-    "This project has multiple Hermes workspaces. Open the workspace you want from Workspaces.",
+    "This project has multiple Hermes workers. Open the worker you want from Workers.",
   HISTORY_UNAVAILABLE:
-    "Private history is not available yet. The workspace may need to restart into the history-enabled image.",
+    "Recorded activity is unavailable. Try again. If this continues, check the worker’s status under Workers and share the support details with your administrator.",
+  RESULT_UNAVAILABLE:
+    "The task’s final response could not be loaded. Check its recorded activity in the conversation and try again. If it remains unavailable, share the support details with your administrator.",
   HISTORY_WORKSPACE_STOPPED:
-    "Private history remains on the workspace disk. Start the workspace to browse or export it.",
+    "Private history remains on the worker disk. Start the worker to browse or export it.",
   MATRIX_HOMESERVER_INVALID:
     "This address does not provide a valid Matrix homeserver. Enter your Element or Matrix HTTPS address and save the configuration to discover it.",
   MATRIX_TOKEN_INVALID:
@@ -22,19 +114,19 @@ const messages: Record<string, string> = {
   MATRIX_ROOM_ENCRYPTION_REQUIRED:
     "Every configured room must have end-to-end encryption enabled. Enable encryption in the room settings, then retry.",
   OPEN_NETWORK_FORBIDDEN_IN_SANDBOX:
-    "Fully open networking is unavailable in this sandbox. Choose Blocked or an approved allowlist in Hermes setup or workspace settings.",
+    "Fully open networking is unavailable in this sandbox. Choose Blocked or an approved allowlist in Hermes setup or worker settings.",
   MATRIX_SETTINGS_REQUIRED:
     "Save the Matrix homeserver, bot identity, rooms and senders in Hermes setup first.",
   MATRIX_WORKSPACE_REQUIRED:
-    "Start a Hermes workspace for this project before connecting Matrix.",
+    "Start a Hermes worker for this project before connecting Matrix.",
   HERMES_WORKSPACE_REQUIRED:
-    "Start a Hermes workspace for this project before connecting Matrix.",
+    "Start a Hermes worker for this project before connecting Matrix.",
   MATRIX_CREDENTIAL_REJECTED:
     "Check the bot token and user ID. Use a dedicated bot joined only to the configured encrypted rooms.",
   MATRIX_RESTART_REQUIRED:
-    "Stop and start the Hermes workspace to apply the saved Matrix settings, then connect again.",
+    "Stop and start the Hermes worker to apply the saved Matrix settings, then connect again.",
   MATRIX_ALREADY_CONNECTED:
-    "This project's bot is already connected to another workspace. Disconnect it there first.",
+    "This project's bot is already connected to another worker. Disconnect it there first.",
   MATRIX_UNAVAILABLE:
     "Matrix could not connect. Check the homeserver, bot device and encryption verification.",
   HERMES_SETUP_REQUIRED:
@@ -46,40 +138,46 @@ const messages: Record<string, string> = {
   HERMES_REVISION_CONFLICT:
     "Hermes settings changed in another session. Reload this page before saving again.",
   WORKSPACE_BUSY:
-    "This workspace has active work or terminal processes. Finish them in T3 before retrying.",
-  NOT_READY:
-    "The workspace is still starting. Check its state and retry shortly.",
+    "This worker has active work or terminal processes. Finish them in T3 before retrying.",
+  NOT_READY: "The worker is still starting. Check its state and retry shortly.",
   QUOTA_EXCEEDED:
-    "The running workspace quota is full. Stop an idle workspace and retry.",
-  PROJECT_MISMATCH: "Both workspaces must belong to this project.",
+    "The running worker quota is full. Stop an idle worker and retry.",
+  PROJECT_MISMATCH:
+    "This action does not match the selected project. Reopen the intended project and check the worker selection before trying again.",
   CROSS_PROJECT_DENIED: "Content cannot be transferred between projects.",
   CROSS_PROJECT_TRANSFER_DENIED:
     "Content cannot be transferred between projects.",
   DESTINATION_EXISTS:
     "The destination file already exists. Choose a new destination path.",
-  WORKSPACES_NOT_READY: "Start both workspaces before copying a file.",
+  WORKSPACES_NOT_READY: "Start both workers before copying a file.",
   FILE_UNAVAILABLE:
     "The source file is unavailable or exceeds the file-size limit.",
   FILE_HANDOFF_FAILED:
-    "The file could not be copied. Check both workspaces and the destination path.",
+    "The file could not be copied. Check both workers and the destination path.",
   INVALID_PROJECT_FILE:
     "Use a relative project-file path. Credential and Git metadata paths cannot be shared.",
   PAIRING_UNAVAILABLE:
-    "T3 could not issue a pairing link. Check workspace readiness and retry.",
+    "T3 could not issue a pairing link. Check worker readiness and retry.",
   CONSOLE_UPGRADE_REQUIRED:
-    "This workspace uses the task-only runtime. Create a new T3 workspace to use the browser.",
+    "This worker uses the task-only runtime. Create a new T3 worker to use the browser.",
   CONSOLE_UNAVAILABLE:
-    "The workspace connection is unavailable. Refresh its state and retry.",
+    "The worker connection is unavailable. Refresh its state and retry.",
+  CONNECTION_PROFILE_IN_USE:
+    "This profile is still used by a worker or Hermes setup. Choose another profile in those settings before deleting it.",
   PROFILE_REVISION_CONFLICT:
-    "This profile changed in another window. Refresh the list and reopen it before saving.",
+    "This profile changed in another window. Refresh the list and reopen it before trying again.",
   INVALID_CONNECTION_PROFILE:
     "This connection profile is unavailable. Select another profile.",
   STOP_WORKSPACE_FIRST:
-    "Stop the workspace before changing this connection profile. Finish active work and close terminals first.",
+    "The worker must stop before this action can finish. Finish active work and close terminals first, then stop the worker in Workers and try again.",
+  WORKSPACE_CHANGED:
+    "A worker changed while this action was running. Refresh Workers and check its current state before trying again.",
   NETWORK_POLICY_UNAVAILABLE:
     "This runtime cannot apply the requested network policy.",
+  RUNTIME_CAPABILITIES_INCOMPATIBLE:
+    "The runtime controller uses an incompatible capability format. Update the host controller to match the control plane, then check again.",
   RUNTIME_UNAVAILABLE:
-    "The runtime is unavailable. Check the Runtime overview before retrying.",
+    "The runtime could not complete this request. Use the worker startup check or check Platform services before retrying.",
   PROVIDER_LOGIN_REQUIRED:
     "The native provider needs its operator login refreshed. No API billing fallback was used.",
   CREDENTIAL_UNAVAILABLE:
@@ -89,6 +187,12 @@ const messages: Record<string, string> = {
   NOT_FOUND_OR_FORBIDDEN:
     "This resource is unavailable in the selected project.",
   FORBIDDEN: "This action is not permitted for the selected project.",
+  TERMINAL_UNAVAILABLE:
+    "The terminal is unavailable. Update the worker runtime and controller, then restart the worker.",
+  TERMINAL_EXPIRED:
+    "This terminal session has ended. Open a new shell to reconnect.",
+  TERMINAL_LIMIT:
+    "This worker already has four terminal sessions. Close one before opening another.",
   INVALID_REQUEST: "Check the form fields and try again.",
 };
 
@@ -99,7 +203,15 @@ export class APIError extends Error {
   ) {
     super(
       messages[code] ||
-        "The request could not finish. Refresh to check the latest state.",
+        (status === 401
+          ? messages.SESSION_REQUIRED
+          : status === 403
+            ? messages.FORBIDDEN
+            : status === 429
+              ? messages.RATE_LIMITED
+              : status >= 500
+                ? messages.SERVICE_UNAVAILABLE
+                : "The request could not finish. Check the current state before trying again. If this continues, share the support details with your administrator."),
     );
   }
 }
@@ -110,22 +222,38 @@ export async function request<T>(
   signal?: AbortSignal,
 ): Promise<T> {
   const timeout = AbortSignal.timeout(body === undefined ? 15000 : 45000);
-  const response = await fetch("/ui-api" + path, {
-    method: body === undefined ? "GET" : "POST",
-    headers:
-      body === undefined
-        ? {}
-        : { "Content-Type": "application/json", "X-Workbench-Request": "1" },
-    body: body === undefined ? undefined : JSON.stringify(body),
-    cache: "no-store",
-    redirect: "error",
-    signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
-  });
+  let response: Response;
+  try {
+    response = await fetch("/ui-api" + path, {
+      method: body === undefined ? "GET" : "POST",
+      headers:
+        body === undefined
+          ? {}
+          : { "Content-Type": "application/json", "X-Workbench-Request": "1" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      cache: "no-store",
+      redirect: "error",
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+    });
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    throw new APIError(
+      timeout.aborted ? "REQUEST_TIMEOUT" : "NETWORK_UNAVAILABLE",
+      0,
+    );
+  }
   let value: unknown;
   try {
     value = await response.json();
   } catch {
     throw new APIError("UNAVAILABLE", response.status);
+  }
+  if (
+    response.status === 401 &&
+    (value as { code?: string })?.code === "AUTH_REQUIRED" &&
+    typeof window !== "undefined"
+  ) {
+    window.dispatchEvent(new Event("workbench:auth-required"));
   }
   if (!response.ok)
     throw new APIError(

@@ -44,6 +44,8 @@ jobs:
           python-version: '3.12'
       - name: Check source, race safety, PostgreSQL, and frontend
         run: make check
+      - name: Check reachable Go vulnerabilities
+        run: make go-vuln-check
       - name: Install browser
         working-directory: frontend
         run: npx playwright install --with-deps chromium

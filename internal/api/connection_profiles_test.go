@@ -5,6 +5,7 @@ import (
 	"agent-workbench/internal/shared"
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -157,5 +158,60 @@ func TestGlobalProfileCreationAndValidation(t *testing.T) {
 		if r.Code != 400 {
 			t.Fatal("invalid profile accepted")
 		}
+	}
+}
+
+func TestDeleteConnectionProfile(t *testing.T) {
+	s, _ := setup(t)
+	project := domainProject(t, s, "delete-profile")
+	s.cfg.ProjectTokens = map[string]string{"project-profile-token": project.ID}
+	path := "/v1/connection-profiles/github/delete"
+	if got := domainRequest(t, s, "project-profile-token", "POST", path, `{"revision":1}`); got.Code != 403 {
+		t.Fatalf("project credential deleted global profile: %d", got.Code)
+	}
+	for _, body := range []string{`{}`, `{"revision":0}`, `{"revision":-1}`} {
+		if got := request(t, s, "POST", path, body); got.Code != 400 {
+			t.Fatalf("invalid revision: %d", got.Code)
+		}
+	}
+	if got := request(t, s, "POST", path, `{"revision":2}`); got.Code != 409 {
+		t.Fatalf("stale deletion: %d", got.Code)
+	}
+	w := create(t, s, "delete-linked")
+	if got := request(t, s, "POST", "/v1/workspaces/"+w.ID+"/settings", `{"idle_timeout_minutes":60,"connection_profile_id":"github"}`); got.Code != 200 {
+		t.Fatal(got.Code, got.Body)
+	}
+	if got := request(t, s, "POST", path, `{"revision":1}`); got.Code != 409 || !strings.Contains(got.Body.String(), "CONNECTION_PROFILE_IN_USE") {
+		t.Fatal(got.Code, got.Body)
+	}
+	if got := request(t, s, "POST", "/v1/workspaces/"+w.ID+"/settings", `{"idle_timeout_minutes":60,"connection_profile_id":"blocked"}`); got.Code != 200 {
+		t.Fatal(got.Code, got.Body)
+	}
+	setup := shared.HermesSetup{ProjectID: project.ID, ConnectionProfileID: "github", Revision: 1}
+	if err := s.Store.SaveHermesSetup(context.Background(), setup, 0); err != nil {
+		t.Fatal(err)
+	}
+	if got := request(t, s, "POST", path, `{"revision":1}`); got.Code != 409 || !strings.Contains(got.Body.String(), "CONNECTION_PROFILE_IN_USE") {
+		t.Fatal(got.Code, got.Body)
+	}
+	setup.ConnectionProfileID = "blocked"
+	setup.Revision++
+	if err := s.Store.SaveHermesSetup(context.Background(), setup, 1); err != nil {
+		t.Fatal(err)
+	}
+	if got := request(t, s, "POST", path, `{"revision":1}`); got.Code != 200 {
+		t.Fatal(got.Code, got.Body)
+	}
+	profiles, err := s.Store.ConnectionProfiles(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range profiles {
+		if p.ID == "github" {
+			t.Fatal("deleted profile still listed")
+		}
+	}
+	if got := request(t, s, "POST", path, `{"revision":1}`); got.Code != 409 {
+		t.Fatalf("repeated deletion: %d", got.Code)
 	}
 }

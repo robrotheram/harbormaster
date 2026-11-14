@@ -112,6 +112,32 @@ backend always verifies its mandatory controls and cannot disable them via that 
 
 ## Operations and limits
 
+The host controller is a separate installed binary: `docker compose build` does
+not update it. If startup reports `RUNTIME_CAPABILITIES_INCOMPATIBLE`, build the
+matching controller with `CGO_ENABLED=0 go build -trimpath -o
+.local/firecracker/controller ./cmd/firecracker-controller`. Pause Matrix
+listeners, wait for active work to finish, and stop workers through the API so
+their storage is synchronized. Only then stop the host service and run
+`sudo python3 scripts/firecracker-install.py --controller-only`. This preserves
+the installed guest image, provisions the existing control-plane signing authority
+for the host MCP broker, runs real KVM acceptance, and starts the host service.
+Recreate the Compose `runtime-controller` bridge with the Firecracker overlay
+and `--no-deps --force-recreate` to refresh its bind mount of the recreated
+systemd runtime directory. Then restart the previously running workers and
+reconnect their Matrix listeners.
+Never restart the host service over active guests to resolve a version mismatch.
+
+If a work attempt fails with `SPECIFICATION_ACCEPTANCE_FAILED` before a task ID
+appears, check that the installed **guest image**, not just the host controller,
+matches the control plane. An older guest can report ready and accept file
+uploads while rejecting the `specification_digest` field used by work dispatch.
+Rebuilding Compose services or doing a controller-only installation does not
+update that guest. Stage the current image, quiesce workers and Matrix listeners,
+and perform the full installation above. The VM acceptance check now verifies
+digest-aware task submission without executing a task or contacting a provider.
+After restoring the workers, use **Retry with new attempt** on the existing work
+item; its original specification and failed attempt remain intact.
+
 ```sh
 systemctl status agent-workbench-firecracker.service
 journalctl -u agent-workbench-firecracker.service
@@ -131,6 +157,17 @@ the corresponding cgroup has no running processes. Parent-workspace seeding is
 explicitly refused by this backend until a VM-safe handoff is implemented.
 
 ## Local acceptance record — 6 November 2026
+
+### Controller upgrade — 12 November 2026
+
+Upgraded the separately installed host controller to the current schema-1
+capability contract, retaining the installed guest image and private disks.
+The controller-only install passed real KVM acceptance. The runtime bridge was
+recreated for the new host socket; Hermes restarted with observed `jailed-vm`
+and `no-nic-vsock` status, and its Matrix listener reconnected. The stopped T3
+test worker passed all five deployed startup checks (state, compatibility,
+allocation, connections, and capacity). No provider conversation was used as
+an acceptance test.
 
 ### Hermes extension — 8 November 2026
 

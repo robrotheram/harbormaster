@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"time"
 )
 
 // This is a real KVM/jailer acceptance check, separate from unit tests. It uses
@@ -54,6 +55,43 @@ func FirecrackerSelfTest(f *Firecracker, token, service string) error {
 		if err != nil || status != 200 || json.Unmarshal(b, &c) != nil || !c.Hermes {
 			return fmt.Errorf("Hermes engine import failed inside the VM: status %d, response %s, transport %v", status, b, err)
 		}
+	}
+	// A healthy guest may still be an older image that rejects the work
+	// dispatch protocol. Probe digest validation without accepting a task or
+	// contacting a provider, before admitting this image for live work.
+	w = call("POST", "/v1/workspaces/"+id+"/agent/v1/tasks/from-file", token,
+		`{"instruction_path":"acceptance-probe.md","specification_digest":"invalid","idempotency_key":"acceptance-protocol-probe"}`)
+	var acceptance shared.APIError
+	if w.Code != 400 || json.Unmarshal(w.Body.Bytes(), &acceptance) != nil || acceptance.Code != "INVALID_SPECIFICATION_DIGEST" {
+		return fmt.Errorf("guest work specification protocol unavailable: status %d; rebuild and stage the workspace guest image", w.Code)
+	}
+	// Exercise a real guest PTY before installing this runtime for operators.
+	terminalPath := "/v1/workspaces/" + id + "/agent/v1/terminals"
+	w = call("POST", terminalPath, token, `{"id":"terminal_acceptance","cols":80,"rows":24}`)
+	if w.Code != 201 {
+		return fmt.Errorf("guest terminal unavailable: status %d; rebuild the guest image", w.Code)
+	}
+	terminalPath += "/terminal_acceptance"
+	w = call("POST", terminalPath+"/exchange", token, `{"input":"printf 'terminal-%s\\n' ready; exit\r","offset":0,"cols":100,"rows":30}`)
+	terminalReady := false
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); {
+		var result struct {
+			Output []byte `json:"output"`
+			Exited bool   `json:"exited"`
+		}
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &result) != nil {
+			return fmt.Errorf("guest terminal exchange failed: status %d", w.Code)
+		}
+		if result.Exited && strings.Contains(string(result.Output), "terminal-ready") {
+			terminalReady = true
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+		w = call("POST", terminalPath+"/exchange", token, `{"offset":0,"cols":100,"rows":30}`)
+	}
+	w = call("POST", terminalPath+"/close", token, `{}`)
+	if !terminalReady || w.Code != 200 {
+		return errors.New("guest terminal command or cleanup failed")
 	}
 	grantBody := func(a string) string { return `{"token":"` + grant + `","audience":"` + a + `"}` }
 	if w := call("POST", "/v1/grants/verify", service, grantBody("inference")); w.Code != 200 {

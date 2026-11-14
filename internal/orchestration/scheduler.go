@@ -102,6 +102,10 @@ func (s *Scheduler) Tick(ctx context.Context) error {
 				report("schedule_read", run.ScheduleID, err)
 				return
 			}
+			// A deletion can cancel queued runs after this tick loaded its batch.
+			if schedule.DeletedAt != nil && run.State == "queued" && run.TaskID == "" {
+				return
+			}
 			ws, err := s.Workspaces.Workspace(ctx, run.WorkspaceID)
 			if err != nil && !errors.Is(err, sql.ErrNoRows) {
 				// Storage outages say nothing about ownership or execution. Keep

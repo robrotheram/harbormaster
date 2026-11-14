@@ -10,9 +10,11 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -73,12 +75,23 @@ func newHTTPServer(h http.Handler) *http.Server {
 	return &http.Server{Handler: h, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10}
 }
 
-// Serve retains the blocking helper used by standalone services.
+// Serve drains standalone services on SIGINT or SIGTERM.
 func Serve(addr string, h http.Handler) error {
-	s := newHTTPServer(h)
-	s.Addr = addr
-	slog.Info("listening", "address", addr)
-	return s.ListenAndServe()
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	return ServeContext(ctx, addr, h)
+}
+
+// ServeHTTPServer preserves service-specific HTTP timeouts while sharing the
+// listener, request cancellation and handler-draining lifecycle.
+// The caller must not reuse the server after this call.
+func ServeHTTPServer(ctx context.Context, server *http.Server) error {
+	listener, err := net.Listen("tcp", server.Addr)
+	if err != nil {
+		return err
+	}
+	slog.Info("listening", "address", server.Addr)
+	return serveListener(ctx, listener, server, 10*time.Second)
 }
 
 // ServeContext owns its listener and drains handlers before returning on cancellation.
@@ -94,12 +107,20 @@ func ServeContext(ctx context.Context, addr string, h http.Handler) error {
 // ServeListener is the same lifecycle for an already-bound listener. On drain
 // timeout, Close cancels active requests before their dependencies are released.
 func ServeListener(ctx context.Context, listener net.Listener, h http.Handler, grace time.Duration) error {
+	return serveListener(ctx, listener, newHTTPServer(h), grace)
+}
+
+func serveListener(ctx context.Context, listener net.Listener, server *http.Server, grace time.Duration) error {
+	h := server.Handler
+	if h == nil {
+		h = http.DefaultServeMux
+	}
 	var handlers sync.WaitGroup
 	var handlerMu sync.Mutex
 	closing := false
 	requestContext, cancelRequests := context.WithCancel(context.Background())
 	defer cancelRequests()
-	server := newHTTPServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		handlerMu.Lock()
 		if closing {
 			handlerMu.Unlock()
@@ -110,7 +131,7 @@ func ServeListener(ctx context.Context, listener net.Listener, h http.Handler, g
 		handlerMu.Unlock()
 		defer handlers.Done()
 		h.ServeHTTP(w, r)
-	}))
+	})
 	joinHandlers := func() {
 		// Prevent a connection already dispatched by net/http from adding a
 		// handler after Wait observes zero. Late arrivals cannot use dependencies.

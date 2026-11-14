@@ -23,6 +23,7 @@ func TestSubscriptionCredentialBoundary(t *testing.T) {
 	var expiry atomic.Int64
 	expiry.Store(time.Now().Add(time.Hour).Unix())
 	var reads, calls atomic.Int32
+	var slow atomic.Bool
 	vault := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("X-Vault-Token") != "read-only-vault-token" {
 			t.Error("wrong Vault authority")
@@ -55,6 +56,9 @@ func TestSubscriptionCredentialBoundary(t *testing.T) {
 	}
 	cfg.subscriptionHTTP = &http.Client{CheckRedirect: NoRedirect, Transport: subscriptionRoundTrip(func(r *http.Request) (*http.Response, error) {
 		calls.Add(1)
+		if slow.Load() {
+			time.Sleep(250 * time.Millisecond)
+		}
 		if r.Header.Get("Authorization") != "Bearer upstream-secret-marker" || r.Header.Get("X-Vault-Token") != "" || r.Header.Get("X-Api-Key") != "" || r.Header.Get("X-Identity") != "" {
 			t.Error("credential boundary failed")
 		}
@@ -106,11 +110,34 @@ func TestSubscriptionCredentialBoundary(t *testing.T) {
 	if reads.Load() != before {
 		t.Fatal("invalid request reached Vault")
 	}
+	t.Run("native responses survive the short server write timeout", func(t *testing.T) {
+		slow.Store(true)
+		defer slow.Store(false)
+		server := httptest.NewUnstartedServer(h)
+		server.Config.WriteTimeout = 50 * time.Millisecond
+		server.Start()
+		defer server.Close()
+		for _, tc := range []struct{ path, model string }{{"/codex/responses", "approved-codex"}, {"/claude/v1/messages", "approved-claude"}} {
+			req, _ := http.NewRequest("POST", server.URL+tc.path, strings.NewReader(`{"model":"`+tc.model+`","stream":true}`))
+			req.Header.Set("Authorization", "Bearer workspace-grant")
+			req.Header.Set("Anthropic-Beta", "oauth-capability,example-beta")
+			client := &http.Client{Timeout: 2 * time.Second}
+			res, err := client.Do(req)
+			if err != nil {
+				t.Fatal("native response was cut off by server deadline:", err)
+			}
+			body, err := io.ReadAll(res.Body)
+			res.Body.Close()
+			if err != nil || res.StatusCode != 200 || string(body) != "data: native-result\n\n" {
+				t.Fatalf("incomplete native response: status=%d err=%v", res.StatusCode, err)
+			}
+		}
+	})
 	expiry.Store(time.Now().Add(-time.Second).Unix())
 	if w := request("/codex/responses", "workspace-grant", "approved-codex"); w.Code != 503 || !strings.Contains(w.Body.String(), "PROVIDER_LOGIN_REQUIRED") {
 		t.Fatal("expired credential accepted")
 	}
-	if calls.Load() != 2 {
+	if calls.Load() != 4 {
 		t.Fatal("expired or denied request reached provider")
 	}
 }

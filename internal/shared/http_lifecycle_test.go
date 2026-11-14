@@ -133,3 +133,45 @@ func TestServeListenerCancelsAndJoinsHandlerAfterDrainTimeout(t *testing.T) {
 	}
 	<-clientDone
 }
+
+// A refactor to the common lifecycle must not discard gateway/broker body
+// deadlines: an authenticated slow client must not hold a handler indefinitely.
+func TestServeListenerPreservesReadTimeout(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	readErr := make(chan error, 1)
+	server := newHTTPServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, err := io.ReadAll(r.Body)
+		readErr <- err
+	}))
+	server.ReadTimeout = 50 * time.Millisecond
+	done := make(chan error, 1)
+	go func() { done <- serveListener(ctx, listener, server, time.Second) }()
+	defer func() {
+		cancel()
+		if err := <-done; err != nil {
+			t.Error(err)
+		}
+	}()
+	conn, err := net.Dial("tcp", listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if _, err = io.WriteString(conn, "POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 10\r\n\r\nx"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-readErr:
+		timeout, ok := err.(net.Error)
+		if !ok || !timeout.Timeout() {
+			t.Fatalf("expected body timeout, got %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("configured read timeout was lost")
+	}
+}

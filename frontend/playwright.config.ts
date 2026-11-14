@@ -14,7 +14,7 @@ export default defineConfig({
   outputDir: "artifacts/test-results",
   reporter: [["list"]],
   webServer: {
-    command: "node tests/host.mjs",
+    command: "npm run build && node tests/host.mjs",
     url: "http://127.0.0.1:4173/app/",
     reuseExistingServer: false,
     timeout: 30000,

@@ -22,21 +22,31 @@ export function label(value: string) {
     .replace(/^./, (c) => c.toUpperCase());
 }
 export function stateTone(value: string) {
-  if (["READY", "succeeded", "completed", "healthy", "ok"].includes(value))
+  const state = value.toLowerCase();
+  if (
+    ["ready", "succeeded", "completed", "accepted", "healthy", "ok"].includes(
+      state,
+    )
+  )
     return "good";
   if (
     [
-      "ERROR",
-      "UNKNOWN",
+      "error",
+      "unknown",
       "failed",
+      "blocked",
+      "rejected",
       "cancel_requested",
       "unavailable",
       "degraded",
-      "unknown",
-    ].includes(value)
+      "awaiting_review",
+      "review",
+      "review_required",
+      "pending_review",
+    ].includes(state)
   )
     return "warn";
-  if (["BUSY", "STARTING", "running", "queued", "submitting"].includes(value))
+  if (["busy", "starting", "running", "queued", "submitting"].includes(state))
     return "active";
   return "quiet";
 }

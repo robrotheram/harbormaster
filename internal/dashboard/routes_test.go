@@ -12,6 +12,23 @@ func TestUIRouteBoundary(t *testing.T) {
 		method, path string
 		allowed      bool
 	}{
+		{"POST", "/workspaces/ws_one/terminals", true},
+		{"POST", "/workspaces/ws_one/terminals/terminal_one/exchange", true},
+		{"POST", "/workspaces/ws_one/terminals/terminal_one/close", true},
+		{"GET", "/workspaces/ws_one/terminals", false},
+		{"POST", "/workspaces/ws_one/terminals/terminal_one/exec", false},
+		{"POST", "/schedules/schedule_one/update", true},
+		{"POST", "/schedules/schedule_one/delete", true},
+		{"GET", "/schedules/schedule_one/delete", false},
+		{"POST", "/schedules/schedule_one/update/extra", false},
+		{"POST", "/schedules/schedule_one/unknown", false},
+		{"GET", "/workspaces/ws_one/start-readiness", true},
+		{"POST", "/workspaces/ws_one/start-readiness", false},
+		{"GET", "/workspaces/ws_one/start-readiness/extra", false},
+		{"POST", "/connection-profiles/github/delete", true},
+		{"GET", "/connection-profiles/github/delete", false},
+		{"POST", "/connection-profiles/github/delete/extra", false},
+		{"POST", "/connection-profiles/github/unknown", false},
 		{"POST", "/projects/p_one/hermes/assistant", true},
 		{"GET", "/projects/p_one/hermes/assistant", false},
 		{"POST", "/projects/p_one/hermes/assistant/extra", false},
@@ -86,6 +103,9 @@ func TestFactoryWorkIngressIsExplicit(t *testing.T) {
 		{"GET", "/work-items", true}, {"POST", "/work-items", true},
 		{"GET", "/work-items/work_1", true}, {"POST", "/work-items/work_1", false},
 		{"GET", "/work-items/work_1/attempts", true}, {"POST", "/work-items/work_1/attempts", false},
+		{"GET", "/work-items/work_1/instruction", true}, {"POST", "/work-items/work_1/instruction", false},
+		{"POST", "/work-items/work_1/continue", true}, {"GET", "/work-items/work_1/continue", false},
+		{"POST", "/work-items/work_1/continue/extra", false},
 		{"POST", "/work-items/work_1/run", true}, {"POST", "/work-items/work_1/cancel", true},
 		{"POST", "/work-items/work_1/review", true}, {"GET", "/work-items/work_1/run", false},
 		{"POST", "/work-items/work_1/exec", false}, {"GET", "/work-items/work_1/attempts/other", false},
@@ -93,5 +113,41 @@ func TestFactoryWorkIngressIsExplicit(t *testing.T) {
 		if got := allowedUIRoute(test.method, test.path); got != test.allowed {
 			t.Errorf("%s %s: allowed=%v", test.method, test.path, got)
 		}
+	}
+}
+
+func TestConversationHistoryQueryIngress(t *testing.T) {
+	calls := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.URL.Path != "/v1/workspaces/ws_one/history" || r.URL.Query().Get("episode") != "task_one" || r.URL.Query().Get("after") != "20" || r.Header.Get("Authorization") != "Bearer private-operator" {
+			t.Error("conversation history lost its scope, cursor or operator authority")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"page":{"records":[]}}`))
+	}))
+	defer upstream.Close()
+	handler, err := NewInteractiveHandler(upstream.URL, upstream.URL, "private-operator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		path   string
+		status int
+	}{
+		{"/workspaces/ws_one/history?episode=task_one&after=20", 200},
+		{"/workspaces/ws_one/history?episode=../bad&after=20", 400},
+		{"/workspaces/ws_one/history?episode=task_one&episode=task_two", 400},
+		{"/workspaces/ws_one/history?episode=task_one&unexpected=1", 400},
+		{"/workspaces/ws_one/logs?episode=task_one", 400},
+	} {
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, httptest.NewRequest("GET", "http://127.0.0.1:8080/ui-api"+tc.path, nil))
+		if w.Code != tc.status {
+			t.Errorf("%s: status %d, want %d", tc.path, w.Code, tc.status)
+		}
+	}
+	if calls != 1 {
+		t.Fatalf("unexpected upstream calls: %d", calls)
 	}
 }

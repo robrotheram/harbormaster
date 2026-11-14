@@ -97,3 +97,50 @@ func TestTransientWorkspaceReadDoesNotAbandonAcceptedRun(t *testing.T) {
 		t.Fatal("missing workspace was not classified separately", runs, err)
 	}
 }
+
+type deleteAfterBatch struct {
+	Repository
+	schedule shared.Schedule
+	now      time.Time
+}
+
+func (r deleteAfterBatch) PendingRunsAfter(ctx context.Context, after string, limit int) ([]shared.Run, error) {
+	runs, err := r.Repository.PendingRunsAfter(ctx, after, limit)
+	if err == nil {
+		err = r.DeleteSchedule(ctx, r.schedule, r.now)
+	}
+	return runs, err
+}
+
+func TestDeletingScheduleAfterBatchReadDoesNotDispatchStaleQueuedRun(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "delete-race.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	repo := Repository{DB: db}
+	if err := repo.Init(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.InitWorkAttempts(ctx); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	schedule := shared.Schedule{ID: "schedule_deleted", ProjectID: "project_one", WorkspaceID: "ws_one", RunAt: now, NextRunAt: now, CreatedAt: now}
+	if _, _, err := repo.CreateSchedule(ctx, schedule, "create"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.Enqueue(ctx, schedule, "queued", now); err != nil {
+		t.Fatal(err)
+	}
+	// Any attempt to look up the worker is a failure: deletion won the schedule lock.
+	scheduler := Scheduler{Repository: deleteAfterBatch{repo, schedule, now}, Workspaces: &recoveringWorkspaces{err: errors.New("deleted run reached dispatcher")}, Now: func() time.Time { return now }, Lock: func(...string) func() { return func() {} }, Cursor: &Cursor{}}
+	if err := scheduler.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	runs, err := repo.Runs(ctx, schedule.ProjectID)
+	if err != nil || len(runs) != 1 || runs[0].State != "cancelled" {
+		t.Fatal("cancelled run was dispatched", runs, err)
+	}
+}

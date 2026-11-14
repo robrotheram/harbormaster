@@ -1,7 +1,13 @@
+import { APIError } from "@/shared/http";
 interface Snapshot {
   generated_at: string;
   services?: {
-    items: { name: string; status: string; reason_code?: string }[];
+    items: {
+      name: string;
+      status: string;
+      reason_code?: string;
+      observed_at?: string;
+    }[];
   };
   usage?: {
     running_workspaces?: number;
@@ -13,13 +19,26 @@ interface Snapshot {
 export const snapshotOptions = () => ({
   queryKey: ["platform", "snapshot"],
   queryFn: async ({ signal }: { signal: AbortSignal }) => {
-    const r = await fetch("/dashboard-api/v1/snapshot", {
-      signal,
-      cache: "no-store",
-    });
-    if (!r.ok)
-      throw Error("Runtime information is unavailable. Retry shortly.");
-    return (await r.json()) as Snapshot;
+    const timeout = AbortSignal.timeout(15000);
+    let r: Response;
+    try {
+      r = await fetch("/dashboard-api/v1/snapshot", {
+        signal: AbortSignal.any([signal, timeout]),
+        cache: "no-store",
+      });
+    } catch (error) {
+      if (signal.aborted) throw error;
+      throw new APIError(
+        timeout.aborted ? "REQUEST_TIMEOUT" : "NETWORK_UNAVAILABLE",
+        0,
+      );
+    }
+    if (!r.ok) throw new APIError("UNAVAILABLE", r.status);
+    try {
+      return (await r.json()) as Snapshot;
+    } catch {
+      throw new APIError("UNAVAILABLE", r.status);
+    }
   },
   refetchInterval: 5000,
 });

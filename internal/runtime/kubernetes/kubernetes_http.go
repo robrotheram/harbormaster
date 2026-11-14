@@ -79,6 +79,9 @@ func (k *Kubernetes) Handler() http.Handler {
 		shared.JSON(w, 200, map[string]bool{"reconciled": true})
 	})
 	mux.HandleFunc("/v1/workspaces/{id}/console/{path...}", func(w http.ResponseWriter, r *http.Request) { k.Console(w, r, r.PathValue("id"), r.PathValue("path")) })
+	mux.HandleFunc("/v1/workspaces/{id}/application-proxy/{path...}", func(w http.ResponseWriter, r *http.Request) {
+		k.Application(w, r, r.PathValue("id"), r.PathValue("path"))
+	})
 	mux.HandleFunc("/v1/workspaces/{id}/desktop/{path...}", func(w http.ResponseWriter, r *http.Request) { k.Desktop(w, r, r.PathValue("id"), r.PathValue("path")) })
 	mux.HandleFunc("/v1/workspaces/{id}/agent/{path...}", func(w http.ResponseWriter, r *http.Request) {
 		path := "/" + r.PathValue("path")

@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-test("development proxy preserves the browser origin for protected mutations", async ({
+test("frontend proxy preserves the browser origin for protected mutations", async ({
   page,
 }) => {
   await page.goto("/app/");

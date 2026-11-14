@@ -68,6 +68,34 @@ func (s *Server) registerConnectionProfiles(mux *http.ServeMux) {
 		}
 		shared.JSON(w, status, p)
 	}
+	mux.HandleFunc("POST /v1/connection-profiles/{id}/delete", func(w http.ResponseWriter, r *http.Request) {
+		if !s.admin(w, r) {
+			return
+		}
+		var input struct {
+			Revision int `json:"revision"`
+		}
+		if !shared.Decode(w, r, &input, 4096) {
+			return
+		}
+		id := r.PathValue("id")
+		if !shared.ValidID(id) || input.Revision < 1 {
+			shared.Error(w, 400, "INVALID_REQUEST")
+			return
+		}
+		if err := s.Store.DeleteConnectionProfile(r.Context(), id, input.Revision); err != nil {
+			switch {
+			case errors.Is(err, store.ErrProfileInUse):
+				shared.Error(w, 409, "CONNECTION_PROFILE_IN_USE")
+			case errors.Is(err, store.ErrProfileConflict):
+				shared.Error(w, 409, "PROFILE_REVISION_CONFLICT")
+			default:
+				shared.Error(w, 503, "STORAGE_UNAVAILABLE")
+			}
+			return
+		}
+		shared.JSON(w, 200, map[string]bool{"deleted": true})
+	})
 	mux.HandleFunc("POST /v1/connection-profiles", save)
 	mux.HandleFunc("POST /v1/connection-profiles/{id}", save)
 }

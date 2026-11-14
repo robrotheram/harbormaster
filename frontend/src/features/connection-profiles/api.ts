@@ -16,6 +16,10 @@ export function useConnectionProfiles() {
 }
 
 export const connectionProfilesApi = {
+  delete: (profile: GlobalConnectionProfile) =>
+    request(`/connection-profiles/${encodeURIComponent(profile.id)}/delete`, {
+      revision: profile.revision,
+    }),
   save: (
     profile: GlobalConnectionProfile | null,
     payload: { name: string; description: string; policy: ConnectionPolicy },

@@ -14,6 +14,22 @@ export type ScheduleCreate = Pick<
 export const schedulingApi = {
   create: (payload: ScheduleCreate, idempotency_key: string) =>
     request<Schedule>("/schedules", { ...payload, idempotency_key }),
+  update: (
+    id: string,
+    payload: ScheduleCreate,
+    revision: number,
+    idempotency_key: string,
+  ) =>
+    request<Schedule>(`/schedules/${encodeURIComponent(id)}/update`, {
+      ...payload,
+      revision,
+      idempotency_key,
+    }),
+  remove: (id: string, revision: number, idempotency_key: string) =>
+    request(`/schedules/${encodeURIComponent(id)}/delete`, {
+      revision,
+      idempotency_key,
+    }),
   schedules: (project: string, signal?: AbortSignal) =>
     projectList<Schedule>("/schedules", project, signal),
   runs: (project: string, signal?: AbortSignal) =>

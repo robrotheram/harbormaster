@@ -50,6 +50,13 @@ func (s *Server) registerHistory(mux *http.ServeMux) {
 			return
 		}
 		q := url.Values{}
+		if episode := r.URL.Query().Get("episode"); episode != "" {
+			if !shared.ValidID(episode) {
+				shared.Error(w, 400, "INVALID_REQUEST")
+				return
+			}
+			q.Set("episode", episode)
+		}
 		for _, k := range []string{"after", "before", "until"} {
 			if v := r.URL.Query().Get(k); v != "" {
 				n, e := strconv.ParseInt(v, 10, 64)

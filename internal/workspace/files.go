@@ -23,7 +23,7 @@ func (m *Manager) handoff(w http.ResponseWriter, r *http.Request) {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	a := m.activityLocked()
+	a := m.workActivityLocked()
 	if m.closed || m.quiescing || !a.Known || a.ActiveRuns > 0 || a.BackgroundJobs > 0 {
 		shared.Error(w, 409, "WORKSPACE_BUSY")
 		return

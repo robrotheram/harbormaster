@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { AuthKitProvider } from "@/features/auth/authkit-provider";
 import { router } from "./routes";
 import "@fontsource-variable/geist";
 import "@fontsource-variable/geist-mono";
@@ -17,7 +18,9 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={client}>
       <TooltipProvider>
-        <RouterProvider router={router} />
+        <AuthKitProvider>
+          <RouterProvider router={router} />
+        </AuthKitProvider>
       </TooltipProvider>
     </QueryClientProvider>
   </StrictMode>,

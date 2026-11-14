@@ -99,8 +99,8 @@ func apiError(w http.ResponseWriter, e error) {
 		shared.Error(w, 503, "NOT_READY")
 	case "RESOURCE_LIMIT_UNAVAILABLE":
 		shared.Error(w, 503, "RESOURCE_LIMIT_UNAVAILABLE")
-	case "NETWORK_POLICY_UNAVAILABLE":
-		shared.Error(w, 503, "NETWORK_POLICY_UNAVAILABLE")
+	case "NETWORK_POLICY_UNAVAILABLE", "RUNTIME_CAPABILITIES_INCOMPATIBLE":
+		shared.Error(w, 503, e.Error())
 	case "CONSOLE_UNAVAILABLE", "CONSOLE_NOT_READY":
 		shared.Error(w, 503, e.Error())
 	case "HERMES_SETUP_REQUIRED":
@@ -159,9 +159,12 @@ func (s *Server) Handler() http.Handler {
 	s.registerHistory(secured)
 	s.registerOrchestration(secured)
 	s.registerWork(secured)
+	s.registerForges(secured)
+	s.registerBoard(secured)
 	s.registerCoordinationRuntime(secured)
 	s.registerFactoryEnvironments(secured)
 	s.registerDeletion(secured)
+	s.registerTerminals(secured)
 	secured.HandleFunc("POST /v1/file-handoffs", s.shareFile)
 	secured.HandleFunc("/v1/workspaces/{id}/desktop/{path...}", func(w http.ResponseWriter, r *http.Request) {
 		ws, ok := s.workspace(w, r)
@@ -241,6 +244,16 @@ func (s *Server) Handler() http.Handler {
 		_ = s.refresh(r.Context(), &ws)
 		s.reportWrite("observe", ws.ID, s.Store.Save(r.Context(), ws))
 		shared.JSON(w, 200, ws)
+	})
+	secured.HandleFunc("GET /v1/workspaces/{id}/start-readiness", func(w http.ResponseWriter, r *http.Request) {
+		ws, ok := s.workspace(w, r)
+		if !ok {
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+		w.Header().Set("Cache-Control", "no-store")
+		shared.JSON(w, 200, s.lifecycle().StartReadiness(ctx, ws))
 	})
 	secured.HandleFunc("POST /v1/workspaces/{id}/start", func(w http.ResponseWriter, r *http.Request) {
 		if !mutationKey(w, r) {
@@ -585,7 +598,6 @@ func (s *Server) DashboardHandler() http.Handler {
 				serviceStatus = "partial"
 			}
 		}
-		services = append(services, map[string]any{"name": "Live provider integration", "status": "unknown", "reason_code": "LIVE_CREDENTIALS_NOT_PROBED", "observed_at": now})
 		safeItems := snapshotWorkspaces(items)
 		shared.JSON(w, 200, map[string]any{"schema_version": 1, "generated_at": now, "mode": "development", "workspaces": map[string]any{"observed_at": observed, "status": status, "items": safeItems}, "active_tasks": map[string]any{"observed_at": observed, "status": status, "items": active}, "usage": usage, "services": map[string]any{"observed_at": now, "status": serviceStatus, "items": services}})
 	})

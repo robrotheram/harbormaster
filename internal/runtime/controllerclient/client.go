@@ -25,7 +25,7 @@ func NewClient(url, token string) *Client {
 func (c *Client) Capabilities(ctx context.Context) (protocol.RuntimeCapability, error) {
 	out, err := c.capabilities(ctx)
 	if err == nil && !validCapabilities(out) {
-		err = fmt.Errorf("invalid runtime capability response")
+		err = protocol.ErrCapabilitiesIncompatible
 	}
 	return out, err
 }
@@ -201,4 +201,8 @@ func (c *Client) ConfigureConnections(ctx context.Context, id string, policy sha
 		return fmt.Errorf("NETWORK_POLICY_UNAVAILABLE")
 	}
 	return nil
+}
+
+func (c *Client) Application(w http.ResponseWriter, r *http.Request, id, path string) {
+	shared.Proxy(w, r, c.URL, "/v1/workspaces/"+id+"/application-proxy/"+strings.TrimPrefix(path, "/"), c.Token)
 }

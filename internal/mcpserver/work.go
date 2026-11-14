@@ -23,6 +23,7 @@ type WorkCreate struct {
 
 func registerWorkTools(s *mcp.Server, c *controlClient) {
 	registerWorkExecutionTools(s, c)
+	registerBoardTools(s, c)
 	add(s, "work_list", "List up to 200 work records within the authorized project.", func(ctx context.Context, in ProjectFilter) (out WorkList, err error) {
 		err = c.do(ctx, "GET", "/v1/work-items?project_id="+url.QueryEscape(in.ProjectID), nil, &out)
 		return

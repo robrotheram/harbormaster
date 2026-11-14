@@ -2,6 +2,7 @@ name: ${COMPOSE_PROJECT_NAME:-agent-workbench}
 
 x-app: &app
   restart: unless-stopped
+  stop_grace_period: 30s
   read_only: true
   cap_drop: [ALL]
   security_opt: [no-new-privileges:true]
@@ -79,6 +80,10 @@ services:
     <<: *app
     build: {context: ., target: dashboard, args: {SERVICE: dashboard}}
     environment:
+      WORKOS_CLIENT_ID: ${WORKOS_CLIENT_ID:-}
+      WORKOS_API_KEY: ${WORKOS_API_KEY:-}
+      WORKOS_REDIRECT_URI: ${WORKOS_REDIRECT_URI:-}
+      WORKOS_ALLOWED_EMAILS: ${WORKOS_ALLOWED_EMAILS:-}
       CONTROLPLANE_READ_URL: http://controlplane:8081
       CONTROLPLANE_URL: http://controlplane:8080
       CONTROL_TOKEN_FILE: /run/secrets/control_token

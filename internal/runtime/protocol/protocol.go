@@ -31,14 +31,18 @@ func AllowedAgentPath(method, path string) bool {
 	partsFactory := strings.Split(strings.TrimPrefix(path, "/"), "/")
 	if len(partsFactory) >= 2 && partsFactory[0] == "v1" {
 		switch partsFactory[1] {
+		case "terminals":
+			return method == "POST" && (len(partsFactory) == 2 || len(partsFactory) == 4 && shared.ValidID(partsFactory[2]) && (partsFactory[3] == "exchange" || partsFactory[3] == "close"))
 		case "coordination":
 			if len(partsFactory) == 3 && partsFactory[2] == "notes" {
 				return method == "POST"
 			}
 			return len(partsFactory) == 4 && partsFactory[2] == "blobs" && shared.ValidID(partsFactory[3]) && (method == "GET" || method == "POST")
+		case "ports":
+			return len(partsFactory) == 2 && method == "GET"
 		case "services":
 			if len(partsFactory) == 2 {
-				return method == "POST"
+				return method == "POST" || method == "GET"
 			}
 			if len(partsFactory) == 3 && (partsFactory[2] == "reconcile" || partsFactory[2] == "receipt") {
 				return method == "POST"

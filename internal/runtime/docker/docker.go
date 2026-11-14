@@ -424,6 +424,24 @@ func (c *Controller) Handler() http.Handler {
 		}
 		shared.JSON(w, 200, map[string]bool{"reconciled": true})
 	})
+	management.HandleFunc("/v1/workspaces/{id}/application-proxy/{path...}", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		if !shared.ValidID(id) || c.cfg.RequireVerified {
+			shared.Error(w, 403, "CONSOLE_UNAVAILABLE")
+			return
+		}
+		info, err := c.inspect(r.Context(), id)
+		if err != nil || !info.State.Running {
+			shared.Error(w, 503, "CONSOLE_NOT_READY")
+			return
+		}
+		endpoint := info.NetworkSettings.Networks[c.name(id)]
+		if net.ParseIP(endpoint.IPAddress) == nil {
+			shared.Error(w, 503, "CONSOLE_NOT_READY")
+			return
+		}
+		shared.Proxy(w, r, "http://"+net.JoinHostPort(endpoint.IPAddress, "8080"), "/v1/application-proxy/"+r.PathValue("path"), c.token(id, info.Config.Labels["workbench.generation"]))
+	})
 	management.HandleFunc("/v1/workspaces/{id}/desktop/{path...}", func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		if !shared.ValidID(id) || c.cfg.RequireVerified {

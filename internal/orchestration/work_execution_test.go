@@ -129,6 +129,10 @@ func TestWorkExecutionRecoveryReviewAndRetry(t *testing.T) {
 	if _, err = repo.ReviewWork(ctx, item.ProjectID, item.ID, false, time.Now()); err != nil {
 		t.Fatal(err)
 	}
+	attempts, err = repo.Attempts(ctx, item.ProjectID, item.ID)
+	if err != nil || len(attempts) != 1 || attempts[0].ReviewState != "changes_requested" {
+		t.Fatal("review decision not persisted on attempt", attempts, err)
+	}
 	retry, err := repo.RunWork(ctx, item.ProjectID, item.ID, "intentional-retry", time.Now())
 	if err != nil || retry.ID == first.ID {
 		t.Fatal(retry, err)

@@ -70,12 +70,25 @@ func TestProjectMCPGenerationToolInvocation(t *testing.T) {
 	}
 	defer session.Close()
 	tools, err := session.ListTools(ctx, nil)
-	if err != nil || len(tools.Tools) != 20 {
+	if err != nil || len(tools.Tools) != 23 {
 		t.Fatalf("narrow discovery: %v %v", tools, err)
 	}
 	result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "work_list", Arguments: map[string]string{"project_id": "personal"}})
 	if err != nil || result.IsError || calls != 2 {
 		t.Fatalf("retry invocation: %v %v calls=%d", result, err, calls)
+	}
+	for _, name := range []string{"board_list", "board_create", "board_update"} {
+		if !shared.ProjectToolAllowed(name) {
+			t.Fatal("missing board permission", name)
+		}
+	}
+	result, err = session.CallTool(ctx, &mcp.CallToolParams{Name: "board_list", Arguments: map[string]string{"project_id": "personal"}})
+	if err != nil || result.IsError {
+		t.Fatal("board listing denied", result, err)
+	}
+	result, err = session.CallTool(ctx, &mcp.CallToolParams{Name: "board_list", Arguments: map[string]string{"project_id": "foreign"}})
+	if err != nil || !result.IsError {
+		t.Fatal("foreign board exposed", result, err)
 	}
 	result, err = session.CallTool(ctx, &mcp.CallToolParams{Name: "work_list", Arguments: map[string]string{"project_id": "foreign"}})
 	if err != nil || !result.IsError {

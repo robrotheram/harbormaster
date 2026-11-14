@@ -905,7 +905,7 @@ func (f *Firecracker) Handler() http.Handler {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(status)
 			w.Write(b)
-		case strings.HasPrefix(action, "console/") || strings.HasPrefix(action, "desktop/"):
+		case strings.HasPrefix(action, "console/") || strings.HasPrefix(action, "desktop/") || strings.HasPrefix(action, "application-proxy/"):
 			if v == nil || !f.observation(r.Context(), v).Ready {
 				shared.Error(w, 503, "CONSOLE_NOT_READY")
 				return
@@ -913,6 +913,9 @@ func (f *Firecracker) Handler() http.Handler {
 			path := "/v1/t3/" + strings.TrimPrefix(action, "console/")
 			if strings.HasPrefix(action, "desktop/") {
 				path = "/v1/t3-desktop/" + strings.TrimPrefix(action, "desktop/")
+			}
+			if strings.HasPrefix(action, "application-proxy/") {
+				path = "/v1/" + action
 			}
 			t := f.transport(v)
 			defer t.CloseIdleConnections()

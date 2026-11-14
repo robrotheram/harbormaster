@@ -7,3 +7,13 @@ coverage.out
 **/node_modules
 frontend/dist
 frontend/artifacts
+
+.codex
+frontend/playwright-report
+frontend/test-results
+**/__pycache__
+*.pyc
+
+# CI caches
+.cache/
+.npm/

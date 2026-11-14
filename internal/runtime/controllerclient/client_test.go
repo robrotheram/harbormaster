@@ -4,6 +4,7 @@ import (
 	"agent-workbench/internal/runtime/protocol"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -71,8 +72,8 @@ func TestCapabilitiesRejectIncompleteOrUnsupportedWireContracts(t *testing.T) {
 		}))
 		_, err := NewClient(server.URL, "management-token").Capabilities(context.Background())
 		server.Close()
-		if err == nil {
-			t.Fatal("incomplete capability response was treated as supported", body)
+		if !errors.Is(err, protocol.ErrCapabilitiesIncompatible) {
+			t.Fatal("incompatible capability response lost its actionable error", err)
 		}
 	}
 }

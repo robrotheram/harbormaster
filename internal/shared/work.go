@@ -20,16 +20,20 @@ type WorkItem struct {
 
 // WorkAttempt stores references only; artifact bytes remain in the workspace.
 type WorkAttempt struct {
-	DispatchStarted bool           `json:"dispatch_started,omitempty"`
-	ID              string         `json:"id"`
-	WorkItemID      string         `json:"work_item_id"`
-	WorkspaceID     string         `json:"workspace_id"`
-	TaskID          string         `json:"task_id"`
-	State           string         `json:"state"`
-	ErrorCode       string         `json:"error_code"`
-	Artifacts       []WorkArtifact `json:"artifacts"`
-	CreatedAt       time.Time      `json:"created_at"`
-	UpdatedAt       time.Time      `json:"updated_at"`
+	SpecificationPath   string         `json:"specification_path,omitempty"`
+	SpecificationDigest string         `json:"specification_digest,omitempty"`
+	ParentAttemptID     string         `json:"parent_attempt_id,omitempty"`
+	ReviewState         string         `json:"review_state,omitempty"`
+	DispatchStarted     bool           `json:"dispatch_started,omitempty"`
+	ID                  string         `json:"id"`
+	WorkItemID          string         `json:"work_item_id"`
+	WorkspaceID         string         `json:"workspace_id"`
+	TaskID              string         `json:"task_id"`
+	State               string         `json:"state"`
+	ErrorCode           string         `json:"error_code"`
+	Artifacts           []WorkArtifact `json:"artifacts"`
+	CreatedAt           time.Time      `json:"created_at"`
+	UpdatedAt           time.Time      `json:"updated_at"`
 }
 type WorkArtifact struct {
 	ID          string    `json:"id"`

@@ -12,3 +12,10 @@ frontend/dist/
 frontend/artifacts/
 frontend/playwright-report/
 frontend/test-results/
+
+# Local coding-agent settings are not release inputs.
+.codex/
+
+# CI caches
+.cache/
+.npm/

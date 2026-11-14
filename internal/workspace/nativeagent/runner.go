@@ -21,6 +21,7 @@ const KubernetesMCPURL = "http://hermes-mcp.workbench-egress.svc:8080/hermes-mcp
 
 type Config struct {
 	HermesMCPTransport MCPTransport
+	Display            string
 
 	DataDir, HomeDir, AgentKind, Token, InferenceURL, ProjectID, WorkspaceID, TaskID string
 	CodexModel, ClaudeModel, HermesModel                                             string

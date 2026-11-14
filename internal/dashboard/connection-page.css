@@ -1,0 +1,140 @@
+:root {
+  color-scheme: light;
+  --background: #fafafa;
+  --surface: #fff;
+  --text: #171717;
+  --muted: #666;
+  --border: #dedede;
+  --primary: #193dea;
+  --focus: #193dea;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--text);
+  font-family: "Geist Variable", system-ui, sans-serif;
+  font-size: 1rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+main {
+  width: min(100%, 36rem);
+  margin: clamp(1.5rem, 10vh, 6rem) auto;
+  padding: 0 1.25rem;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+  font-weight: 600;
+}
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  flex: none;
+  color: #fff;
+  background: var(--primary);
+  font-size: 0.875rem;
+}
+section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 2rem;
+}
+h1 {
+  margin: 0 0 1rem;
+  font-size: clamp(1.5rem, 4vw, 1.875rem);
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.025em;
+}
+p {
+  margin: 0 0 1.5rem;
+  color: var(--muted);
+}
+.action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  min-height: 44px;
+  padding: 0.625rem 1rem;
+  background: var(--primary);
+  color: #fff;
+  text-decoration: none;
+  font-weight: 500;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+.action:hover {
+  background: color-mix(in srgb, var(--primary), black 10%);
+}
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 4px;
+}
+h1:focus {
+  outline: none;
+}
+.hint {
+  margin: 0.875rem 0 0;
+  font-size: 0.8125rem;
+}
+details {
+  margin-top: 1.5rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.5rem;
+  font-size: 0.875rem;
+}
+summary {
+  display: list-item;
+  cursor: pointer;
+  min-height: 44px;
+  padding: 0.625rem 0;
+  font-weight: 500;
+}
+dl {
+  margin: 0.5rem 0 0;
+}
+dt {
+  color: var(--muted);
+}
+dd {
+  margin: 0.25rem 0 0.875rem;
+  font-family: ui-monospace, monospace;
+  font-size: 0.8125rem;
+}
+.notice {
+  margin: 1.5rem 0 0;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+@media (max-width: 480px) {
+  main {
+    padding: 0 1rem;
+  }
+  section {
+    padding: 1.25rem;
+  }
+  .action {
+    width: 100%;
+  }
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --background: #171717;
+    --surface: #212121;
+    --text: #fafafa;
+    --muted: #b4b4b4;
+    --border: #424242;
+    --primary: #193dca;
+    --focus: #91b7ff;
+  }
+}

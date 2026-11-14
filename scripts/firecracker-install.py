@@ -25,6 +25,14 @@ def digest(path):
     with path.open('rb') as stream:
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
+def install_project_authority(secrets):
+    # The host broker signs short-lived, project-scoped MCP credentials. This
+    # key must match the existing control-plane/MCP authority, never a new key.
+    source = ROOT / '.local/secrets/control_token'
+    if not source.is_file() or len(source.read_text().strip()) < 32:
+        raise SystemExit('Control-plane signing authority is missing or invalid; run scripts/bootstrap.py first.')
+    install(source, secrets / 'project_mcp_signing_key', 0o600)
+
 def accept_and_start():
     secrets = Path('/etc/agent-workbench/firecracker')
     run(str(DEST / 'prepare-host'))
@@ -56,6 +64,7 @@ def main():
     if sys.argv[1:] == ['--controller-only']:
         if not (DEST / 'manifest.json').is_file():
             raise SystemExit('Full installation required first.')
+        install_project_authority(Path('/etc/agent-workbench/firecracker'))
         install(STAGE / 'controller', DEST / 'controller', 0o755)
         accept_and_start()
         return
@@ -84,6 +93,7 @@ def main():
     secrets.mkdir(parents=True, exist_ok=True, mode=0o700)
     for name in ('controller_token', 'gateway_service_token', 'grant_secret'):
         install(ROOT / '.local/secrets' / name, secrets / name, 0o600)
+    install_project_authority(secrets)
     install(ROOT / 'deploy/firecracker/agent-workbench-firecracker.service', Path('/etc/systemd/system/agent-workbench-firecracker.service'), 0o644)
     run('systemctl', 'daemon-reload')
     # Real KVM acceptance precedes starting the management service. Failed

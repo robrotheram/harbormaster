@@ -146,7 +146,7 @@ func (r Repository) TickWork(ctx context.Context, s *Scheduler) error {
 					return
 				}
 			}
-			if e = s.Lifecycle.Refresh(ctx, &ws); e != nil || (ws.State == "BUSY" && !a.DispatchStarted) || ws.State == "UNKNOWN" {
+			if e = s.Lifecycle.Refresh(ctx, &ws); e != nil || (ws.ActiveRuns > 0 && !a.DispatchStarted) || ws.State == "UNKNOWN" {
 				return
 			}
 			if e = s.Lifecycle.Start(ctx, &ws); e != nil {
@@ -164,7 +164,11 @@ func (r Repository) TickWork(ctx context.Context, s *Scheduler) error {
 				failures = errors.Join(failures, e)
 				return
 			}
-			b, _ := json.Marshal(map[string]string{"instruction_path": item.SpecificationPath, "specification_digest": item.SpecificationDigest, "provider": "", "idempotency_key": "work:" + a.ID})
+			path, digest := a.SpecificationPath, a.SpecificationDigest
+			if path == "" { // Existing attempts use their parent's original reference.
+				path, digest = item.SpecificationPath, item.SpecificationDigest
+			}
+			b, _ := json.Marshal(map[string]string{"instruction_path": path, "specification_digest": digest, "provider": "", "idempotency_key": "work:" + a.ID})
 			status, reply, e := s.Agent.Agent(ctx, ws.ID, "POST", "/v1/tasks/from-file", b)
 			if e != nil {
 				return

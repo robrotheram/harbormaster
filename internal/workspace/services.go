@@ -36,12 +36,17 @@ func (m *Manager) service(id string) (retainedService, error) {
 }
 func (m *Manager) createService(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Snapshot []byte `json:"snapshot"`
-		Key      string `json:"idempotency_key"`
-		Source   string `json:"source_ref"`
-		TTL      int    `json:"ttl_seconds"`
+		Snapshot    []byte                    `json:"snapshot"`
+		Application *shared.ApplicationConfig `json:"application,omitempty"`
+		Key         string                    `json:"idempotency_key"`
+		Source      string                    `json:"source_ref"`
+		TTL         int                       `json:"ttl_seconds"`
 	}
 	if !shared.Decode(w, r, &in, 24<<20) {
+		return
+	}
+	if in.Application != nil {
+		m.createApplication(w, r, *in.Application, in.Key, in.TTL)
 		return
 	}
 	if len(in.Source) > 512 || len(in.Snapshot) > 16<<20 || in.TTL < 1 || in.TTL > 86400 {
@@ -155,6 +160,11 @@ func (m *Manager) getService(w http.ResponseWriter, r *http.Request) {
 		shared.Error(w, 404, "SERVICE_NOT_FOUND")
 		return
 	}
+	var config string
+	if m.db.QueryRow(`SELECT configuration FROM workspace_applications WHERE service_id=?`, s.ID).Scan(&config) == nil {
+		shared.JSON(w, 200, map[string]any{"id": s.ID, "state": s.State, "expires_at": s.ExpiresAt, "kind": "application"})
+		return
+	}
 	shared.JSON(w, 200, s)
 }
 func (m *Manager) revokeService(w http.ResponseWriter, r *http.Request) {
@@ -168,6 +178,7 @@ func (m *Manager) revokeService(w http.ResponseWriter, r *http.Request) {
 		shared.Error(w, 503, "STORAGE_UNAVAILABLE")
 		return
 	}
+	m.stopApplication(r.PathValue("id"))
 	m.getService(w, r)
 }
 func (m *Manager) reconcileServices(w http.ResponseWriter, r *http.Request) {
@@ -178,13 +189,11 @@ func (m *Manager) reconcileServices(w http.ResponseWriter, r *http.Request) {
 	shared.JSON(w, 200, map[string]bool{"reconciled": true})
 }
 func (m *Manager) fetchService(w http.ResponseWriter, r *http.Request) {
-	var in struct {
-		Path string `json:"path"`
-	}
-	if !shared.Decode(w, r, &in, 2048) {
+	var in applicationFetch
+	if !shared.Decode(w, r, &in, 2<<20) {
 		return
 	}
-	if !shared.ValidProjectFile(in.Path) {
+	if in.Path != "" && !shared.ValidProjectFile(strings.TrimSuffix(in.Path, "/")) {
 		shared.Error(w, 400, "INVALID_PATH")
 		return
 	}
@@ -198,6 +207,9 @@ func (m *Manager) fetchService(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.State != "active" {
 		shared.Error(w, 410, "SERVICE_REVOKED")
+		return
+	}
+	if m.fetchApplication(w, r, s, in) {
 		return
 	}
 	var snapshot []byte
@@ -228,6 +240,7 @@ func (m *Manager) expireServices() {
 		case <-m.historyStop:
 			return
 		case <-ticker.C:
+			m.reapApplications()
 			m.db.Exec(`UPDATE retained_services SET state='expired' WHERE state='active' AND expires_at<=?`, time.Now().Unix())
 		}
 	}

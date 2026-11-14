@@ -63,11 +63,9 @@ test("starting the project assistant uses one backend workflow", async ({
     });
   });
   await page.goto("/app/projects/p_a/hermes");
-  await page
-    .getByRole("button", { name: "Start Hermes workspace", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Start Hermes", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "Workspaces", exact: true }),
+    page.getByRole("heading", { name: "Workers", exact: true }),
   ).toBeVisible();
   expect(mutations).toHaveLength(1);
   expect(mutations[0]).toMatchObject({

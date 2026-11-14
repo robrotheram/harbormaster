@@ -1,5 +1,7 @@
 # Your first session with Agent Workbench
 
+**For the conversation-first work flow, follow [the end-to-end work tutorial](work-conversations.md).** It covers instructions, recorded tool activity, saved outputs, follow-up changes and acceptance in the current UI. The terminal guide below documents the original synthetic task API.
+
 This guide assumes `make up` has finished and the services are running. Allow about ten minutes. Use a terminal opened in the `agent-workbench` project folder and keep it open throughout the walkthrough.
 
 **For interactive project development, start with [the web UI guide](interactive-workspaces.md)** and open `http://127.0.0.1:8080/workspaces`. The terminal walkthrough below covers the original fixture/task API. Existing workspaces may retain that earlier execution profile.
@@ -245,6 +247,10 @@ Choose **Connection profiles** in the sidebar, or visit
 create named profiles with their own description, mode and approved destinations.
 These settings are shared across all projects; only the local operator can edit
 them. Project-scoped agent credentials cannot change global profiles.
+
+Open **Edit profile**, choose **Delete profile**, then confirm to remove it.
+If a workspace or Hermes setup uses the profile, choose another profile in those
+settings first. Deleted built-in profiles stay deleted after a restart.
 
 Choose a global profile when creating a workspace, or in **Workspace Settings →
 Global connection profile**. Workspaces retain an applied policy/version. Global

@@ -18,8 +18,11 @@ import (
 )
 
 // previewIngress has no target supplied by the browser. Its only byte source is
-// the authenticated bounded service fetch API, which checks revocation on every request.
+// authenticated workspace services, which check revocation on every request.
 type previewBinding struct {
+	Embedded                          bool
+	ParentOrigin                      string
+	Application                       bool
 	ServiceExpiry                     time.Time
 	Workspace, Service, Host, Project string
 	Expiry                            time.Time
@@ -61,6 +64,12 @@ func previewHost(workspace, service, port string) string {
 	return host
 }
 func (p *previewIngress) issue(w http.ResponseWriter, r *http.Request, workspace, service string) {
+	var input struct {
+		Embedded bool `json:"embedded"`
+	}
+	if !shared.Decode(w, r, &input, 1024) {
+		return
+	}
 	if !shared.ValidID(workspace) || !shared.ValidID(service) {
 		writeError(w, 400, "INVALID_REQUEST")
 		return
@@ -75,6 +84,7 @@ func (p *previewIngress) issue(w http.ResponseWriter, r *http.Request, workspace
 	}
 	status, b := p.call(r, "GET", "/workspaces/"+workspace+"/services/"+service, nil)
 	var state struct {
+		Kind   string `json:"kind"`
 		State  string `json:"state"`
 		Expiry int64  `json:"expires_at"`
 	}
@@ -101,31 +111,24 @@ func (p *previewIngress) issue(w http.ResponseWriter, r *http.Request, workspace
 		return
 	}
 	key := shared.NewID("ticket_")
-	p.tickets[key] = previewBinding{Workspace: workspace, Service: service, Host: host, Project: owner.Project, Expiry: time.Now().Add(time.Minute), ServiceExpiry: time.Unix(state.Expiry, 0)}
+	p.tickets[key] = previewBinding{Embedded: input.Embedded, ParentOrigin: "http://" + r.Host, Application: state.Kind == "application", Workspace: workspace, Service: service, Host: host, Project: owner.Project, Expiry: time.Now().Add(time.Minute), ServiceExpiry: time.Unix(state.Expiry, 0)}
 	shared.JSON(w, 200, map[string]string{"preview_url": "http://" + host + "/connect#ticket=" + url.QueryEscape(key)})
 }
 func (p *previewIngress) serve(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; font-src 'self'; media-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; worker-src 'none'")
-	if r.Header.Get("Upgrade") != "" {
-		writeError(w, 400, "INVALID_REQUEST")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; font-src 'self'; media-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors "+previewParents(r.Host)+"; worker-src 'none'")
+	if serveConnectionAsset(w, r) {
 		return
 	}
 	if r.URL.Path == "/connect" && r.Method == "GET" {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		io.WriteString(w, `<!doctype html><meta charset="utf-8"><title>Open preview</title><script src="/connect.js" defer></script><p id="status">Opening retained preview…</p>`)
-		return
-	}
-	if r.URL.Path == "/connect.js" && r.Method == "GET" {
-		w.Header().Set("Content-Type", "text/javascript")
-		io.WriteString(w, `(async()=>{const ticket=new URLSearchParams(location.hash.slice(1)).get('ticket');history.replaceState(null,'','/connect');const r=await fetch('/connect',{method:'POST',headers:{'Content-Type':'application/json','X-Workbench-Request':'1'},body:JSON.stringify({ticket})});if(r.ok)location.replace('/');else document.getElementById('status').textContent='Preview link expired. Open it again from the workbench.'})()`)
+		serveConnectionPage(w, r, "preview", "", http.StatusOK)
 		return
 	}
 	if r.URL.Path == "/connect" && r.Method == "POST" {
 		if r.Header.Get("Origin") != "http://"+r.Host || r.Header.Get("X-Workbench-Request") != "1" {
-			writeError(w, 403, "ORIGIN_REJECTED")
+			writeConnectionError(w, r, 403, "ORIGIN_REJECTED", "preview")
 			return
 		}
 		var in struct {
@@ -139,7 +142,7 @@ func (p *previewIngress) serve(w http.ResponseWriter, r *http.Request) {
 		delete(p.tickets, in.Ticket)
 		if !ok || binding.Host != r.Host || time.Now().After(binding.Expiry) {
 			p.mu.Unlock()
-			writeError(w, 403, "CONNECTION_EXPIRED")
+			writeConnectionError(w, r, 403, "CONNECTION_EXPIRED", "preview")
 			return
 		}
 		binding.Expiry = time.Now().Add(time.Hour)
@@ -149,61 +152,91 @@ func (p *previewIngress) serve(w http.ResponseWriter, r *http.Request) {
 		key := shared.NewID("session_")
 		p.sessions[key] = binding
 		p.mu.Unlock()
-		http.SetCookie(w, &http.Cookie{Name: "awb_preview", Value: key, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, Expires: binding.Expiry})
+		cookie := &http.Cookie{Name: "awb_preview", Value: key, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, Expires: binding.Expiry}
+		if binding.Embedded {
+			cookie.Secure = true
+			cookie.SameSite = http.SameSiteNoneMode
+			cookie.Partitioned = true
+		}
+		http.SetCookie(w, cookie)
 		shared.JSON(w, 200, map[string]bool{"connected": true})
 		return
 	}
 	if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" {
-		writeError(w, 403, "ORIGIN_REJECTED")
-		return
-	}
-	if r.Method != "GET" && r.Method != "HEAD" {
-		writeError(w, 405, "METHOD_NOT_ALLOWED")
+		writeConnectionError(w, r, 403, "ORIGIN_REJECTED", "preview")
 		return
 	}
 	cookie, err := r.Cookie("awb_preview")
 	if err != nil {
-		writeError(w, 401, "OPEN_FROM_WORKBENCH")
+		writeConnectionError(w, r, 401, "OPEN_FROM_WORKBENCH", "preview")
 		return
 	}
 	p.mu.Lock()
 	binding, ok := p.sessions[cookie.Value]
 	p.mu.Unlock()
 	if !ok || binding.Host != r.Host || time.Now().After(binding.Expiry) {
-		writeError(w, 401, "SESSION_EXPIRED")
+		writeConnectionError(w, r, 401, "SESSION_EXPIRED", "preview")
+		return
+	}
+	if binding.Application {
+		if (r.Header.Get("Upgrade") != "" || (r.Method != "GET" && r.Method != "HEAD" && r.Method != "OPTIONS")) && r.Header.Get("Origin") != "http://"+r.Host {
+			writeConnectionError(w, r, 403, "ORIGIN_REJECTED", "preview")
+			return
+		}
+		p.live(w, r, binding)
+		return
+	}
+	if r.Header.Get("Upgrade") != "" {
+		writeConnectionError(w, r, 400, "INVALID_REQUEST", "preview")
+		return
+	}
+	if r.Method != "GET" && r.Method != "HEAD" {
+		writeConnectionError(w, r, 405, "METHOD_NOT_ALLOWED", "preview")
 		return
 	}
 	name := strings.TrimPrefix(r.URL.Path, "/")
-	if name == "" || strings.HasSuffix(name, "/") {
+	if !binding.Application && (name == "" || strings.HasSuffix(name, "/")) {
 		name += "index.html"
 	}
-	if !shared.ValidProjectFile(name) || path.Clean(name) != name {
-		writeError(w, 400, "INVALID_PATH")
+	if name != "" && (!shared.ValidProjectFile(strings.TrimSuffix(name, "/")) || path.Clean(strings.TrimSuffix(name, "/")) != strings.TrimSuffix(name, "/")) {
+		writeConnectionError(w, r, 400, "INVALID_PATH", "preview")
 		return
 	}
 	payload, _ := json.Marshal(map[string]string{"path": name})
 	status, b := p.call(r, "POST", "/workspaces/"+binding.Workspace+"/services/"+binding.Service+"/fetch", payload)
 	if status != 200 {
-		writeError(w, status, "PREVIEW_UNAVAILABLE")
+		writeConnectionError(w, r, status, "PREVIEW_UNAVAILABLE", "preview")
 		return
 	}
 	var out struct {
-		Content []byte `json:"content"`
-		Type    string `json:"content_type"`
+		Content  []byte `json:"content"`
+		Type     string `json:"content_type"`
+		Status   int    `json:"status"`
+		Location string `json:"location"`
 	}
 	if json.Unmarshal(b, &out) != nil || len(out.Content) > 2<<20 {
-		writeError(w, 503, "INVALID_PREVIEW_RESPONSE")
+		writeConnectionError(w, r, 503, "INVALID_PREVIEW_RESPONSE", "preview")
 		return
 	}
 	kind := strings.Split(out.Type, ";")[0]
 	switch kind {
-	case "text/html", "text/css", "text/javascript", "application/javascript", "application/json", "text/plain", "image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml", "image/x-icon", "font/woff", "font/woff2":
+	case "application/wasm", "application/octet-stream", "text/html", "text/css", "text/javascript", "application/javascript", "application/json", "text/plain", "image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml", "image/x-icon", "font/woff", "font/woff2":
 	default:
-		writeError(w, 415, "UNSUPPORTED_PREVIEW_CONTENT")
+		writeConnectionError(w, r, 415, "UNSUPPORTED_PREVIEW_CONTENT", "preview")
 		return
 	}
 	w.Header().Set("Content-Type", out.Type)
-	if r.Method == "GET" {
+	if binding.Application {
+		if out.Status < 200 || out.Status > 599 {
+			writeConnectionError(w, r, 502, "INVALID_PREVIEW_RESPONSE", "preview")
+			return
+		}
+		if strings.HasPrefix(out.Location, "/") && !strings.HasPrefix(out.Location, "//") {
+			w.Header().Set("Location", out.Location)
+		}
+		w.WriteHeader(out.Status)
+	}
+	if r.Method != "HEAD" {
 		w.Write(out.Content)
 	}
 }

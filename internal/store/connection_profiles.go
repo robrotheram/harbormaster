@@ -8,14 +8,18 @@ import (
 )
 
 var ErrProfileConflict = errors.New("profile revision conflict")
+var ErrProfileInUse = errors.New("connection profile is in use")
 
 func (s *Store) initConnectionProfiles(ctx context.Context) error {
 	if _, err := s.DB.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS connection_profiles(id TEXT PRIMARY KEY, revision INTEGER NOT NULL, metadata TEXT NOT NULL)`); err != nil {
 		return err
 	}
+	if _, err := s.DB.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS deleted_connection_profiles(id TEXT PRIMARY KEY)`); err != nil {
+		return err
+	}
 	for _, p := range shared.DefaultConnectionProfiles() {
 		b, _ := json.Marshal(p)
-		if _, err := s.DB.ExecContext(ctx, s.query(`INSERT INTO connection_profiles(id,revision,metadata) VALUES(?,?,?) ON CONFLICT(id) DO NOTHING`), p.ID, p.Revision, string(b)); err != nil {
+		if _, err := s.DB.ExecContext(ctx, s.query(`INSERT INTO connection_profiles(id,revision,metadata) SELECT ?,?,? WHERE NOT EXISTS (SELECT 1 FROM deleted_connection_profiles WHERE id=?) ON CONFLICT(id) DO NOTHING`), p.ID, p.Revision, string(b), p.ID); err != nil {
 			return err
 		}
 	}
@@ -73,4 +77,56 @@ func (s *Store) SaveConnectionProfile(ctx context.Context, p shared.ConnectionPr
 		return ErrProfileConflict
 	}
 	return nil
+}
+
+// DeleteConnectionProfile keeps a tombstone so deleted seed profiles stay deleted.
+func (s *Store) DeleteConnectionProfile(ctx context.Context, id string, expected int) error {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	// Both kinds of references must be moved before removing their profile.
+	rows, err := tx.QueryContext(ctx, `SELECT metadata FROM workspaces UNION ALL SELECT metadata FROM hermes_setups`)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var metadata string
+		if err = rows.Scan(&metadata); err != nil {
+			rows.Close()
+			return err
+		}
+		var ref struct {
+			ProfileID string `json:"connection_profile_id"`
+		}
+		if err = json.Unmarshal([]byte(metadata), &ref); err != nil {
+			rows.Close()
+			return err
+		}
+		if ref.ProfileID == id {
+			rows.Close()
+			return ErrProfileInUse
+		}
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	result, err := tx.ExecContext(ctx, s.query(`DELETE FROM connection_profiles WHERE id=? AND revision=?`), id, expected)
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return ErrProfileConflict
+	}
+	if _, err = tx.ExecContext(ctx, s.query(`INSERT INTO deleted_connection_profiles(id) VALUES(?) ON CONFLICT(id) DO NOTHING`), id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }

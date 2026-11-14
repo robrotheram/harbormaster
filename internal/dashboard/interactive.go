@@ -52,7 +52,7 @@ func NewInteractiveHandler(readURL, controlURL, token string) (http.Handler, err
 		if origin := r.Header.Get("Origin"); origin != "" {
 			parsed, e := url.Parse(origin)
 			nativeOrigin := desktop && (origin == "t3code://app" || origin == "t3code-dev://app")
-			if !nativeOrigin && (e != nil || parsed.Scheme != "http" || !strings.EqualFold(parsed.Host, r.Host)) {
+			if !nativeOrigin && (e != nil || (parsed.Scheme != "http" && r.Context().Value(authenticatedOriginKey{}) != origin) || !strings.EqualFold(parsed.Host, r.Host)) {
 				writeError(w, 403, "ORIGIN_REJECTED")
 				return
 			}
@@ -83,15 +83,11 @@ func NewInteractiveHandler(readURL, controlURL, token string) (http.Handler, err
 			w.Header().Set("Referrer-Policy", "no-referrer")
 			w.Header().Set("X-Frame-Options", "DENY")
 			w.Header().Set("Cache-Control", "no-store")
-			if r.URL.Path == "/connect" && r.Method == "GET" {
-				w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'")
-				w.Header().Set("Content-Type", "text/html; charset=utf-8")
-				_, _ = io.WriteString(w, `<!doctype html><html lang="en"><meta charset="utf-8"><title>Opening workspace</title><script src="/connect.js" defer></script><p id="status">Connecting to your workspace…</p></html>`)
+			if serveConnectionAsset(w, r) {
 				return
 			}
-			if r.URL.Path == "/connect.js" && r.Method == "GET" {
-				w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
-				_, _ = io.WriteString(w, `'use strict';(async()=>{const ticket=new URLSearchParams(location.hash.slice(1)).get('ticket');history.replaceState(null,'','/connect');try{const r=await fetch('/connect',{method:'POST',headers:{'Content-Type':'application/json','X-Workbench-Request':'1'},body:JSON.stringify({ticket})});if(!r.ok)throw Error();location.replace('/');}catch{document.getElementById('status').textContent='This workspace link has expired. Return to the workspace launcher and select Open T3.';}})();`)
+			if r.URL.Path == "/connect" && r.Method == "GET" {
+				serveConnectionPage(w, r, "worker", "", http.StatusOK)
 				return
 			}
 			if r.URL.Path == "/connect" && r.Method == "POST" {
@@ -128,13 +124,13 @@ func NewInteractiveHandler(readURL, controlURL, token string) (http.Handler, err
 				}
 			}
 			if !valid {
-				writeError(w, 401, "OPEN_FROM_WORKSPACE_LAUNCHER")
+				writeConnectionError(w, r, 401, "OPEN_FROM_WORKSPACE_LAUNCHER", "worker")
 				return
 			}
 			shared.Proxy(w, r, controlURL, "/v1/workspaces/"+id+"/console"+r.URL.Path, token)
 			return
 		}
-		if host != "127.0.0.1" && host != "localhost" {
+		if host != "127.0.0.1" && host != "localhost" && r.Context().Value(authenticatedOriginKey{}) == nil {
 			writeError(w, 403, "HOST_REJECTED")
 			return
 		}
@@ -145,9 +141,17 @@ func NewInteractiveHandler(readURL, controlURL, token string) (http.Handler, err
 			return
 		}
 		if strings.HasPrefix(r.URL.Path, "/ui-api/") {
+			path := strings.TrimPrefix(r.URL.Path, "/ui-api")
+			parts := strings.Split(strings.Trim(path, "/"), "/")
 			query := r.URL.Query()
 			validQuery := true
 			for key, values := range query {
+				if key == "page" && len(values) == 1 && r.Method == "GET" && len(parts) == 3 && parts[0] == "forge-connections" && parts[2] == "issues" {
+					continue
+				}
+				if key == "episode" && len(values) == 1 && shared.ValidID(values[0]) && r.Method == "GET" && len(parts) == 3 && parts[0] == "workspaces" && parts[2] == "history" {
+					continue
+				}
 				if key != "project_id" && key != "offset" && key != "limit" && key != "after" && key != "before" && key != "until" && key != "order" || len(values) != 1 {
 					validQuery = false
 				}
@@ -156,8 +160,6 @@ func NewInteractiveHandler(readURL, controlURL, token string) (http.Handler, err
 				writeError(w, 400, "INVALID_REQUEST")
 				return
 			}
-			path := strings.TrimPrefix(r.URL.Path, "/ui-api")
-			parts := strings.Split(strings.Trim(path, "/"), "/")
 			if len(parts) == 5 && parts[0] == "workspaces" && parts[2] == "services" && parts[4] == "connect" && r.Method == "POST" {
 				if r.Header.Get("X-Workbench-Request") != "1" {
 					writeError(w, 403, "ORIGIN_REJECTED")
@@ -184,7 +186,7 @@ func NewInteractiveHandler(readURL, controlURL, token string) (http.Handler, err
 			if parts[0] == "connection-profiles" || len(parts) >= 3 && (parts[2] == "settings" || parts[2] == "hermes") {
 				limit = 32768
 			}
-			if len(parts) == 3 && parts[2] == "tasks" {
+			if len(parts) >= 3 && (parts[2] == "tasks" || parts[2] == "terminals") {
 				limit = 70 << 10
 			}
 			r.Body = http.MaxBytesReader(w, r.Body, limit)

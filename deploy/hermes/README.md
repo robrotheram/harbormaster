@@ -119,8 +119,10 @@ exchange_submit, note_publish. The upstream target is compiled in:
 `http://127.0.0.1:18085/project-mcp`. No guest-selected host is accepted.
 The Compose Firecracker overlay publishes MCP there on host loopback.
 
-Install `/etc/agent-workbench/firecracker/project_mcp_signing_key` as a root-owned
-0600 file, with root-owned non-writable ancestors. Its content must equal the MCP
+The Firecracker installer provisions
+`/etc/agent-workbench/firecracker/project_mcp_signing_key` from
+`.local/secrets/control_token` during both full and controller-only installation.
+It is a root-owned 0600 file with root-owned non-writable ancestors. Its content must equal the MCP
 and control-plane `CONTROL_TOKEN_FILE` signing authority. This is deliberately a
 host-only file; neither that key nor a global MCP/operator credential enters the
 guest. Missing provisioning prevents Hermes admission and capability advertisement.

@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"strings"
-	"time"
 
 	"agent-workbench/internal/orchestration"
 	"agent-workbench/internal/shared"
@@ -13,6 +11,7 @@ import (
 
 func (s *Server) registerOrchestration(mux *http.ServeMux) {
 	repo := orchestration.Repository{DB: s.Store.DB}
+	s.registerScheduleManagement(mux, repo)
 	mux.HandleFunc("GET /v1/schedules", func(w http.ResponseWriter, r *http.Request) {
 		project, ok := s.ProjectForRequest(w, r, r.URL.Query().Get("project_id"))
 		if !ok {
@@ -38,27 +37,14 @@ func (s *Server) registerOrchestration(mux *http.ServeMux) {
 		shared.JSON(w, 200, map[string]any{"items": items})
 	})
 	mux.HandleFunc("POST /v1/schedules", func(w http.ResponseWriter, r *http.Request) {
-		var input struct {
-			ProjectID       string    `json:"project_id"`
-			WorkspaceID     string    `json:"workspace_id"`
-			Name            string    `json:"name"`
-			InstructionPath string    `json:"instruction_path"`
-			Provider        string    `json:"provider"`
-			RunAt           time.Time `json:"run_at"`
-			Interval        int64     `json:"interval_seconds"`
-			Key             string    `json:"idempotency_key"`
-		}
+		var input scheduleInput
 		if !shared.Decode(w, r, &input, 4096) {
 			return
 		}
 		if !s.AuthorizeProject(w, r, input.ProjectID) {
 			return
 		}
-		input.Name = strings.TrimSpace(input.Name)
-		if input.Provider == "" {
-			input.Provider = "codex"
-		}
-		if !shared.ValidID(input.WorkspaceID) || !shared.ValidKey(input.Key) || input.Name == "" || len(input.Name) > 80 || !shared.ValidProjectFile(input.InstructionPath) || (input.Provider != "codex" && input.Provider != "hermes") || input.RunAt.IsZero() || input.Interval < 0 || (input.Interval > 0 && input.Interval < 60) || input.Interval > 31536000 {
+		if !input.valid() {
 			shared.Error(w, 400, "INVALID_REQUEST")
 			return
 		}
@@ -105,12 +91,19 @@ func (s *Server) registerOrchestration(mux *http.ServeMux) {
 			unlock := s.operations.Lock("schedule:" + r.PathValue("id"))
 			defer unlock()
 			schedule, err := repo.Schedule(r.Context(), r.PathValue("id"))
-			if err != nil {
+			if err != nil || schedule.DeletedAt != nil {
 				shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
 				return
 			}
 			if !s.AuthorizeProject(w, r, schedule.ProjectID) {
 				return
+			}
+			if action != "disable" {
+				ws, err := s.Store.Workspace(r.Context(), schedule.WorkspaceID)
+				if err != nil || ws.ProjectID != schedule.ProjectID {
+					shared.Error(w, 409, "SCHEDULE_WORKSPACE_UNAVAILABLE")
+					return
+				}
 			}
 			if action == "run-now" {
 				run, err := repo.Enqueue(r.Context(), schedule, "manual:"+input.Key, s.now())
@@ -121,6 +114,7 @@ func (s *Server) registerOrchestration(mux *http.ServeMux) {
 				shared.JSON(w, 202, run)
 				return
 			}
+			wasEnabled := schedule.Enabled
 			if action == "enable" && !schedule.Enabled {
 				schedule.Enabled = true
 				if schedule.NextRunAt.Before(s.now()) {
@@ -129,6 +123,9 @@ func (s *Server) registerOrchestration(mux *http.ServeMux) {
 			}
 			if action == "disable" {
 				schedule.Enabled = false
+			}
+			if wasEnabled != schedule.Enabled {
+				schedule.Revision++
 			}
 			if repo.SaveSchedule(r.Context(), schedule) != nil {
 				shared.Error(w, 503, "STORAGE_UNAVAILABLE")

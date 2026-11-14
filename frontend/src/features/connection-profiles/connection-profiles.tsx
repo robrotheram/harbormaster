@@ -7,6 +7,7 @@ import {
   Globe,
   LockKeyhole,
   Pencil,
+  Trash2,
   Search,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -47,11 +48,10 @@ export function ConnectionProfiles() {
     <>
       <div className="page-title">
         <div>
-          <div className="mb-2 flex items-center gap-2">
+          <div className="flex items-center gap-2">
             <h1>Connection profiles</h1>
             <Badge variant="outline">Global</Badge>
           </div>
-          <p>Define network access once. Reuse it across your projects.</p>
         </div>
         <Button onClick={() => setEdit(null)}>
           <Plus />
@@ -60,25 +60,31 @@ export function ConnectionProfiles() {
       </div>
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <p className="max-w-2xl text-xs leading-6 text-muted-foreground">
-          Global edits apply on the next explicit workspace start or settings
-          save. Running work keeps its applied policy; direct network changes
-          require a stop/start.
+          Global edits apply on the next explicit worker start or settings save.
+          Running work keeps its applied policy; direct network changes require
+          a stop/start.
         </p>
-        <div className="relative">
-          <Search className="absolute left-3 top-2.5 size-3.5 text-muted-foreground" />
+        <div className="compact-search">
+          <Search size={14} />
           <Input
             aria-label="Search connection profiles"
             placeholder="Find a profile…"
-            className="w-56 bg-background pl-9"
+            className="h-8 pl-8 text-xs md:text-xs shadow-none"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
       </div>
-      {query.isError && <ErrorNotice error={query.error} />}
+      {query.isError && (
+        <ErrorNotice
+          error={query.error}
+          onRetry={() => void query.refetch()}
+          retrying={query.isFetching}
+        />
+      )}
       {query.isPending ? (
         <Skeleton className="h-72 w-full" />
-      ) : (
+      ) : query.data ? (
         <div className="overflow-hidden rounded-xl border bg-background">
           <Table
             aria-label="Global connection profiles"
@@ -203,22 +209,25 @@ export function ConnectionProfiles() {
                     colSpan={6}
                     className="h-32 text-center text-muted-foreground"
                   >
-                    No profiles match your search.
+                    {search
+                      ? "No profiles match your search."
+                      : "No connection profiles yet. Create a profile to reuse network rules across projects."}
                   </TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
           <div className="border-t px-5 py-3 text-xs text-muted-foreground">
-            {visible.length} profiles · Available across all projects
+            {visible.length} {visible.length === 1 ? "profile" : "profiles"} ·
+            Available across all projects
           </div>
         </div>
-      )}
+      ) : null}
       <div className="mt-5 flex items-start gap-2 text-xs leading-6 text-muted-foreground">
         <Network className="mt-1 size-3.5 shrink-0" />
         <p>
-          Choose a profile when creating a workspace or in its Settings.
-          Workspace-specific policies remain independent until you link a global
+          Choose a profile when creating a worker or in its Settings.
+          Worker-specific policies remain independent until you link a global
           profile.
         </p>
       </div>
@@ -244,6 +253,11 @@ function ProfileEditor({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const deletion = useMutation({
+    mutationFn: connectionProfilesApi.delete,
+    onSuccess: onSaved,
+  });
   const [name, setName] = useState(profile?.name || "");
   const [description, setDescription] = useState(profile?.description || "");
   const [mode, setMode] = useState<ConnectionPolicy["mode"]>(
@@ -264,6 +278,38 @@ function ProfileEditor({
       }),
     onSuccess: onSaved,
   });
+  if (confirmDelete && profile) {
+    return (
+      <Modal
+        title="Delete connection profile"
+        onClose={() => {
+          if (!deletion.isPending) setConfirmDelete(false);
+        }}
+      >
+        <p className="text-sm leading-6">
+          Delete “{profile.name}”? This cannot be undone. Profiles used by a
+          worker or Hermes setup must be replaced in those settings first.
+        </p>
+        {deletion.isError && <ErrorNotice error={deletion.error} />}
+        <div className="form-actions">
+          <Button
+            variant="outline"
+            disabled={deletion.isPending}
+            onClick={() => setConfirmDelete(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            disabled={deletion.isPending}
+            onClick={() => deletion.mutate(profile)}
+          >
+            {deletion.isPending ? "Deleting…" : "Delete profile"}
+          </Button>
+        </div>
+      </Modal>
+    );
+  }
   return (
     <Modal
       title={profile ? "Edit global profile" : "Create global profile"}
@@ -327,12 +373,27 @@ function ProfileEditor({
           </p>
         )}
         <p className="form-note">
-          This is a global profile. Changes apply to linked workspaces when they
+          This is a global profile. Changes apply to linked workers when they
           next start or save settings. They do not interrupt or silently change
           active work.
         </p>
         {mutation.isError && <ErrorNotice error={mutation.error} />}
         <div className="form-actions">
+          {profile && (
+            <Button
+              variant="destructive"
+              type="button"
+              className="mr-auto"
+              disabled={mutation.isPending}
+              onClick={() => {
+                deletion.reset();
+                setConfirmDelete(true);
+              }}
+            >
+              <Trash2 className="size-3.5" />
+              Delete profile
+            </Button>
+          )}
           <Button variant="outline" type="button" onClick={onClose}>
             Cancel
           </Button>

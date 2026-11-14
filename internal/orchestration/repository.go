@@ -52,7 +52,9 @@ func (r Repository) Schedules(ctx context.Context, project string) ([]shared.Sch
 		if err = json.Unmarshal([]byte(b), &s); err != nil {
 			return nil, err
 		}
-		out = append(out, s)
+		if s.DeletedAt == nil {
+			out = append(out, s)
+		}
 	}
 	return out, rows.Err()
 }
@@ -89,7 +91,7 @@ func (r Repository) CreateSchedule(ctx context.Context, s shared.Schedule, key s
 	if err == nil {
 		err = json.Unmarshal([]byte(raw), &existing)
 	}
-	if err == nil && !sameSchedule(existing, s) {
+	if err == nil && (existing.DeletedAt != nil || !sameSchedule(existing, s)) {
 		err = ErrConflict
 	}
 	return existing, false, err

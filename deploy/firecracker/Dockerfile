@@ -9,7 +9,7 @@ RUN mkdir /opt/hermes && tar -xzf /tmp/hermes.tgz -C /opt/hermes --strip-compone
 
 FROM ${WORKSPACE_IMAGE}
 USER root
-RUN apt-get update && apt-get install -y --no-install-recommends iproute2 libolm3 && rm -rf /var/lib/apt/lists/* && mkdir -p /boot-config /run /data /proc /sys /dev /tmp
+RUN apt-get update && apt-get install -y --no-install-recommends iproute2 libolm3 xvfb fluxbox x11vnc novnc websockify xterm x11-utils fonts-dejavu-core && rm -rf /var/lib/apt/lists/* && mkdir -p /boot-config /run /data /proc /sys /dev /tmp
 COPY --from=hermes-build /usr/local/ /usr/local/
 COPY --from=hermes-build /opt/hermes /opt/hermes
 COPY sandbox-init /sbin/awb-init
@@ -22,3 +22,7 @@ COPY project-tools.json hermes_common.py hermes-runtime.json /usr/local/bin/
 
 COPY hermes-digest /usr/local/bin/hermes-digest
 COPY hermes-consume /usr/local/bin/hermes-consume
+
+COPY workbench-desktop /usr/local/bin/workbench-desktop
+
+COPY workbench-preview /usr/local/bin/workbench-preview

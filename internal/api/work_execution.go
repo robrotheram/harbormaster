@@ -21,6 +21,7 @@ func workError(w http.ResponseWriter, err error) {
 	}
 }
 func (s *Server) registerWorkExecution(mux *http.ServeMux, repo orchestration.Repository) {
+	s.registerWorkImages(mux, repo)
 	mux.HandleFunc("POST /v1/work-items/{id}/run", func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
 			ProjectID string `json:"project_id"`
@@ -58,12 +59,13 @@ func (s *Server) registerWorkExecution(mux *http.ServeMux, repo orchestration.Re
 		var in struct {
 			ProjectID         string `json:"project_id"`
 			Accepted          *bool  `json:"accepted"`
+			Decision          string `json:"decision,omitempty"`
 			ExpectedAttemptID string `json:"expected_attempt_id"`
 		}
 		if !shared.Decode(w, r, &in, 1024) || !s.AuthorizeProject(w, r, in.ProjectID) {
 			return
 		}
-		if in.Accepted == nil {
+		if (in.Decision != "" && in.Decision != "closed") || (in.Decision == "closed" && in.Accepted != nil) || (in.Decision == "" && in.Accepted == nil) {
 			shared.Error(w, 400, "INVALID_REQUEST")
 			return
 		}
@@ -78,7 +80,12 @@ func (s *Server) registerWorkExecution(mux *http.ServeMux, repo orchestration.Re
 			shared.Error(w, 409, "WORK_STATE_CONFLICT")
 			return
 		}
-		item, err := repo.ReviewWork(r.Context(), in.ProjectID, r.PathValue("id"), *in.Accepted, s.now())
+		var item shared.WorkItem
+		if in.Decision == "closed" {
+			item, err = repo.CloseWork(r.Context(), in.ProjectID, r.PathValue("id"), s.now())
+		} else {
+			item, err = repo.ReviewWork(r.Context(), in.ProjectID, r.PathValue("id"), *in.Accepted, s.now())
+		}
 		if err != nil {
 			workError(w, err)
 			return

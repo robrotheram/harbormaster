@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{.Title}} · Workbench</title>
+    <link rel="stylesheet" href="/_workbench/connection.css">
+    <script src="/connect.js" defer></script>
+  </head>
+  <body>
+    <main id="connection" data-code="{{.Code}}" data-embedded="{{.Embedded}}" data-messages="{{.Messages}}">
+      <div class="brand"><span aria-hidden="true" class="brand-mark">W</span>Workbench</div>
+      <section aria-labelledby="heading">
+        <h1 id="heading" tabindex="-1">{{.Title}}</h1>
+        <p id="status" role="status">{{.Body}}</p>
+        {{if .Embedded}}
+        <p class="hint">Use Reload preview above this panel to request a fresh connection. Preview options also lets you open a new tab.</p>
+        {{else}}
+        <a class="action" href="{{.Workbench}}" target="_blank" rel="noopener noreferrer">Open Workbench <span aria-hidden="true">↗</span></a>
+        <p class="hint">Opens in a new tab. You can also return to your existing Workbench tab.</p>
+        {{end}}
+        <details id="support" {{if not .Code}}hidden{{end}}>
+          <summary>Support details</summary>
+          <dl><dt>Code</dt><dd id="support-code">{{.Code}}</dd><dt id="http-label">HTTP status</dt><dd id="http-status">{{.Status}}</dd></dl>
+        </details>
+        <noscript><p class="notice">JavaScript is required to open this connection. Enable it, then open a fresh link from Workbench.</p></noscript>
+      </section>
+    </main>
+  </body>
+</html>

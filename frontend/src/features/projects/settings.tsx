@@ -1,13 +1,17 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
-import { ErrorNotice } from "@/shared/components";
+import { Input } from "@/components/ui/input";
+import { useState } from "react";
+import { ErrorNotice, Modal, Form } from "@/shared/components";
 import { request } from "@/shared/http";
 import type { Project } from "@/shared/types";
 
 export function ProjectSettings({ project }: { project: Project }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const [confirming, setConfirming] = useState(false);
+  const [confirmation, setConfirmation] = useState("");
   const deletion = useMutation({
     mutationFn: () =>
       request(`/projects/${encodeURIComponent(project.id)}/delete`, {
@@ -19,32 +23,29 @@ export function ProjectSettings({ project }: { project: Project }) {
     },
   });
   return (
-    <div className="max-w-3xl space-y-10">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Project settings
-        </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Manage {project.name} and its workspaces.
-        </p>
+    <div className="max-w-3xl space-y-6">
+      <div className="page-title">
+        <div>
+          <h1>Project settings</h1>
+        </div>
       </div>
       <section aria-labelledby="project-details" className="space-y-4">
-        <h2 id="project-details" className="text-base font-semibold">
+        <h2 id="project-details" className="text-sm font-medium">
           Project details
         </h2>
-        <dl className="divide-y rounded-lg border bg-background px-5 text-sm">
-          <div className="py-4">
+        <dl className="project-setting-facts">
+          <div>
             <dt className="text-muted-foreground">Name</dt>
-            <dd className="mt-1 font-medium">{project.name}</dd>
+            <dd>{project.name}</dd>
           </div>
-          <div className="py-4">
+          <div>
             <dt className="text-muted-foreground">Project ID</dt>
-            <dd className="mt-1 break-all">{project.id}</dd>
+            <dd className="identifier">{project.id}</dd>
           </div>
         </dl>
       </section>
       <section aria-labelledby="delete-project" className="border-t pt-6">
-        <h2 id="delete-project" className="text-base font-semibold">
+        <h2 id="delete-project" className="text-sm font-medium">
           Delete project
         </h2>
         {project.id === "default" ? (
@@ -54,7 +55,7 @@ export function ProjectSettings({ project }: { project: Project }) {
         ) : (
           <>
             <p className="mt-2 max-w-prose text-sm leading-6 text-muted-foreground">
-              Remove this project and all its workspaces from Workbench. Compute
+              Remove this project and all its workers from Workbench. Compute
               must stop successfully before deletion. Private disks and saved
               evidence remain on the host.
             </p>
@@ -63,24 +64,70 @@ export function ProjectSettings({ project }: { project: Project }) {
               variant="destructive"
               disabled={deletion.isPending}
               onClick={() => {
-                if (
-                  window.confirm(
-                    `Delete project ${project.name} and all its workspaces from the workbench? Compute must stop first. Private disks remain on the host.`,
-                  )
-                )
-                  deletion.mutate();
+                setConfirmation("");
+                deletion.reset();
+                setConfirming(true);
               }}
             >
               {deletion.isPending ? "Deleting project…" : "Delete project"}
             </Button>
-            {deletion.isError && (
-              <div className="mt-4">
-                <ErrorNotice error={deletion.error} />
-              </div>
-            )}
           </>
         )}
       </section>
+      {confirming && (
+        <Modal
+          title="Delete project?"
+          onClose={() => {
+            if (!deletion.isPending) setConfirming(false);
+          }}
+          closeOnEscape={!deletion.isPending}
+          closeDisabled={deletion.isPending}
+        >
+          <p className="break-words text-sm">
+            This removes <strong>{project.name}</strong> and all its workers
+            from Workbench. Its compute must stop successfully before deletion.
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Private disks and saved evidence remain on the host. This action
+            does not erase that data. You cannot restore the project from this
+            screen.
+          </p>
+          <Form
+            onSubmit={() => {
+              if (confirmation === project.name && !deletion.isPending)
+                deletion.mutate();
+            }}
+          >
+            <label className="block space-y-2 text-sm">
+              <span>Type the project name to confirm</span>
+              <Input
+                value={confirmation}
+                onChange={(event) => setConfirmation(event.target.value)}
+                autoComplete="off"
+                disabled={deletion.isPending}
+              />
+            </label>
+            {deletion.isError && <ErrorNotice error={deletion.error} />}
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={deletion.isPending}
+                onClick={() => setConfirming(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                variant="destructive"
+                disabled={deletion.isPending || confirmation !== project.name}
+              >
+                {deletion.isPending ? "Deleting project…" : "Delete project"}
+              </Button>
+            </div>
+          </Form>
+        </Modal>
+      )}
     </div>
   );
 }

@@ -16,6 +16,14 @@ func main() {
 		slog.Error("invalid dashboard configuration")
 		os.Exit(1)
 	}
+	cfg, err := dashboard.AuthConfigFromEnv()
+	if err == nil {
+		h, err = dashboard.NewAuthKitHandler(h, cfg)
+	}
+	if err != nil {
+		slog.Error("invalid dashboard authentication configuration", "error", err)
+		os.Exit(1)
+	}
 	if err := shared.Serve(":8080", h); err != nil {
 		slog.Error("dashboard stopped")
 		os.Exit(1)

@@ -29,13 +29,13 @@ acceptance must pass before restarting the workbench.
 
 ## Start locally
 
-Requires Docker Engine with Compose, access to its daemon, Python 3 and OpenSSL for bootstrap, and free localhost ports 8080, 8082 and 8090. Go 1.27.3 is required for native development/tests.
+Requires Docker Engine with Compose, access to its daemon, Python 3 and OpenSSL for bootstrap, and free localhost ports 8080, 8082 and 8090. Go 1.27.4 is required for native development/tests.
 
 ```sh
 make up
 ```
 
-This provisions random local application credentials without printing them, builds every service plus the workspace image, and starts the platform. Existing credentials and persistent data are preserved. The dashboard is at **http://127.0.0.1:8080** and requires no login. MCP is at **http://127.0.0.1:8082/mcp**. The management API is at **http://127.0.0.1:8090**.
+This provisions random local application credentials without printing them, builds every service plus the workspace image, and starts the platform. Existing credentials and persistent data are preserved. The dashboard is at **http://127.0.0.1:8080** and requires no login unless [WorkOS AuthKit](docs/authkit.md) is configured. MCP is at **http://127.0.0.1:8082/mcp**. The management API is at **http://127.0.0.1:8090**.
 
 Only these loopback ports are published. PostgreSQL, Vault and the runtime controller have no published host ports. `make down` stops the platform without removing volumes. Dynamically created workspaces are managed separately; stop them before taking the platform down.
 
@@ -70,7 +70,7 @@ Accepted tasks survive client disconnect. Files, messages and results live in th
 | PostgreSQL | Platform metadata only |
 | Vault | Persistent certificate store; real deployment initialization is operator-managed |
 
-The first local principal is `local-operator` in project `default`. This does not implement multi-user OIDC or claim multi-user access isolation. The loopback launcher requires no account login; it can control workspaces and issues workspace-specific browser sessions. Treat access to that local UI as operator access.
+The first local principal is `local-operator` in project `default`. Optional [WorkOS AuthKit](docs/authkit.md) restricts the shared console to approved operator emails; it does not provide per-user project isolation. Without AuthKit configuration the loopback launcher requires no account login; it can control workspaces and issues workspace-specific browser sessions. Treat access to that local UI as operator access.
 
 ## MCP
 
@@ -87,6 +87,8 @@ Set `WORKSPACE_RUNTIME=kata` only after installing and configuring a compatible 
 Interactive workspaces run the pinned native T3 server and bundled web client. Its protocol-2 WebSocket traffic is proxied without a Go wire reimplementation. Use **Open T3** for browser access or **Connect desktop** for native desktop pairing. `/v1/workspaces/{id}/connection` remains the legacy, unimplemented generic attachment contract. The task API/MCP remains available separately.
 
 ## Development and checks
+
+See [operations and release gates](docs/operations.md) for GitLab CI, upgrades, backups and support diagnostics.
 
 See [CONTRIBUTING](CONTRIBUTING.md) for reproducible checks and [architecture](docs/architecture.md) for module boundaries. The project uses the [MIT license](LICENSE).
 
@@ -113,3 +115,5 @@ versioned; linked workspaces show pending changes and adopt them on explicit
 open/start or settings save. Existing workspaces retain their current policy.
 
 See [private message history and JSONL evaluation exports](docs/workspace-history.md) for retained conversations, tool interactions and metadata.
+
+**Repository delivery:** [GitHub/GitLab connections, issue board and reviews](docs/repository-connections.md) covers authenticated ticket import, the local Kanban board, review decisions and server-side credential setup.

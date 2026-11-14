@@ -11,6 +11,7 @@ All routes require `Authorization: Bearer <provisioned local control token>`. In
 - `GET /v1/workspaces/{workspace_id}`: Workspace.
 - `POST /v1/workspaces`: `{ "project_id":"default", "idempotency_key":"...", "name":"...", "parent_id":"...", "branch":"..." }` → Workspace (201, or 200 on replay). Name/parent/branch are optional; a parent requires a new branch. The source must be idle.
 - `POST /v1/workspaces/{id}/start`: `{ "idempotency_key":"..." }` → Workspace. Synchronous bounded readiness (up to 30s), subsequent retries attach to the same runtime. MCP should use a bounded HTTP timeout and report NOT_READY/UNAVAILABLE safely.
+- `GET /v1/workspaces/{id}/start-readiness`: project-authorized, read-only startup preflight with a five-second deadline and `Cache-Control: no-store`. Returns `{workspace_id,project_id,checked_at,can_start,checks:[{id,label,status,code?,message}]}`; check status is `passed`, `blocked`, or `unknown`. Checks observe worker state, strict controller capabilities, resources, connection policy, Hermes setup when applicable, branch support, and current quota. They never start compute, reserve capacity, update metadata, or contact a model provider. A passed check is not a reservation or a guarantee of successful boot; POST start repeats admission under the quota lock. Unsupported capability contracts return `RUNTIME_CAPABILITIES_INCOMPATIBLE` on start instead of the generic runtime error. The UI adapter allows only GET on this exact path.
 - `POST /v1/workspaces/{id}/stop`: `{ "idempotency_key":"..." }` → Workspace; reject busy or unknown activity. Storage persists.
 - `POST /v1/workspaces/{id}/tasks`: `{ "instruction":"...", "idempotency_key":"...", "provider":"codex|claude" }` → Task (202). Starts workspace as needed. Provider is optional and otherwise uses the container's configured default; a fixture default retains the original built-in runner. Changing provider with an accepted task key conflicts.
 - `GET /v1/workspaces/{id}/tasks/{task_id}` → Task metadata.
@@ -103,6 +104,11 @@ revision,updated_at}]}`. The authenticated local operator can create profiles vi
 `POST /v1/connection-profiles` (revision 0) and edit via
 `POST /v1/connection-profiles/{id}` (expected current revision). Stale edits return
 `PROFILE_REVISION_CONFLICT`; project credentials cannot mutate global profiles.
+`POST /v1/connection-profiles/{id}/delete` removes a profile with an expected
+`revision` in the JSON body. A stale or missing profile returns
+`PROFILE_REVISION_CONFLICT` (409). Profiles referenced by workspace settings or
+Hermes setups return `CONNECTION_PROFILE_IN_USE` (409); select another profile in
+those settings first. Deleted built-in profiles are not seeded again on restart.
 Names are bounded to 80 bytes, descriptions to 500, policies use existing rules.
 
 Profiles persist in PostgreSQL metadata, seeded once without replacing edits.
@@ -165,3 +171,73 @@ workspace creation does not accept `profile_id`. T3 and native Codex/Claude
 workers use fixed bundled file/Git MCP servers. No caller-selected tool lists
 are passed through runtime specifications or workspace environment variables.
 Existing workspace/home ownership and legacy private storage paths are retained.
+
+## Schedule management
+
+The project Schedules page exposes create, edit, enable/disable, run-now and
+confirmed deletion. `POST /v1/schedules/{id}/update` accepts the creation fields,
+`revision` (legacy records start at 0), and `idempotency_key`. Project ownership
+and the replacement worker are checked. Edits preserve enabled state and history;
+changing timing resets the next occurrence. Identical retries do not rewind the
+trigger. Stale edits return `SCHEDULE_REVISION_CONFLICT`; edits with unfinished
+runs return `SCHEDULE_HAS_UNFINISHED_RUNS` so accepted instructions cannot change.
+
+`POST /v1/schedules/{id}/delete` accepts `revision` and `idempotency_key`. It hides
+and disables the schedule and atomically cancels runs not yet dispatched. Accepted
+or uncertain dispatches continue under their original identity, including tasks
+queued inside a worker. History and schedule metadata remain for observation;
+repeated deletion succeeds. Deleted schedules cannot be re-enabled or run manually.
+Enable/run-now reject a missing worker with `SCHEDULE_WORKSPACE_UNAVAILABLE`;
+disabling, editing to a replacement worker, and deletion remain available. The
+same-origin UI proxy permits only the exact POST update/delete routes.
+
+## Work conversations
+
+`GET /v1/work-items/{id}/instruction?project_id=...` reads the private saved
+specification and verifies its digest. It returns `{project_id,work_item_id,
+instruction}` with no-store caching and does not start a stopped worker.
+
+`POST /v1/work-items/{id}/continue` accepts `{project_id,instruction,
+expected_attempt_id,idempotency_key}`. A nonempty UTF-8 instruction is limited to
+16,000 bytes. Terminal work (awaiting_review/completed/failed/cancelled) can queue
+one follow-up; active work and stale latest-attempt references return a conflict.
+The response is the new attempt (202), or the already accepted attempt (200) for
+an identical retry. Changing a keyed request returns `IDEMPOTENCY_CONFLICT`.
+
+Each follow-up is an immutable private file referencing the prior specification.
+It starts a new native task in the same workspace. Attempt metadata adds optional
+`specification_path`, `specification_digest`, `parent_attempt_id` and `review_state`;
+prior outputs and acceptance remain associated with their attempt. Conversation
+bodies are not copied into the control database. This does not provide native
+session resume or live message injection.
+
+`GET /v1/workspaces/{id}/history` accepts an optional validated `episode` task ID,
+in addition to existing pagination cursors. Clients verify project, worker and
+record episode identities before displaying content. Conversation polling uses
+ascending `after` pages to retain activity across bursts, and descending `before`
+pages to retrieve earlier activity. The local authenticated ingress exposes the
+exact work/instruction and work/continue routes under `/ui-api`.
+
+
+### Browser chart presentation
+
+Work creation and continuation accept optional `presentation: "interactive-v1"`.
+When supplied with an inline instruction, this adds the browser chart contract to
+the private agent instruction. It does not change the visible user request.
+Omitting the field preserves the existing instruction format; other values are
+rejected. The presentation version participates in the idempotency payload.
+
+`POST /v1/work-items/{id}/data` accepts `{project_id, attempt_id, path}` and returns
+a private `FileHandoff` (`path`, base64 `content`). This is the data equivalent of
+the image read route: project/workspace scope is verified, only the latest attempt
+can read an unretained file, traversal and protected paths are rejected, and only
+CSV/JSON files up to 256 KiB are returned. Reads use the workspace runtime; host
+files and remote URLs are not accepted. The UI uses retained artifacts first for
+historical versions and does not cache private contents persistently.
+
+The `workbench-chart` Markdown fence and linked `.csv`/`.json` files are rendered
+in the browser. Version 1 chart objects contain `version`, `title`, `type`, `x`,
+`y`, `data`, and optional `description` and `unit`. Types are `bar`, `line`, `area`,
+`scatter`, and `donut`. Rows contain finite numbers, strings or null cells. Limits
+are 2,000 rows, 2–32 columns and 1–6 numeric y columns; unknown chart settings are
+rejected. No executable configuration or external fetch instruction is supported.

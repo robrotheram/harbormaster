@@ -13,6 +13,7 @@ export type HistoryRecord = {
   role?: string;
   content?: string;
   tool?: string;
+  tool_call_id?: string;
   model?: string;
   provider?: string;
   channel?: string;
@@ -32,6 +33,7 @@ export type Snapshot = {
   page: {
     records: HistoryRecord[];
     next_before: number;
+    next_after?: number;
     high_watermark: number;
     bytes_used: number;
     capture_limited: boolean;

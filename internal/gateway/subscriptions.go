@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -186,6 +187,14 @@ func registerSubscriptions(mux *http.ServeMux, c Config) error {
 			}
 			upstreamCtx, stop := context.WithDeadline(ctx, time.Unix(cred.ExpiresAt, 0))
 			defer stop()
+			// Native generations may exceed the server's short default write
+			// timeout. Bound this response by its request/credential lifetime,
+			// otherwise a healthy long generation is truncated during streaming.
+			deadline, _ := upstreamCtx.Deadline()
+			if err := http.NewResponseController(w).SetWriteDeadline(deadline); err != nil && !errors.Is(err, http.ErrNotSupported) {
+				Error(w, 503, "UPSTREAM_UNAVAILABLE")
+				return
+			}
 			// A stopped/revoked workspace loses an already-open stream as well.
 			go func() {
 				ticker := time.NewTicker(5 * time.Second)

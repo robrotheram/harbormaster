@@ -2,6 +2,9 @@ import { request, projectList, requireProject, APIError } from "@/shared/http";
 
 export type Artifact = {
   id?: string;
+  source_path?: string;
+  size_bytes?: number;
+  sha256?: string;
   name?: string;
   kind?: string;
   content_url?: string;
@@ -25,6 +28,9 @@ export type Attempt = {
   work_item_id: string;
   workspace_id: string;
   task_id?: string;
+  parent_attempt_id?: string;
+  review_state?: string;
+  specification_path?: string;
   state: string;
   error_code?: string;
   artifacts?: Artifact[];
@@ -50,6 +56,41 @@ export const workKeys = {
     ["project", project, "work", id, "attempts"] as const,
 };
 export const workApi = {
+  instruction: async (project: string, id: string, signal?: AbortSignal) => {
+    const value = await request<{
+      project_id: string;
+      work_item_id: string;
+      instruction: string;
+    }>(path(id) + "/instruction" + scope(project), undefined, signal);
+    requireProject([value], project);
+    if (value.work_item_id !== id)
+      throw new APIError("NOT_FOUND_OR_FORBIDDEN", 403);
+    return value.instruction;
+  },
+  begin: async (payload: WorkCreate, key: string) => {
+    const item = await workApi.create(payload, key);
+    try {
+      await workApi.run(payload.project_id, item.id, key);
+      return { item, error: undefined as unknown };
+    } catch (error) {
+      // Keep the saved draft reachable if dispatch could not be requested.
+      return { item, error };
+    }
+  },
+  continue: (
+    project: string,
+    id: string,
+    instruction: string,
+    expected_attempt_id: string,
+    idempotency_key: string,
+  ) =>
+    request<Attempt>(path(id) + "/continue", {
+      project_id: project,
+      instruction,
+      presentation: "interactive-v1",
+      expected_attempt_id,
+      idempotency_key,
+    }),
   list: (project: string, signal?: AbortSignal) =>
     projectList<WorkItem>("/work-items", project, signal),
   detail: async (project: string, id: string, signal?: AbortSignal) => {
@@ -73,11 +114,21 @@ export const workApi = {
     return value.items;
   },
   create: (payload: WorkCreate, idempotency_key: string) =>
-    request<WorkItem>("/work-items", { ...payload, idempotency_key }),
+    request<WorkItem>("/work-items", {
+      ...payload,
+      presentation: "interactive-v1",
+      idempotency_key,
+    }),
   run: (project: string, id: string, idempotency_key: string) =>
     request(path(id) + "/run", { project_id: project, idempotency_key }),
   cancel: (project: string, id: string) =>
     request(path(id) + "/cancel", { project_id: project }),
+  close: (project: string, id: string, expected_attempt_id: string) =>
+    request(path(id) + "/review", {
+      project_id: project,
+      decision: "closed",
+      expected_attempt_id,
+    }),
   review: (
     project: string,
     id: string,
@@ -113,14 +164,20 @@ export function evidenceURL(value?: string) {
 export function workActions(state: string) {
   const s = state.toLowerCase();
   return {
-    run: ["draft", "failed", "cancelled", "rejected"].includes(s),
+    run: [
+      "draft",
+      "planned",
+      "in_progress",
+      "failed",
+      "cancelled",
+      "rejected",
+    ].includes(s),
     cancel: ["queued", "running", "blocked", "pending"].includes(s),
     review: [
       "awaiting_review",
       "review",
       "review_required",
       "pending_review",
-      "completed",
     ].includes(s),
   };
 }

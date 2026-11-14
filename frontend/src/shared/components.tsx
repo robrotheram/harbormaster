@@ -2,12 +2,14 @@ import { useRef, useState, type FormEvent, type ReactNode } from "react";
 import { AlertCircle, Inbox, Clock3 } from "lucide-react";
 import { date, label, stateTone } from "@/shared/format";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { APIError } from "@/shared/http";
 import { cn } from "@/lib/utils";
 
 export function State({ value }: { value: string }) {
@@ -58,18 +60,52 @@ export function Empty({
     </div>
   );
 }
-export function ErrorNotice({ error }: { error: unknown }) {
+export function ErrorNotice({
+  error,
+  message,
+  onRetry,
+  retrying = false,
+}: {
+  error: unknown;
+  message?: string;
+  onRetry?: () => void;
+  retrying?: boolean;
+}) {
   return (
     <div
       className="mb-4 flex items-start gap-2.5 rounded-lg border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive"
       role="alert"
     >
       <AlertCircle className="mt-0.5 size-4 shrink-0" />
-      <span>
-        {error instanceof Error
-          ? error.message
-          : "This operation is unavailable. Refresh to check its current state."}
-      </span>
+      <div className="min-w-0 flex-1 break-words">
+        <p>
+          {message ??
+            (error instanceof Error
+              ? error.message
+              : "This operation is unavailable. Check its current state before trying again.")}
+        </p>
+        {error instanceof APIError && (
+          <details className="mt-2 text-xs text-muted-foreground">
+            <summary className="cursor-pointer">Support details</summary>
+            {message && <p className="mt-2">{error.message}</p>}
+            <p className="mt-2 font-mono">
+              Code: {error.code}
+              {error.status > 0 ? ` · HTTP ${error.status}` : ""}
+            </p>
+          </details>
+        )}
+        {onRetry && (
+          <Button
+            type="button"
+            className="mt-3"
+            variant="outline"
+            disabled={retrying}
+            onClick={onRetry}
+          >
+            {retrying ? "Retrying…" : "Try again"}
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
@@ -104,11 +140,17 @@ export function Modal({
   onClose,
   children,
   wide = false,
+  className,
+  closeOnEscape = true,
+  closeDisabled = false,
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
   wide?: boolean;
+  className?: string;
+  closeOnEscape?: boolean;
+  closeDisabled?: boolean;
 }) {
   const [returnFocus] = useState(() => {
     const active = document.activeElement as HTMLElement | null;
@@ -120,10 +162,14 @@ export function Modal({
     <Dialog
       open
       onOpenChange={(open) => {
-        if (!open) onClose();
+        if (!open && !closeDisabled) onClose();
       }}
     >
       <DialogContent
+        closeButtonDisabled={closeDisabled}
+        onEscapeKeyDown={(event) => {
+          if (!closeOnEscape || closeDisabled) event.preventDefault();
+        }}
         onCloseAutoFocus={(event) => {
           if (returnFocus?.isConnected) {
             event.preventDefault();
@@ -134,9 +180,10 @@ export function Modal({
         className={cn(
           "max-h-[90dvh] overflow-y-auto p-6",
           wide ? "sm:max-w-3xl" : "sm:max-w-[540px]",
+          className,
         )}
       >
-        <DialogHeader className="mb-1 pr-7">
+        <DialogHeader className="mb-1 pr-7 text-left">
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
         {children}

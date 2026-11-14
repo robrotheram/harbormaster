@@ -1,4 +1,4 @@
-import { request, projectList } from "@/shared/http";
+import { request, projectList, requireProject } from "@/shared/http";
 import { keys } from "@/shared/query-keys";
 import type {
   Workspace,
@@ -19,7 +19,33 @@ export type WorkspaceSettings = {
   connection_profile_id?: string;
   connections?: import("@/shared/types").ConnectionPolicy;
 };
+export interface StartReadiness {
+  workspace_id: string;
+  project_id: string;
+  checked_at: string;
+  can_start: boolean;
+  checks: {
+    id: string;
+    label: string;
+    status: "passed" | "blocked" | "unknown";
+    code?: string;
+    message: string;
+  }[];
+}
 export const workspacesApi = {
+  readiness: async (workspace: Workspace, signal?: AbortSignal) => {
+    const result = await request<StartReadiness>(
+      `/workspaces/${encodeURIComponent(workspace.id)}/start-readiness`,
+      undefined,
+      signal,
+    );
+    requireProject([result], workspace.project_id);
+    if (result.workspace_id !== workspace.id)
+      throw new Error(
+        "The startup check returned a different worker. Refresh and try again.",
+      );
+    return result;
+  },
   delete: (id: string) =>
     request(`/workspaces/${encodeURIComponent(id)}/delete`, { confirm_id: id }),
   create: (payload: WorkspaceCreate, idempotency_key: string) =>
@@ -53,9 +79,9 @@ export const workspacesApi = {
     request<StartResult>(`/workspaces/${encodeURIComponent(id)}/start`, {
       idempotency_key,
     }),
-  stop: (id: string) =>
+  stop: (id: string, idempotency_key: string = crypto.randomUUID()) =>
     request<Workspace>(`/workspaces/${encodeURIComponent(id)}/stop`, {
-      idempotency_key: crypto.randomUUID(),
+      idempotency_key,
     }),
   pair: (id: string) =>
     request<Pairing>(`/workspaces/${encodeURIComponent(id)}/desktop-pair`, {

@@ -3,7 +3,10 @@ package protocol
 import (
 	"agent-workbench/internal/shared"
 	"context"
+	"errors"
 )
+
+var ErrCapabilitiesIncompatible = errors.New("RUNTIME_CAPABILITIES_INCOMPATIBLE")
 
 type Runtime interface {
 	Start(context.Context, string) (shared.Observation, error)

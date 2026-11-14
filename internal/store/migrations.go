@@ -47,6 +47,10 @@ func (s *Store) migrate(ctx context.Context) error {
 			_, err := s.DB.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS deleted_resources(kind TEXT NOT NULL,id TEXT NOT NULL,PRIMARY KEY(kind,id))`)
 			return err
 		}},
+		{9, s.initForges},
+		{10, s.initForgeAccounts},
+		{11, s.initBoard},
+		{12, s.initWorkReviewHistory},
 	}
 	for _, step := range steps {
 		var applied int

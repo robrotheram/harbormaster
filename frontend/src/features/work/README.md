@@ -17,16 +17,124 @@ until those contracts exist.
 
 Action availability is centralized in workActions in api.ts for parent adaptation:
 draft/failed/cancelled/rejected allow run; queued/running/blocked/pending allow
-cancel; awaiting_review/review/review_required/pending_review/completed allow
-review. The backend remains authoritative for transitions. Run delivery retries
+cancel; awaiting_review/review/review_required/pending_review allow review.
+The backend stores `completed` when a human accepts a work item. Display it as
+Accepted, group it under Done, and offer no further review actions. Attempt
+execution state remains `awaiting_review`; the latest attempt's displayed outcome
+uses its parent work item's acceptance. The backend remains authoritative for
+transitions. Run delivery retries
 retain their key until success; a subsequent intentional attempt gets a new key.
 Creation retries retain the key for the same form payload.
 
-Specifications are existing workspace paths and digests, not uploaded by this UI.
-Workspace links open the existing project workspace inventory and show the exact
-workspace ID. Attempt evidence and task IDs remain available for diagnostics.
+The primary surface is a conversation, with work tracking beside it. A new
+conversation saves a private instruction and requests its first run; if starting
+fails, the saved draft remains selected and retryable. The advanced create form
+also supports an existing specification path and digest. The selected conversation
+is bookmarked with `?work=<id>`; switching projects clears it and all private views.
+
+Recorded user/assistant messages and expandable tool calls/results come from the
+worker's private history, filtered by the attempt's `task_id` (`episode`). Every
+response must match the project, worker and task. Active runs poll for recorded
+events; this is not token streaming or access to private model reasoning. Stopped
+workers can be explicitly started to load their history. Private history and
+output preview queries are discarded when their view unmounts.
+
+`POST /v1/work-items/{id}/continue` takes `project_id`, `instruction`,
+`expected_attempt_id` and `idempotency_key`. It saves an immutable private follow-up
+file and queues a fresh native run in the same workspace, with a reference to the
+previous request and the existing files. It does not inject into an active task or
+resume a native session. Accepted, reviewable, failed and cancelled work can be
+continued. The transaction snapshots the previous attempt's specification and
+review outcome, preserving earlier outputs. Retries retain their key and recover
+an accepted attempt or a lost private-publication acknowledgement.
+
+Request changes focuses the conversation composer; sending that message queues
+the revision. It does not silently reject the work. While an agent runs, users can
+draft their next message or stop the run. Output selection can inspect any attempt;
+only the latest reviewable attempt offers Accept result. Bounded text previews
+escape content, never execute HTML, and fetch only authenticated ingress paths.
+Attempt evidence and task IDs remain available under Technical details.
+
+`GET /v1/work-items/{id}/instruction?project_id=...` reads and verifies a saved
+specification for a draft. It does not wake stopped workers or store the text in
+the control database.
 
 Creation accepts `artifact_paths` (up to 32 private workspace files). Each attempt
 publishes these paths with its own durable keys. Backend `/v1/` evidence URLs are
 translated to `/ui-api/` in the browser so credentials remain in the ingress.
 Review sends `expected_attempt_id`; a stale review cannot accept a newer attempt.
+
+Application previews use project-authorized `/workspaces/{id}/applications` reads
+and starts. The start payload holds a private application directory, shell command,
+port, TTL and stable retry key. The worker owns the process group and publishes
+observed readiness and bounded logs. Controls reuse service revocation and the
+isolated preview connection endpoint. HTTP forwarding includes paths, queries,
+methods and WebSocket upgrades without management credentials. Opening a conversation never starts an application.
+
+The working view has a resizable conversation/preview split. History and retained
+files are secondary controls rather than permanent stacked panels. `work-preview`
+owns project-scoped app state, isolated embedded preview tickets, Web/Desktop tabs,
+and selection-to-draft messages. Selection validates the frame window, exact
+origin, and one-use nonce. `work-visuals` charts CSV/JSON through a bounded reader;
+untrusted data never becomes markup. Layout falls back to a conversation/preview
+switch below 1200px.
+
+Port discovery polls `/workspaces/{id}/ports`. Eligible HTTP listeners are attached
+through the existing application endpoint with `kind: forward` and a socket-bound
+listener identity. Automatic receipt keys are stable across tabs. Previously
+revoked listener identities are not automatically reattached. Collapsing preview
+keeps the iframe and its authenticated connection mounted. Visualizations render
+in the conversation rather than in a preview tab.
+
+The UI supplies `presentation: "interactive-v1"` when creating inline work or
+continuing it. The API adds chart guidance to the private instruction; the thread
+shows only the user's request. `message-content` recognizes `workbench-chart`
+fences and relative CSV/JSON links. `chart-spec` validates bounded declarative
+settings and row data. `interactive-chart` loads `chart-engine` lazily, draws SVG
+in the browser and provides exploration, table inspection, exports and drafts
+about selected rows. Agent-provided settings are never passed directly to the
+chart library. Missing values stay missing, and tooltips use rich text instead of
+HTML. The manual Visualize data action uses this same renderer.
+
+Linked data uses an immutable retained artifact when available, otherwise a
+project/work/attempt-scoped POST to `/work-items/{id}/data`. Unretained files are
+read only for the latest attempt. Private chart contents are not persisted in
+browser storage. Inline chart data stays in the private conversation record.
+
+Conversation list titles come from the first nonempty line of the saved
+request, with generated presentation instructions removed. The same title is
+used in the thread heading and list search. Saved requests use the existing
+project-scoped, digest-checked private instruction endpoint and are cached only
+while the view is mounted. Opening the list never starts a stopped worker. If
+its request is unavailable, a specification filename or unique conversation ID
+is shown instead of repeating a generic work-type label.
+
+The list shows 20 threads at a time, with an explicit Show more action. Title
+reads run in batches of four for displayed threads; searching scans all titles
+within the selected status and reports progress and incomplete results. Failed
+titles can be retried without starting a worker. Title cache keys include the
+specification digest so follow-ups refresh their label, while list invalidation
+does not reread unchanged private files. These caches also expire on unmount.
+New-activity notices only announce newly recorded events, not loading older
+messages. The message region supports keyboard scrolling and keeps the reader's
+position until they choose to return to the latest activity.
+
+Work fills the viewport below the application navigation. At 1200px and wider,
+the thread panel stays visible beside the conversation and has no collapse action.
+Its status filter uses a themed radio menu so its options remain readable in both
+themes. Project sections live in the application sidebar, independent of this
+Work-only panel. Smaller screens use the
+Threads drawer from the conversation/preview navigation row. The rail and message feed scroll independently, leaving the
+composer visible. Drafts are kept per thread (including a new thread) in the
+current project's mounted view, and are discarded when leaving that project;
+message text is never persisted to browser storage.
+
+Work status labels use the task outcome, not its stage group. Both accepted and
+closed tasks are grouped under Done, but closed work displays Closed in lists,
+thread headers, reviews and board details.
+
+Finished work can be reopened from the board. Manual Planned (`planned`) and
+In progress (`in_progress`) states allow Start task or a follow-up request but
+do not imply an active execution. Returning to Review clears the current decision
+and preserves it in `work_review_history`. The attempt and its retained outputs
+are reused until the user explicitly starts further work.

@@ -43,6 +43,8 @@ type Config struct {
 	HTTP                                               *http.Client
 }
 type Manager struct {
+	terminals        map[string]*terminalSession
+	applications     map[string]*applicationProcess
 	historyCollectMu sync.Mutex
 	historyStop      chan struct{}
 	historyT3Seen    map[string]string
@@ -187,6 +189,12 @@ func (m *Manager) Close() error {
 		close(m.historyStop)
 	}
 	m.closed = true
+	for _, terminal := range m.terminals {
+		terminal.stop()
+	}
+	for id := range m.applications {
+		m.stopApplication(id)
+	}
 	for _, c := range m.cancels {
 		c()
 	}
@@ -371,15 +379,30 @@ func (m *Manager) Activity() shared.Activity {
 	defer m.mu.Unlock()
 	return m.activityLocked()
 }
-func (m *Manager) activityLocked() shared.Activity {
+func (m *Manager) activityLocked() shared.Activity { return m.activitySnapshotLocked(false) }
+
+// Managed previews may run beside agent work, but still prevent idle shutdown.
+func (m *Manager) workActivityLocked() shared.Activity { return m.activitySnapshotLocked(true) }
+func (m *Manager) activitySnapshotLocked(allowApplications bool) shared.Activity {
 	a := shared.Activity{Known: true, LastActivity: m.lastActivity}
+	for _, terminal := range m.terminals {
+		terminal.mu.Lock()
+		if !terminal.exited {
+			a.BackgroundJobs++
+		}
+		terminal.mu.Unlock()
+	}
 	var recipes int
 	if err := m.db.QueryRow(`SELECT count(*) FROM recipe_jobs WHERE state IN ('running','cancel_requested')`).Scan(&recipes); err != nil {
 		a.Known = false
 	}
 	a.BackgroundJobs += recipes
 	var services int
-	if err := m.db.QueryRow(`SELECT count(*) FROM retained_services WHERE state='active' AND expires_at>?`, time.Now().Unix()).Scan(&services); err != nil {
+	query := `SELECT count(*) FROM retained_services WHERE state='active' AND expires_at>?`
+	if allowApplications {
+		query += ` AND id NOT IN (SELECT service_id FROM workspace_applications)`
+	}
+	if err := m.db.QueryRow(query, time.Now().Unix()).Scan(&services); err != nil {
 		a.Known = false
 	}
 	a.BackgroundJobs += services
@@ -428,6 +451,9 @@ func (m *Manager) activityLocked() shared.Activity {
 					// Zombies cannot execute or block shutdown. New containers use
 					// Docker's init process to reap orphaned native CLI descendants.
 					if processState(string(stat)) == "Z" || kernelInfrastructure(string(stat)) || kernelChild(string(stat), kernelParent) {
+						continue
+					}
+					if allowApplications && m.ownedApplicationProcess(pid, string(stat)) {
 						continue
 					}
 					if m.consoleInfrastructure(pid, string(stat)) {
@@ -484,6 +510,8 @@ func (m *Manager) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { shared.JSON(w, 200, map[string]string{"status": "ok"}) })
 	api := http.NewServeMux()
+	api.HandleFunc("POST /v1/terminals", m.createTerminal)
+	api.HandleFunc("POST /v1/terminals/{terminal}/{action}", m.terminalRoute)
 	api.HandleFunc("GET /v1/runtime-capabilities", m.runtimeCapabilities)
 	api.HandleFunc("POST /v1/matrix/start", m.startMatrix)
 	api.HandleFunc("POST /v1/matrix/stop", func(w http.ResponseWriter, r *http.Request) {
@@ -553,6 +581,9 @@ func (m *Manager) Handler() http.Handler {
 	m.registerCoordination(api)
 	api.HandleFunc("POST /v1/services/receipt", m.serviceReceipt)
 	api.HandleFunc("POST /v1/services", m.createService)
+	api.HandleFunc("GET /v1/services", m.listApplications)
+	api.HandleFunc("GET /v1/ports", m.listPorts)
+	api.HandleFunc("/v1/application-proxy/{service}/{path...}", m.proxyApplication)
 	api.HandleFunc("GET /v1/services/{id}", m.getService)
 	api.HandleFunc("POST /v1/services/{id}/revoke", m.revokeService)
 	api.HandleFunc("POST /v1/services/{id}/fetch", m.fetchService)

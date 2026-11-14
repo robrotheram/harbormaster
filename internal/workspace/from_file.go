@@ -56,7 +56,7 @@ func (m *Manager) submitFile(w http.ResponseWriter, r *http.Request) {
 	}
 	// Resolve receipts before checking activity: recovery of this task's lost
 	// acknowledgement must succeed while that same task is still executing.
-	activity := m.activityLocked()
+	activity := m.workActivityLocked()
 	if !activity.Known || activity.ActiveRuns > 0 || activity.BackgroundJobs > 0 {
 		shared.Error(w, 409, "WORKSPACE_BUSY")
 		return

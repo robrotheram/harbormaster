@@ -1,27 +1,21 @@
 import {
-  Link,
   Outlet,
   createRootRoute,
   createRoute,
   createRouter,
 } from "@tanstack/react-router";
 import { ProjectShell } from "./shell";
+import { PageAccessibility } from "./page-accessibility";
+import { RouteRecovery } from "./route-recovery";
 const rootRoute = createRootRoute({
-  component: () => <Outlet />,
-  notFoundComponent: () => (
-    <div className="standalone">
-      <h1>Page unavailable</h1>
-      <p>Choose a project to return to the workbench.</p>
-      <Link to="/">Open workbench</Link>
-    </div>
+  component: () => (
+    <>
+      <PageAccessibility />
+      <Outlet />
+    </>
   ),
-  errorComponent: () => (
-    <div className="standalone">
-      <h1>The workbench could not load</h1>
-      <p>Reload to retrieve the current project state.</p>
-      <a href="/app/">Reload workbench</a>
-    </div>
-  ),
+  notFoundComponent: () => <RouteRecovery missing />,
+  errorComponent: () => <RouteRecovery />,
 });
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -31,6 +25,9 @@ const indexRoute = createRoute({
 const projectRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/projects/$projectId/$section",
+  validateSearch: (search: Record<string, unknown>): { work?: string } => ({
+    work: typeof search.work === "string" ? search.work : undefined,
+  }),
   component: () => {
     const { projectId, section } = projectRoute.useParams();
     return <ProjectShell projectID={projectId} section={section} />;
@@ -41,11 +38,35 @@ const connectionsRoute = createRoute({
   path: "/connection-profiles",
   component: () => <ProjectShell globalSettings />,
 });
+const repositoriesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/repositories",
+  component: () => <ProjectShell globalPage="repositories" />,
+});
+const infrastructureRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/infrastructure",
+  component: () => <ProjectShell globalPage="infrastructure" />,
+});
+const servicesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/platform-services",
+  component: () => <ProjectShell globalPage="services" />,
+});
+const helpRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/help",
+  component: () => <ProjectShell globalPage="help" />,
+});
 export const router = createRouter({
   routeTree: rootRoute.addChildren([
     indexRoute,
     projectRoute,
     connectionsRoute,
+    repositoriesRoute,
+    infrastructureRoute,
+    servicesRoute,
+    helpRoute,
   ]),
   basepath: "/app",
 });

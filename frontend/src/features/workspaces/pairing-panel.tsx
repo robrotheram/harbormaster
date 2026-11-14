@@ -17,10 +17,11 @@ export function PairingPanel({
   onClose: () => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
   return (
     <Modal title="Connect T3 desktop" onClose={onClose}>
       <p className="form-note">
-        Connect your desktop to {workspace.name || "this workspace"} on this
+        Connect your desktop to {workspace.name || "this worker"} on this
         computer. The same project files and conversations will appear.
       </p>
       <ol className="steps">
@@ -46,6 +47,12 @@ export function PairingPanel({
         Expires {date(value.expires_at)}. Keep this link private. It works on
         the same computer as Docker.
       </p>
+      {copyFailed && (
+        <p role="alert" className="text-sm text-destructive">
+          The browser could not copy the link. Select the pairing URL above and
+          copy it manually.
+        </p>
+      )}
       <div className="form-actions">
         <Button variant="outline" onClick={onClose}>
           Close
@@ -60,13 +67,14 @@ export function PairingPanel({
         </a>
         <Button
           variant="default"
-
           onClick={async () => {
+            setCopyFailed(false);
             try {
               await navigator.clipboard.writeText(value.pairing_url);
               setCopied(true);
             } catch {
               setCopied(false);
+              setCopyFailed(true);
             }
           }}
         >

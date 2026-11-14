@@ -1,12 +1,18 @@
 import { useRef, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/native-select";
-import { ErrorNotice } from "@/shared/components";
-import { request } from "@/shared/http";
+import { ErrorNotice, State, Modal, Observation } from "@/shared/components";
+import { APIError, request } from "@/shared/http";
 import { workspacesApi, workspaceOptions } from "@/features/workspaces/api";
+import { bytes } from "@/shared/format";
 import type { Project } from "@/shared/types";
 
+const recipeNames: Record<string, string> = {
+  "research-v1": "Research",
+  "gogallery-v1": "GoGallery",
+};
 type Job = { id: string; template: string; state: string; error_code: string };
 type Artifact = {
   id: string;
@@ -26,7 +32,7 @@ function FactoryProject({ project }: { project: Project }) {
   const jobDelivery = useRef<string | undefined>(undefined);
   const [previewURL, setPreviewURL] = useState("");
   const workspaces = useQuery(workspaceOptions(project.id));
-  const [output, setOutput] = useState("");
+  const [output, setOutput] = useState<{ name: string; content: string }>();
   const [workspace, setWorkspace] = useState("");
   const [template, setTemplate] = useState("research-v1");
   const [retained, setRetained] = useState<Retained>();
@@ -76,7 +82,23 @@ function FactoryProject({ project }: { project: Project }) {
         const data = await request<{ content: string }>(
           base + `/artifacts/${id}/content`,
         );
-        setOutput(atob(data.content));
+        try {
+          const content = new TextDecoder("utf-8", { fatal: true }).decode(
+            Uint8Array.from(atob(data.content), (character) =>
+              character.charCodeAt(0),
+            ),
+          );
+          setOutput({
+            name:
+              evidence.data?.items.find((item) => item.id === id)
+                ?.source_path || "Saved output",
+            content,
+          });
+        } catch {
+          throw new Error(
+            "This file is not readable UTF-8 text. Inspect the original file in the worker instead.",
+          );
+        }
       }
       if (operation === "start") {
         jobDelivery.current ??= crypto.randomUUID();
@@ -120,15 +142,30 @@ function FactoryProject({ project }: { project: Project }) {
         if (previewTab.current)
           previewTab.current.location.replace(result.preview_url);
       }
-      if ((operation === "revoke" || operation === "release") && retained)
+      if ((operation === "revoke" || operation === "release") && retained) {
         await request(
           `/workspaces/${retained.workspace}/services/${retained.service.id}/${operation}`,
           {},
         );
+        setPreviewURL("");
+        if (operation === "release") {
+          setRetained(undefined);
+          setPromotion(undefined);
+        }
+      }
       await client.invalidateQueries({ queryKey: ["factory", project.id] });
+      if (["retain", "release"].includes(operation)) await workspaces.refetch();
+    },
+    onError: (_error, variables) => {
+      if (variables.operation === "open") {
+        previewTab.current?.close();
+        previewTab.current = null;
+        setPreviewURL("");
+      }
     },
   });
   const run = (operation: string, id?: string) => {
+    if (operation === "read") setOutput(undefined);
     if (operation === "open") {
       previewTab.current = window.open("about:blank", "_blank");
       if (previewTab.current) previewTab.current.opener = null;
@@ -136,39 +173,58 @@ function FactoryProject({ project }: { project: Project }) {
     action.mutate({ operation, id });
   };
   const service = status.data || retained?.service;
+  const serviceKnown = status.isSuccess && !status.isError;
+  const selectedWorker = workspaces.data?.find(
+    (worker) => worker.id === workspace,
+  );
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-semibold">Jobs and previews</h2>
-        <p className="text-sm text-muted-foreground">
-          Run an approved recipe, inspect archived evidence, and retain a
-          gallery in its own environment.
-        </p>
+    <div className="space-y-4">
+      <div className="page-title">
+        <div>
+          <h1>Outputs & previews</h1>
+        </div>
       </div>
-      <div className="flex flex-wrap items-end gap-3">
-        <label>
-          Workspace
+      {workspaces.isError && (
+        <ErrorNotice
+          error={workspaces.error}
+          onRetry={() => void workspaces.refetch()}
+          retrying={workspaces.isFetching}
+        />
+      )}
+      <div className="output-controls">
+        <label className="min-w-0 flex-[2_1_220px] text-xs">
+          Worker
           <NativeSelect
-            aria-label="Factory workspace"
+            size="sm"
+            className="text-xs"
+            aria-label="Worker"
+            disabled={
+              action.isPending || workspaces.isPending || workspaces.isError
+            }
             value={workspace}
             onChange={(e) => {
               setWorkspace(e.target.value);
+              setOutput(undefined);
+              action.reset();
               jobDelivery.current = undefined;
               setPromotion(undefined);
             }}
           >
-            <option value="">Choose workspace</option>
+            <option value="">Choose a worker</option>
             {workspaces.data?.map((w) => (
               <option key={w.id} value={w.id}>
-                {w.name}
+                {w.name || w.id}
               </option>
             ))}
           </NativeSelect>
         </label>
-        <label>
+        <label className="min-w-0 flex-[1_1_140px] text-xs">
           Recipe
           <NativeSelect
+            size="sm"
+            className="text-xs"
             aria-label="Recipe"
+            disabled={action.isPending}
             value={template}
             onChange={(e) => {
               setTemplate(e.target.value);
@@ -180,23 +236,50 @@ function FactoryProject({ project }: { project: Project }) {
           </NativeSelect>
         </label>
         <Button
-          disabled={!workspace || action.isPending}
+          disabled={!selectedWorker || workspaces.isError || action.isPending}
           onClick={() => run("start")}
         >
-          Start job
+          {action.isPending && action.variables?.operation === "start"
+            ? "Starting job…"
+            : "Start job"}
         </Button>
       </div>
+      <p className="text-xs leading-5 text-muted-foreground">
+        A recipe runs a predefined task and saves its output files. Starting a
+        job starts the selected worker if needed. For custom instructions and
+        ongoing changes,{" "}
+        <Link
+          className="underline"
+          to="/projects/$projectId/$section"
+          params={{ projectId: project.id, section: "work" }}
+        >
+          open Work
+        </Link>
+        .
+      </p>
       {action.isError && <ErrorNotice error={action.error} />}
-      {jobs.isError && <ErrorNotice error={jobs.error} />}
-      <section className="space-y-3">
-        <h3 className="font-semibold">Retained environments</h3>
+      <section className="output-section">
+        <h2>Saved previews</h2>
+        {workspaces.isPending ? (
+          <p role="status">Loading saved previews…</p>
+        ) : !workspaces.isError &&
+          !workspaces.data?.some((w) => w.retained_preview) ? (
+          <p>
+            No saved previews yet. Run the GoGallery recipe, then choose Retain
+            gallery for 1 hour on its saved archive. This creates a separate
+            worker for the preview.
+          </p>
+        ) : null}
         {workspaces.data
           ?.filter((w) => w.retained_preview)
           .map((w) => (
             <Button
               key={w.id}
               variant="outline"
-              onClick={() =>
+              disabled={action.isPending}
+              onClick={() => {
+                setPreviewURL("");
+                action.reset();
                 setRetained({
                   workspace: w.id,
                   service: {
@@ -204,58 +287,106 @@ function FactoryProject({ project }: { project: Project }) {
                     state: "unknown",
                     expires_at: w.retained_preview!.expires_at,
                   },
-                })
-              }
+                });
+              }}
             >
               {w.name} · {w.state}
             </Button>
           ))}
       </section>
       {output && (
-        <pre className="overflow-auto whitespace-pre-wrap border p-4">
-          {output}
-        </pre>
+        <Modal title="Saved output" onClose={() => setOutput(undefined)} wide>
+          <p className="break-all text-sm text-muted-foreground">
+            {output.name}
+          </p>
+          <pre className="max-h-[60dvh] overflow-auto whitespace-pre-wrap break-words rounded-md border p-4 text-xs leading-6">
+            {output.content}
+          </pre>
+        </Modal>
       )}
-      <section className="space-y-3">
-        <h3 className="font-semibold">Recipe jobs</h3>
+      <section className="output-section">
+        <h2>Recipe jobs</h2>
+        {jobs.isError && (
+          <ErrorNotice
+            error={jobs.error}
+            onRetry={() => void jobs.refetch()}
+            retrying={jobs.isFetching}
+          />
+        )}
+        {!workspace ? (
+          <p>Choose a worker above to see its jobs and outputs.</p>
+        ) : jobs.isPending ? (
+          <p role="status">Loading jobs…</p>
+        ) : !jobs.isError && !jobs.data?.items.length ? (
+          <p>
+            No recipe jobs on this worker yet. Choose a recipe and select Start
+            job.
+          </p>
+        ) : null}
         {jobs.data?.items.map((j) => (
           <div
             key={j.id}
             className="flex flex-wrap items-center justify-between gap-3 border-b py-3"
           >
-            <div>
-              <p>
-                {j.template} · {j.state}
+            <div className="min-w-0">
+              <p className="flex flex-wrap items-center gap-2 text-xs">
+                {recipeNames[j.template] || j.template}{" "}
+                <State value={j.state} />
               </p>
-              <p className="text-sm text-muted-foreground">
-                {j.id} {j.error_code}
+              <p className="mt-1 break-all text-[11px] text-muted-foreground">
+                Job {j.id}
               </p>
             </div>
+            {j.error_code && (
+              <ErrorNotice error={new APIError(j.error_code, 0)} />
+            )}
             {["running", "cancel_requested"].includes(j.state) && (
               <Button
                 variant="outline"
-                disabled={action.isPending}
+                disabled={action.isPending || j.state === "cancel_requested"}
                 onClick={() => run("cancel", j.id)}
               >
-                Cancel job
+                {j.state === "cancel_requested"
+                  ? "Cancellation requested"
+                  : "Cancel job"}
               </Button>
             )}
           </div>
         ))}
       </section>
-      <section className="space-y-3">
-        <h3 className="font-semibold">Archived evidence</h3>
-        {evidence.isError && <ErrorNotice error={evidence.error} />}{" "}
+      <section className="output-section">
+        <h2>Saved output files</h2>
+        {!workspace ? (
+          <p>Saved outputs from the selected worker will appear here.</p>
+        ) : evidence.isPending ? (
+          <p role="status">Loading saved files…</p>
+        ) : !evidence.isError && !evidence.data?.items.length ? (
+          <p>
+            No saved files yet. Completed recipe jobs can produce reports and
+            archives to inspect here.
+          </p>
+        ) : null}
+        {evidence.isError && (
+          <ErrorNotice
+            error={evidence.error}
+            onRetry={() => void evidence.refetch()}
+            retrying={evidence.isFetching}
+          />
+        )}{" "}
         {evidence.data?.items.map((a) => (
           <div
             key={a.id}
             className="flex flex-wrap items-center justify-between gap-3 border-b py-3"
           >
-            <div>
-              <p>{a.source_path}</p>
+            <div className="min-w-0">
+              <p className="break-all text-xs">{a.source_path}</p>
               <p className="break-all text-xs text-muted-foreground">
-                {a.size_bytes} bytes · SHA-256 {a.sha256}
+                {bytes(a.size_bytes)}
               </p>
+              <details className="mt-1 text-xs text-muted-foreground">
+                <summary className="cursor-pointer">File verification</summary>
+                <p className="mt-1 break-all font-mono">SHA-256 {a.sha256}</p>
+              </details>
             </div>
             {!a.source_path.endsWith(".tar") && a.size_bytes <= 1048576 && (
               <Button
@@ -277,17 +408,18 @@ function FactoryProject({ project }: { project: Project }) {
           </div>
         ))}
       </section>
-      {previewURL && (
+      {previewURL && serviceKnown && service?.state === "active" && (
         <a href={previewURL} target="_blank" rel="noreferrer noopener">
           Open retained preview in a new tab
         </a>
       )}
       {retained && (
-        <section className="space-y-3">
-          <h3 className="font-semibold">Retained preview</h3>
-          {service?.state !== "active" && (
+        <section className="output-section">
+          <h2>Retained preview</h2>
+          {serviceKnown && service?.state !== "active" && (
             <Button
               variant="outline"
+              disabled={action.isPending}
               onClick={() => {
                 setPromotion(undefined);
                 setRetained(undefined);
@@ -297,31 +429,66 @@ function FactoryProject({ project }: { project: Project }) {
               Prepare another preview
             </Button>
           )}
+          <div className="flex flex-wrap items-center gap-2">
+            <State
+              value={
+                status.isError
+                  ? "unavailable"
+                  : status.isPending
+                    ? "checking"
+                    : service?.state || "unknown"
+              }
+            />
+            <Observation
+              at={status.dataUpdatedAt}
+              fetching={status.isFetching}
+              error={status.isError}
+            />
+          </div>
+          {serviceKnown && service && (
+            <p>
+              Expires {new Date(service.expires_at * 1000).toLocaleString()}
+            </p>
+          )}
           <p>
-            {service?.state} · expires{" "}
-            {service && new Date(service.expires_at * 1000).toLocaleString()}
+            Revoke preview ends access. Release environment stops its compute
+            after access has ended; it does not delete the worker.
           </p>
-          <p className="text-sm text-muted-foreground">
+          <p className="break-all text-xs text-muted-foreground">
             Environment {retained.workspace}
           </p>
-          {status.isError && <ErrorNotice error={status.error} />}
-          <div className="flex gap-3">
+          {status.isError && (
+            <ErrorNotice
+              error={status.error}
+              onRetry={() => void status.refetch()}
+              retrying={status.isFetching}
+            />
+          )}
+          <div className="flex flex-wrap gap-3">
             <Button
-              disabled={action.isPending || service?.state !== "active"}
+              disabled={
+                action.isPending || !serviceKnown || service?.state !== "active"
+              }
               onClick={() => run("open")}
             >
               Open isolated preview
             </Button>
             <Button
               variant="outline"
-              disabled={action.isPending || service?.state !== "active"}
+              disabled={
+                action.isPending || !serviceKnown || service?.state !== "active"
+              }
               onClick={() => run("revoke")}
             >
               Revoke preview
             </Button>
             <Button
               variant="outline"
-              disabled={action.isPending || service?.state === "active"}
+              disabled={
+                action.isPending ||
+                !serviceKnown ||
+                !["revoked", "expired"].includes(service?.state || "")
+              }
               onClick={() => run("release")}
             >
               Release environment

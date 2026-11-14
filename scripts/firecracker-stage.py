@@ -50,6 +50,10 @@ def main():
     env = dict(os.environ, CGO_ENABLED='0')
     for pkg, output in [('sandbox-init', 'sandbox-init'), ('workspace', 'service'), ('firecracker-controller', 'controller')]:
         run('go', 'build', '-trimpath', '-o', str(STAGE / output), './cmd/' + pkg, env=env)
+    shutil.copyfile(ROOT / 'scripts/workbench-desktop.sh', STAGE / 'workbench-desktop')
+    (STAGE / 'workbench-desktop').chmod(0o755)
+    shutil.copyfile(ROOT / 'scripts/workbench-preview.py', STAGE / 'workbench-preview')
+    (STAGE / 'workbench-preview').chmod(0o755)
     integration = json.loads((ROOT / 'deploy/hermes/runtime.json').read_text())
     shutil.copyfile(ROOT / 'deploy/firecracker/Dockerfile', STAGE / 'Dockerfile')
     shutil.copyfile(ROOT / 'scripts/hermes-runner.py', STAGE / 'hermes-runner')

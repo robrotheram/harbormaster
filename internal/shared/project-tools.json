@@ -18,5 +18,8 @@
   "factory_preview_status",
   "factory_preview_revoke",
   "factory_preview_release",
-  "factory_evidence_read"
+  "factory_evidence_read",
+  "board_list",
+  "board_create",
+  "board_update"
 ]

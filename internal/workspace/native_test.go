@@ -16,7 +16,9 @@ func TestNativeRunnerUsesOnlyWorkspaceGrant(t *testing.T) {
 		// upstream call is made; live interoperability is a separate integration check.
 		script := `#!/bin/sh
 test -z "$OPENAI_API_KEY$ANTHROPIC_API_KEY$VAULT_TOKEN$WORKSPACE_TOKEN" || exit 11
-test "$(cat)" = 'implement sample' || exit 12
+input=$(cat)
+case "$input" in *workbench-preview*'implement sample') ;; *) exit 12;; esac
+test "$WORKBENCH_WORKSPACE_GRANT" = workspace-only-grant || exit 15
 printf 'native file\n' > native.txt
 if [ -n "$WORKBENCH_INFERENCE_GRANT" ]; then
   test "$WORKBENCH_INFERENCE_GRANT" = workspace-only-grant || exit 13

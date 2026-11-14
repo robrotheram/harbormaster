@@ -1,0 +1,85 @@
+package dashboard
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"io"
+	"net"
+	"net/http"
+	"net/http/httputil"
+	"net/url"
+	"strconv"
+	"strings"
+)
+
+func previewParents(host string) string {
+	_, port, _ := net.SplitHostPort(host)
+	suffix := ""
+	if port != "" {
+		suffix = ":" + port
+	}
+	return "http://127.0.0.1" + suffix + " http://localhost" + suffix
+}
+func previewPolicy(host string) string {
+	return "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self' ws://" + host + "; font-src 'self' data:; media-src 'self' blob:; base-uri 'self'; form-action 'self'; frame-ancestors " + previewParents(host) + "; worker-src 'self' blob:"
+}
+func (p *previewIngress) live(w http.ResponseWriter, r *http.Request, binding previewBinding) {
+	// ReverseProxy adds response headers. Replace the connect-page policy, rather
+	// than applying two CSPs and accidentally disabling the application's scripts.
+	w.Header().Del("Content-Security-Policy")
+	target, _ := url.Parse(p.origin)
+	proxy := httputil.ReverseProxy{Transport: p.client.Transport, FlushInterval: -1, Rewrite: func(pr *httputil.ProxyRequest) {
+		pr.Out.URL.Scheme = target.Scheme
+		pr.Out.URL.Host = target.Host
+		pr.Out.URL.Path = "/v1/workspaces/" + binding.Workspace + "/application-proxy/" + binding.Service + r.URL.Path
+		pr.Out.URL.RawPath = ""
+		pr.Out.Header.Set("Authorization", "Bearer "+p.token)
+		pr.Out.Header.Del("Accept-Encoding")
+	}, ModifyResponse: func(res *http.Response) error {
+		res.Header.Set("Content-Security-Policy", previewPolicy(r.Host))
+		res.Header.Del("X-Frame-Options")
+		res.Header.Set("Cache-Control", "no-store")
+		res.Header.Set("Referrer-Policy", "no-referrer")
+		// Inspection runs on the isolated preview origin, and only accepts activation
+		// from the exact workbench parent window. Selected text becomes a draft.
+		if binding.Embedded && strings.HasPrefix(res.Header.Get("Content-Type"), "text/html") && res.Header.Get("Content-Encoding") == "" && res.StatusCode == 200 {
+			data, err := io.ReadAll(io.LimitReader(res.Body, (2<<20)+1))
+			if err != nil {
+				return err
+			}
+			if len(data) > 2<<20 {
+				res.Body = struct {
+					io.Reader
+					io.Closer
+				}{io.MultiReader(bytes.NewReader(data), res.Body), res.Body}
+			} else {
+				res.Body.Close()
+				parent, _ := json.Marshal(binding.ParentOrigin)
+				script := `<script>(()=>{const origin=` + string(parent) + `;let nonce='',selecting=false;window.addEventListener('message',e=>{if(e.source!==parent||e.origin!==origin||e.data?.type!=='workbench-select')return;nonce=String(e.data.nonce||'');selecting=!!e.data.enabled;document.documentElement.style.cursor=selecting?'crosshair':''});document.addEventListener('click',e=>{if(!selecting)return;e.preventDefault();e.stopImmediatePropagation();selecting=false;document.documentElement.style.cursor='';const el=e.target;let selector=el.id?'#'+CSS.escape(el.id):el.tagName.toLowerCase();parent.postMessage({type:'workbench-selection',nonce,selector,text:(el.innerText||el.getAttribute('aria-label')||'').slice(0,300),path:location.pathname},origin)},true)})()</script>`
+				data = append(data, []byte(script)...)
+				res.Body = io.NopCloser(bytes.NewReader(data))
+				res.ContentLength = int64(len(data))
+				res.Header.Set("Content-Length", strconv.Itoa(len(data)))
+			}
+		}
+		if binding.Embedded {
+			cookies := res.Cookies()
+			res.Header.Del("Set-Cookie")
+			for _, cookie := range cookies {
+				cookie.Domain = ""
+				cookie.Secure = true
+				cookie.SameSite = http.SameSiteNoneMode
+				cookie.Partitioned = true
+				res.Header.Add("Set-Cookie", cookie.String())
+			}
+		}
+		return nil
+	}, ErrorHandler: func(w http.ResponseWriter, r *http.Request, _ error) {
+		writeConnectionError(w, r, 503, "PREVIEW_UNAVAILABLE", "preview")
+	}}
+	// Expiry closes long-running upgraded connections as well as ordinary requests.
+	ctx, cancel := context.WithDeadline(r.Context(), binding.Expiry)
+	defer cancel()
+	proxy.ServeHTTP(w, r.WithContext(ctx))
+}

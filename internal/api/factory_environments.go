@@ -7,11 +7,13 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 )
 
 // Factory operations use ordinary project authentication and workspace lifecycle.
 // They are intentionally separate from work-attempt projection/dispatch.
 func (s *Server) registerFactoryEnvironments(mux *http.ServeMux) {
+	s.registerApplications(mux)
 	for _, resource := range []string{"recipe-jobs", "artifacts"} {
 		mux.HandleFunc("GET /v1/workspaces/{id}/"+resource, func(w http.ResponseWriter, r *http.Request) {
 			ws, ok := s.workspace(w, r)
@@ -70,7 +72,7 @@ func (s *Server) registerFactoryEnvironments(mux *http.ServeMux) {
 			Timeout  int    `json:"timeout_seconds"`
 			Resource string `json:"resource_class"`
 		}
-		if !shared.Decode(w, r, &in, 2048) {
+		if !shared.Decode(w, r, &in, 2<<20) {
 			return
 		}
 		ws, ok := s.workspace(w, r)
@@ -134,7 +136,7 @@ func (s *Server) registerFactoryEnvironments(mux *http.ServeMux) {
 			Artifact string `json:"artifact_id"`
 			TTL      int    `json:"ttl_seconds"`
 		}
-		if !shared.Decode(w, r, &in, 2048) {
+		if !shared.Decode(w, r, &in, 2<<20) {
 			return
 		}
 		coding, ok := s.workspace(w, r)
@@ -234,12 +236,16 @@ func (s *Server) registerFactoryEnvironments(mux *http.ServeMux) {
 			var b []byte
 			if route.suffix == "/fetch" {
 				var in struct {
-					Path string `json:"path"`
+					Path        string `json:"path"`
+					Method      string `json:"method,omitempty"`
+					Query       string `json:"query,omitempty"`
+					ContentType string `json:"content_type,omitempty"`
+					Body        []byte `json:"body,omitempty"`
 				}
-				if !shared.Decode(w, r, &in, 2048) {
+				if !shared.Decode(w, r, &in, 2<<20) {
 					return
 				}
-				if !shared.ValidProjectFile(in.Path) {
+				if in.Path != "" && !shared.ValidProjectFile(strings.TrimSuffix(in.Path, "/")) {
 					shared.Error(w, 400, "INVALID_REQUEST")
 					return
 				}

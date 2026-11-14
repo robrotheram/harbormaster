@@ -48,3 +48,20 @@ func TestFactoryAgentPathsAndResponseBounds(t *testing.T) {
 		t.Fatal("ordinary response budget widened")
 	}
 }
+
+func TestTerminalRoutesAreExplicit(t *testing.T) {
+	for _, tt := range []struct {
+		method, path string
+		valid        bool
+	}{
+		{"POST", "/v1/terminals", true}, {"POST", "/v1/terminals/terminal_one/exchange", true}, {"POST", "/v1/terminals/terminal_one/close", true},
+		{"GET", "/v1/terminals", false}, {"POST", "/v1/terminals/terminal_one/exec", false}, {"POST", "/v1/terminals/../exchange", false}, {"POST", "/v1/terminals/terminal_one/exchange/more", false},
+	} {
+		if AllowedAgentPath(tt.method, tt.path) != tt.valid {
+			t.Fatal(tt)
+		}
+	}
+	if _, err := AgentQuery("POST", "/v1/terminals", "command=id"); err == nil {
+		t.Fatal("terminal query accepted")
+	}
+}

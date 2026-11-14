@@ -15,6 +15,7 @@ import (
 func (s *Server) registerWork(mux *http.ServeMux) {
 	repo := orchestration.Repository{DB: s.Store.DB}
 	s.registerWorkExecution(mux, repo)
+	s.registerWorkConversation(mux, repo)
 	mux.HandleFunc("GET /v1/work-items", func(w http.ResponseWriter, r *http.Request) {
 		project, ok := s.ProjectForRequest(w, r, r.URL.Query().Get("project_id"))
 		if !ok {
@@ -83,6 +84,7 @@ func (s *Server) registerWork(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/work-items", func(w http.ResponseWriter, r *http.Request) {
 		var input struct {
 			Instruction   *string  `json:"instruction,omitempty"`
+			Presentation  string   `json:"presentation,omitempty"`
 			ArtifactPaths []string `json:"artifact_paths"`
 			ProjectID     string   `json:"project_id"`
 			WorkspaceID   string   `json:"workspace_id"`
@@ -94,7 +96,7 @@ func (s *Server) registerWork(mux *http.ServeMux) {
 		if !shared.Decode(w, r, &input, 400000) || !s.AuthorizeProject(w, r, input.ProjectID) {
 			return
 		}
-		if !shared.ValidKey(input.Key) || !shared.ValidID(input.ProjectID) {
+		if !shared.ValidKey(input.Key) || !shared.ValidID(input.ProjectID) || (input.Presentation != "" && input.Presentation != "interactive-v1") {
 			shared.Error(w, 400, "INVALID_REQUEST")
 			return
 		}
@@ -170,7 +172,15 @@ func (s *Server) registerWork(mux *http.ServeMux) {
 		if input.Instruction != nil {
 			hash := sha256.Sum256([]byte(input.ProjectID + "\x00" + input.Key))
 			input.Path = "work-requests/" + hex.EncodeToString(hash[:]) + ".md"
-			digest := sha256.Sum256([]byte(*input.Instruction))
+			instruction := *input.Instruction
+			if input.Presentation == "interactive-v1" {
+				instruction = "Workbench presentation: interactive-v1.\n" + visualizationGuidance + "\n\nCurrent request:\n" + instruction
+			}
+			if len(instruction) > 65536 {
+				shared.Error(w, 400, "INVALID_REQUEST")
+				return
+			}
+			digest := sha256.Sum256([]byte(instruction))
 			input.Digest = hex.EncodeToString(digest[:])
 			release := s.operations.Lock(ws.ID)
 			defer release()
@@ -178,7 +188,7 @@ func (s *Server) registerWork(mux *http.ServeMux) {
 				apiError(w, err)
 				return
 			}
-			body, _ := json.Marshal(shared.FileHandoff{Path: input.Path, Content: []byte(*input.Instruction)})
+			body, _ := json.Marshal(shared.FileHandoff{Path: input.Path, Content: []byte(instruction)})
 			status, _, err := s.Runtime.Agent(r.Context(), ws.ID, "POST", "/v1/files/write-new", body)
 			if err != nil {
 				shared.Error(w, 503, "WORKSPACE_UNAVAILABLE")

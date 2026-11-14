@@ -62,6 +62,7 @@ export interface AgentHome {
   created_at: string;
 }
 export interface Schedule {
+  revision?: number;
   id: string;
   project_id: string;
   workspace_id: string;
@@ -95,12 +96,12 @@ export interface Pairing {
   expires_at: string;
 }
 export type Section =
+  | "board"
+  | "reviews"
   | "factory"
   | "work"
   | "workspaces"
   | "homes"
-  | "schedules"
-  | "runs"
   | "settings"
   | "hermes"
   | "overview"

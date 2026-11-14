@@ -192,15 +192,8 @@ func (s *Service) start(ctx context.Context, w *shared.Workspace, opened bool) e
 			if err := protocol.CheckResources(&requested, c.Resources); err != nil {
 				return err
 			}
-			supported := false
-			for _, mode := range c.NetworkModes {
-				if mode == w.EffectiveConnections().Mode {
-					supported = true
-					break
-				}
-			}
-			if !supported {
-				return errors.New("NETWORK_POLICY_UNAVAILABLE")
+			if err := checkNetwork(*w, c); err != nil {
+				return err
 			}
 		}
 	}
@@ -212,7 +205,7 @@ func (s *Service) start(ctx context.Context, w *shared.Workspace, opened bool) e
 	}
 	return s.startReserved(ctx, w, hermesModel, hermesMatrix)
 }
-func (s *Service) reserve(ctx context.Context, w *shared.Workspace) error {
+func (s *Service) checkQuota(ctx context.Context, w *shared.Workspace) error {
 	all, e := s.Store.Workspaces(ctx)
 	if e != nil {
 		return e
@@ -230,12 +223,15 @@ func (s *Service) reserve(ctx context.Context, w *shared.Workspace) error {
 	if count >= s.Config.MaxRunning || cpu+w.CPULimit > s.Config.CPUQuota || mem+w.MemoryLimitBytes > s.Config.MemoryQuota {
 		return errors.New("QUOTA_EXCEEDED")
 	}
+	return nil
+}
+func (s *Service) reserve(ctx context.Context, w *shared.Workspace) error {
+	if err := s.checkQuota(ctx, w); err != nil {
+		return err
+	}
 	w.State = "STARTING"
 	w.UpdatedAt = s.Now()
-	if e = s.Store.Save(ctx, *w); e != nil {
-		return e
-	}
-	return nil
+	return s.Store.Save(ctx, *w)
 }
 func (s *Service) startReserved(ctx context.Context, w *shared.Workspace, hermesModel string, hermesMatrix *shared.HermesMatrix) error {
 	var e error

@@ -114,6 +114,7 @@ it("submits a selected inline instruction without a pre-existing worker", async 
   const [, init] = vi.mocked(fetch).mock.calls[0];
   expect(JSON.parse(init!.body as string)).toEqual({
     ...payload,
+    presentation: "interactive-v1",
     idempotency_key: "delivery",
   });
 });

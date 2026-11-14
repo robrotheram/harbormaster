@@ -9,10 +9,12 @@ export default defineConfig({
   base: "/app/",
   resolve: { alias: { "@": new URL("./src", import.meta.url).pathname } },
   plugins: [react(), tailwindcss()],
-  build: { outDir: "dist", sourcemap: false },
+  // Keep small fonts as same-origin files; production CSP disallows data: fonts.
+  build: { outDir: "dist", sourcemap: false, assetsInlineLimit: 0 },
   server: {
     // Preserve the browser Host so the trusted ingress can enforce matching Origin.
     proxy: {
+      "/auth": { target: proxyTarget, changeOrigin: false },
       "/ui-api": { target: proxyTarget, changeOrigin: false },
       "/dashboard-api": { target: proxyTarget, changeOrigin: false },
     },

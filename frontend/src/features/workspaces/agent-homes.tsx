@@ -24,32 +24,50 @@ export function AgentHomes({ project }: { project: Project }) {
       <div className="page-title">
         <div>
           <h1>Agent homes</h1>
-          <p>
-            Persistent identities and private state, independent of running
-            compute.
-          </p>
         </div>
       </div>
       <div className="list-toolbar">
-        <span>{homes.data?.length ?? "—"} agent homes</span>
+        <span>
+          {homes.data?.length ?? "—"} agent{" "}
+          {homes.data?.length === 1 ? "home" : "homes"}
+        </span>
         <Observation
           at={homes.dataUpdatedAt}
           fetching={homes.isFetching}
           error={homes.isError}
         />
       </div>
-      {homes.isError && <ErrorNotice error={homes.error} />}
+      {homes.isError && (
+        <ErrorNotice
+          error={homes.error}
+          onRetry={() => void homes.refetch()}
+          retrying={homes.isFetching}
+        />
+      )}
+      {workspaces.isError && !!homes.data?.length && (
+        <div>
+          <p className="mb-2 text-sm text-muted-foreground">
+            Worker details are unavailable. Home records remain available below,
+            using the last available names or worker IDs.
+          </p>
+          <ErrorNotice
+            error={workspaces.error}
+            onRetry={() => void workspaces.refetch()}
+            retrying={workspaces.isFetching}
+          />
+        </div>
+      )}
       {homes.isPending ? (
         <div className="loading" role="status">
           Loading agent identities…
         </div>
       ) : homes.data?.length ? (
-        <div className="table-scroll">
+        <div className="table-scroll record-table">
           <table>
             <thead>
               <tr>
-                <th>Home</th>
-                <th>Workspace</th>
+                <th>Worker</th>
+                <th>Home ID</th>
                 <th>Agent</th>
                 <th>Created</th>
               </tr>
@@ -57,38 +75,37 @@ export function AgentHomes({ project }: { project: Project }) {
             <tbody>
               {homes.data.map((home) => (
                 <tr key={home.id}>
-                  <td>
+                  <td data-label="Worker">
                     <Fingerprint className="mr-2 inline size-3.5 text-muted-foreground" />
-                    <span className="identifier prominent">{home.id}</span>
-                  </td>
-                  <td>
                     {workspaces.data?.find((w) => w.id === home.workspace_id)
                       ?.name || home.workspace_id}
                   </td>
-                  <td>
+                  <td data-label="Home ID">
+                    <span className="identifier">{home.id}</span>
+                  </td>
+                  <td data-label="Agent">
                     {home.kind === "t3" ? "T3 with Codex" : label(home.kind)}
                   </td>
-                  <td>{date(home.created_at)}</td>
+                  <td data-label="Created">{date(home.created_at)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       ) : homes.data ? (
-        <Empty title="Homes are created with workspaces">
-          Create a workspace to give its agent a persistent home in this
-          project.
+        <Empty title="Homes are created with workers">
+          Create a worker to give its agent a persistent home in this project.
         </Empty>
       ) : null}
-      <div className="explanation">
-        <h2>Private by default</h2>
+      <details className="page-help">
+        <summary>How private agent homes work</summary>
         <p>
-          A home belongs to one workspace in {project.name}. Its conversations,
-          memory, credentials and tool state stay separate. Branch workspaces
+          A home belongs to one worker in {project.name}. Its conversations,
+          memory, credentials and tool state stay separate. Branched workers
           inherit project files through an explicit copy and receive their own
           home.
         </p>
-      </div>
+      </details>
     </>
   );
 }

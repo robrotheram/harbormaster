@@ -459,3 +459,7 @@ func (k *Kubernetes) Desktop(w http.ResponseWriter, r *http.Request, id, path st
 func (k *Kubernetes) hermesEnabled() bool {
 	return pinnedImage.MatchString(k.cfg.Image) && k.cfg.HermesApprovedImage == k.cfg.Image && k.cfg.HermesModel != ""
 }
+
+func (k *Kubernetes) Application(w http.ResponseWriter, r *http.Request, id, path string) {
+	k.proxy(w, r, id, path, "/v1/application-proxy/")
+}

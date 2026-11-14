@@ -97,6 +97,13 @@ The runtime overview remains read-only. The [workspace launcher](interactive-wor
 
 ## Expiry and troubleshooting
 
+Native response streams use a write deadline bounded by the ten-minute request
+limit and credential expiry. The inference server's ordinary 40-second write
+timeout is too short for longer generations: it can truncate a response and
+cause repeated native retries before a generic execution failure. The subscription
+handler overrides that deadline only for authenticated, approved native requests;
+revocation and request cancellation still terminate the stream.
+
 For `503 CREDENTIAL_UNAVAILABLE`, recover the local Vault lease, sync the existing Codex login and recreate the gateway with one command:
 
 ```sh

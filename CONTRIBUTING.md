@@ -16,6 +16,10 @@ and installs/tests/builds the UI.
 The browser suite uses synthetic data and a temporary local test host. It must
 not depend on an installed desktop app or a developer's browser cache path.
 
+GitLab CI (`.gitlab-ci.yml`) and GitHub CI (`.github/workflows/check.yml`) run
+the same portable checks. GitLab retains failing browser traces and Go coverage;
+see [release operations](docs/operations.md) for deployment acceptance.
+
 CI also sets `TEST_DATABASE_URL` to a disposable PostgreSQL 17 instance. To run
 that contract locally, supply a PostgreSQL URL for a test role allowed to create
 schemas, then run `go test -race ./internal/store -run TestPostgresMetadataContract`.

@@ -1,7 +1,8 @@
 import { workspacesApi } from "@/features/workspaces/api";
 import { historyOptions } from "./history-api";
+import { historyExport } from "./history-export";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { APIError } from "@/shared/http";
 import { Modal, ErrorNotice } from "@/shared/components";
@@ -29,29 +30,60 @@ export function WorkspaceHistory({
   const client = useQueryClient();
   const [selected, setSelected] = useState(workspace?.id || "");
   const [before, setBefore] = useState(0);
+  const [startKey, setStartKey] = useState(() => crypto.randomUUID());
+  const downloadController = useRef<AbortController | null>(null);
+  useEffect(() => () => downloadController.current?.abort(), []);
   const query = useQuery(historyOptions(project.id, selected, before));
   const start = useMutation({
-    mutationFn: () =>
-      workspacesApi.start(selected, `history-start-${selected}`),
-    onSuccess: () => {
-      client.invalidateQueries({ queryKey: ["project", project.id] });
-      query.refetch();
+    mutationFn: () => workspacesApi.start(selected, startKey),
+    onSuccess: async () => {
+      setStartKey(crypto.randomUUID());
+      await client.invalidateQueries({ queryKey: ["project", project.id] });
+      await query.refetch();
     },
   });
+  const download = useMutation({
+    mutationFn: () => {
+      downloadController.current = new AbortController();
+      return historyExport(
+        project.id,
+        selected,
+        downloadController.current.signal,
+      );
+    },
+    onSuccess: (blob) => {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${selected}-history.jsonl`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+    },
+  });
+  const busy = start.isPending || download.isPending;
   const data = query.data;
   const records = data?.page.records || [];
   return (
-    <Modal title="Message history" onClose={onClose} wide>
+    <Modal
+      title="Message history"
+      onClose={onClose}
+      wide
+      closeDisabled={start.isPending}
+    >
       <div className="flex flex-wrap gap-2 items-center">
         <NativeSelect
-          aria-label="History workspace"
+          aria-label="History worker"
+          wrapperClassName="w-full sm:w-auto sm:flex-1"
+          disabled={busy}
           value={selected}
           onChange={(e) => {
             setSelected(e.target.value);
             setBefore(0);
+            start.reset();
+            download.reset();
           }}
         >
-          <option value="">Choose a workspace</option>
+          <option value="">Choose a worker</option>
           {workspaces.map((w) => (
             <option value={w.id} key={w.id}>
               {w.name || w.id}
@@ -60,30 +92,28 @@ export function WorkspaceHistory({
         </NativeSelect>
         <Button
           variant="outline"
-          disabled={!selected}
+          disabled={!selected || query.isFetching || busy}
           onClick={() => {
-            setBefore(0);
-            query.refetch();
+            if (before) setBefore(0);
+            else void query.refetch();
           }}
         >
           Newest
         </Button>
         <Button
           variant="outline"
-          disabled={!data?.page.next_before || query.isError}
+          disabled={
+            !data?.page.next_before || query.isError || query.isFetching || busy
+          }
           onClick={() => setBefore(data!.page.next_before)}
         >
           Older
         </Button>
         <Button
-          disabled={!data || query.isError}
-          onClick={() =>
-            window.location.assign(
-              `/ui-api/workspaces/${selected}/history/export`,
-            )
-          }
+          disabled={!data || query.isError || busy}
+          onClick={() => download.mutate()}
         >
-          Export JSONL
+          {download.isPending ? "Preparing export…" : "Export JSONL"}
         </Button>
       </div>
       {data?.page.capture_limited && (
@@ -93,23 +123,42 @@ export function WorkspaceHistory({
       )}
       {query.isError && (
         <>
-          <ErrorNotice error={query.error} />
+          <ErrorNotice
+            error={query.error}
+            onRetry={() => void query.refetch()}
+            retrying={query.isFetching || busy}
+          />
           {query.error instanceof APIError &&
             query.error.code === "HISTORY_WORKSPACE_STOPPED" && (
-              <Button disabled={start.isPending} onClick={() => start.mutate()}>
-                Start workspace to view messages
+              <Button disabled={busy} onClick={() => start.mutate()}>
+                {start.isPending
+                  ? "Starting worker…"
+                  : "Start worker to view messages"}
               </Button>
             )}
         </>
       )}
       {start.isError && <ErrorNotice error={start.error} />}
-      <div className="max-h-[60vh] overflow-y-auto px-1 py-4">
+      {download.isError && <ErrorNotice error={download.error} />}
+      {download.isSuccess && (
+        <p role="status" className="text-xs text-muted-foreground">
+          History export prepared. Check your browser downloads.
+        </p>
+      )}
+      <div
+        className="max-h-[60vh] overflow-y-auto px-1 py-4"
+        role="region"
+        aria-label="History messages"
+        tabIndex={0}
+      >
         {!selected ? (
           <p className="text-sm text-muted-foreground">
-            Choose a workspace to see its conversations.
+            Choose a worker to see its conversations.
           </p>
         ) : query.isPending ? (
-          <p className="text-sm text-muted-foreground">Loading messages…</p>
+          <p role="status" className="text-sm text-muted-foreground">
+            Loading messages…
+          </p>
         ) : !records.length && !query.isError ? (
           <p className="text-sm text-muted-foreground">
             {data?.page.next_before
@@ -129,7 +178,7 @@ export function WorkspaceHistory({
                   <div
                     className={`min-w-0 max-w-[90%] sm:max-w-[85%] ${user ? "rounded-2xl bg-muted/60 px-4 py-3" : "px-2 py-1"}`}
                   >
-                    <div className="mb-1.5 flex items-baseline gap-3 text-xs text-muted-foreground">
+                    <div className="mb-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-xs text-muted-foreground">
                       <span className="font-medium text-foreground/75">
                         {user ? "Message" : replyName(r.source)}
                       </span>
@@ -163,7 +212,8 @@ export function WorkspaceHistory({
         )}
       </div>
       <p className="text-xs text-muted-foreground">
-        JSONL exports include tool activity and metadata. Review before sharing.
+        Exports use JSONL: one JSON record per line, including tool activity and
+        metadata. Review before sharing.
       </p>
     </Modal>
   );

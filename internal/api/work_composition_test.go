@@ -83,6 +83,14 @@ func TestWorkLostAcknowledgementResolvesRealBusyWorkspaceReceipt(t *testing.T) {
 			if accepted.Code != 200 {
 				t.Fatal(accepted.Code, accepted.Body.String())
 			}
+			var reviewed shared.WorkItem
+			if err := json.Unmarshal(accepted.Body.Bytes(), &reviewed); err != nil || reviewed.State != "completed" {
+				t.Fatalf("accepted work must return the completed contract: %s", accepted.Body.String())
+			}
+			response = request(t, s, "GET", "/v1/work-items/"+item.ID+"?project_id="+project.ID, "")
+			if response.Code != 200 || json.Unmarshal(response.Body.Bytes(), &reviewed) != nil || reviewed.State != "completed" {
+				t.Fatalf("acceptance did not persist: %d %s", response.Code, response.Body.String())
+			}
 			return
 		}
 		time.Sleep(10 * time.Millisecond)

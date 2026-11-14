@@ -44,12 +44,9 @@ const workspaces = {
 };
 const schedules = { p_a: [], p_b: [], default: [] };
 test("project workflows preserve boundaries and UI behavior", async ({
-  browser,
+  page,
 }) => {
-  const context = await browser.newContext({
-    viewport: { width: 1440, height: 1050 },
-  });
-  const page = await context.newPage();
+  await page.setViewportSize({ width: 1440, height: 1050 });
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   let requests = [];
@@ -188,7 +185,7 @@ test("project workflows preserve boundaries and UI behavior", async ({
       body: JSON.stringify(value),
     });
   });
-  await page.goto(base);
+  await page.goto(new URL("/app/projects/p_a/workspaces", base).toString());
   await page.getByText("Research worker A", { exact: true }).waitFor();
   assert.equal(
     await page
@@ -197,12 +194,13 @@ test("project workflows preserve boundaries and UI behavior", async ({
     0,
   );
   assert.equal(
-    await page
-      .getByRole("heading", { name: "Workspaces", exact: true })
-      .count(),
+    await page.getByRole("heading", { name: "Workers", exact: true }).count(),
     1,
   );
-  await page.getByLabel("Current project", { exact: true }).selectOption("p_b");
+  await page
+    .getByRole("button", { name: "Switch project: Research", exact: true })
+    .click();
+  await page.getByRole("menuitem", { name: "Banking", exact: true }).click();
   assert.equal(
     await page.getByText("Research worker A", { exact: true }).count(),
     0,
@@ -212,10 +210,13 @@ test("project workflows preserve boundaries and UI behavior", async ({
     await page.getByText("Research worker A", { exact: true }).count(),
     0,
   );
-  await page.getByLabel("Current project", { exact: true }).selectOption("p_a");
+  await page
+    .getByRole("button", { name: "Switch project: Banking", exact: true })
+    .click();
+  await page.getByRole("menuitem", { name: "Research", exact: true }).click();
   await page.getByText("Research worker A", { exact: true }).waitFor();
   await page
-    .getByRole("button", { name: "Create workspace", exact: true })
+    .getByRole("button", { name: "Create worker", exact: true })
     .click();
   assert.equal(
     await page.getByLabel("Tool profile", { exact: true }).count(),
@@ -224,24 +225,24 @@ test("project workflows preserve boundaries and UI behavior", async ({
   await page.keyboard.press("Escape");
   await page.getByRole("dialog").waitFor({ state: "detached" });
   await page.waitForFunction(() =>
-    document.activeElement?.textContent?.includes("Create workspace"),
+    document.activeElement?.textContent?.includes("Create worker"),
   );
   await page
-    .getByRole("button", { name: "Create workspace", exact: true })
+    .getByRole("button", { name: "Create worker", exact: true })
     .click();
   await page
-    .getByLabel("Workspace name", { exact: true })
+    .getByLabel("Worker name", { exact: true })
     .fill("New project workspace");
   await page
     .getByRole("dialog")
-    .getByRole("button", { name: "Create workspace", exact: true })
+    .getByRole("button", { name: "Create worker", exact: true })
     .click();
   await page.getByText("New project workspace", { exact: true }).waitFor();
   await page
     .getByRole("button", { name: "Actions for Research worker A", exact: true })
     .click();
   await page
-    .getByRole("menuitem", { name: "Branch workspace", exact: true })
+    .getByRole("menuitem", { name: "Branch worker", exact: true })
     .click();
   assert.equal(
     await page.getByLabel("Tool profile", { exact: true }).count(),
@@ -253,7 +254,7 @@ test("project workflows preserve boundaries and UI behavior", async ({
   );
   await page.getByLabel(/New local Git branch/).fill("feature-cleanup");
   await page
-    .getByRole("button", { name: "Create branch workspace", exact: true })
+    .getByRole("button", { name: "Create branch worker", exact: true })
     .click();
   await page.getByText("Research worker A branch", { exact: true }).waitFor();
 
@@ -268,15 +269,20 @@ test("project workflows preserve boundaries and UI behavior", async ({
     ),
   );
   await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "Copy a file", exact: true }).click();
   await page
-    .getByLabel("From workspace", { exact: true })
+    .getByRole("button", { name: "Project actions", exact: true })
+    .click();
+  await page
+    .getByRole("menuitem", { name: "Copy a file", exact: true })
+    .click();
+  await page
+    .getByLabel("From worker", { exact: true })
     .selectOption(workspaces.p_a[0].id);
   await page
     .getByLabel("Source file", { exact: true })
     .fill("reports/finding.md");
   await page
-    .getByLabel("To workspace", { exact: true })
+    .getByLabel("To worker", { exact: true })
     .selectOption(workspaces.p_a[1].id);
   await page
     .getByLabel("New destination file", { exact: true })
@@ -288,62 +294,25 @@ test("project workflows preserve boundaries and UI behavior", async ({
     .getByRole("heading", { name: "Agent homes", exact: true })
     .waitFor();
   await page.getByText("home_1", { exact: true }).waitFor();
-  await page.getByRole("link", { name: /Schedules/ }).click();
-  await page
-    .getByRole("button", { name: "Create schedule", exact: true })
-    .first()
-    .click();
-  await page
-    .getByLabel("Schedule name", { exact: true })
-    .fill("Research checks");
-  await page
-    .getByLabel("Workspace", { exact: true })
-    .selectOption(workspaces.p_a[0].id);
-  await page
-    .getByLabel("Instruction file", { exact: true })
-    .fill("tasks/checks.md");
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "Create schedule", exact: true })
-    .click();
-  await page.getByText("Research checks", { exact: true }).waitFor();
-  await page.getByRole("button", { name: "Run now", exact: true }).click();
-  await page
-    .getByText("Run requested. Follow its state in Scheduled runs.", {
-      exact: true,
-    })
-    .waitFor();
-  await page.getByRole("link", { name: "Workspaces", exact: true }).click();
+  assert.equal(
+    await page.getByRole("link", { name: "Schedules", exact: true }).count(),
+    0,
+    "Removed scheduling pages must not remain in navigation",
+  );
+  await page.getByRole("link", { name: "Workers", exact: true }).click();
   await page.getByText("Research worker A", { exact: true }).waitFor();
   await page
     .getByRole("button", { name: "Actions for Research worker A", exact: true })
     .click();
-  await page.getByRole("menuitem", { name: "Run task", exact: true }).click();
-  await page
-    .getByLabel("Instructions", { exact: true })
-    .fill("Run project checks.");
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "Run task", exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "Request cancellation", exact: true })
-    .click();
-  await page.getByText("Cancelled", { exact: true }).waitFor();
-  await page
-    .getByText("<script>window.untrustedResultExecuted=true</script>", {
-      exact: true,
-    })
-    .waitFor();
   assert.equal(
-    await page.evaluate(() => window.untrustedResultExecuted),
-    undefined,
-    "task result executed as markup",
+    await page.getByRole("menuitem", { name: "Run task", exact: true }).count(),
+    0,
+    "Workers must not offer the removed task action",
   );
   await page.keyboard.press("Escape");
-  await page.getByLabel("Search workspaces").fill("no-matching-workspace");
+  await page.getByLabel("Search workers").fill("no-matching-workspace");
   await page
-    .getByText("No workspaces match this filter.", { exact: false })
+    .getByText("No workers match this filter.", { exact: false })
     .waitFor();
   await page
     .getByRole("button", { name: "Clear filters", exact: true })
@@ -364,8 +333,9 @@ test("project workflows preserve boundaries and UI behavior", async ({
     .getByRole("button", { name: "Save settings", exact: true })
     .click();
   await page.getByText("Global profile · v1", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Platform", exact: true }).click();
   await page
-    .getByRole("link", { name: "Connection profiles", exact: true })
+    .getByRole("menuitem", { name: "Connection profiles", exact: true })
     .click();
   await page
     .getByRole("heading", { name: "Connection profiles", exact: true })
@@ -380,9 +350,20 @@ test("project workflows preserve boundaries and UI behavior", async ({
     .waitFor();
   await page.keyboard.press("Escape");
   await page.getByRole("dialog").waitFor({ state: "detached" });
-  await page.getByRole("link", { name: "Workspaces", exact: true }).click();
+  await page.getByRole("button", { name: /^Switch project:/ }).click();
+  await page.getByRole("menuitem", { name: "Research", exact: true }).click();
+  await page.getByRole("link", { name: "Workers", exact: true }).click();
   await page.getByText("Research worker A", { exact: true }).waitFor();
   fs.mkdirSync(path.join(root, "artifacts"), { recursive: true });
+  assert(
+    await page.evaluate(() =>
+      document.documentElement.classList.contains("dark"),
+    ),
+    "dark theme should be the default",
+  );
+  await page
+    .getByRole("button", { name: "Switch to light theme", exact: true })
+    .click();
   await page
     .getByRole("button", { name: "Switch to dark theme", exact: true })
     .click();
@@ -427,14 +408,15 @@ test("project workflows preserve boundaries and UI behavior", async ({
   await page.getByRole("button", { name: "Open navigation" }).click();
   await page
     .getByRole("dialog")
-    .getByLabel("Current project", { exact: true })
-    .selectOption("default");
+    .getByRole("button", { name: /^Switch project:/ })
+    .click();
+  await page.getByRole("menuitem", { name: "Workspaces", exact: true }).click();
   await page
-    .getByRole("heading", { name: "Your project's first workspace" })
+    .getByRole("heading", { name: "Your project's first worker" })
     .waitFor();
   await page.goto(new URL("/app/tool-profiles", base).toString());
   await page
-    .getByRole("heading", { name: "Page unavailable", exact: true })
+    .getByRole("heading", { name: "Page not found", exact: true })
     .waitFor();
   assert.deepEqual(errors, []);
   assert(
@@ -457,6 +439,6 @@ test("project workflows preserve boundaries and UI behavior", async ({
     "removed tool profile APIs must never be requested",
   );
   console.log(
-    "Browser checks passed: project switching has no stale cross-project rows; workspace creation, native desktop pairing, file handoff, homes, schedules, global profile assignment/editor, search, dark theme persistence, global navigation and mobile layout. Uncaught errors: 0.",
+    "Browser checks passed: project switching has no stale cross-project rows; workspace creation, native desktop pairing, file handoff, homes, removed scheduling navigation, global profile assignment/editor, search, dark theme persistence, global navigation and mobile layout. Uncaught errors: 0.",
   );
 });

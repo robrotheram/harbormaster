@@ -24,10 +24,6 @@ export function Runs({ project }: { project: Project }) {
       <div className="page-title">
         <div>
           <h1>Scheduled runs</h1>
-          <p>
-            Durable dispatch and execution state for this project's scheduled
-            work.
-          </p>
         </div>
       </div>
       <div className="list-toolbar">
@@ -44,7 +40,7 @@ export function Runs({ project }: { project: Project }) {
           Loading run state…
         </div>
       ) : query.data?.length ? (
-        <div className="table-scroll">
+        <div className="table-scroll record-table">
           <table>
             <thead>
               <tr>
@@ -58,22 +54,22 @@ export function Runs({ project }: { project: Project }) {
             <tbody>
               {query.data.map((run) => (
                 <tr key={run.id}>
-                  <td>
+                  <td data-label="State">
                     <State value={run.state} />
                   </td>
-                  <td>
-                    <strong>
+                  <td data-label="Schedule / worker">
+                    <strong className="block font-medium">
                       {schedules.data?.find((s) => s.id === run.schedule_id)
                         ?.name || "Manual schedule request"}
                     </strong>
-                    <span className="detail">
+                    <span className="mt-1 block text-[11px] text-muted-foreground">
                       {workspaces.data?.find((w) => w.id === run.workspace_id)
                         ?.name || run.workspace_id}
                     </span>
                   </td>
-                  <td>{date(run.created_at)}</td>
-                  <td>{date(run.updated_at)}</td>
-                  <td>
+                  <td data-label="Requested">{date(run.created_at)}</td>
+                  <td data-label="Last observation">{date(run.updated_at)}</td>
+                  <td data-label="Details">
                     {run.error_code ? (
                       <span className="text-warning">
                         {label(run.error_code)}
@@ -95,15 +91,15 @@ export function Runs({ project }: { project: Project }) {
           results stay in the workspace.
         </Empty>
       ) : null}
-      <div className="explanation">
-        <h2>Operational state only</h2>
+      <details className="page-help">
+        <summary>About scheduled runs</summary>
         <p>
           This view shows scheduled dispatches. Interactive T3 turns and tasks
           submitted directly from a workspace have their own native history.
           Prompts, responses and files are not stored in the platform run
           metadata.
         </p>
-      </div>
+      </details>
     </>
   );
 }

@@ -38,6 +38,22 @@ func (r Repository) Attempts(ctx context.Context, project, id string) ([]shared.
 	return out, rows.Err()
 }
 func (r Repository) RunWork(ctx context.Context, project, id, key string, now time.Time) (shared.WorkAttempt, error) {
+	return r.runWork(ctx, project, id, key, nil, now)
+}
+
+// WorkRevision contains private file references, never conversational content.
+type WorkRevision struct {
+	ExpectedAttemptID, Path, Digest string
+}
+
+func (r Repository) ContinueWork(ctx context.Context, project, id, key string, revision WorkRevision, now time.Time) (shared.WorkAttempt, error) {
+	if !shared.ValidID(revision.ExpectedAttemptID) || !shared.ValidProjectFile(revision.Path) || len(revision.Digest) != 64 {
+		return shared.WorkAttempt{}, ErrInvalidWork
+	}
+	return r.runWork(ctx, project, id, key, &revision, now)
+}
+
+func (r Repository) runWork(ctx context.Context, project, id, key string, revision *WorkRevision, now time.Time) (shared.WorkAttempt, error) {
 	if !shared.ValidKey(key) {
 		return shared.WorkAttempt{}, ErrInvalidWork
 	}
@@ -51,6 +67,9 @@ func (r Repository) RunWork(ctx context.Context, project, id, key string, now ti
 	err = tx.QueryRowContext(ctx, `SELECT metadata FROM work_attempts WHERE project_id=$1 AND work_item_id=$2 AND delivery_key=$3`, project, id, key).Scan(&b)
 	if err == nil {
 		err = json.Unmarshal([]byte(b), &a)
+		if err == nil && revision != nil && (a.ParentAttemptID != revision.ExpectedAttemptID || a.SpecificationPath != revision.Path || a.SpecificationDigest != revision.Digest) {
+			return a, ErrConflict
+		}
 		return a, err
 	}
 	if err != sql.ErrNoRows {
@@ -63,12 +82,47 @@ func (r Repository) RunWork(ctx context.Context, project, id, key string, now ti
 	if err = json.Unmarshal([]byte(b), &item); err != nil {
 		return a, err
 	}
+	if revision != nil && item.LatestAttemptID != revision.ExpectedAttemptID {
+		return a, ErrConflict
+	}
 	switch item.State {
-	case "draft", "failed", "cancelled", "awaiting_review":
+	case "draft", "planned", "in_progress", "failed", "cancelled", "awaiting_review":
+	case "completed":
+		if revision == nil {
+			return a, ErrConflict
+		}
 	default:
 		return a, ErrConflict
 	}
-	a = shared.WorkAttempt{ID: shared.NewID("attempt_"), WorkItemID: id, WorkspaceID: item.WorkspaceID, State: "queued", Artifacts: []shared.WorkArtifact{}, CreatedAt: now.UTC(), UpdatedAt: now.UTC()}
+	old := b
+	if revision != nil {
+		// Older attempts predate specification snapshots. Retain their original
+		// references before advancing the parent to its next instruction.
+		var prior shared.WorkAttempt
+		if err = tx.QueryRowContext(ctx, `SELECT metadata FROM work_attempts WHERE id=$1 AND work_item_id=$2 AND project_id=$3`, item.LatestAttemptID, id, project).Scan(&b); err != nil {
+			return a, err
+		}
+		if err = json.Unmarshal([]byte(b), &prior); err != nil {
+			return a, err
+		}
+		if prior.SpecificationPath == "" {
+			prior.SpecificationPath, prior.SpecificationDigest = item.SpecificationPath, item.SpecificationDigest
+		}
+		if item.State == "completed" {
+			prior.ReviewState = "accepted"
+		} else if item.State == "awaiting_review" {
+			prior.ReviewState = "changes_requested"
+		}
+		pb, _ := json.Marshal(prior)
+		if _, err = tx.ExecContext(ctx, `UPDATE work_attempts SET metadata=$1 WHERE id=$2 AND project_id=$3`, string(pb), prior.ID, project); err != nil {
+			return a, err
+		}
+		item.SpecificationPath, item.SpecificationDigest = revision.Path, revision.Digest
+	}
+	a = shared.WorkAttempt{ID: shared.NewID("attempt_"), WorkItemID: id, WorkspaceID: item.WorkspaceID, SpecificationPath: item.SpecificationPath, SpecificationDigest: item.SpecificationDigest, State: "queued", Artifacts: []shared.WorkArtifact{}, CreatedAt: now.UTC(), UpdatedAt: now.UTC()}
+	if revision != nil {
+		a.ParentAttemptID = revision.ExpectedAttemptID
+	}
 	ab, _ := json.Marshal(a)
 	if _, err = tx.ExecContext(ctx, `INSERT INTO work_attempts(id,work_item_id,project_id,workspace_id,delivery_key,active_workspace,metadata) VALUES($1,$2,$3,$4,$5,$4,$6)`, a.ID, id, project, item.WorkspaceID, key, string(ab)); err != nil {
 		if workUniqueConflict(err) {
@@ -76,7 +130,6 @@ func (r Repository) RunWork(ctx context.Context, project, id, key string, now ti
 		}
 		return a, err
 	}
-	old := b
 	item.LatestAttemptID = a.ID
 	item.State = "queued"
 	item.UpdatedAt = now.UTC()
@@ -135,13 +188,26 @@ func (r Repository) saveAttempt(ctx context.Context, project string, a shared.Wo
 	return tx.Commit()
 }
 func (r Repository) ReviewWork(ctx context.Context, project, id string, accepted bool, now time.Time) (shared.WorkItem, error) {
+	decision := "changes_requested"
+	if accepted {
+		decision = "accepted"
+	}
+	return r.reviewDecision(ctx, project, id, decision, now)
+}
+func (r Repository) CloseWork(ctx context.Context, project, id string, now time.Time) (shared.WorkItem, error) {
+	return r.reviewDecision(ctx, project, id, "closed", now)
+}
+func (r Repository) reviewDecision(ctx context.Context, project, id, decision string, now time.Time) (shared.WorkItem, error) {
 	item, err := r.Work(ctx, project, id)
 	if err != nil {
 		return item, err
 	}
 	target := "failed"
-	if accepted {
+	if decision == "accepted" {
 		target = "completed"
+	}
+	if decision == "closed" {
+		target = "closed"
 	}
 	if item.State == target {
 		return item, nil
@@ -153,13 +219,37 @@ func (r Repository) ReviewWork(ctx context.Context, project, id string, accepted
 	item.State = target
 	item.UpdatedAt = now.UTC()
 	b, _ := json.Marshal(item)
-	res, err := r.DB.ExecContext(ctx, `UPDATE work_items SET metadata=$1 WHERE id=$2 AND project_id=$3 AND metadata=$4`, string(b), id, project, string(old))
+	tx, err := r.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return item, err
+	}
+	defer tx.Rollback()
+	res, err := tx.ExecContext(ctx, `UPDATE work_items SET metadata=$1 WHERE id=$2 AND project_id=$3 AND metadata=$4`, string(b), id, project, string(old))
 	if err != nil {
 		return item, err
 	}
 	n, _ := res.RowsAffected()
 	if n != 1 {
 		return item, ErrConflict
+	}
+	if item.LatestAttemptID != "" {
+		var raw string
+		if err = tx.QueryRowContext(ctx, `SELECT metadata FROM work_attempts WHERE id=$1 AND project_id=$2 AND work_item_id=$3`, item.LatestAttemptID, project, id).Scan(&raw); err != nil {
+			return item, err
+		}
+		var attempt shared.WorkAttempt
+		if err = json.Unmarshal([]byte(raw), &attempt); err != nil {
+			return item, err
+		}
+		attempt.ReviewState = decision
+		attempt.UpdatedAt = now.UTC()
+		data, _ := json.Marshal(attempt)
+		if _, err = tx.ExecContext(ctx, `UPDATE work_attempts SET metadata=$1 WHERE id=$2 AND project_id=$3`, string(data), attempt.ID, project); err != nil {
+			return item, err
+		}
+	}
+	if err = tx.Commit(); err != nil {
+		return item, err
 	}
 	return item, nil
 }

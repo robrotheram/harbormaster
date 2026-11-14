@@ -1,12 +1,15 @@
 package workspace
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"agent-workbench/internal/shared"
@@ -26,7 +29,23 @@ func TestFileAcceptanceRecoversBeforeReadingEditedOrDeletedSource(t *testing.T) 
 	if err = os.WriteFile(file, []byte("Original instruction"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	body := `{"instruction_path":"task.md","idempotency_key":"occurrence-one","provider":""}`
+	digest := sha256.Sum256([]byte("Original instruction"))
+	body := `{"instruction_path":"task.md","specification_digest":"` + hex.EncodeToString(digest[:]) + `","idempotency_key":"occurrence-one","provider":""}`
+	for _, probe := range []struct {
+		digest string
+		status int
+		code   string
+	}{
+		{"invalid", 400, "INVALID_SPECIFICATION_DIGEST"},
+		{strings.Repeat("0", 64), 409, "SPECIFICATION_DIGEST_MISMATCH"},
+	} {
+		invalid := strings.Replace(body, hex.EncodeToString(digest[:]), probe.digest, 1)
+		response := invoke(t, m.Handler(), "POST", "/v1/tasks/from-file", invalid)
+		var failure shared.APIError
+		if response.Code != probe.status || json.Unmarshal(response.Body.Bytes(), &failure) != nil || failure.Code != probe.code {
+			t.Fatalf("digest validation: %d %s", response.Code, response.Body)
+		}
+	}
 	first := invoke(t, m.Handler(), "POST", "/v1/tasks/from-file", body)
 	if first.Code != 202 {
 		t.Fatalf("accept: %d %s", first.Code, first.Body)

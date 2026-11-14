@@ -5,7 +5,7 @@ RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-FROM golang:1.27-alpine AS build
+FROM golang:1.27.4-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -50,6 +50,9 @@ RUN CODEX_NATIVE=$(rg --files /usr/local/lib/node_modules/@openai | rg '/codex$'
       if [ -f "$helper" ] && [ "$(basename "$helper")" != codex ]; then ln -sf "$helper" "/usr/local/bin/$(basename "$helper")"; fi; \
     done
 FROM workspace-tools AS workspace
+RUN apt-get update && apt-get install -y --no-install-recommends xvfb fluxbox x11vnc novnc websockify xterm x11-utils fonts-dejavu-core && rm -rf /var/lib/apt/lists/*
+COPY --chmod=755 scripts/workbench-desktop.sh /usr/local/bin/workbench-desktop
+COPY --chmod=755 scripts/workbench-preview.py /usr/local/bin/workbench-preview
 COPY --from=build /out/service /usr/local/bin/service
 COPY --from=build /out/healthcheck /usr/local/bin/healthcheck
 COPY --from=build /out/workspace-mcp /usr/local/bin/workspace-mcp
@@ -62,7 +65,7 @@ HEALTHCHECK --interval=10s --timeout=3s --start-period=20s CMD ["/usr/local/bin/
 FROM workspace AS workspace-gogallery
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends util-linux gcc libc6-dev libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev && rm -rf /var/lib/apt/lists/*
-COPY --from=golang:1.26.0-bookworm /usr/local/go /usr/local/go
+COPY --from=golang:1.27.4-bookworm /usr/local/go /usr/local/go
 ENV PATH=/usr/local/go/bin:$PATH
 RUN mkdir -p /opt/workbench/gogallery && git clone https://github.com/robrotheram/gogallery.git /opt/workbench/gogallery/source && cd /opt/workbench/gogallery/source && git checkout --detach 5f1bfd6a41afec65bc7ab791a14863180d944ee0 && GOMODCACHE=/opt/workbench/gogallery/modules go mod download && rm -rf .git
 COPY deploy/templates/gogallery/run deploy/templates/gogallery/create_fixture.py /opt/workbench/gogallery/

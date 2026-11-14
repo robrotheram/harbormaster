@@ -16,5 +16,7 @@ func main() {
 	if err != nil {
 		log.Fatal("invalid verifier")
 	}
-	log.Fatal(shared.Serve(":8080", egress.Handler(verify, "", "")))
+	if err := shared.Serve(":8080", egress.Handler(verify, "", "")); err != nil {
+		log.Fatal("egress server stopped")
+	}
 }

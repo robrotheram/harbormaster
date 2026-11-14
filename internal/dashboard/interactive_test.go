@@ -99,3 +99,38 @@ func TestLauncherRequiresBrowserMutationHeader(t *testing.T) {
 		t.Fatal("simple cross-site form accepted")
 	}
 }
+
+func TestForgePaginationQueryIsScoped(t *testing.T) {
+	calls := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.URL.Query().Get("page") != "2" {
+			t.Error("missing page")
+		}
+		io.WriteString(w, `{"items":[]}`)
+	}))
+	defer upstream.Close()
+	handler, err := NewInteractiveHandler(upstream.URL, upstream.URL, "token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		path   string
+		status int
+	}{
+		{"/ui-api/forge-connections/forge_one/issues?project_id=default&page=2", 200},
+		{"/ui-api/workspaces?project_id=default&page=2", 400},
+		{"/ui-api/forge-connections/forge_one/issues?page=1&page=2", 400},
+	} {
+		req := httptest.NewRequest("GET", test.path, nil)
+		req.Host = "127.0.0.1:8080"
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, req)
+		if response.Code != test.status {
+			t.Fatal(test.path, response.Code, response.Body)
+		}
+	}
+	if calls != 1 {
+		t.Fatal(calls)
+	}
+}
