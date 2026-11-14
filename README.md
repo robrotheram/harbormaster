@@ -86,6 +86,12 @@ Set `WORKSPACE_RUNTIME=kata` only after installing and configuring a compatible 
 
 Interactive workspaces run the pinned native T3 server and bundled web client. Its protocol-2 WebSocket traffic is proxied without a Go wire reimplementation. Use **Open T3** for browser access or **Connect desktop** for native desktop pairing. `/v1/workspaces/{id}/connection` remains the legacy, unimplemented generic attachment contract. The task API/MCP remains available separately.
 
+## Container images
+
+[GitHub Actions](https://github.com/robrotheram/harbormaster/actions/workflows/check.yml)
+builds and publishes the nine application images to GitHub Container Registry
+after checks pass. See [image names, tags and pulling instructions](docs/container-publishing.md).
+
 ## Development and checks
 
 See [operations and release gates](docs/operations.md) for GitLab CI, upgrades, backups and support diagnostics.

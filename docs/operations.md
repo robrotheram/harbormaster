@@ -42,7 +42,9 @@ Before a release:
 5. Run the selected runtime's live acceptance and a restore rehearsal. Do not
    claim production readiness for experimental adapters based on simulated tests.
 
-The pipeline verifies source; it does not publish images or deploy automatically.
+GitLab verifies source only. GitHub also builds and publishes container images
+after its checks pass; see [container publishing](container-publishing.md). Neither
+pipeline deploys automatically.
 Use immutable release image tags/digests in deployment overrides. The default
 `:dev` workspace image is for local development. Base image tags and remote
 package repositories can change, so retain the actual image digests used.
