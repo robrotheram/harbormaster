@@ -26,6 +26,10 @@ func TestHostedSharedWorkerRequiresTicketAndSecureCookie(t *testing.T) {
 	}
 	call := func(method, url, body string, cookie *http.Cookie) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, url, strings.NewReader(body))
+		if method == "GET" {
+			r.Header.Set("Accept", "text/html")
+			r.Header.Set("Sec-Fetch-Dest", "document")
+		}
 		r.Header.Set("X-Workbench-Request", "1")
 		r.Header.Set("Content-Type", "application/json")
 		if cookie != nil {
