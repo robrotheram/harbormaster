@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"agent-workbench/internal/gateway"
@@ -123,6 +124,19 @@ func Handler(verify gateway.Verifier, upstream, token string) http.Handler {
 	})
 }
 
-func Environment(env []string) []string {
-	return append(env, "HTTP_PROXY=http://127.0.0.1:8099", "http_proxy=http://127.0.0.1:8099", "HTTPS_PROXY=http://127.0.0.1:8099", "https_proxy=http://127.0.0.1:8099", "NO_PROXY=127.0.0.1,localhost,inference-gateway,credential-broker", "no_proxy=127.0.0.1,localhost,inference-gateway,credential-broker")
+// Environment sends external requests through the local proxy while keeping
+// trusted, runtime-configured platform endpoints on their direct network path.
+func Environment(env []string, endpoints ...string) []string {
+	bypass := "127.0.0.1,localhost,inference-gateway,credential-broker"
+	for _, endpoint := range endpoints {
+		u, err := url.Parse(endpoint)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil {
+			continue
+		}
+		host := u.Hostname()
+		if host != "" && !strings.ContainsAny(host, ",* \t\r\n") {
+			bypass += "," + host
+		}
+	}
+	return append(env, "HTTP_PROXY=http://127.0.0.1:8099", "http_proxy=http://127.0.0.1:8099", "HTTPS_PROXY=http://127.0.0.1:8099", "https_proxy=http://127.0.0.1:8099", "NO_PROXY="+bypass, "no_proxy="+bypass)
 }

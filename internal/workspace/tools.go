@@ -97,7 +97,7 @@ func (m *Manager) tool(ctx context.Context, name string, raw json.RawMessage) st
 		// Do not inherit grant tokens, service addresses or host process environment.
 		cmd.Env = []string{"PATH=/usr/local/bin:/usr/bin:/bin", "HOME=" + cmd.Dir, "LANG=C.UTF-8"}
 		if m.cfg.EgressURL != "" && m.cfg.ConnectionMode != "open" {
-			cmd.Env = egress.Environment(cmd.Env)
+			cmd.Env = egress.Environment(cmd.Env, m.cfg.InferenceURL, m.cfg.BrokerURL)
 		}
 		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 		out := &limitedOutput{}

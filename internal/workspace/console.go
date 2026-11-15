@@ -96,7 +96,7 @@ func (m *Manager) startConsole() error {
 		env = append(env, "CLAUDE_CODE_OAUTH_TOKEN="+m.cfg.Token, "ANTHROPIC_BASE_URL="+strings.TrimRight(m.cfg.InferenceURL, "/")+"/claude", "ANTHROPIC_MODEL="+m.cfg.ClaudeModel, "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1")
 	}
 	if m.cfg.EgressURL != "" && m.cfg.ConnectionMode != "open" {
-		env = egress.Environment(env)
+		env = egress.Environment(env, m.cfg.InferenceURL, m.cfg.BrokerURL)
 	}
 	dir := filepath.Join(m.cfg.DataDir, "files")
 	if _, err := os.Stat(filepath.Join(dir, ".git")); os.IsNotExist(err) {

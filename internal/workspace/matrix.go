@@ -55,7 +55,7 @@ func (m *Manager) startMatrix(w http.ResponseWriter, r *http.Request) {
 	}
 	cmd.Env = append(cmd.Env, "WORKBENCH_MCP_URL=http://127.0.0.1:18085/mcp", "WORKBENCH_MCP_TOKEN_FILE="+credential, "WORKBENCH_PROJECT_ID="+m.cfg.ProjectID)
 	if m.cfg.EgressURL != "" && m.cfg.ConnectionMode != "open" {
-		cmd.Env = egress.Environment(cmd.Env)
+		cmd.Env = egress.Environment(cmd.Env, m.cfg.InferenceURL, m.cfg.BrokerURL)
 	}
 	events := &nativeEvents{m: m, source: "matrix"}
 	cmd.Stdout = events

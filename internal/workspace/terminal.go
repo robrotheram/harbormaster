@@ -80,7 +80,7 @@ func (m *Manager) createTerminal(w http.ResponseWriter, r *http.Request) {
 	// Do not inherit management credentials from the workspace service process.
 	cmd.Env = []string{"PATH=/usr/local/bin:/usr/bin:/bin", "HOME=" + m.homePath(), "TERM=xterm-256color", "LANG=C.UTF-8", "SHELL=" + shell}
 	if m.cfg.EgressURL != "" {
-		cmd.Env = egress.Environment(cmd.Env)
+		cmd.Env = egress.Environment(cmd.Env, m.cfg.InferenceURL, m.cfg.BrokerURL)
 	}
 	tty, err := pty.StartWithSize(cmd, &pty.Winsize{Cols: in.Cols, Rows: in.Rows})
 	if err != nil {

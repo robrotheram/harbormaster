@@ -27,7 +27,7 @@ func prepare(cfg Config, provider string) (invocation, string) {
 		env = append(env, "WORKSPACE_TOKEN="+cfg.Token, "PROJECT_ID="+cfg.ProjectID, "WORKSPACE_ID="+cfg.WorkspaceID)
 	}
 	if cfg.EgressURL != "" && cfg.ConnectionMode != "open" {
-		env = egress.Environment(env)
+		env = egress.Environment(env, cfg.InferenceURL)
 	}
 	switch provider {
 	case "codex":
