@@ -38,14 +38,15 @@ type Cursor struct {
 	after string
 }
 type Scheduler struct {
-	CanUseWorkspace func(shared.Workspace, string) bool
-	Repository      ScheduleRepository
-	Workspaces      WorkspaceRepository
-	Lifecycle       WorkspaceLifecycle
-	Agent           Agent
-	Now             func() time.Time
-	Lock            func(...string) func()
-	Cursor          *Cursor
+	CanUseWorkspace  func(shared.Workspace, string) bool
+	ProjectAvailable func(context.Context, string) (bool, error)
+	Repository       ScheduleRepository
+	Workspaces       WorkspaceRepository
+	Lifecycle        WorkspaceLifecycle
+	Agent            Agent
+	Now              func() time.Time
+	Lock             func(...string) func()
+	Cursor           *Cursor
 }
 
 func (s *Scheduler) Tick(ctx context.Context) error {
@@ -76,6 +77,11 @@ func (s *Scheduler) Tick(ctx context.Context) error {
 		func() {
 			unlock := s.Lock("schedule:" + schedule.ID)
 			defer unlock()
+			available, err := s.projectAvailable(ctx, schedule.ProjectID)
+			if err != nil || !available {
+				report("project_read", schedule.ProjectID, err)
+				return
+			}
 			report("due_occurrence", schedule.ID, repo.DeliverDue(ctx, schedule.ID, now))
 		}()
 	}
@@ -105,6 +111,16 @@ func (s *Scheduler) Tick(ctx context.Context) error {
 			}
 			// A deletion can cancel queued runs after this tick loaded its batch.
 			if schedule.DeletedAt != nil && run.State == "queued" && run.TaskID == "" {
+				return
+			}
+			available, err := s.projectAvailable(ctx, run.ProjectID)
+			if err != nil {
+				report("project_read", run.ProjectID, err)
+				return
+			}
+			if !available {
+				run.State, run.ErrorCode, run.UpdatedAt = "failed", "NOT_FOUND_OR_FORBIDDEN", now
+				report("run", run.ID, repo.SaveRun(ctx, run))
 				return
 			}
 			ws, err := s.Workspaces.Workspace(ctx, run.WorkspaceID)
@@ -195,4 +211,12 @@ func (s *Scheduler) canUseWorkspace(ws shared.Workspace, project string) bool {
 		return s.CanUseWorkspace(ws, project)
 	}
 	return ws.ProjectID == project
+}
+
+// A failed lookup leaves accepted work pending; a deleted project cannot dispatch.
+func (s *Scheduler) projectAvailable(ctx context.Context, project string) (bool, error) {
+	if s.ProjectAvailable != nil {
+		return s.ProjectAvailable(ctx, project)
+	}
+	return true, nil
 }

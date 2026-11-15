@@ -71,6 +71,15 @@ func TestTransientWorkspaceReadDoesNotAbandonAcceptedRun(t *testing.T) {
 		t.Fatal("transient read abandoned accepted execution", runs, err)
 	}
 	workspaces.err = nil
+	scheduler.ProjectAvailable = func(context.Context, string) (bool, error) { return false, context.DeadlineExceeded }
+	if err := scheduler.Tick(ctx); err == nil {
+		t.Fatal("project lookup outage was hidden")
+	}
+	runs, err = repo.Runs(ctx, run.ProjectID)
+	if err != nil || len(runs) != 1 || runs[0].State != "running" {
+		t.Fatal("project lookup outage abandoned execution", runs, err)
+	}
+	scheduler.ProjectAvailable = nil
 	// The pending cursor wraps; neither recovery nor observation may resubmit.
 	for i := 0; i < 2; i++ {
 		if err := scheduler.Tick(ctx); err != nil {

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"agent-workbench/internal/orchestration"
 	"agent-workbench/internal/shared"
 	"context"
 	"encoding/json"
@@ -184,5 +185,60 @@ func TestSharedModePreservesStoppedLegacyMetadata(t *testing.T) {
 	}
 	if _, err := s.EnsureSharedWorkspace(context.Background()); err == nil {
 		t.Fatal("shared mode accepted another running worker")
+	}
+}
+
+func TestDeletedSharedProjectCannotDispatchQueuedOrFutureWork(t *testing.T) {
+	s, rt := schedulerSetup(t)
+	s.cfg.SharedWorkspaceID = "ws_shared"
+	ctx := context.Background()
+	if _, err := s.EnsureSharedWorkspace(ctx); err != nil {
+		t.Fatal(err)
+	}
+	project := domainProject(t, s, "deleted-shared")
+	schedule := createSchedule(t, s, "control-token", project.ID, "ws_shared", "scheduled", s.now().Add(-time.Second))
+	repo := orchestration.Repository{DB: s.Store.DB}
+	if _, err := repo.Enqueue(ctx, schedule, "queued", s.now()); err != nil {
+		t.Fatal(err)
+	}
+	body := fmt.Sprintf(`{"project_id":%q,"instruction":"retained draft","kind":"software","idempotency_key":"draft"}`, project.ID)
+	response := request(t, s, "POST", "/v1/work-items", body)
+	var item shared.WorkItem
+	if response.Code != 201 || json.Unmarshal(response.Body.Bytes(), &item) != nil {
+		t.Fatal(response.Code, response.Body)
+	}
+	response = request(t, s, "POST", "/v1/work-items/"+item.ID+"/run", fmt.Sprintf(`{"project_id":%q,"idempotency_key":"run"}`, project.ID))
+	if response.Code != 202 {
+		t.Fatal(response.Code, response.Body)
+	}
+	// Deletion cannot race a busy or unobservable shared runtime.
+	for _, unknown := range []bool{false, true} {
+		rt.jobs, rt.unknown = 1, unknown
+		response = request(t, s, "POST", "/v1/projects/"+project.ID+"/delete", fmt.Sprintf(`{"confirm_id":%q}`, project.ID))
+		if response.Code != 409 {
+			t.Fatal("busy deletion admitted", response.Code, response.Body)
+		}
+	}
+	rt.jobs, rt.unknown = 0, false
+	response = request(t, s, "POST", "/v1/projects/"+project.ID+"/delete", fmt.Sprintf(`{"confirm_id":%q}`, project.ID))
+	if response.Code != 200 {
+		t.Fatal(response.Code, response.Body)
+	}
+	for i := 0; i < 2; i++ {
+		s.tickOrchestration(ctx)
+	}
+	if len(rt.dispatchKeys) != 0 {
+		t.Fatal("deleted project dispatched", rt.dispatchKeys)
+	}
+	runs, err := repo.Runs(ctx, project.ID)
+	if err != nil || len(runs) != 1 || runs[0].State != "failed" {
+		t.Fatal("future or queued run admitted", runs, err)
+	}
+	attempts, err := repo.Attempts(ctx, project.ID, item.ID)
+	if err != nil || len(attempts) != 1 || attempts[0].State != "failed" {
+		t.Fatal("queued work admitted", attempts, err)
+	}
+	if _, err := s.Store.Workspace(ctx, "ws_shared"); err != nil {
+		t.Fatal("deleted shared worker", err)
 	}
 }

@@ -60,8 +60,20 @@ func (s *Server) registerDeletion(mux *http.ServeMux) {
 			for _, ws := range targets {
 				ids = append(ids, ws.ID)
 			}
+			if project != "" && s.cfg.SharedWorkspaceID != "" {
+				ids = append(ids, s.cfg.SharedWorkspaceID)
+			}
 			unlock := s.operations.Lock(ids...)
 			defer unlock()
+			// Shared execution survives project deletion, but must be known idle.
+			// Holding its lifecycle lock also fences scheduler dispatch.
+			if project != "" && s.cfg.SharedWorkspaceID != "" {
+				ws, err := s.Store.Workspace(r.Context(), s.cfg.SharedWorkspaceID)
+				if err != nil || s.lifecycle().Refresh(r.Context(), &ws) != nil || (ws.State != "STOPPED" && ws.State != "READY") {
+					shared.Error(w, 409, "WORKSPACE_BUSY")
+					return
+				}
+			}
 			// Re-read under lifecycle locks. Unknown/busy state or failed stop prevents deletion.
 			for i, old := range targets {
 				ws, err := s.Store.Workspace(r.Context(), old.ID)

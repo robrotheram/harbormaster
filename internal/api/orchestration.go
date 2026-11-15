@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"net/http"
 
@@ -137,7 +138,13 @@ func (s *Server) registerOrchestration(mux *http.ServeMux) {
 }
 
 func (s *Server) tickOrchestration(ctx context.Context) {
-	service := orchestration.Scheduler{Repository: orchestration.Repository{DB: s.Store.DB}, Workspaces: s.Store, Lifecycle: s.lifecycle(), Agent: s.Runtime, Now: s.now, Lock: s.operations.Lock, Cursor: &s.schedulerCursor, CanUseWorkspace: s.workspaceInProject}
+	service := orchestration.Scheduler{Repository: orchestration.Repository{DB: s.Store.DB}, Workspaces: s.Store, Lifecycle: s.lifecycle(), Agent: s.Runtime, Now: s.now, Lock: s.operations.Lock, Cursor: &s.schedulerCursor, CanUseWorkspace: s.workspaceInProject, ProjectAvailable: func(ctx context.Context, project string) (bool, error) {
+		_, err := s.Store.Project(ctx, project)
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return err == nil, err
+	}}
 	if err := service.Tick(ctx); err != nil {
 		s.reportWrite("scheduling", "", err)
 	}

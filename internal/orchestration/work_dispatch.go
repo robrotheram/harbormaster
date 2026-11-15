@@ -67,6 +67,16 @@ func (r Repository) TickWork(ctx context.Context, s *Scheduler) error {
 				a.UpdatedAt = s.Now().UTC()
 				failures = errors.Join(failures, r.saveAttempt(ctx, p.project, a))
 			}
+			available, e := s.projectAvailable(ctx, p.project)
+			if e != nil {
+				failures = errors.Join(failures, e)
+				return
+			}
+			if !available {
+				a.State, a.ErrorCode = "failed", "NOT_FOUND_OR_FORBIDDEN"
+				save()
+				return
+			}
 			ws, e := s.Workspaces.Workspace(ctx, a.WorkspaceID)
 			if e != nil {
 				if errors.Is(e, sql.ErrNoRows) {
