@@ -53,6 +53,9 @@ func New(s *store.Store, rt protocol.Runtime, c Config) *Server {
 	if c.MaxRunning == 0 {
 		c.MaxRunning = 4
 	}
+	if c.SharedWorkspaceID != "" {
+		c.MaxRunning = 1
+	}
 	if c.CPUQuota == 0 {
 		c.CPUQuota = 4
 	}
@@ -121,6 +124,10 @@ func (s *Server) workspace(w http.ResponseWriter, r *http.Request) (shared.Works
 	ws, e := s.Store.Workspace(r.Context(), id)
 	if e != nil {
 		shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
+		return ws, false
+	}
+	if s.cfg.SharedWorkspaceID != "" && !s.sharedWorkspace(ws) {
+		shared.Error(w, 409, "SHARED_WORKSPACE_ONLY")
 		return ws, false
 	}
 	if s.sharedWorkspace(ws) {
@@ -471,6 +478,9 @@ func (s *Server) Reconcile(ctx context.Context) {
 		return
 	}
 	for i := range items {
+		if s.cfg.SharedWorkspaceID != "" && !s.sharedWorkspace(items[i]) {
+			continue
+		}
 		unlock := s.operations.Lock(items[i].ID)
 		current, err := s.Store.Workspace(ctx, items[i].ID)
 		if err != nil {
@@ -559,6 +569,16 @@ func (s *Server) DashboardHandler() http.Handler {
 		if e != nil {
 			shared.Error(w, 503, "STORAGE_UNAVAILABLE")
 			return
+		}
+		if s.cfg.SharedWorkspaceID != "" {
+			selected := []shared.Workspace{}
+			for _, ws := range items {
+				if s.sharedWorkspace(ws) {
+					ws.Shared = true
+					selected = append(selected, ws)
+				}
+			}
+			items = selected
 		}
 		tasks, e := s.Store.Tasks(r.Context())
 		if e != nil {

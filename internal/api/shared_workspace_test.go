@@ -155,3 +155,25 @@ func TestSharedInlineWorkAndSchedulesKeepLogicalProjects(t *testing.T) {
 		t.Fatal("automatic work allocated another workspace", items, err)
 	}
 }
+
+func TestSharedModePreservesStoppedLegacyMetadata(t *testing.T) {
+	s, _ := setup(t)
+	legacy := create(t, s, "legacy")
+	s.cfg.SharedWorkspaceID = "ws_shared"
+	if _, err := s.EnsureSharedWorkspace(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	s.Reconcile(context.Background())
+	after, err := s.Store.Workspace(context.Background(), legacy.ID)
+	if err != nil || after.State != "STOPPED" || !after.UpdatedAt.Equal(legacy.UpdatedAt) {
+		t.Fatal("reconciled archived worker", after, err)
+	}
+	legacy.State = "READY"
+	legacy.Ready = true
+	if err := s.Store.Save(context.Background(), legacy); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.EnsureSharedWorkspace(context.Background()); err == nil {
+		t.Fatal("shared mode accepted another running worker")
+	}
+}

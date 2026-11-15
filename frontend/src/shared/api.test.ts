@@ -155,16 +155,14 @@ describe("shared workspace selection", () => {
   it("accepts an explicitly shared workspace without relaxing ordinary project checks", async () => {
     vi.stubGlobal(
       "fetch",
-      vi
-        .fn()
-        .mockResolvedValue(
-          new Response(
-            JSON.stringify({
-              items: [{ id: "ws_shared", project_id: "default", shared: true }],
-            }),
-            { status: 200 },
-          ),
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            items: [{ id: "ws_shared", project_id: "default", shared: true }],
+          }),
+          { status: 200 },
         ),
+      ),
     );
     expect((await workspacesApi.list("new-project"))[0].id).toBe("ws_shared");
     expect(() =>

@@ -26,6 +26,15 @@ func (s *Server) EnsureSharedWorkspace(ctx context.Context) (shared.Workspace, e
 	if !shared.ValidID(id) {
 		return shared.Workspace{}, errors.New("invalid shared workspace ID")
 	}
+	all, err := s.Store.Workspaces(ctx)
+	if err != nil {
+		return shared.Workspace{}, err
+	}
+	for _, other := range all {
+		if other.ID != id && (other.State != "STOPPED" || other.Ready || other.ActiveRuns > 0 || other.BackgroundJobs > 0) {
+			return shared.Workspace{}, errors.New("stop existing workers before enabling shared mode")
+		}
+	}
 	ws, err := s.Store.Workspace(ctx, id)
 	if err == nil {
 		if ws.ProjectID != "default" || ws.AgentKind != "t3" || ws.ParentID != "" {
