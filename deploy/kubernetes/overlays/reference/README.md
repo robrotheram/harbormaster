@@ -24,9 +24,11 @@ namespaces. It is **not an in-place rename** of the earlier two-core-namespace
 installation. Existing installations must follow [the migration procedure](namespace-migration.md)
 before applying this overlay. Applying directly would initialize a new empty database,
 leave existing Secrets behind and conflict with the reserved gateway Service IPs.
-The reference cluster completed this migration on 2026-11-15; the old application
-Deployments are scaled to zero, with its database and stopped volumes retained
-for rollback.
+The reference cluster completed this migration on 2026-11-15. The retired
+`workbench-system` and `workbench-egress` namespaces were subsequently deleted.
+The old database PV remains retained, alongside a private logical database backup
+and resource inventory. Rollback now requires restoring resources and database
+state; the previous application can no longer simply be scaled back up.
 
 For an empty reference environment, install the external prerequisites, then:
 
@@ -205,7 +207,10 @@ controlplane, PostgreSQL, cluster API and public Internet connections were block
 The Pod quota reported one of one in use, including Kata resource overhead.
 Temporary projects and their test files were removed; the shared worker was left
 ready. The final live Kustomize diff was empty. The two legacy Sandboxes stayed
-suspended with their original PVCs; local Compose was not changed.
+suspended with their original PVCs; local Compose was not changed. Subsequent
+cleanup removed both retired core namespaces and their old database Pod, while
+retaining the old database PV. The active `harbormaster` and `workbench-reference`
+namespaces remain in use.
 
 Before namespace consolidation, live acceptance on 2026-11-15 confirmed guest kernel 6.18.56, RWOP second-writer
 rejection, retained files after application stop/start, recreated Pods, and Codex/T3
