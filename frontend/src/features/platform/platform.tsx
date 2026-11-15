@@ -81,9 +81,10 @@ export function GettingStarted() {
           <section className="rounded-xl border bg-background p-5">
             <h2 className="text-sm font-semibold">Operator troubleshooting</h2>
             <p className="mt-3 text-xs leading-6 text-muted-foreground">
-              If credentials are unavailable, ask an administrator to check
-              Vault connectivity and refresh the provider access token using the
-              operator procedure in docs/subscription-agents.md.
+              Use Workers → Subscription to save your Codex ChatGPT login and
+              load it into a worker. If it expires, import a current login. For
+              legacy Vault-managed credentials, ask an administrator to follow
+              docs/subscription-agents.md.
             </p>
             <p className="mt-3 text-xs leading-6 text-muted-foreground">
               Expired logins need refreshing through the native provider CLI.

@@ -20,7 +20,7 @@ func allowedUIRoute(method, path string) bool {
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 	if len(parts) == 1 {
 		switch path {
-		case "/board", "/forge-hosts", "/forge-connections", "/work-items", "/connection-profiles", "/projects", "/schedules", "/workspaces":
+		case "/subscription", "/board", "/forge-hosts", "/forge-connections", "/work-items", "/connection-profiles", "/projects", "/schedules", "/workspaces":
 			return true
 		case "/exchange-inbox", "/workspace-logs", "/templates", "/agent-homes", "/runs":
 			return get
@@ -28,6 +28,12 @@ func allowedUIRoute(method, path string) bool {
 			return post
 		}
 		return false
+	}
+	if path == "/subscription/delete" {
+		return post
+	}
+	if len(parts) == 4 && parts[0] == "workspaces" && shared.ValidID(parts[1]) && parts[2] == "subscription" {
+		return post && (parts[3] == "load" || parts[3] == "unload")
 	}
 	if !shared.ValidID(parts[1]) {
 		return false

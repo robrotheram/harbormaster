@@ -1,8 +1,50 @@
 # Subscription credentials
 
-Subscription setup is an operator task using the provider CLI and Vault. Deployment
-manifests do not initialize Vault, sign users in, or copy host credentials. The
-former automatic setup/repair commands have been removed.
+## Personal Codex subscriptions
+
+In Workers, choose **Subscription** on a worker. Import `auth.json` from a Codex
+ChatGPT login, then choose **Load into worker**. Each dashboard user has one saved
+subscription, reusable across workers. Saving alone does not bind any worker.
+The browser sends only the access token and account ID, never refresh tokens or
+API keys. The server checks the account binding and expiry and encrypts the saved
+credential with an owner-bound, purpose-separated key derived from the control
+secret. Retain that secret when restoring the database; changing it makes existing
+saved subscriptions unreadable.
+
+This is an expiring access-token import, not an automatic login/refresh flow.
+The dialog shows expiry; sign in again using Codex and import a current login when
+needed. Credentials are never returned by the user-facing API or copied into the
+worker filesystem. Delete removes the saved credential and all worker bindings.
+Unload removes only that worker binding. The gateway rechecks bindings during
+inference, so unloading/deleting ends active requests at the next check (normally
+within five seconds; resolver timeouts can delay this).
+
+Loading authorizes **all work on that worker** to use your account. This matters
+especially for the shared reference workspace: projects and other operators can
+use the loaded subscription. Another user cannot replace or unload your binding;
+you must unload it first. This is not per-user isolation of work on a shared worker.
+
+Hosted ownership comes from the verified OAuth2 Proxy or WorkOS session, never a
+browser-supplied user ID. Local loopback mode uses one local-operator identity.
+User-subscription endpoints are unavailable to project/MCP credentials.
+
+The reference overlay enables `subscriptions.user_accounts` on the inference
+gateway and uses the `gpt-5.4` Codex model. Its dedicated internal resolver uses the
+gateway service credential, mounted read-only into controlplane through
+`SUBSCRIPTION_GATEWAY_TOKEN_FILE`; the normal control credential cannot call it.
+The gateway's policy still bounds allowed model IDs and destination CIDRs. Review
+`user-subscriptions.yaml` when provider DNS changes. No API-billing fallback exists.
+
+For other deployments, configure the gateway's `CONTROLPLANE_URL`, enable
+`subscriptions.user_accounts`, provide a Codex provider policy, set `CODEX_MODEL`
+on the runtime controller, and supply the same gateway service token through
+`SUBSCRIPTION_GATEWAY_TOKEN_FILE` on controlplane. Restart retained workers to
+receive a changed model setting. No user login is bundled in deployment manifests.
+
+## Legacy operator-managed credentials
+
+Deployments without `subscriptions.user_accounts` can still use the provider CLI
+and Vault procedure below. The former automatic setup/repair commands remain removed.
 
 ## Local development
 

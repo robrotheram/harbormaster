@@ -1,3 +1,4 @@
+import { SubscriptionButton } from "./subscription";
 import {
   GitBranch,
   Globe,
@@ -156,7 +157,8 @@ export function WorkerRow({
           )}
       </TableCell>
       <TableCell className="pr-5 max-md:col-span-2 max-md:px-0 max-md:pt-3 max-md:pb-0">
-        <div className="flex items-center justify-end gap-1.5 max-md:justify-start">
+        <div className="flex flex-wrap items-center justify-end gap-1.5 max-md:justify-start">
+          {kind !== "hermes" && <SubscriptionButton workspace={workspace} />}
           {(stopped || transitioning || console) && (
             <Button
               size="sm"

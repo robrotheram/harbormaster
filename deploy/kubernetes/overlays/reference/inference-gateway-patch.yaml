@@ -10,4 +10,9 @@ spec:
       - name: inference-gateway
         env:
         - name: GATEWAY_MODE
-          value: fixture
+          value: subscription
+      volumes:
+      - name: config
+        secret: null
+        configMap:
+          name: user-subscription-policy

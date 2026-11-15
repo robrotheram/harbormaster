@@ -118,6 +118,7 @@ export function Workspaces({ project }: { project: Project }) {
           value: safePairing(
             await workspacesApi.pair(workspace.id),
             workspace.id,
+            location.origin,
           ),
         });
       } else if (action === "stop") {
@@ -136,7 +137,12 @@ export function Workspaces({ project }: { project: Project }) {
           const port = import.meta.env.DEV
             ? import.meta.env.VITE_WORKBENCH_PORT || "8080"
             : location.port;
-          const url = consoleURL(workspace.id, result.console_ticket, port);
+          const url = consoleURL(
+            workspace.id,
+            result.console_ticket,
+            port,
+            location.origin,
+          );
           if (tab) tab.location.replace(url);
           else
             setMessage(

@@ -170,3 +170,28 @@ describe("shared workspace selection", () => {
     ).toThrow(APIError);
   });
 });
+
+describe("hosted shared worker connections", () => {
+  const origin = "https://harbormaster.example";
+  it("uses a separate HTTPS origin for the shared worker", () => {
+    expect(consoleURL("ws_shared", "private ticket", "", origin)).toBe(
+      "https://ws-shared.harbormaster.example/connect#ticket=private%20ticket",
+    );
+  });
+  it("accepts only the expected hosted desktop origin", () => {
+    const valid = {
+      pairing_url:
+        "https://desktop-ws-shared.harbormaster.example/pair#token=private",
+      expires_at: "later",
+    };
+    expect(safePairing(valid, "ws_shared", origin)).toEqual(valid);
+    for (const url of [
+      "https://desktop-ws-other.harbormaster.example/pair#token=private",
+      "https://desktop-ws-shared.harbormaster.example.evil/pair#token=private",
+      "http://desktop-ws-shared.harbormaster.example/pair#token=private",
+    ])
+      expect(() =>
+        safePairing({ ...valid, pairing_url: url }, "ws_shared", origin),
+      ).toThrow();
+  });
+});

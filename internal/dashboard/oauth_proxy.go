@@ -43,6 +43,9 @@ func NewOAuthProxyHandler(next http.Handler, cfg OAuthProxyConfig) (http.Handler
 			shared.JSON(w, 200, map[string]string{"status": "ok"})
 			return
 		}
+		if servePublicWorker(next, w, r, origin.Host) {
+			return
+		}
 		if !strings.EqualFold(r.Host, origin.Host) {
 			writeError(w, 403, "HOST_REJECTED")
 			return
@@ -153,6 +156,6 @@ func NewOAuthProxyHandler(next http.Handler, cfg OAuthProxyConfig) (http.Handler
 			shared.JSON(w, 200, map[string]string{"url": "/auth/proxy-signout?ticket=" + key})
 			return
 		}
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), authenticatedOriginKey{}, cfg.Origin)))
+		next.ServeHTTP(w, withSubscriptionIdentity(r.WithContext(context.WithValue(r.Context(), authenticatedOriginKey{}, cfg.Origin)), "oauth:"+cfg.PublicURL, id))
 	}), nil
 }

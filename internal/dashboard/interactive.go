@@ -48,6 +48,9 @@ func NewInteractiveHandler(readURL, controlURL, token string) (http.Handler, err
 		if h, _, err := net.SplitHostPort(host); err == nil {
 			host = h
 		}
+		if label, ok := r.Context().Value(publicWorkerIngressKey{}).(string); ok {
+			host = label + ".localhost"
+		}
 		desktop := strings.HasPrefix(host, "desktop-ws-") && strings.HasSuffix(host, ".localhost")
 		if origin := r.Header.Get("Origin"); origin != "" {
 			parsed, e := url.Parse(origin)
@@ -59,7 +62,7 @@ func NewInteractiveHandler(readURL, controlURL, token string) (http.Handler, err
 		}
 		if desktop {
 			id := strings.Replace(strings.TrimSuffix(strings.TrimPrefix(host, "desktop-"), ".localhost"), "ws-", "ws_", 1)
-			if !shared.ValidID(id) || len(id) != 35 {
+			if !shared.ValidID(id) || !strings.HasPrefix(id, "ws_") {
 				writeError(w, 404, "NOT_FOUND")
 				return
 			}
@@ -76,7 +79,7 @@ func NewInteractiveHandler(readURL, controlURL, token string) (http.Handler, err
 		if strings.HasSuffix(host, ".localhost") {
 			label := strings.TrimSuffix(host, ".localhost")
 			id := strings.Replace(label, "ws-", "ws_", 1)
-			if !strings.HasPrefix(label, "ws-") || !shared.ValidID(id) || len(id) != 35 {
+			if !strings.HasPrefix(label, "ws-") || !shared.ValidID(id) || !strings.HasPrefix(id, "ws_") {
 				writeError(w, 404, "NOT_FOUND")
 				return
 			}
@@ -110,7 +113,7 @@ func NewInteractiveHandler(readURL, controlURL, token string) (http.Handler, err
 					return
 				}
 				expiry := time.Now().Add(12 * time.Hour)
-				http.SetCookie(w, &http.Cookie{Name: "awb_console", Value: sign(id, strconv.FormatInt(expiry.Unix(), 10)), Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, Expires: expiry})
+				http.SetCookie(w, &http.Cookie{Name: "awb_console", Value: sign(id, strconv.FormatInt(expiry.Unix(), 10)), Path: "/", HttpOnly: true, Secure: workerSecure(r), SameSite: http.SameSiteStrictMode, Expires: expiry})
 				shared.JSON(w, 200, map[string]bool{"connected": true})
 				return
 			}
@@ -141,6 +144,10 @@ func NewInteractiveHandler(readURL, controlURL, token string) (http.Handler, err
 			return
 		}
 		if strings.HasPrefix(r.URL.Path, "/ui-api/") {
+			r.Header.Del("X-Workbench-Subscription-User")
+			if identity, ok := r.Context().Value(subscriptionIdentityKey{}).(string); ok {
+				r.Header.Set("X-Workbench-Subscription-User", identity)
+			}
 			path := strings.TrimPrefix(r.URL.Path, "/ui-api")
 			parts := strings.Split(strings.Trim(path, "/"), "/")
 			query := r.URL.Query()
@@ -177,6 +184,9 @@ func NewInteractiveHandler(readURL, controlURL, token string) (http.Handler, err
 				return
 			}
 			limit := int64(4096)
+			if path == "/subscription" {
+				limit = 70 << 10
+			}
 			if parts[0] == "work-items" && len(parts) == 1 {
 				limit = 400000
 			}

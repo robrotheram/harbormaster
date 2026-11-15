@@ -197,7 +197,7 @@ reject image drift; plan retained-workspace migration before changing that value
 
 ## Authentication and execution
 
-Only dashboard HTTPS is exposed. MCP and controlplane remain ClusterIP services.
+Dashboard and separate shared-worker HTTPS origins are exposed. MCP and controlplane remain ClusterIP services.
 The existing `oauth-redirect` handler and namespace-local `harbormaster-auth`
 middleware use `https://oidc.exceptionerror.io` / Entra. The dashboard independently
 validates session cookies against OAuth2 Proxy, rejects caller identity headers,
@@ -207,13 +207,22 @@ project authorization. WorkOS and OAuth2 Proxy settings cannot be combined.
 The base defaults to `REQUIRE_VERIFIED_ISOLATION=true`. The reference runtime patch
 explicitly enables execution with `false` after live acceptance. The application
 still reports isolation and networking as **unverified**: manual probes do not
-implement continuous attestation. Gateway mode is **fixture**; real provider
-calls require separate inference/subscription credentials and external Vault.
+implement continuous attestation. The inference gateway uses **subscription** mode:
+users save a current Codex ChatGPT login under Workers → Subscription, then load
+it into the shared worker. See [subscription setup](../../../../docs/subscription-agents.md).
+Credential-broker and egress fixture modes remain unchanged.
 
-Native desktop, browser console and preview links currently use `.localhost`
-worker origins and are not remotely routable from this hostname. The management
-UI and workspace lifecycle API are the exposed reference surfaces. Remote worker
-routing needs separate origins/certificates and capability-authentication design.
+Browser console and desktop pairing use `ws-shared.harbormaster.exceptionerror.io`
+and `desktop-ws-shared.harbormaster.exceptionerror.io`. DNS must resolve both to
+the ingress; the certificate includes both names. Their ingress deliberately has
+no operator OAuth middleware: the dashboard requires a one-use browser ticket or
+native desktop bearer. Cookies are secure and host-only. Worker origins cannot
+access the operator API. Application preview hosting remains separately configured.
+
+After upgrading, restart the idle shared worker to receive `CODEX_MODEL`. The
+workspace supervisor repairs empty initial model selections while retaining
+explicit model choices. Existing image pins must be updated to builds containing
+these changes before applying this overlay; configuration alone cannot add the UI.
 
 ## Acceptance and recovery
 

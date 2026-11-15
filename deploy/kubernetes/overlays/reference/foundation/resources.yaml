@@ -53,6 +53,8 @@ spec:
   secretName: harbormaster-tls
   dnsNames:
   - harbormaster.exceptionerror.io
+  - ws-shared.harbormaster.exceptionerror.io
+  - desktop-ws-shared.harbormaster.exceptionerror.io
   issuerRef:
     name: letsencrypt-prod
     kind: ClusterIssuer

@@ -162,8 +162,12 @@ func TestPlatformSecurityAndReferenceContract(t *testing.T) {
 				t.Fatal("reference authentication missing")
 			}
 			for service, variable := range map[string]string{"inference-gateway": "KUBERNETES_INFERENCE_URL", "credential-broker": "KUBERNETES_BROKER_URL", "egress-gateway": "KUBERNETES_EGRESS_URL"} {
-				if env(find(t, objects, "Deployment", service))["GATEWAY_MODE"] != "fixture" {
-					t.Fatalf("live credentials unexpectedly enabled: %s", service)
+				expectedMode := "fixture"
+				if service == "inference-gateway" {
+					expectedMode = "subscription"
+				}
+				if env(find(t, objects, "Deployment", service))["GATEWAY_MODE"] != expectedMode {
+					t.Fatalf("unexpected gateway mode: %s", service)
 				}
 				for _, o := range objects {
 					if o["kind"] == "Service" && field(map[string]any(o), "metadata", "name") == service && field(map[string]any(o), "metadata", "namespace") == "harbormaster" {

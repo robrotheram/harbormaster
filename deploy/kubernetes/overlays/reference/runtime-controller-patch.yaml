@@ -9,6 +9,8 @@ spec:
       containers:
       - name: runtime-controller
         env:
+        - name: CODEX_MODEL
+          value: gpt-5.4
         - name: PROVISION_PROJECT_NAMESPACES
           value: 'true'
         - name: REQUIRE_VERIFIED_ISOLATION

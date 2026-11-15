@@ -51,6 +51,7 @@ func (s *Store) migrate(ctx context.Context) error {
 		{10, s.initForgeAccounts},
 		{11, s.initBoard},
 		{12, s.initWorkReviewHistory},
+		{13, s.initSubscriptions},
 	}
 	for _, step := range steps {
 		var applied int

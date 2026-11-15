@@ -19,6 +19,7 @@ import (
 )
 
 type Config struct {
+	SubscriptionGatewayToken   string
 	ProvisionProjectNamespaces bool
 	SharedWorkspaceID          string
 	Token                      string
@@ -177,6 +178,8 @@ func (s *Server) Handler() http.Handler {
 	s.registerOrchestration(secured)
 	s.registerWork(secured)
 	s.registerForges(secured)
+	s.registerSubscriptions(secured)
+	mux.HandleFunc("POST /internal/subscriptions/resolve", s.resolveSubscription)
 	s.registerBoard(secured)
 	s.registerCoordinationRuntime(secured)
 	s.registerFactoryEnvironments(secured)

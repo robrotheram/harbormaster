@@ -17,10 +17,10 @@ func TestStartupMigrationsAreVersionedAndRepeatable(t *testing.T) {
 		if err = s.DB.QueryRow(`SELECT count(*) FROM schema_migrations`).Scan(&count); err != nil {
 			t.Fatal(err)
 		}
-		if count != 12 {
+		if count != 13 {
 			t.Fatalf("migration versions: %d", count)
 		}
-		for _, table := range []string{"work_review_history", "forge_accounts", "work_items", "work_attempts", "schedules", "orchestration_runs", "workspaces", "agent_homes"} {
+		for _, table := range []string{"user_subscriptions", "worker_subscriptions", "work_review_history", "forge_accounts", "work_items", "work_attempts", "schedules", "orchestration_runs", "workspaces", "agent_homes"} {
 			if _, err = s.DB.Exec(`SELECT 1 FROM ` + table + ` LIMIT 1`); err != nil {
 				t.Fatalf("schema unavailable before requests: %s: %v", table, err)
 			}

@@ -66,7 +66,7 @@ func NewAuthKitHandler(next http.Handler, cfg AuthConfig) (http.Handler, error) 
 				shared.JSON(w, 200, map[string]string{"status": "local"})
 				return
 			}
-			next.ServeHTTP(w, r)
+			next.ServeHTTP(w, withSubscriptionIdentity(r, "local", "operator"))
 		}), nil
 	}
 	if cfg.RedirectURI == "" {
@@ -106,6 +106,9 @@ func (a *authHandler) cookie(w http.ResponseWriter, name, value string, age int)
 	http.SetCookie(w, c)
 }
 func (a *authHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if a.secure && servePublicWorker(a.next, w, r, a.host) {
+		return
+	}
 	// These are separate capability-authenticated worker surfaces, never the
 	// operator console. Keep native desktop bearer auth and preview tickets intact.
 	host := r.Host
@@ -212,7 +215,7 @@ func (a *authHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 401, "AUTH_REQUIRED")
 		return
 	}
-	a.next.ServeHTTP(w, r)
+	a.next.ServeHTTP(w, withSubscriptionIdentity(r, "workos:"+a.cfg.ClientID, result.User.ID))
 }
 
 func (a *authHandler) login(w http.ResponseWriter, r *http.Request) {

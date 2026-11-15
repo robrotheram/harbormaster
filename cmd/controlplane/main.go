@@ -61,7 +61,12 @@ func main() {
 			}
 		}
 	}
-	server := api.New(db, controllerclient.NewClient(shared.Env("CONTROLLER_URL", "http://runtime-controller:8080"), runtimeToken), api.Config{ProvisionProjectNamespaces: shared.Env("PROVISION_PROJECT_NAMESPACES", "false") == "true", SharedWorkspaceID: os.Getenv("SHARED_WORKSPACE_ID"), WorkspaceMemory: shared.IntEnv("WORKSPACE_MEMORY_BYTES", 1<<30), MemoryQuota: shared.IntEnv("MEMORY_QUOTA_BYTES", 4<<30), Token: token, ProjectTokens: projectTokens, HealthEndpoints: map[string]string{"Runtime controller": shared.Env("CONTROLLER_URL", "http://runtime-controller:8080") + "/healthz", "Inference gateway": "http://inference-gateway:8080/healthz", "Credential broker": "http://credential-broker:8080/healthz", "GitHub egress gateway": "http://egress-gateway:8080/healthz", "MCP": "http://mcp:8080/healthz"}})
+	subscriptionToken, err := shared.Secret("SUBSCRIPTION_GATEWAY_TOKEN")
+	if err != nil {
+		slog.Error("subscription gateway credential unavailable")
+		os.Exit(1)
+	}
+	server := api.New(db, controllerclient.NewClient(shared.Env("CONTROLLER_URL", "http://runtime-controller:8080"), runtimeToken), api.Config{SubscriptionGatewayToken: subscriptionToken, ProvisionProjectNamespaces: shared.Env("PROVISION_PROJECT_NAMESPACES", "false") == "true", SharedWorkspaceID: os.Getenv("SHARED_WORKSPACE_ID"), WorkspaceMemory: shared.IntEnv("WORKSPACE_MEMORY_BYTES", 1<<30), MemoryQuota: shared.IntEnv("MEMORY_QUOTA_BYTES", 4<<30), Token: token, ProjectTokens: projectTokens, HealthEndpoints: map[string]string{"Runtime controller": shared.Env("CONTROLLER_URL", "http://runtime-controller:8080") + "/healthz", "Inference gateway": "http://inference-gateway:8080/healthz", "Credential broker": "http://credential-broker:8080/healthz", "GitHub egress gateway": "http://egress-gateway:8080/healthz", "MCP": "http://mcp:8080/healthz"}})
 	if os.Getenv("SHARED_WORKSPACE_ID") != "" {
 		if _, err := server.EnsureSharedWorkspace(ctx); err != nil {
 			slog.Error("shared workspace provisioning failed")

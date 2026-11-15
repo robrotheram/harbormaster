@@ -11,7 +11,7 @@ import (
 // MaintainSubscriptionLease renews only the gateway's read-only Vault lease.
 // Provider logins and their refresh tokens remain under operator control.
 func MaintainSubscriptionLease(ctx context.Context, c Config) error {
-	if c.Subscriptions == nil {
+	if c.Subscriptions == nil || c.Subscriptions.UserAccounts {
 		return nil
 	}
 	client, err := subscriptionVaultClient(c.SubscriptionVaultAddr, c.SubscriptionVaultCA)

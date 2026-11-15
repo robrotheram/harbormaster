@@ -21,8 +21,9 @@ type SubscriptionProvider struct {
 	Network NetworkPolicy `json:"network"`
 }
 type SubscriptionConfig struct {
-	Providers  map[string]SubscriptionProvider `json:"providers"`
-	Principals map[string][]string             `json:"principals"`
+	UserAccounts bool                            `json:"user_accounts,omitempty"`
+	Providers    map[string]SubscriptionProvider `json:"providers"`
+	Principals   map[string][]string             `json:"principals"`
 }
 type subscriptionCredential struct {
 	AccessToken string `json:"access_token"`
@@ -50,12 +51,16 @@ func registerSubscriptions(mux *http.ServeMux, c Config) error {
 	if c.Subscriptions == nil {
 		return nil
 	}
-	if len(c.Subscriptions.Providers) == 0 || len(c.Subscriptions.Principals) == 0 || c.SubscriptionVaultToken == "" {
+	if len(c.Subscriptions.Providers) == 0 || (!c.Subscriptions.UserAccounts && (len(c.Subscriptions.Principals) == 0 || c.SubscriptionVaultToken == "")) || (c.Subscriptions.UserAccounts && c.ResolveSubscription == nil) {
 		return ErrDenied
 	}
-	vc, err := subscriptionVaultClient(c.SubscriptionVaultAddr, c.SubscriptionVaultCA)
-	if err != nil {
-		return err
+	var vc *http.Client
+	var err error
+	if !c.Subscriptions.UserAccounts {
+		vc, err = subscriptionVaultClient(c.SubscriptionVaultAddr, c.SubscriptionVaultCA)
+		if err != nil {
+			return err
+		}
 	}
 	var renewalMu sync.Mutex
 	var renewedAt time.Time
@@ -92,6 +97,9 @@ func registerSubscriptions(mux *http.ServeMux, c Config) error {
 		}
 	}
 	for provider, policy := range c.Subscriptions.Providers {
+		if c.Subscriptions.UserAccounts && provider != "codex" {
+			return ErrDenied
+		}
 		origin := ""
 		switch provider {
 		case "codex":
@@ -125,7 +133,7 @@ func registerSubscriptions(mux *http.ServeMux, c Config) error {
 				Error(w, 401, "UNAUTHORIZED")
 				return
 			}
-			allowed := false
+			allowed := c.Subscriptions.UserAccounts && provider == "codex"
 			for _, p := range c.Subscriptions.Principals[id.PrincipalID] {
 				if p == provider {
 					allowed = true
@@ -154,33 +162,43 @@ func registerSubscriptions(mux *http.ServeMux, c Config) error {
 			// path, principal, authorization or identity header is forwarded.
 			ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
 			defer cancel()
-			if renew(ctx) != nil {
-				Error(w, 503, "CREDENTIAL_UNAVAILABLE")
-				return
+			var cred subscriptionCredential
+			if c.Subscriptions.UserAccounts {
+				var resolveErr error
+				cred, resolveErr = c.ResolveSubscription(ctx, id.WorkspaceID)
+				if resolveErr != nil {
+					Error(w, 503, "PROVIDER_LOGIN_REQUIRED")
+					return
+				}
+			} else {
+				if renew(ctx) != nil {
+					Error(w, 503, "CREDENTIAL_UNAVAILABLE")
+					return
+				}
+				vreq, err := http.NewRequestWithContext(ctx, "GET", strings.TrimRight(c.SubscriptionVaultAddr, "/")+"/v1/subscription-auth/data/"+id.PrincipalID+"/"+provider, nil)
+				if err != nil {
+					Error(w, 503, "CREDENTIAL_UNAVAILABLE")
+					return
+				}
+				vreq.Header.Set("X-Vault-Token", c.SubscriptionVaultToken)
+				vres, err := vc.Do(vreq)
+				if err != nil {
+					Error(w, 503, "CREDENTIAL_UNAVAILABLE")
+					return
+				}
+				vb, verr := ReadBounded(vres.Body, 64<<10)
+				vres.Body.Close()
+				var secret struct {
+					Data struct {
+						Data subscriptionCredential `json:"data"`
+					} `json:"data"`
+				}
+				if verr != nil || vres.StatusCode != 200 || json.Unmarshal(vb, &secret) != nil {
+					Error(w, 503, "PROVIDER_LOGIN_REQUIRED")
+					return
+				}
+				cred = secret.Data.Data
 			}
-			vreq, err := http.NewRequestWithContext(ctx, "GET", strings.TrimRight(c.SubscriptionVaultAddr, "/")+"/v1/subscription-auth/data/"+id.PrincipalID+"/"+provider, nil)
-			if err != nil {
-				Error(w, 503, "CREDENTIAL_UNAVAILABLE")
-				return
-			}
-			vreq.Header.Set("X-Vault-Token", c.SubscriptionVaultToken)
-			vres, err := vc.Do(vreq)
-			if err != nil {
-				Error(w, 503, "CREDENTIAL_UNAVAILABLE")
-				return
-			}
-			vb, verr := ReadBounded(vres.Body, 64<<10)
-			vres.Body.Close()
-			var secret struct {
-				Data struct {
-					Data subscriptionCredential `json:"data"`
-				} `json:"data"`
-			}
-			if verr != nil || vres.StatusCode != 200 || json.Unmarshal(vb, &secret) != nil {
-				Error(w, 503, "PROVIDER_LOGIN_REQUIRED")
-				return
-			}
-			cred := secret.Data.Data
 			if cred.AccessToken == "" || strings.ContainsAny(cred.AccessToken, " \r\n\t") || cred.ExpiresAt <= time.Now().Add(30*time.Second).Unix() {
 				Error(w, 503, "PROVIDER_LOGIN_REQUIRED")
 				return
@@ -204,6 +222,13 @@ func registerSubscriptions(mux *http.ServeMux, c Config) error {
 					case <-upstreamCtx.Done():
 						return
 					case <-ticker.C:
+						if c.Subscriptions.UserAccounts {
+							current, err := c.ResolveSubscription(upstreamCtx, id.WorkspaceID)
+							if err != nil || current.AccessToken != cred.AccessToken || current.AccountID != cred.AccountID {
+								stop()
+								return
+							}
+						}
 						if _, err := c.Verify(upstreamCtx, strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "), "inference"); err != nil {
 							stop()
 							return

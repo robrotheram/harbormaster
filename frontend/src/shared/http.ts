@@ -182,10 +182,24 @@ const messages: Record<string, string> = {
     "The runtime controller uses an incompatible capability format. Update the host controller to match the control plane, then check again.",
   RUNTIME_UNAVAILABLE:
     "The runtime could not complete this request. Use the worker startup check or check Platform services before retrying.",
+  SUBSCRIPTION_INVALID:
+    "This is not a current Codex ChatGPT login. Sign in again and import its auth.json file.",
+  SUBSCRIPTION_IN_USE:
+    "Another user has a subscription loaded into this worker. Its owner must unload it before you can load yours.",
+  SUBSCRIPTION_NOT_CONFIGURED:
+    "User subscriptions are not enabled on this deployment. Ask an administrator to configure the subscription gateway.",
   PROVIDER_LOGIN_REQUIRED:
-    "The native provider needs its operator login refreshed. No API billing fallback was used.",
+    "Open the worker’s Subscription settings to save a current ChatGPT login and load it into the worker. No API billing fallback was used.",
+  PROVIDER_NOT_CONFIGURED:
+    "Codex or the selected provider is not configured for this worker. Ask an administrator to configure its model and subscription connection before retrying. Worker readiness only confirms that compute is running.",
+  AGENT_EXECUTABLE_UNAVAILABLE:
+    "The native agent could not start. Ask an administrator to check the worker image and installed provider executable.",
+  NATIVE_AGENT_FAILED:
+    "The native agent exited unsuccessfully. Check this worker’s activity logs before retrying.",
+  INVALID_AGENT_RESPONSE:
+    "The native agent returned an unreadable result. Check this worker’s activity logs before retrying.",
   CREDENTIAL_UNAVAILABLE:
-    "The provider credential is unavailable. Run the credential repair command in the project terminal.",
+    "The provider credential is unavailable. Ask an administrator to check Vault connectivity and the provider access token.",
   IDEMPOTENCY_CONFLICT:
     "A previous request used this key with different settings. Change the form and submit a new request.",
   NOT_FOUND_OR_FORBIDDEN:

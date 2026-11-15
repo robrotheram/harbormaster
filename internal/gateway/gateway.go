@@ -12,16 +12,17 @@ import (
 )
 
 type Config struct {
-	Mode                   string              `json:"-"`
-	Models                 []string            `json:"models"`
-	Origin                 string              `json:"origin,omitempty"`
-	Network                NetworkPolicy       `json:"network,omitempty"`
-	APIKey                 string              `json:"-"`
-	Verify                 Verifier            `json:"-"`
-	Subscriptions          *SubscriptionConfig `json:"subscriptions,omitempty"`
-	SubscriptionVaultAddr  string              `json:"-"`
-	SubscriptionVaultCA    string              `json:"-"`
-	SubscriptionVaultToken string              `json:"-"`
+	ResolveSubscription    func(context.Context, string) (subscriptionCredential, error) `json:"-"`
+	Mode                   string                                                        `json:"-"`
+	Models                 []string                                                      `json:"models"`
+	Origin                 string                                                        `json:"origin,omitempty"`
+	Network                NetworkPolicy                                                 `json:"network,omitempty"`
+	APIKey                 string                                                        `json:"-"`
+	Verify                 Verifier                                                      `json:"-"`
+	Subscriptions          *SubscriptionConfig                                           `json:"subscriptions,omitempty"`
+	SubscriptionVaultAddr  string                                                        `json:"-"`
+	SubscriptionVaultCA    string                                                        `json:"-"`
+	SubscriptionVaultToken string                                                        `json:"-"`
 	subscriptionHTTP       *http.Client
 }
 
@@ -43,7 +44,13 @@ func ConfigFromEnv() (Config, error) {
 	if err != nil {
 		return c, err
 	}
-	if c.Subscriptions != nil {
+	if c.Subscriptions != nil && c.Subscriptions.UserAccounts {
+		c.ResolveSubscription, err = newSubscriptionResolver(os.Getenv("CONTROLPLANE_URL"), token)
+		if err != nil {
+			return c, err
+		}
+	}
+	if c.Subscriptions != nil && !c.Subscriptions.UserAccounts {
 		c.SubscriptionVaultAddr = os.Getenv("SUBSCRIPTION_VAULT_ADDR")
 		c.SubscriptionVaultCA = os.Getenv("SUBSCRIPTION_VAULT_CA_FILE")
 		c.SubscriptionVaultToken, err = ReadSecret(os.Getenv("SUBSCRIPTION_VAULT_TOKEN_FILE"))
@@ -57,7 +64,7 @@ func ConfigFromEnv() (Config, error) {
 	return c, err
 }
 func NewHandler(c Config) (http.Handler, error) {
-	if c.Verify == nil || (c.Mode != "fixture" && c.Mode != "upstream") || len(c.Models) == 0 {
+	if (c.Mode == "subscription" && c.Subscriptions == nil) || c.Verify == nil || (c.Mode != "fixture" && c.Mode != "upstream" && c.Mode != "subscription") || len(c.Models) == 0 {
 		return nil, ErrDenied
 	}
 	models := map[string]bool{}
@@ -88,6 +95,10 @@ func NewHandler(c Config) (http.Handler, error) {
 	}
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { JSON(w, 200, map[string]string{"status": "ok"}) })
 	mux.HandleFunc("POST /v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
+		if c.Mode == "subscription" {
+			Error(w, 503, "PROVIDER_NOT_CONFIGURED")
+			return
+		}
 		if _, err := Authenticate(r, c.Verify, "inference"); err != nil {
 			Error(w, 401, "UNAUTHORIZED")
 			return

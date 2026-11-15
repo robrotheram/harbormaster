@@ -4,6 +4,7 @@ resources:
 - ../../base
 - foundation
 - ingress.yaml
+- user-subscriptions.yaml
 patches:
 - target:
     group: apps
@@ -15,6 +16,7 @@ patches:
       value:
         - name: harbormaster-registry
 - path: controlplane-patch.yaml
+- path: subscription-access-patch.yaml
 - path: runtime-controller-patch.yaml
 - path: runtime-rbac-patch.yaml
 - path: dashboard-patch.yaml

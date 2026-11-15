@@ -44,8 +44,10 @@ export function PairingPanel({
         />
       </label>
       <p className="form-note">
-        Expires {date(value.expires_at)}. Keep this link private. It works on
-        the same computer as Docker.
+        Expires {date(value.expires_at)}. Keep this link private.{" "}
+        {value.pairing_url.startsWith("https:")
+          ? "Your desktop must be able to reach this environment over HTTPS."
+          : "It works on the same computer as Docker."}
       </p>
       {copyFailed && (
         <p role="alert" className="text-sm text-destructive">

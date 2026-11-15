@@ -37,6 +37,13 @@ func issueDesktopPair(w http.ResponseWriter, r *http.Request, client *http.Clien
 	if _, port, err := net.SplitHostPort(r.Host); err == nil {
 		host = net.JoinHostPort(host, port)
 	}
-	u := url.URL{Scheme: "http", Host: host, Path: "/pair", Fragment: url.Values{"token": {pairing.Credential}}.Encode()}
+	scheme := "http"
+	if origin, ok := r.Context().Value(authenticatedOriginKey{}).(string); ok {
+		if public, err := url.Parse(origin); err == nil && public.Scheme == "https" {
+			host = "desktop-" + strings.Replace(id, "ws_", "ws-", 1) + "." + public.Host
+			scheme = "https"
+		}
+	}
+	u := url.URL{Scheme: scheme, Host: host, Path: "/pair", Fragment: url.Values{"token": {pairing.Credential}}.Encode()}
 	shared.JSON(w, 200, map[string]string{"pairing_url": u.String(), "expires_at": pairing.ExpiresAt})
 }
