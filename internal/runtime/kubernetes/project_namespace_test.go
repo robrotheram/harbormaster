@@ -72,6 +72,10 @@ func TestApplicationNamespaceProvisioningRetriesAndRejectsForeignOwnership(t *te
 			t.Fatal(got, err)
 		}
 	}
+	policy := objects["/apis/networking.k8s.io/v1/namespaces/"+ns+"/networkpolicies/application-isolation"]
+	if rules := policy["spec"].(map[string]any)["egress"].([]any); len(rules) != 2 {
+		t.Fatal("unexpected application egress", rules)
+	}
 	if posts != 6 {
 		t.Fatal("retry duplicated resources", posts)
 	}

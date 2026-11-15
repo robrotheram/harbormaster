@@ -71,8 +71,10 @@ CPU/memory/storage/Pod quotas, isolated networking, the scoped GHCR pull Secret 
 an `application` ServiceAccount with token mounting disabled. Application manifests
 should use `serviceAccountName: application` and run as non-root. Ingress allows
 same-project traffic and the cluster's Traefik Pods. Egress allows same-project
-traffic, CoreDNS and public IPv4 destinations, excluding private/link-local ranges.
-Other project namespaces, the shared worker and core services are not permitted.
+traffic and CoreDNS. Other project namespaces, the shared worker, core services and
+public destinations are blocked by default. Add explicit application-specific
+outbound NetworkPolicies in the application deployment when external access is
+required; a broad Internet rule can also allow node-hosted cluster services.
 
 Deploy built application manifests with normal Helm/Kustomize or project CI into
 this namespace; namespace provisioning does not automatically build or deploy an

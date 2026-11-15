@@ -47,7 +47,6 @@ func (k *Kubernetes) EnsureProjectNamespace(ctx context.Context, project string)
 	policy["spec"] = map[string]any{"podSelector": map[string]any{}, "policyTypes": []any{"Ingress", "Egress"}, "ingress": []any{map[string]any{"from": []any{sameNamespace, ingress}}}, "egress": []any{
 		map[string]any{"to": []any{sameNamespace}},
 		map[string]any{"to": []any{dns}, "ports": []any{map[string]any{"protocol": "UDP", "port": float64(53)}, map[string]any{"protocol": "TCP", "port": float64(53)}}},
-		map[string]any{"to": []any{map[string]any{"ipBlock": map[string]any{"cidr": "0.0.0.0/0", "except": []any{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8", "169.254.0.0/16"}}}}},
 	}}
 	for _, entry := range []struct {
 		path string
