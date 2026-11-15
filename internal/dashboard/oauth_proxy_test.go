@@ -57,6 +57,9 @@ func TestOAuthProxyValidatesSessionRatherThanForwardedIdentity(t *testing.T) {
 			if w.Code != want || (calls == 1) != (want == 204) {
 				t.Fatalf("status=%d calls=%d; want %d", w.Code, calls, want)
 			}
+			if want == 401 && !strings.Contains(w.Body.String(), "AUTH_REQUIRED") {
+				t.Fatal("expired sessions must trigger the frontend's authentication reset")
+			}
 		})
 	}
 }

@@ -85,7 +85,7 @@ func NewOAuthProxyHandler(next http.Handler, cfg OAuthProxyConfig) (http.Handler
 			if r.URL.Path == "/auth/session" {
 				shared.JSON(w, 200, map[string]string{"status": "anonymous"})
 			} else {
-				writeError(w, 401, "SIGN_IN_REQUIRED")
+				writeError(w, 401, "AUTH_REQUIRED")
 			}
 			return
 		}
