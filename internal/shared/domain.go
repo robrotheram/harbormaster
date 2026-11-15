@@ -10,6 +10,7 @@ type Project struct {
 }
 
 type AgentHome struct {
+	Shared      bool      `json:"shared,omitempty"`
 	ID          string    `json:"id"`
 	ProjectID   string    `json:"project_id"`
 	WorkspaceID string    `json:"workspace_id"`

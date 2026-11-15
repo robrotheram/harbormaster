@@ -56,6 +56,7 @@ export interface Workspace {
   memory_bytes?: number | null;
 }
 export interface AgentHome {
+  shared?: boolean;
   id: string;
   project_id: string;
   workspace_id: string;

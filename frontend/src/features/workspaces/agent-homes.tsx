@@ -98,12 +98,21 @@ export function AgentHomes({ project }: { project: Project }) {
         </Empty>
       ) : null}
       <details className="page-help">
-        <summary>How private agent homes work</summary>
+        <summary>How agent homes work</summary>
         <p>
-          A home belongs to one worker in {project.name}. Its conversations,
-          memory, credentials and tool state stay separate. Branched workers
-          inherit project files through an explicit copy and receive their own
-          home.
+          {homes.data?.some((home) => home.shared) ? (
+            <>
+              All projects use this same agent home. Conversations, memory and
+              tool state are shared with the workspace.
+            </>
+          ) : (
+            <>
+              A home belongs to one worker in {project.name}. Its conversations,
+              memory, credentials and tool state stay separate. Branched workers
+              inherit project files through an explicit copy and receive their
+              own home.
+            </>
+          )}
         </p>
       </details>
     </>

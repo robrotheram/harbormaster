@@ -186,10 +186,24 @@ func (s *Server) registerDomains(mux *http.ServeMux) {
 		if !ok {
 			return
 		}
-		homes, err := s.Store.AgentHomes(r.Context(), project)
+		homeProject := project
+		if s.cfg.SharedWorkspaceID != "" {
+			homeProject = "default"
+		}
+		homes, err := s.Store.AgentHomes(r.Context(), homeProject)
 		if err != nil {
 			shared.Error(w, 503, "STORAGE_UNAVAILABLE")
 			return
+		}
+		if s.cfg.SharedWorkspaceID != "" {
+			selected := []shared.AgentHome{}
+			for _, home := range homes {
+				if home.WorkspaceID == s.cfg.SharedWorkspaceID {
+					home.Shared = true
+					selected = append(selected, home)
+				}
+			}
+			homes = selected
 		}
 		shared.JSON(w, 200, map[string]any{"items": homes})
 	})

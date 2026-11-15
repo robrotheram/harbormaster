@@ -1,4 +1,4 @@
-import { request, projectList, requireProject } from "@/shared/http";
+import { request, requireProject } from "@/shared/http";
 import { keys } from "@/shared/query-keys";
 import type {
   Workspace,
@@ -83,8 +83,18 @@ export const workspacesApi = {
     );
     return value.items;
   },
-  homes: (project: string, signal?: AbortSignal) =>
-    projectList<AgentHome>("/agent-homes", project, signal),
+  homes: async (project: string, signal?: AbortSignal) => {
+    const value = await request<{ items: AgentHome[] }>(
+      "/agent-homes?project_id=" + encodeURIComponent(project),
+      undefined,
+      signal,
+    );
+    requireProject(
+      value.items.filter((home) => home.shared !== true),
+      project,
+    );
+    return value.items;
+  },
   start: (id: string, idempotency_key: string = crypto.randomUUID()) =>
     request<StartResult>(`/workspaces/${encodeURIComponent(id)}/start`, {
       idempotency_key,
