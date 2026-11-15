@@ -151,6 +151,10 @@ func HTTPSOrigin(origin string) (*url.URL, error) {
 	return u, nil
 }
 func (p NetworkPolicy) Transport(cert *tls.Certificate) (*http.Transport, error) {
+	return p.transport(cert, net.DefaultResolver.LookupNetIP)
+}
+
+func (p NetworkPolicy) transport(cert *tls.Certificate, lookup func(context.Context, string, string) ([]netip.Addr, error)) (*http.Transport, error) {
 	if len(p.AllowedCIDRs) == 0 {
 		return nil, ErrDenied
 	}
@@ -198,17 +202,17 @@ func (p NetworkPolicy) Transport(cert *tls.Certificate) (*http.Transport, error)
 		if err != nil {
 			return nil, ErrDenied
 		}
-		ips, err := net.DefaultResolver.LookupNetIP(ctx, "ip", host)
+		ips, err := lookup(ctx, "ip", host)
 		if err != nil || len(ips) == 0 {
 			return nil, ErrDenied
 		}
-		for _, ip := range ips {
-			if !allowed(ip) {
-				return nil, ErrDenied
-			}
-		}
 		d := net.Dialer{Timeout: 5 * time.Second}
 		for _, ip := range ips {
+			// A dual-stack DNS answer may include addresses outside the policy.
+			// Dial only approved literals, without resolving the hostname again.
+			if !allowed(ip) {
+				continue
+			}
 			conn, err := d.DialContext(ctx, "tcp", net.JoinHostPort(ip.String(), port))
 			if err == nil {
 				return conn, nil

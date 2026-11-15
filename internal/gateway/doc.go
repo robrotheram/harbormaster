@@ -24,8 +24,8 @@ errors, or responses are logged. Non-success upstream responses are replaced
 with sanitized 503 errors.
 
 Network policies require allowed_cidrs. Private, loopback and link-local IPs
-additionally require allow_private:true. All DNS answers must pass policy;
-the transport connects to a checked IP while retaining original TLS hostname
+additionally require allow_private:true. DNS answers outside the policy are skipped;
+the transport connects only to a checked IP while retaining original TLS hostname
 verification. Redirects and environment proxies are disabled. ca_file optionally
 selects a PEM CA bundle; TLS verification cannot be disabled. For a private
 Vault or test upstream, set both its narrow CIDR and allow_private:true.
