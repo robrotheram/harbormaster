@@ -6,7 +6,7 @@ import { RepositoryConnections } from "@/features/delivery/connections";
 import type { Project } from "@/shared/types";
 
 const tabClassName =
-  "inline-flex min-w-0 items-center justify-center gap-2 border-b-2 border-transparent px-3 py-3 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset data-[state=active]:border-primary data-[state=active]:text-foreground";
+  "inline-flex shrink-0 items-center justify-center gap-2 border-b-2 border-transparent px-3 py-3 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset data-[state=active]:border-primary data-[state=active]:text-foreground";
 
 export function Connections({
   projects,
@@ -35,7 +35,10 @@ export function Connections({
           })
         }
       >
-        <Tabs.List aria-label="Connection categories" className="flex border-b">
+        <Tabs.List
+          aria-label="Connection categories"
+          className="flex max-w-full overflow-x-auto border-b"
+        >
           <Tabs.Trigger value="agents" className={tabClassName}>
             <Bot aria-hidden="true" className="size-4 shrink-0" />
             Agent subscriptions
