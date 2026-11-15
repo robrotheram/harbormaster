@@ -26,4 +26,4 @@ spec:
         - name: KUBERNETES_EGRESS_URL
           value: http://10.43.51.35:8080
         - name: WORKSPACE_IMAGE
-          value: ghcr.io/robrotheram/harbormaster/workspace@sha256:f0f2244c4633104c768a8cc16e5aef5818eb5273ae3ffb8d715465972ff2bb40
+          value: ghcr.io/robrotheram/harbormaster/workspace@sha256:b2327934ee015a993e6acd2cab0403b63152a4bc7755f36cc1ebe2cb30503743

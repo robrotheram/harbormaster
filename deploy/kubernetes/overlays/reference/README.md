@@ -173,8 +173,9 @@ application Secret values and restart controlplane after CNPG credential/CA rota
 
 The reference image overrides are pinned in this overlay's `kustomization.yaml`;
 the matching workspace digest is in `runtime-controller-patch.yaml`. This release
-uses source commit `88bedf9939c75b611019d0f9a76ca54906f47bae`, adding personal
-Codex subscription imports and separate HTTPS browser/desktop worker origins.
+uses source commit `be98305c3bc64328b6e99992c1cdabc31c0e4c21`, adding the central
+Connections page, multiple private ChatGPT and Claude accounts, provider-specific
+worker selections, icon tabs, and the Network profiles navigation label.
 The base retains its independently pinned default release.
 
 After a successful GitHub build, obtain the immutable digest from its build output
@@ -226,6 +227,22 @@ workspace supervisor repairs empty initial model selections while retaining
 explicit model choices.
 
 ## Acceptance and recovery
+
+The 2026-11-15 Connections rollout was verified live against the source above.
+All seven platform deployments and the retained shared worker became Ready.
+Schema migration 14 completed. Live acceptance created two synthetic accounts for
+each provider, renamed them, confirmed private metadata and cross-user deletion
+denial, and removed them without creating worker bindings. No real subscription
+was imported or charged; provider inference still requires a user's current login.
+The native T3 console responded, hosted browser/desktop TLS and authentication
+checks passed, and all workspace file checksums and the existing PVC/PV matched
+the pre-rollout snapshots. The worker template now includes both `CODEX_MODEL`
+(`gpt-5.4`) and `CLAUDE_MODEL` (`claude-sonnet-5-5`). Existing T3 provider preferences
+remain preserved.
+
+Private database, deployment, Sandbox, PVC, and file-checksum backups were taken
+before rollout. Schema 14 replaces the legacy single-account tables: rolling back
+to an older controlplane image also requires its matching database backup.
 
 The 2026-11-15 personal-subscription rollout was verified live: all seven platform
 deployments and the shared worker became Ready; the subscription API required a
