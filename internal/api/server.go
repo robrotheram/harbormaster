@@ -19,15 +19,16 @@ import (
 )
 
 type Config struct {
-	SharedWorkspaceID string
-	Token             string
-	ProjectTokens     map[string]string
-	IdleTimeout       time.Duration
-	MaxRunning        int
-	CPUQuota          float64
-	MemoryQuota       int64
-	WorkspaceMemory   int64
-	HealthEndpoints   map[string]string
+	ProvisionProjectNamespaces bool
+	SharedWorkspaceID          string
+	Token                      string
+	ProjectTokens              map[string]string
+	IdleTimeout                time.Duration
+	MaxRunning                 int
+	CPUQuota                   float64
+	MemoryQuota                int64
+	WorkspaceMemory            int64
+	HealthEndpoints            map[string]string
 }
 type Server struct {
 	coordination    *coordination.Service
@@ -169,6 +170,7 @@ func (s *Server) Handler() http.Handler {
 	s.registerWorkspaceSettings(secured)
 	s.registerConsoleUpgrade(secured)
 	s.registerDomains(secured)
+	s.registerProjectNamespaces(secured)
 	s.registerHermes(secured)
 	s.registerEvents(secured)
 	s.registerHistory(secured)

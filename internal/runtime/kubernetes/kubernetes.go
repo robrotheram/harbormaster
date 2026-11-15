@@ -33,6 +33,8 @@ type KubernetesConfig struct {
 	Image, RuntimeClass, StorageClass, ServiceAccount   string
 	InferenceURL, BrokerURL, CodexModel                 string
 	ProjectNamespaces                                   map[string]string
+	ProvisionProjectNamespaces                          bool
+	CoreNamespace                                       string
 	ProjectAllowlists                                   map[string][]string
 	EgressURL                                           string
 	MemoryLimit                                         int64
@@ -53,6 +55,12 @@ func NewKubernetes(c KubernetesConfig) (*Kubernetes, error) {
 	u, err := url.Parse(c.APIURL)
 	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || c.APIToken == "" || len(c.Token) < 32 || len(c.GatewayServiceToken) < 32 || len(c.GrantSecret) < 32 || !dnsLabel.MatchString(c.Deployment) || len(c.Deployment) > 20 || !pinnedImage.MatchString(c.Image) || c.RuntimeClass != "kata" || !dnsLabel.MatchString(c.ServiceAccount) || c.StorageClass == "" || len(c.ProjectNamespaces) == 0 {
 		return nil, errors.New("invalid Kubernetes runtime configuration")
+	}
+	if c.CoreNamespace == "" {
+		c.CoreNamespace = "harbormaster"
+	}
+	if !dnsLabel.MatchString(c.CoreNamespace) {
+		return nil, errors.New("invalid core namespace")
 	}
 	if c.EgressURL == "" {
 		c.EgressURL = "http://egress-gateway.harbormaster.svc:8080"
@@ -365,7 +373,7 @@ func (k *Kubernetes) sandbox(id string, spec protocol.WorkspaceSpec, namespace s
 	}
 	env = append(env, map[string]any{"name": "WORKSPACE_TOKEN", "valueFrom": map[string]any{"secretKeyRef": map[string]string{"name": secretName, "key": "token"}}})
 	container := map[string]any{"name": "workspace", "image": k.cfg.Image, "imagePullPolicy": "IfNotPresent", "env": env, "ports": []any{map[string]any{"containerPort": 8080, "name": "workspace"}}, "securityContext": map[string]any{"allowPrivilegeEscalation": false, "readOnlyRootFilesystem": true, "capabilities": map[string]any{"drop": []string{"ALL"}}}, "resources": map[string]any{"requests": map[string]string{"cpu": "1", "memory": fmt.Sprint(k.cfg.MemoryLimit)}, "limits": map[string]string{"cpu": "1", "memory": fmt.Sprint(k.cfg.MemoryLimit)}}, "volumeMounts": []any{map[string]string{"name": "data", "mountPath": "/data"}, map[string]string{"name": "tmp", "mountPath": "/tmp"}}, "readinessProbe": map[string]any{"httpGet": map[string]any{"path": "/healthz", "port": 8080}, "periodSeconds": 2}}
-	return map[string]any{"apiVersion": SandboxAPIVersion, "kind": "Sandbox", "metadata": map[string]any{"name": k.name(id), "namespace": namespace, "labels": labels}, "spec": map[string]any{"operatingMode": "Running", "service": true, "failedPodPolicy": "Retain", "podTemplate": map[string]any{"metadata": map[string]any{"labels": labels}, "spec": map[string]any{"runtimeClassName": k.cfg.RuntimeClass, "serviceAccountName": k.cfg.ServiceAccount, "automountServiceAccountToken": false, "restartPolicy": "Never", "securityContext": map[string]any{"runAsNonRoot": true, "runAsUser": 10001, "runAsGroup": 10001, "fsGroup": 10001, "seccompProfile": map[string]string{"type": "RuntimeDefault"}}, "containers": []any{container}, "volumes": []any{map[string]any{"name": "tmp", "emptyDir": map[string]string{"medium": "Memory", "sizeLimit": "64Mi"}}}}}, "volumeClaimTemplates": []any{map[string]any{"metadata": map[string]any{"name": "data", "labels": labels}, "spec": map[string]any{"accessModes": []string{"ReadWriteOncePod"}, "storageClassName": k.cfg.StorageClass, "resources": map[string]any{"requests": map[string]string{"storage": "10Gi"}}}}}}}
+	return map[string]any{"apiVersion": SandboxAPIVersion, "kind": "Sandbox", "metadata": map[string]any{"name": k.name(id), "namespace": namespace, "labels": labels}, "spec": map[string]any{"operatingMode": "Running", "service": true, "failedPodPolicy": "Retain", "podTemplate": map[string]any{"metadata": map[string]any{"labels": labels}, "spec": map[string]any{"runtimeClassName": k.cfg.RuntimeClass, "priorityClassName": "harbormaster-workspace", "serviceAccountName": k.cfg.ServiceAccount, "automountServiceAccountToken": false, "restartPolicy": "Never", "securityContext": map[string]any{"runAsNonRoot": true, "runAsUser": 10001, "runAsGroup": 10001, "fsGroup": 10001, "seccompProfile": map[string]string{"type": "RuntimeDefault"}}, "containers": []any{container}, "volumes": []any{map[string]any{"name": "tmp", "emptyDir": map[string]string{"medium": "Memory", "sizeLimit": "64Mi"}}}}}, "volumeClaimTemplates": []any{map[string]any{"metadata": map[string]any{"name": "data", "labels": labels}, "spec": map[string]any{"accessModes": []string{"ReadWriteOncePod"}, "storageClassName": k.cfg.StorageClass, "resources": map[string]any{"requests": map[string]string{"storage": "10Gi"}}}}}}}
 }
 func (k *Kubernetes) Inspect(ctx context.Context, id string) (shared.Observation, error) {
 	r, err := k.find(ctx, id)

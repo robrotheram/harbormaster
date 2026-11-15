@@ -1,23 +1,21 @@
 # Separately managed cluster dependencies
 
-The application overlay does not own cluster-wide operators or the host runtime.
+The application owns its sandbox controller. Shared cluster operators and the host
+runtime retain their existing lifecycle.
 The reference already has Longhorn, CloudNativePG, cert-manager, Traefik and Entra
 OAuth2 Proxy. Preserve their existing owners when adopting Harbormaster into Argo CD.
 
 ## Agent Sandbox
 
-The optional `agent-sandbox/` Kustomization references the fixed v1.0.9 release
-asset, not the upstream development branch:
-
-```sh
-kubectl kustomize deploy/kubernetes/infrastructure/agent-sandbox > /tmp/agent-sandbox.yaml
-kubectl --context default apply --server-side -k deploy/kubernetes/infrastructure/agent-sandbox
-```
-
-Review the upstream release before installation or upgrades. Its source asset is
-`https://github.com/kubernetes-sigs/agent-sandbox/releases/download/v1.0.9/sandbox.yaml`
-with SHA-256 `3eeb27fa821659593ba92c5454571f08c84abb07096bb9d372c1c6c750f6d7d2`.
-This is a separate dependency lifecycle, not part of the application sync.
+Agent Sandbox v1.0.9 is included in the application base. The controller, service
+and service account use `harbormaster`; no separate installation namespace is needed.
+The vendored `agent-sandbox/upstream.yaml` is the unmodified official release asset:
+`https://github.com/kubernetes-sigs/agent-sandbox/releases/download/v1.0.9/sandbox.yaml`,
+SHA-256 `3eeb27fa821659593ba92c5454571f08c84abb07096bb9d372c1c6c750f6d7d2`.
+Kustomize removes the upstream namespace, rewrites RBAC subjects, pins the controller
+image digest and adds resource/security/probe configuration. The CRD is protected
+against pruning and uses server-side apply. Review upstream changes before upgrades;
+do not run another controller installation with a separate leader-election namespace.
 
 ## Kata
 

@@ -99,7 +99,7 @@ func TestPlatformSecurityAndReferenceContract(t *testing.T) {
 				switch o["kind"] {
 				case "Secret", "Sandbox", "Job", "DaemonSet", "RuntimeClass":
 					t.Fatalf("%s must not own credentials, workspaces or host runtime: %s", path, key(raw))
-				case "Namespace", "StorageClass", "Cluster":
+				case "Namespace", "StorageClass", "Cluster", "CustomResourceDefinition":
 					options, _ := field(raw, "metadata", "annotations", "argocd.argoproj.io/sync-options").(string)
 					if !strings.Contains(options, "Prune=false") || !strings.Contains(options, "Delete=false") {
 						t.Fatalf("state protection missing: %s", key(raw))
@@ -108,7 +108,7 @@ func TestPlatformSecurityAndReferenceContract(t *testing.T) {
 					deployments++
 					name := field(raw, "metadata", "name")
 					pod := field(raw, "spec", "template", "spec")
-					if field(pod, "automountServiceAccountToken") != (name == "runtime-controller") {
+					if field(pod, "automountServiceAccountToken") != (name == "runtime-controller" || name == "agent-sandbox-controller") {
 						t.Fatalf("unexpected Kubernetes token access: %v", name)
 					}
 					if field(pod, "securityContext", "runAsNonRoot") != true {
@@ -135,8 +135,8 @@ func TestPlatformSecurityAndReferenceContract(t *testing.T) {
 					}
 				}
 			}
-			if deployments != 7 {
-				t.Fatalf("expected seven platform deployments, got %d", deployments)
+			if deployments != 8 {
+				t.Fatalf("expected eight platform deployments, got %d", deployments)
 			}
 			runtime := find(t, objects, "Deployment", "runtime-controller")
 			values := env(runtime)
@@ -187,7 +187,7 @@ func TestPlatformSecurityAndReferenceContract(t *testing.T) {
 				t.Fatal("runtime service account binding was rewritten")
 			}
 			deny := find(t, objects, "NetworkPolicy", "workspace-default-deny")
-			if !reflect.DeepEqual(field(map[string]any(deny), "spec", "podSelector"), map[string]any{}) || len(list(field(map[string]any(deny), "spec", "ingress"))) != 0 || len(list(field(map[string]any(deny), "spec", "egress"))) != 0 {
+			if !reflect.DeepEqual(field(map[string]any(deny), "spec", "podSelector"), map[string]any{"matchExpressions": []any{map[string]any{"key": "workbench.workspace", "operator": "Exists"}}}) || len(list(field(map[string]any(deny), "spec", "ingress"))) != 0 || len(list(field(map[string]any(deny), "spec", "egress"))) != 0 {
 				t.Fatal("default deny weakened")
 			}
 			ingress := find(t, objects, "Ingress", "workbench")
@@ -301,12 +301,6 @@ func TestConsolidatedCoreRetainsWorkspaceBoundary(t *testing.T) {
 				}
 				switch o["kind"] {
 				case "Deployment", "Service", "Cluster", "Certificate", "Middleware", "Ingress", "ConfigMap", "ServiceAccount":
-					if name == "workspace" && o["kind"] == "ServiceAccount" {
-						if ns != "workbench-reference" {
-							t.Fatal("workspace identity moved into core")
-						}
-						continue
-					}
 					if ns != "harbormaster" {
 						t.Fatalf("core resource outside consolidated namespace: %s", key(raw))
 					}
@@ -316,9 +310,6 @@ func TestConsolidatedCoreRetainsWorkspaceBoundary(t *testing.T) {
 				}
 			}
 			expected := map[string]bool{"harbormaster": true}
-			if path == "overlays/reference" {
-				expected["workbench-reference"] = true
-			}
 			if !reflect.DeepEqual(namespaces, expected) {
 				t.Fatalf("unexpected namespace layout: %v", namespaces)
 			}
@@ -327,8 +318,8 @@ func TestConsolidatedCoreRetainsWorkspaceBoundary(t *testing.T) {
 			}
 			for _, policyName := range []string{"workspace-controller-ingress", "workspace-project-egress"} {
 				policy := map[string]any(find(t, objects, "NetworkPolicy", policyName))
-				if field(policy, "metadata", "namespace") != "workbench-reference" {
-					t.Fatal("workspace policy moved into core")
+				if field(policy, "metadata", "namespace") != "harbormaster" {
+					t.Fatal("workspace policy must share the core namespace")
 				}
 				direction, peers := "egress", "to"
 				if policyName == "workspace-controller-ingress" {
@@ -359,7 +350,32 @@ func TestReferenceUsesOneSharedWorker(t *testing.T) {
 		t.Fatal("shared worker not configured")
 	}
 	quota := map[string]any(find(t, objects, "ResourceQuota", "project-quota"))
-	if field(quota, "metadata", "namespace") != "workbench-reference" || field(quota, "spec", "hard", "pods") != "1" {
+	if field(quota, "metadata", "namespace") != "harbormaster" || field(quota, "spec", "hard", "pods") != "1" {
 		t.Fatal("reference must permit only one workspace pod")
+	}
+}
+
+func TestSharedNamespaceKeepsWorkspacePoliciesOffCoreServices(t *testing.T) {
+	objects := build(t, "overlays/reference")
+	for _, name := range []string{"workspace-default-deny", "workspace-controller-ingress", "workspace-project-egress"} {
+		policy := find(t, objects, "NetworkPolicy", name)
+		expressions := list(field(map[string]any(policy), "spec", "podSelector", "matchExpressions"))
+		if len(expressions) != 1 || field(expressions[0], "key") != "workbench.workspace" || field(expressions[0], "operator") != "Exists" {
+			t.Fatal("workspace policy selects platform services", name)
+		}
+	}
+	quota := find(t, objects, "ResourceQuota", "project-quota")
+	scopes := list(field(map[string]any(quota), "spec", "scopeSelector", "matchExpressions"))
+	if len(scopes) != 1 || field(scopes[0], "scopeName") != "PriorityClass" || !reflect.DeepEqual(field(scopes[0], "values"), []any{"harbormaster-workspace"}) {
+		t.Fatal("workspace quota applies to core services")
+	}
+	binding := find(t, objects, "ClusterRoleBinding", "agent-sandbox-controller")
+	for _, subject := range list(binding["subjects"]) {
+		if field(subject, "namespace") != "harbormaster" {
+			t.Fatal("sandbox controller binding outside core")
+		}
+	}
+	if env(find(t, objects, "Deployment", "controlplane"))["PROVISION_PROJECT_NAMESPACES"] != "true" || env(find(t, objects, "Deployment", "runtime-controller"))["PROVISION_PROJECT_NAMESPACES"] != "true" {
+		t.Fatal("automatic project namespaces not enabled")
 	}
 }

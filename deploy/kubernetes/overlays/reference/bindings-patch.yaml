@@ -4,4 +4,4 @@ metadata:
   name: runtime-bindings
   namespace: harbormaster
 data:
-  projects.json: '{"default": "workbench-reference"}'
+  projects.json: '{"default": "harbormaster"}'

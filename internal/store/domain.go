@@ -190,3 +190,23 @@ func (s *Store) saveWorkspace(ctx context.Context, w shared.Workspace) error {
 	}
 	return tx.Commit()
 }
+
+// SaveProjectNamespace only updates a live project's deployment projection.
+func (s *Store) SaveProjectNamespace(ctx context.Context, p shared.Project) error {
+	if p.DeploymentNamespace == "" || p.DeploymentNamespace != shared.ProjectNamespace(p.ID) {
+		return ErrOwnership
+	}
+	b, err := json.Marshal(p)
+	if err != nil {
+		return err
+	}
+	result, err := s.DB.ExecContext(ctx, s.query(`UPDATE projects SET metadata=? WHERE id=? AND id NOT IN (SELECT id FROM deleted_resources WHERE kind='project')`), string(b), p.ID)
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err == nil && n != 1 {
+		return sql.ErrNoRows
+	}
+	return err
+}

@@ -1,21 +1,8 @@
 apiVersion: v1
-kind: Namespace
-metadata:
-  name: workbench-reference
-  labels:
-    workbench.project: default
-    workbench.security: enforced
-    pod-security.kubernetes.io/enforce: restricted
-    pod-security.kubernetes.io/enforce-version: latest
-  annotations:
-    argocd.argoproj.io/sync-wave: '-20'
-    argocd.argoproj.io/sync-options: Prune=false,Delete=false
----
-apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: workspace
-  namespace: workbench-reference
+  namespace: harbormaster
   annotations:
     argocd.argoproj.io/sync-wave: '-5'
 automountServiceAccountToken: false
@@ -26,11 +13,14 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: workspace-default-deny
-  namespace: workbench-reference
+  namespace: harbormaster
   annotations:
     argocd.argoproj.io/sync-wave: '-5'
 spec:
-  podSelector: {}
+  podSelector:
+    matchExpressions:
+    - key: workbench.workspace
+      operator: Exists
   policyTypes:
   - Ingress
   - Egress
@@ -39,11 +29,14 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: workspace-controller-ingress
-  namespace: workbench-reference
+  namespace: harbormaster
   annotations:
     argocd.argoproj.io/sync-wave: '-5'
 spec:
   podSelector:
+    matchExpressions:
+    - key: workbench.workspace
+      operator: Exists
     matchLabels:
       workbench.project: default
   policyTypes:
@@ -64,11 +57,14 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: workspace-project-egress
-  namespace: workbench-reference
+  namespace: harbormaster
   annotations:
     argocd.argoproj.io/sync-wave: '-5'
 spec:
   podSelector:
+    matchExpressions:
+    - key: workbench.workspace
+      operator: Exists
     matchLabels:
       workbench.project: default
   policyTypes:
@@ -114,7 +110,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: workbench-runtime
-  namespace: workbench-reference
+  namespace: harbormaster
   annotations:
     argocd.argoproj.io/sync-wave: '-5'
 rules:
@@ -154,7 +150,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: workbench-runtime
-  namespace: workbench-reference
+  namespace: harbormaster
   annotations:
     argocd.argoproj.io/sync-wave: '-5'
 subjects:
@@ -170,7 +166,7 @@ apiVersion: v1
 kind: ResourceQuota
 metadata:
   name: project-quota
-  namespace: workbench-reference
+  namespace: harbormaster
   annotations:
     argocd.argoproj.io/sync-wave: '-5'
 spec:
@@ -180,6 +176,9 @@ spec:
     limits.cpu: '2'
     requests.memory: 2Gi
     limits.memory: 2Gi
-    requests.storage: 100Gi
-    persistentvolumeclaims: '10'
     pods: '1'
+  scopeSelector:
+    matchExpressions:
+    - scopeName: PriorityClass
+      operator: In
+      values: [harbormaster-workspace]

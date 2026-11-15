@@ -4,6 +4,8 @@ metadata:
   name: harbormaster
   labels:
     app.kubernetes.io/part-of: harbormaster
+    workbench.project: default
+    workbench.security: enforced
   annotations:
     argocd.argoproj.io/sync-wave: '-20'
     argocd.argoproj.io/sync-options: Prune=false,Delete=false

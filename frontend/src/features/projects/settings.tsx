@@ -12,6 +12,11 @@ export function ProjectSettings({ project }: { project: Project }) {
   const navigate = useNavigate();
   const [confirming, setConfirming] = useState(false);
   const [confirmation, setConfirmation] = useState("");
+  const namespace = useMutation({
+    mutationFn: () =>
+      request(`/projects/${encodeURIComponent(project.id)}/namespace`, {}),
+    onSuccess: () => queryClient.invalidateQueries(),
+  });
   const deletion = useMutation({
     mutationFn: () =>
       request(`/projects/${encodeURIComponent(project.id)}/delete`, {
@@ -42,6 +47,28 @@ export function ProjectSettings({ project }: { project: Project }) {
             <dt className="text-muted-foreground">Project ID</dt>
             <dd className="identifier">{project.id}</dd>
           </div>
+          {project.deployment_namespace && (
+            <div>
+              <dt className="text-muted-foreground">Application namespace</dt>
+              <dd className="identifier">{project.deployment_namespace}</dd>
+              <dd className="text-sm text-muted-foreground">
+                {project.namespace_ready
+                  ? "Ready for application deployments. The agent workspace is shared."
+                  : "Namespace setup is incomplete."}
+              </dd>
+              {!project.namespace_ready && (
+                <Button
+                  onClick={() => namespace.mutate()}
+                  disabled={namespace.isPending}
+                >
+                  {namespace.isPending
+                    ? "Preparing namespace…"
+                    : "Retry namespace setup"}
+                </Button>
+              )}
+              {namespace.isError && <ErrorNotice error={namespace.error} />}
+            </div>
+          )}
         </dl>
       </section>
       <section aria-labelledby="delete-project" className="border-t pt-6">
@@ -55,9 +82,9 @@ export function ProjectSettings({ project }: { project: Project }) {
         ) : (
           <>
             <p className="mt-2 max-w-prose text-sm leading-6 text-muted-foreground">
-              Remove this project and all its workers from Workbench. Compute
-              must stop successfully before deletion. Private disks and saved
-              evidence remain on the host.
+              {project.deployment_namespace
+                ? "Remove this project from Workbench. The shared agent, deployment namespace and deployed applications are retained."
+                : "Remove this project and all its workers from Workbench. Compute must stop successfully before deletion. Private disks and saved evidence remain on the host."}
             </p>
             <Button
               className="mt-4"
@@ -84,8 +111,10 @@ export function ProjectSettings({ project }: { project: Project }) {
           closeDisabled={deletion.isPending}
         >
           <p className="break-words text-sm">
-            This removes <strong>{project.name}</strong> and all its workers
-            from Workbench. Its compute must stop successfully before deletion.
+            Remove <strong>{project.name}</strong> from Workbench.
+            {project.deployment_namespace
+              ? " The shared agent, deployment namespace and deployed applications are retained."
+              : " Its workers must stop successfully before deletion."}
           </p>
           <p className="text-sm text-muted-foreground">
             Private disks and saved evidence remain on the host. This action

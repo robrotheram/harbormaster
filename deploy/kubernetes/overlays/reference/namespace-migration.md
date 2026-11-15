@@ -1,4 +1,46 @@
-# Consolidating an existing installation
+# Consolidating the shared worker and sandbox controller
+
+The desired application namespace is now `harbormaster`. Agent Sandbox is included
+in the main Kustomization; new `hm-prj-*` namespaces are application deployment
+destinations. The shared agent remains one persistent workspace. Shared cluster
+infrastructure, including Kata's host installation, keeps its existing ownership.
+
+For an existing `workbench-reference` worker, applying the overlay alone is not a
+storage migration. Use a coordinated cutover:
+
+1. Publish and pin images from the consolidated-workspace implementation. The new
+   runtime validates workspace-only policy selectors; old binaries reject them.
+2. Archive the existing Sandbox/PVC/grant/policy identities privately, take a
+   database backup and back up workspace data through the storage operator.
+3. Stop the old sandbox controller before moving its ClusterRoleBinding to the
+   service account in `harbormaster`. Apply the vendored controller with server-side
+   apply, verify readiness and its new leader lease, then retire its old namespace.
+   The controller binding's namespace change requires explicit field ownership
+   adoption from the previous bootstrap manager.
+4. Quiesce and stop the shared worker through the API. Stop controlplane and runtime
+   writers during relocation. Verify the original PV has Retain reclaim policy.
+5. Preserve the workspace's project/home/generation labels and matching Secrets.
+   Release the stopped old claim and bind a new claim in `harbormaster` to that exact
+   retained PV. Never reuse or erase another PV. Create the new Sandbox with matching
+   ownership labels, the new pinned image and `harbormaster-workspace` PriorityClass.
+   Remove stale owner references to old namespace object UIDs. Historical stopped
+   workers can remain archived with retained PVs; shared mode does not restart them.
+6. Apply the complete overlay. Core workspace policies select only workspace-labelled
+   Pods, and its quota is PriorityClass-scoped. A namespace-wide one-Pod quota or
+   default-deny policy would block the platform itself. Restart runtime/controlplane
+   with the new binding and verify readiness, file hashes, PVC identity and gateway
+   restrictions before deleting the old workspace namespace.
+7. Create two disposable projects, verify distinct application namespaces and one
+   shared worker, test application deployment using `serviceAccountName: application`,
+   then remove acceptance workloads and their namespaces explicitly. Project metadata
+   deletion intentionally retains application namespaces and their deployed data.
+
+Never force-remove storage finalizers or delete the retained PV as a migration
+shortcut. Rollback requires restoring the old binding, policies, Sandbox and claim
+against the retained data; avoid simultaneous writers. Record the verified topology
+in the reference README and commit the immutable image pins.
+
+## Earlier two-core-namespace migration (historical procedure)
 
 The desired core namespace is `harbormaster`, replacing `workbench-system` and
 `workbench-egress`. Workspace namespaces, their

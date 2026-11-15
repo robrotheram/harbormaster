@@ -9,6 +9,8 @@ spec:
       containers:
       - name: controlplane
         env:
+        - name: PROVISION_PROJECT_NAMESPACES
+          value: 'true'
         - name: SHARED_WORKSPACE_ID
           value: ws_shared
         - name: MEMORY_QUOTA_BYTES

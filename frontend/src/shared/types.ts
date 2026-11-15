@@ -1,4 +1,6 @@
 export interface Project {
+  deployment_namespace?: string;
+  namespace_ready?: boolean;
   id: string;
   name: string;
   created_at: string;

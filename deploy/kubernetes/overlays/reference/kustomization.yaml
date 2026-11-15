@@ -16,6 +16,7 @@ patches:
         - name: harbormaster-registry
 - path: controlplane-patch.yaml
 - path: runtime-controller-patch.yaml
+- path: runtime-rbac-patch.yaml
 - path: dashboard-patch.yaml
 - path: inference-gateway-patch.yaml
 - path: credential-broker-patch.yaml

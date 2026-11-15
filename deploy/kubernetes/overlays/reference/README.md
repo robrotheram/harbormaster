@@ -13,27 +13,27 @@ endpoint discovery files to update.
 ```sh
 kubectl --context default get nodes
 kubectl kustomize deploy/kubernetes/overlays/reference > /tmp/harbormaster.yaml
-kubectl --context default apply --dry-run=server -k deploy/kubernetes/overlays/reference
+kubectl --context default apply --server-side --dry-run=server -k deploy/kubernetes/overlays/reference
 kubectl --context default diff -k deploy/kubernetes/overlays/reference
-kubectl --context default apply -k deploy/kubernetes/overlays/reference
+kubectl --context default apply --server-side -k deploy/kubernetes/overlays/reference
 ```
 
 Review differences first. `kubectl diff` exits 1 when changes are present.
-This layout uses one core namespace, `harbormaster`, and separate workspace
-namespaces. It is **not an in-place rename** of the earlier two-core-namespace
-installation. Existing installations must follow [the migration procedure](namespace-migration.md)
-before applying this overlay. Applying directly would initialize a new empty database,
-leave existing Secrets behind and conflict with the reserved gateway Service IPs.
-The reference cluster completed this migration on 2026-11-15. The retired
-`workbench-system` and `workbench-egress` namespaces were subsequently deleted.
-The old database PV remains retained, alongside a private logical database backup
-and resource inventory. Rollback now requires restoring resources and database
-state; the previous application can no longer simply be scaled back up.
+The application has one namespace, `harbormaster`: platform services, PostgreSQL,
+Agent Sandbox controller and the shared agent workspace. New project namespaces
+contain deployed applications only. The cluster's existing storage, ingress,
+authentication and Kata host runtime remain independently managed prerequisites.
+
+Existing installations must follow [the migration procedure](namespace-migration.md)
+when moving a retained workspace. A namespace cannot be renamed, and applying
+Kustomize does not move PVCs or copy Secrets. The former `workbench-system` and
+`workbench-egress` namespaces have already been retired; their old database PV and
+private recovery records were retained.
 
 For an empty reference environment, install the external prerequisites, then:
 
 ```sh
-kubectl --context default apply -k deploy/kubernetes/overlays/reference/bootstrap
+kubectl --context default apply --server-side -k deploy/kubernetes/overlays/reference/bootstrap
 kubectl --context default -n harbormaster wait cluster/harbormaster-db \
   --for=condition=Ready --timeout=5m
 ```
@@ -50,22 +50,48 @@ settings. Project work boards and scheduling metadata remain separately addresse
 projects are organizational labels, not filesystem isolation boundaries in this mode.
 Use project-specific folders to organize repositories in the shared filesystem.
 
-Creating a project or submitting work does not allocate another workspace or
-namespace. The worker is provisioned idempotently at controlplane startup. The
-workspace namespace quota permits one running Pod. Its CPU and memory budget
-includes the Kata VM overhead. Existing stopped workspace
-volumes are retained for recovery; they are not adopted or deleted automatically.
-Branch workers, additional agent types and deletion of the shared worker are
-unavailable in shared mode. Remove the explicit setting only through a reviewed
-configuration change if separate workspaces are needed later.
+The worker is provisioned idempotently at controlplane startup. Creating projects
+never creates additional agents. Its PriorityClass-scoped quota permits one worker
+Pod, including Kata VM overhead, without applying that quota to core services.
+Workspace network policies select workspace-labelled Pods, so sharing the namespace
+does not grant the agent access to the database, platform API or Kubernetes API.
+Branch workers, additional agent types and deletion of the shared worker remain
+unavailable in shared mode.
+
+## Project application namespaces
+
+`PROVISION_PROJECT_NAMESPACES=true` on controlplane and runtime-controller makes
+project creation prepare `hm-prj-<project ID suffix>` in this same cluster. Names
+come from immutable generated IDs, never user-supplied names. Project settings and
+the API expose `deployment_namespace` and `namespace_ready`. A provisioning failure
+retains the project creation key; retry creation or use **Retry namespace setup**.
+
+Each application namespace receives restricted Pod admission, a LimitRange,
+CPU/memory/storage/Pod quotas, isolated networking, the scoped GHCR pull Secret and
+an `application` ServiceAccount with token mounting disabled. Application manifests
+should use `serviceAccountName: application` and run as non-root. Ingress allows
+same-project traffic and the cluster's Traefik Pods. Egress allows same-project
+traffic, CoreDNS and public IPv4 destinations, excluding private/link-local ranges.
+Other project namespaces, the shared worker and core services are not permitted.
+
+Deploy built application manifests with normal Helm/Kustomize or project CI into
+this namespace; namespace provisioning does not automatically build or deploy an
+application. Existing in-workspace preview APIs remain local previews. The shared
+agent receives no Kubernetes token. Registry credential rotation must also update
+provisioned project Secrets through the secret manager.
+
+Project deletion retains the shared agent, application namespace, deployed apps
+and storage. Retiring deployed applications is a separate explicit operator action.
 
 ## Dependencies and ownership
 
-- `harbormaster`: core platform, gateways, CNPG PostgreSQL 17, dashboard TLS and auth.
-- `workbench-reference`: restricted project policy, retained workspace state.
+- `harbormaster`: platform, gateways, CNPG PostgreSQL 17, TLS/auth, sandbox controller
+  and the one persistent shared agent.
+- `hm-prj-*`: application deployment destinations created for new projects.
 - Existing Longhorn 1.11.2, CloudNativePG 1.29.1, cert-manager with
   `letsencrypt-prod`, Traefik and oauth2-proxy are cluster-owned prerequisites.
-- Agent Sandbox v1.0.9 is separately installed in `agent-sandbox-system`.
+- Agent Sandbox v1.0.9 is vendored, digest-pinned and included in the application
+  Kustomization. Its CRD is protected against Argo pruning/deletion.
 - Kata chart 4.3.1 is separately owned by Helm release `harbormaster-kata` in
   `kata-system`; see [infrastructure](../../infrastructure/README.md).
 
@@ -99,7 +125,7 @@ literals, shell command arguments or Argo Application parameters.
 | harbormaster | inference-gateway-config | inference-gateway.json |
 | harbormaster | credential-broker-config | credential-broker.json |
 | harbormaster | egress-gateway-config | empty Secret in fixture mode |
-| both namespaces | harbormaster-registry | .dockerconfigjson; type kubernetes.io/dockerconfigjson |
+| harbormaster | harbormaster-registry | .dockerconfigjson; type kubernetes.io/dockerconfigjson |
 
 Use the same control token wherever `control_token` is required, the same controller
 token across controlplane/runtime, and the same gateway token across runtime and
@@ -124,11 +150,9 @@ kubectl --context default -n harbormaster create secret generic credential-broke
   --from-file=credential-broker.json=config/broker.json
 kubectl --context default -n harbormaster create secret generic egress-gateway-config
 
-for ns in harbormaster workbench-reference; do
-  kubectl --context default -n "$ns" create secret generic harbormaster-registry \
-    --type=kubernetes.io/dockerconfigjson \
-    --from-file=.dockerconfigjson=/secure/harbormaster/registry.json
-done
+kubectl --context default -n harbormaster create secret generic harbormaster-registry \
+  --type=kubernetes.io/dockerconfigjson \
+  --from-file=.dockerconfigjson=/secure/harbormaster/registry.json
 ```
 
 Create the other service Secrets using their exact keys in the table. `create`
@@ -195,7 +219,7 @@ dry-run and diff against the intended cluster to validate CRDs/admission as well
 Deployment contains no custom bootstrap, acceptance, backup or recovery scripts.
 Live acceptance uses the platform's operational tooling separately from deployment.
 
-Shared-mode acceptance on 2026-11-15 verified all seven core Deployments ready in
+Before the final workspace consolidation, shared-mode acceptance on 2026-11-15 verified all seven core Deployments ready in
 `harbormaster`, a healthy restored database, valid HTTPS and Entra redirection.
 Project, workspace and agent-home metadata matched exactly before the new
 controlplane started. Two temporary projects saw the same `ws_shared` worker and
@@ -210,7 +234,8 @@ ready. The final live Kustomize diff was empty. The two legacy Sandboxes stayed
 suspended with their original PVCs; local Compose was not changed. Subsequent
 cleanup removed both retired core namespaces and their old database Pod, while
 retaining the old database PV. The active `harbormaster` and `workbench-reference`
-namespaces remain in use.
+namespaces were then in use; the final consolidation moves the shared worker into
+`harbormaster` and retires `workbench-reference`.
 
 Before namespace consolidation, live acceptance on 2026-11-15 confirmed guest kernel 6.18.56, RWOP second-writer
 rejection, retained files after application stop/start, recreated Pods, and Codex/T3

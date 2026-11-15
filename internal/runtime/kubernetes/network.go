@@ -45,7 +45,8 @@ func projectPolicies(project string) map[string]map[string]any {
 	peer := func(role string) any {
 		return map[string]any{"namespaceSelector": map[string]any{"matchLabels": map[string]string{"kubernetes.io/metadata.name": "harbormaster"}}, "podSelector": map[string]any{"matchLabels": map[string]string{"workbench.project": project, "workbench.role": role}}}
 	}
-	selector := map[string]any{"matchLabels": map[string]string{"workbench.project": project}}
+	workspaceSelector := map[string]any{"matchExpressions": []any{map[string]any{"key": "workbench.workspace", "operator": "Exists"}}}
+	selector := map[string]any{"matchLabels": map[string]string{"workbench.project": project}, "matchExpressions": workspaceSelector["matchExpressions"]}
 	rules := []any{}
 	for _, r := range []struct {
 		role  string
@@ -54,7 +55,7 @@ func projectPolicies(project string) map[string]map[string]any {
 		rules = append(rules, map[string]any{"to": []any{peer(r.role)}, "ports": r.ports})
 	}
 	raw := map[string]any{
-		"workspace-default-deny":       map[string]any{"podSelector": map[string]any{}, "policyTypes": []string{"Ingress", "Egress"}},
+		"workspace-default-deny":       map[string]any{"podSelector": workspaceSelector, "policyTypes": []string{"Ingress", "Egress"}},
 		"workspace-controller-ingress": map[string]any{"podSelector": selector, "policyTypes": []string{"Ingress"}, "ingress": []any{map[string]any{"from": []any{map[string]any{"namespaceSelector": map[string]any{"matchLabels": map[string]string{"kubernetes.io/metadata.name": "harbormaster"}}, "podSelector": map[string]any{"matchLabels": map[string]string{"app": "runtime-controller"}}}}, "ports": []any{map[string]any{"protocol": "TCP", "port": 8080}}}}},
 		"workspace-project-egress":     map[string]any{"podSelector": selector, "policyTypes": []string{"Egress"}, "egress": rules},
 	}

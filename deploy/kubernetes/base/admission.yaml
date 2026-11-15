@@ -22,6 +22,14 @@ spec:
       expression: object.spec.podTemplate.spec
   validations:
     - expression: >-
+        has(object.spec.podTemplate.metadata) && has(object.spec.podTemplate.metadata.labels) &&
+        object.spec.podTemplate.metadata.labels['workbench.workspace'] == object.metadata.labels['workbench.workspace'] &&
+        object.spec.podTemplate.metadata.labels['workbench.project'] == object.metadata.labels['workbench.project']
+      message: Workspace Pod labels must preserve the network policy identity.
+    - expression: >-
+        has(variables.pod.priorityClassName) && variables.pod.priorityClassName == 'harbormaster-workspace'
+      message: Workspace must use its resource quota priority class.
+    - expression: >-
         has(object.metadata.labels) && object.metadata.labels['workbench.project'] == namespaceObject.metadata.labels['workbench.project']
       message: Sandbox must belong to its namespace project.
     - expression: >-

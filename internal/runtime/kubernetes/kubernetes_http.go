@@ -19,6 +19,14 @@ func (k *Kubernetes) Handler() http.Handler {
 		shared.JSON(w, 200, map[string]string{"status": "ok"})
 	})
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST /v1/projects/{id}/namespace", func(w http.ResponseWriter, r *http.Request) {
+		namespace, err := k.EnsureProjectNamespace(r.Context(), r.PathValue("id"))
+		if err != nil {
+			shared.Error(w, 503, "PROJECT_NAMESPACE_UNAVAILABLE")
+			return
+		}
+		shared.JSON(w, 200, map[string]string{"namespace": namespace})
+	})
 	mux.HandleFunc("GET /v1/capabilities", func(w http.ResponseWriter, r *http.Request) {
 		c := protocol.RuntimeCapability{Resources: protocol.ResourceLimits{CPUCores: 1, MemoryBytes: k.cfg.MemoryLimit}, SchemaVersion: 1, Backend: "kubernetes-agent-sandbox", Version: AgentSandboxRelease, ID: protocol.DevelopmentTemplate, AgentKinds: []string{"t3", "codex"}, NetworkModes: []string{"blocked", "allowlist"}, IsolationStatus: "unverified", NetworkStatus: "unverified", PrivateHomes: true}
 		if k.hermesEnabled() {

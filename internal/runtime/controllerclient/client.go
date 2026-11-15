@@ -206,3 +206,21 @@ func (c *Client) ConfigureConnections(ctx context.Context, id string, policy sha
 func (c *Client) Application(w http.ResponseWriter, r *http.Request, id, path string) {
 	shared.Proxy(w, r, c.URL, "/v1/workspaces/"+id+"/application-proxy/"+strings.TrimPrefix(path, "/"), c.Token)
 }
+
+func (c *Client) EnsureProjectNamespace(ctx context.Context, project string) (string, error) {
+	expected := shared.ProjectNamespace(project)
+	if expected == "" {
+		return "", fmt.Errorf("invalid deployment project")
+	}
+	status, body, err := c.do(ctx, "POST", "/v1/projects/"+project+"/namespace", []byte(`{}`))
+	if err != nil {
+		return "", err
+	}
+	var out struct {
+		Namespace string `json:"namespace"`
+	}
+	if status != 200 || json.Unmarshal(body, &out) != nil || out.Namespace != expected {
+		return "", fmt.Errorf("project namespace unavailable")
+	}
+	return out.Namespace, nil
+}

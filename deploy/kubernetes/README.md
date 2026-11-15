@@ -5,9 +5,9 @@ Helm inflation, exec plugin, or cluster lookup is needed to render the applicati
 
 ```sh
 kubectl kustomize deploy/kubernetes/overlays/reference
-kubectl --context default apply --dry-run=server -k deploy/kubernetes/overlays/reference
+kubectl --context default apply --server-side --dry-run=server -k deploy/kubernetes/overlays/reference
 kubectl --context default diff -k deploy/kubernetes/overlays/reference
-kubectl --context default apply -k deploy/kubernetes/overlays/reference
+kubectl --context default apply --server-side -k deploy/kubernetes/overlays/reference
 ```
 
 `kubectl diff` returns 1 when a difference exists; review that output before apply.
@@ -19,11 +19,11 @@ credentials, acceptance evidence and remaining limitations.
 
 | Path | Purpose |
 | --- | --- |
-| `base/` | Seven platform services, namespace boundaries, runtime bindings and Sandbox admission policy. Workspace execution defaults to blocked; no public ingress. |
+| `base/` | Platform services plus the sandbox controller, shared workspace policy, runtime bindings and Sandbox admission policy. Workspace execution defaults to blocked; no public ingress. |
 | `overlays/reference/` | The existing single-node k3s environment: project policy, CNPG, retained Longhorn storage, TLS, Traefik/Entra integration, fixed gateway IPs and fixture gateways. |
-| `overlays/reference/bootstrap/` | Namespace/database/project foundation for an empty environment, before credentials are provisioned. Also included in the complete reference overlay. |
+| `overlays/reference/bootstrap/` | Namespace/database foundation for an empty environment, before credentials are provisioned. Also included in the complete reference overlay. |
 | `components/hermes/` | Optional dedicated Hermes MCP service; not enabled in the reference overlay. See [Hermes](../../docs/k3s-hermes.md). |
-| `infrastructure/` | Separately managed cluster dependencies. Kata remains a Helm release requiring host maintenance; its RuntimeClasses are not application-owned. |
+| `infrastructure/` | Vendored Agent Sandbox controller included in the application; cluster prerequisites. Kata remains a Helm release requiring host maintenance; its RuntimeClasses are not application-owned. |
 | `argocd/` | Future manual-adoption Application pointing directly to the reference overlay. It is not installed by applying the application. |
 
 The base is reusable configuration, not a standalone production installation.
@@ -48,24 +48,26 @@ includes database CA verification and registry credentials.
 
 ## Projects and isolation
 
-Create project metadata through the application API, then add a reviewed project
-namespace/policy manifest to your overlay. Use
-`overlays/reference/foundation/project.yaml` as the concrete example. Change the
-namespace and every `workbench.project` label/selector together, and update the
-runtime's `projects.json` and `allowlists.json` ConfigMap patch. Keep the RoleBinding
-subject in `harbormaster`; a global Kustomize `namespace` transformer is
-inappropriate for this multi-namespace application.
+The reference has one core namespace, `harbormaster`, including one shared agent
+and its sandbox controller. New logical projects get application namespaces named
+`hm-prj-<immutable project ID suffix>`. They do not get additional agent workspaces.
+Project settings expose the namespace and provisioning status. Resource limits,
+network isolation, registry pull credentials and an unprivileged `application`
+ServiceAccount are installed idempotently by the runtime controller. Use that
+ServiceAccount in application manifests deployed through normal Helm/Kustomize/CI.
+Namespace provisioning is separate from building and deploying applications.
 
-One project currently owns each gateway set. Supporting additional projects
-requires dedicated gateway/DNS/registry endpoints and runtime endpoint routing;
-simply relabelling shared gateways does not establish tenant isolation.
+The runtime ServiceAccount has namespace/resource provisioning permissions, scoped
+registry reads and Sandbox/grant management. It has no direct Pod creation or exec
+permission and does not delete project namespaces. Project deletion retains deployed
+applications and storage. Agent Sandbox owns worker Pod/PVC/Service reconciliation.
+The shared worker uses Kata and private RWOP storage, with no Kubernetes credentials.
 
-The runtime ServiceAccount can manage Sandboxes and generation-grant Secrets in
-its bound project, and read PVC/network-policy evidence. It cannot create or exec
-Pods, create namespaces, change network policy or delete retained volumes.
-Agent Sandbox v1.0.9 owns Pod/PVC/Service reconciliation. Workspaces use Kata,
-private RWOP storage and no Kubernetes token. Stop suspends a Sandbox; deletion
-and retention remain separate operator operations.
+Workspace policies select only workspace-labelled Pods within the core namespace.
+The one-worker quota is scoped to the `harbormaster-workspace` PriorityClass so core
+services are unaffected. The namespace labels and Sandbox admission policy enforce
+project/Pod label agreement and the quota class. Unknown network policy drift still
+fails closed. See the [reference runbook](overlays/reference/README.md) for details.
 
 Isolation and network status remain `unverified`: readiness and a RuntimeClass
 are not continuous VM/CNI attestation. Branch seeding and automatic dirty-workspace

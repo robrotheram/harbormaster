@@ -142,6 +142,8 @@ const messages: Record<string, string> = {
   NOT_READY: "The worker is still starting. Check its state and retry shortly.",
   QUOTA_EXCEEDED:
     "The running worker quota is full. Stop an idle worker and retry.",
+  PROJECT_NAMESPACE_UNAVAILABLE:
+    "The deployment namespace could not be prepared. Retry the operation to complete setup.",
   SHARED_WORKSPACE_ONLY:
     "This environment uses one shared workspace. Open the existing worker; creating, branching or deleting workers is disabled.",
   PROJECT_MISMATCH:

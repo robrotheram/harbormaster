@@ -68,7 +68,7 @@ func allowedUIRoute(method, path string) bool {
 	case "exchange-exports":
 		return len(parts) == 2 && get || len(parts) == 3 && post && parts[2] == "submit"
 	case "projects":
-		if len(parts) == 3 && parts[2] == "delete" {
+		if len(parts) == 3 && (parts[2] == "delete" || parts[2] == "namespace") {
 			return post
 		}
 		if len(parts) == 3 && parts[2] == "coordination" {

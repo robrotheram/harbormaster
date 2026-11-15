@@ -9,6 +9,8 @@ spec:
       containers:
       - name: runtime-controller
         env:
+        - name: PROVISION_PROJECT_NAMESPACES
+          value: 'true'
         - name: REQUIRE_VERIFIED_ISOLATION
           value: 'false'
         - name: KUBERNETES_STORAGE_CLASS

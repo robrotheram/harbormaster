@@ -158,6 +158,9 @@ func (s *Server) registerDomains(mux *http.ServeMux) {
 				shared.Error(w, 409, "IDEMPOTENCY_CONFLICT")
 				return
 			}
+			if !s.provisionProjectNamespace(w, r, &old) {
+				return
+			}
 			shared.JSON(w, 200, old)
 			return
 		}
@@ -175,8 +178,14 @@ func (s *Server) registerDomains(mux *http.ServeMux) {
 			return
 		}
 		project := shared.Project{ID: shared.NewID("prj_"), Name: input.Name, CreatedAt: s.now()}
+		if s.cfg.ProvisionProjectNamespaces {
+			project.DeploymentNamespace = shared.ProjectNamespace(project.ID)
+		}
 		if s.Store.CreateProject(r.Context(), project, input.Key) != nil {
 			shared.Error(w, 503, "STORAGE_UNAVAILABLE")
+			return
+		}
+		if !s.provisionProjectNamespace(w, r, &project) {
 			return
 		}
 		shared.JSON(w, 201, project)

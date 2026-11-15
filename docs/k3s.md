@@ -20,22 +20,23 @@ Kata Helm release owns RuntimeClasses. See the
 
 ```sh
 kubectl kustomize deploy/kubernetes/overlays/reference
-kubectl --context default apply --dry-run=server -k deploy/kubernetes/overlays/reference
+kubectl --context default apply --server-side --dry-run=server -k deploy/kubernetes/overlays/reference
 kubectl --context default diff -k deploy/kubernetes/overlays/reference
-kubectl --context default apply -k deploy/kubernetes/overlays/reference
+kubectl --context default apply --server-side -k deploy/kubernetes/overlays/reference
 ```
 
 Create new environment overlays with native `images` and `patches`. They must
-select project namespaces/bindings, a tested RWOP storage class, gateway endpoints,
+select the shared workspace binding, a tested RWOP storage class, gateway endpoints,
 authenticated ingress/TLS and immutable image digests. Keep secrets outside Git.
 `make kubernetes-check` builds with pinned Kustomize and checks the deployment
 contract in CI. There are no Python rendering or bootstrap steps.
 
-The overlay currently packages one project per gateway set. For multiple projects, provision dedicated
-DNS/gateway/registry endpoints and extend runtime project endpoint routing first.
-Project DNS must resolve the .svc endpoints and refuse arbitrary recursive DNS.
-Provision it explicitly; the project policy intentionally does not allow CoreDNS
-or Internet DNS by default. The controller and platform use normal cluster DNS.
+The reference uses one shared agent and gateway set in `harbormaster`. New projects
+receive separate application deployment namespaces, not agent workspaces. Namespace
+creation is idempotent and does not deploy application workloads; use the namespace
+shown in project settings with normal Helm/Kustomize/CI. Workspace DNS remains
+restricted; the reference uses fixed gateway Service IPs. Platform services use
+normal cluster DNS. See the reference runbook for application network policy.
 
 Pre-create SERVICE-secrets for each service in its namespace, with lowercase
 keys matching the TOKEN_FILE names in the rendered environment (for example
