@@ -72,10 +72,10 @@ test("repository connections are platform-wide and imports choose a project", as
   ).toHaveCount(0);
   await page.getByRole("button", { name: "Platform", exact: true }).click();
   await expect(
-    page.getByRole("menuitem", { name: "Repositories" }),
+    page.getByRole("menuitem", { name: "Connections" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("menuitem", { name: "Connection profiles" }),
+    page.getByRole("menuitem", { name: "Network profiles" }),
   ).toBeVisible();
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Browse team/repo tickets" }).click();

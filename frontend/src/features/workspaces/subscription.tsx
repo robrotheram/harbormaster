@@ -1,19 +1,19 @@
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
 import { Modal, ErrorNotice } from "@/shared/components";
 import { request } from "@/shared/http";
 import type { Workspace } from "@/shared/types";
+import {
+  useSubscriptions,
+  subscriptionKey,
+  providerNames,
+  type AgentSubscription,
+} from "@/features/connections/subscriptions";
 
-type Subscription = {
-  saved: boolean;
-  account_id?: string;
-  expires_at?: number;
-  expired?: boolean;
-  workers: string[];
-};
 export function SubscriptionButton({ workspace }: { workspace: Workspace }) {
   const [open, setOpen] = useState(false);
   return (
@@ -38,172 +38,140 @@ function SubscriptionDialog({
   workspace: Workspace;
   onClose: () => void;
 }) {
+  const query = useSubscriptions();
+  return (
+    <Modal title="Worker subscriptions" onClose={onClose}>
+      <p className="form-note">
+        Choose a saved account for each provider. All work on{" "}
+        <strong>{workspace.name || workspace.id}</strong> can use the loaded
+        accounts until you unload them. Other users cannot replace your
+        selections.
+      </p>
+      {query.isPending && <p role="status">Loading subscriptions…</p>}
+      {query.error && <ErrorNotice error={query.error} />}
+      {query.data &&
+        (["codex", "claude"] as const).map((provider) => (
+          <ProviderSelection
+            key={provider}
+            provider={provider}
+            workspace={workspace.id}
+            items={query.data.items.filter((s) => s.provider === provider)}
+          />
+        ))}
+      <p className="form-note">
+        Unloading ends active inference requests for that provider.
+      </p>
+      <div className="form-actions">
+        <Button variant="outline" onClick={onClose}>
+          Close
+        </Button>
+        <Button asChild variant="outline">
+          <Link to="/connections" search={{ tab: "agents" }}>
+            Manage subscriptions
+          </Link>
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+function ProviderSelection({
+  provider,
+  workspace,
+  items,
+}: {
+  provider: "codex" | "claude";
+  workspace: string;
+  items: AgentSubscription[];
+}) {
   const client = useQueryClient();
-  const query = useQuery({
-    queryKey: ["my-subscription"],
-    queryFn: ({ signal }) =>
-      request<Subscription>("/subscription", undefined, signal),
-    retry: false,
-  });
+  const loaded = items.find((s) => s.workers.includes(workspace));
+  const [selection, setSelection] = useState("");
+  const selected = selection || loaded?.id || "";
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>();
   const [message, setMessage] = useState("");
-  const saved = query.data;
-  const loaded = saved?.workers.includes(workspace.id);
-  async function action(path: string, body: unknown, message: string) {
+  async function action(unload: boolean) {
     setBusy(true);
     setError(undefined);
     setMessage("");
     try {
-      await request(path, body);
-      await client.invalidateQueries({ queryKey: ["my-subscription"] });
-      setMessage(message);
+      await request(
+        `/workspaces/${encodeURIComponent(workspace)}/subscription/${unload ? "unload" : "load"}`,
+        { provider, subscription_id: selected },
+      );
+      await client.invalidateQueries({ queryKey: subscriptionKey });
+      setSelection("");
+      setMessage(
+        unload ? "Subscription unloaded." : "Subscription loaded into worker.",
+      );
     } catch (error) {
       setError(error);
     } finally {
       setBusy(false);
     }
   }
-  async function importFile(file?: File) {
-    if (!file || busy) return;
-    setError(undefined);
-    if (file.size > 64 * 1024) {
-      setError(new Error("Choose a Codex auth.json file smaller than 64 KiB."));
-      return;
-    }
-    try {
-      const auth = JSON.parse(await file.text());
-      // Never send refresh tokens or API keys from the login file.
-      if (
-        auth.auth_mode !== "chatgpt" ||
-        auth.OPENAI_API_KEY ||
-        !auth.tokens?.access_token ||
-        !auth.tokens?.account_id
-      )
-        throw new Error(
-          "Choose a Codex auth.json created by signing in with ChatGPT.",
-        );
-      await action(
-        "/subscription",
-        {
-          auth: {
-            auth_mode: "chatgpt",
-            tokens: {
-              access_token: auth.tokens.access_token,
-              account_id: auth.tokens.account_id,
-            },
-          },
-        },
-        "Your subscription was saved.",
-      );
-    } catch (error) {
-      setError(error);
-    }
-  }
   return (
-    <Modal
-      title="Your Codex subscription"
-      onClose={() => {
-        if (!busy) onClose();
-      }}
+    <section
+      aria-label={providerNames[provider]}
+      className="rounded-md border p-4 space-y-3"
     >
-      <p className="form-note">
-        Save your ChatGPT subscription once, then load it into a worker. Saved
-        credentials are private to your signed-in account and encrypted on the
-        server.
+      <h3 className="font-medium">{providerNames[provider]}</h3>
+      <p className="text-sm text-muted-foreground">
+        {loaded
+          ? `Loaded: ${loaded.name}${loaded.expired ? " (login expired)" : ""}`
+          : "None of your accounts are loaded for this provider."}
       </p>
-      {query.isPending && <p role="status">Loading subscription…</p>}
-      {(error || query.error) && <ErrorNotice error={error || query.error} />}
-      {saved?.saved && (
-        <div className="rounded border p-3 text-sm space-y-2">
-          <p>Account: {saved.account_id}</p>
-          <p>
-            {saved.expired ? "Expired" : "Expires"}:{" "}
-            {saved.expires_at &&
-              new Date(saved.expires_at * 1000).toLocaleString()}
-          </p>
-          <p>
-            {loaded
-              ? "Loaded into this worker."
-              : "Not loaded into this worker."}
-          </p>
-        </div>
+      {items.length === 0 ? (
+        <p className="text-sm">No saved accounts. Add one in Connections.</p>
+      ) : (
+        <label className="grid gap-2 text-sm">
+          Saved account
+          <NativeSelect
+            aria-label="Saved account"
+            value={selected}
+            disabled={busy}
+            onChange={(e) => setSelection(e.target.value)}
+          >
+            <option value="" disabled>
+              Choose an account
+            </option>
+            {items.map((s) => (
+              <option key={s.id} value={s.id} disabled={s.expired}>
+                {s.name}
+                {s.expired ? " (expired)" : ""}
+              </option>
+            ))}
+          </NativeSelect>
+        </label>
       )}
-      {saved && !saved.saved && <p>No subscription saved yet.</p>}
-      <label className="grid gap-2 text-sm">
-        {saved?.saved ? "Replace saved login" : "Import Codex login"}
-        <Input
-          type="file"
-          accept=".json,application/json"
-          disabled={busy || query.isPending || !!query.error}
-          onChange={(event) => {
-            const file = event.currentTarget.files?.[0];
-            event.currentTarget.value = "";
-            void importFile(file);
-          }}
-        />
-      </label>
-      <p className="form-note">
-        Sign in with ChatGPT using Codex on your computer, then choose its{" "}
-        <code>auth.json</code> from <code>~/.codex</code> (or your CODEX_HOME).
-        Only the current access token is saved. Import a fresh login when it
-        expires; refresh tokens and API keys are not saved.
-      </p>
-      <p className="form-note">
-        Loading lets all work on{" "}
-        <strong>{workspace.name || workspace.id}</strong> use your subscription
-        until you unload or delete it. Other users cannot view your saved
-        credentials or replace the loaded account. Unloading also ends active
-        inference requests.
-      </p>
-      {message && <p role="status">{message}</p>}
-      <div className="form-actions">
-        <Button variant="outline" disabled={busy} onClick={onClose}>
-          Close
+      {!!error && <ErrorNotice error={error} />}
+      {message && (
+        <p role="status" className="text-sm">
+          {message}
+        </p>
+      )}
+      <div className="flex gap-2">
+        {loaded && (
+          <Button
+            variant="outline"
+            disabled={busy}
+            onClick={() => void action(true)}
+          >
+            Unload
+          </Button>
+        )}
+        <Button
+          disabled={
+            busy ||
+            !selected ||
+            selected === loaded?.id ||
+            !items.some((s) => s.id === selected && !s.expired)
+          }
+          onClick={() => void action(false)}
+        >
+          {loaded ? "Switch account" : "Load into worker"}
         </Button>
-        {saved?.saved && (
-          <Button
-            variant="destructive"
-            disabled={busy}
-            onClick={() =>
-              action(
-                "/subscription/delete",
-                {},
-                "Subscription deleted and unloaded from all workers.",
-              )
-            }
-          >
-            Delete saved subscription
-          </Button>
-        )}
-        {loaded ? (
-          <Button
-            disabled={busy}
-            onClick={() =>
-              action(
-                `/workspaces/${encodeURIComponent(workspace.id)}/subscription/unload`,
-                {},
-                "Subscription unloaded.",
-              )
-            }
-          >
-            Unload from worker
-          </Button>
-        ) : (
-          <Button
-            disabled={busy || !saved?.saved || saved.expired}
-            onClick={() =>
-              action(
-                `/workspaces/${encodeURIComponent(workspace.id)}/subscription/load`,
-                {},
-                "Subscription loaded into worker.",
-              )
-            }
-          >
-            Load into worker
-          </Button>
-        )}
       </div>
-    </Modal>
+    </section>
   );
 }

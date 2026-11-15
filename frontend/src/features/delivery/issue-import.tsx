@@ -95,7 +95,8 @@ export function IssueImport({
       {connections.isError && <ErrorNotice error={connections.error} />}
       {connections.data?.items.length === 0 && (
         <p>
-          No repositories connected yet. Add one under Platform → Repositories.
+          No repositories connected yet. Add one under Connections → Repository
+          connections.
         </p>
       )}
       {issues.isError && <ErrorNotice error={issues.error} />}{" "}

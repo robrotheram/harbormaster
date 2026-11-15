@@ -182,14 +182,16 @@ const messages: Record<string, string> = {
     "The runtime controller uses an incompatible capability format. Update the host controller to match the control plane, then check again.",
   RUNTIME_UNAVAILABLE:
     "The runtime could not complete this request. Use the worker startup check or check Platform services before retrying.",
+  SUBSCRIPTION_LIMIT_REACHED:
+    "You have reached the limit of 50 saved subscriptions. Delete an unused account before adding another.",
   SUBSCRIPTION_INVALID:
-    "This is not a current Codex ChatGPT login. Sign in again and import its auth.json file.",
+    "This login is invalid or expired for the selected provider. Sign in again and import a fresh ChatGPT or Claude login file.",
   SUBSCRIPTION_IN_USE:
-    "Another user has a subscription loaded into this worker. Its owner must unload it before you can load yours.",
+    "Another user has a subscription loaded for this provider in this worker. Its owner must unload it before you can load yours.",
   SUBSCRIPTION_NOT_CONFIGURED:
     "User subscriptions are not enabled on this deployment. Ask an administrator to configure the subscription gateway.",
   PROVIDER_LOGIN_REQUIRED:
-    "Open the worker’s Subscription settings to save a current ChatGPT login and load it into the worker. No API billing fallback was used.",
+    "Save a current login in Connections → Agent subscriptions, then choose it in the worker’s Subscription settings.",
   PROVIDER_NOT_CONFIGURED:
     "Codex or the selected provider is not configured for this worker. Ask an administrator to configure its model and subscription connection before retrying. Worker readiness only confirms that compute is running.",
   AGENT_EXECUTABLE_UNAVAILABLE:

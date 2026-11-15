@@ -12,17 +12,17 @@ import (
 )
 
 type Config struct {
-	ResolveSubscription    func(context.Context, string) (subscriptionCredential, error) `json:"-"`
-	Mode                   string                                                        `json:"-"`
-	Models                 []string                                                      `json:"models"`
-	Origin                 string                                                        `json:"origin,omitempty"`
-	Network                NetworkPolicy                                                 `json:"network,omitempty"`
-	APIKey                 string                                                        `json:"-"`
-	Verify                 Verifier                                                      `json:"-"`
-	Subscriptions          *SubscriptionConfig                                           `json:"subscriptions,omitempty"`
-	SubscriptionVaultAddr  string                                                        `json:"-"`
-	SubscriptionVaultCA    string                                                        `json:"-"`
-	SubscriptionVaultToken string                                                        `json:"-"`
+	ResolveSubscription    func(context.Context, string, string) (subscriptionCredential, error) `json:"-"`
+	Mode                   string                                                                `json:"-"`
+	Models                 []string                                                              `json:"models"`
+	Origin                 string                                                                `json:"origin,omitempty"`
+	Network                NetworkPolicy                                                         `json:"network,omitempty"`
+	APIKey                 string                                                                `json:"-"`
+	Verify                 Verifier                                                              `json:"-"`
+	Subscriptions          *SubscriptionConfig                                                   `json:"subscriptions,omitempty"`
+	SubscriptionVaultAddr  string                                                                `json:"-"`
+	SubscriptionVaultCA    string                                                                `json:"-"`
+	SubscriptionVaultToken string                                                                `json:"-"`
 	subscriptionHTTP       *http.Client
 }
 

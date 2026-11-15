@@ -638,7 +638,7 @@ test("project-first sidebar stays fixed on global pages and remembers the projec
       ["Infrastructure", "Infrastructure"],
       ["Projects", "Projects"],
       ["Platform services", "Platform services"],
-      ["Connection profiles", "Connection profiles"],
+      ["Network profiles", "Network profiles"],
     ]) {
       if (label === "Projects") {
         await sidebar.getByRole("link", { name: label, exact: true }).click();
@@ -761,13 +761,13 @@ test("system tools share one menu and Docs sits beside the theme switcher", asyn
   await page.keyboard.press("Enter");
   await expect(page.getByRole("menuitem")).toHaveCount(4);
   await expect(
-    page.getByRole("menuitem", { name: "Repositories", exact: true }),
+    page.getByRole("menuitem", { name: "Connections", exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole("menuitem", { name: "Infrastructure", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("menuitem", { name: "Connection profiles", exact: true }),
+    page.getByRole("menuitem", { name: "Network profiles", exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole("menuitem", { name: "Health", exact: true }),

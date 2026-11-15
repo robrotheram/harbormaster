@@ -49,7 +49,7 @@ export function ConnectionProfiles() {
       <div className="page-title">
         <div>
           <div className="flex items-center gap-2">
-            <h1>Connection profiles</h1>
+            <h1>Network profiles</h1>
             <Badge variant="outline">Global</Badge>
           </div>
         </div>
@@ -67,7 +67,7 @@ export function ConnectionProfiles() {
         <div className="compact-search">
           <Search size={14} />
           <Input
-            aria-label="Search connection profiles"
+            aria-label="Search network profiles"
             placeholder="Find a profile…"
             className="h-8 pl-8 text-xs md:text-xs shadow-none"
             value={search}
@@ -87,7 +87,7 @@ export function ConnectionProfiles() {
       ) : query.data ? (
         <div className="overflow-hidden rounded-xl border bg-background">
           <Table
-            aria-label="Global connection profiles"
+            aria-label="Global network profiles"
             className="w-full md:min-w-[800px]"
           >
             <TableHeader className="max-md:hidden">
@@ -211,7 +211,7 @@ export function ConnectionProfiles() {
                   >
                     {search
                       ? "No profiles match your search."
-                      : "No connection profiles yet. Create a profile to reuse network rules across projects."}
+                      : "No network profiles yet. Create a profile to reuse network rules across projects."}
                   </TableCell>
                 </TableRow>
               )}

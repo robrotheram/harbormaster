@@ -100,3 +100,44 @@ func Open(secret, owner, sealed string) (Credential, error) {
 	err = json.Unmarshal(b, &c)
 	return c, err
 }
+
+// Binding preserves migrated credentials and binds new imports to their record.
+func Binding(owner, id string) string {
+	if id == "default" {
+		return owner
+	}
+	return owner + "\x00" + id
+}
+func ValidProvider(provider string) bool { return provider == "codex" || provider == "claude" }
+func ParseProvider(provider string, data []byte, now time.Time) (Credential, error) {
+	if provider == "codex" {
+		return Parse(data, now)
+	}
+	if provider != "claude" || len(data) > 64<<10 {
+		return Credential{}, ErrInvalid
+	}
+	var file struct {
+		OAuth struct {
+			Token  string   `json:"accessToken"`
+			Expiry int64    `json:"expiresAt"`
+			Scopes []string `json:"scopes"`
+		} `json:"claudeAiOauth"`
+	}
+	if json.Unmarshal(data, &file) != nil {
+		return Credential{}, ErrInvalid
+	}
+	c := Credential{AccessToken: file.OAuth.Token, ExpiresAt: file.OAuth.Expiry / 1000}
+	if !strings.HasPrefix(c.AccessToken, "sk-ant-oat") || strings.ContainsAny(c.AccessToken, " \t\r\n\x00") || len(c.AccessToken) > 16384 || c.ExpiresAt <= now.Add(time.Minute).Unix() {
+		return Credential{}, ErrInvalid
+	}
+	inference := false
+	for _, scope := range file.OAuth.Scopes {
+		if scope == "user:inference" {
+			inference = true
+		}
+	}
+	if !inference {
+		return Credential{}, ErrInvalid
+	}
+	return c, nil
+}

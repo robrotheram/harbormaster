@@ -28,6 +28,7 @@ func (s *Server) subscriptionUser(w http.ResponseWriter, r *http.Request) string
 	return user
 }
 func (s *Server) registerSubscriptions(mux *http.ServeMux) {
+	s.registerAgentSubscriptions(mux)
 	mux.HandleFunc("GET /v1/subscription", func(w http.ResponseWriter, r *http.Request) {
 		owner := s.subscriptionUser(w, r)
 		if owner == "" {
@@ -90,7 +91,7 @@ func (s *Server) registerSubscriptions(mux *http.ServeMux) {
 		}
 		unlock := s.operations.Lock("subscription:" + owner)
 		defer unlock()
-		if err := s.Store.DeleteSubscription(r.Context(), owner); err != nil {
+		if err := s.Store.DeleteSubscription(r.Context(), owner); err != nil && !errors.Is(err, sql.ErrNoRows) {
 			shared.Error(w, 503, "STORAGE_UNAVAILABLE")
 			return
 		}
@@ -114,8 +115,25 @@ func (s *Server) registerSubscriptions(mux *http.ServeMux) {
 				shared.Error(w, 409, "PROVIDER_NOT_CONFIGURED")
 				return
 			}
+			var input struct {
+				ID       string `json:"subscription_id"`
+				Provider string `json:"provider"`
+			}
+			if !shared.Decode(w, r, &input, 4096) {
+				return
+			}
+			if input.ID == "" {
+				input.ID = "default"
+			}
+			if !shared.ValidID(input.ID) || (input.Provider != "" && !subscriptions.ValidProvider(input.Provider)) {
+				shared.Error(w, 400, "INVALID_REQUEST")
+				return
+			}
 			if action == "unload" {
-				if err := s.Store.UnloadSubscription(r.Context(), owner, ws.ID); err != nil {
+				if input.Provider == "" {
+					input.Provider = "codex"
+				}
+				if err := s.Store.UnloadAgentSubscription(r.Context(), owner, input.Provider, ws.ID); err != nil {
 					shared.Error(w, 503, "STORAGE_UNAVAILABLE")
 					return
 				}
@@ -124,17 +142,21 @@ func (s *Server) registerSubscriptions(mux *http.ServeMux) {
 					shared.Error(w, 503, "SUBSCRIPTION_NOT_CONFIGURED")
 					return
 				}
-				sealed, err := s.Store.Subscription(r.Context(), owner)
+				saved, err := s.Store.AgentSubscription(r.Context(), owner, input.ID)
 				if err != nil {
 					shared.Error(w, 409, "PROVIDER_LOGIN_REQUIRED")
 					return
 				}
-				c, err := subscriptions.Open(s.cfg.Token, owner, sealed)
+				if input.Provider != "" && input.Provider != saved.Provider {
+					shared.Error(w, 400, "INVALID_REQUEST")
+					return
+				}
+				c, err := subscriptions.Open(s.cfg.Token, subscriptions.Binding(owner, saved.ID), saved.Credential)
 				if err != nil || c.ExpiresAt <= s.now().Add(time.Minute).Unix() {
 					shared.Error(w, 409, "PROVIDER_LOGIN_REQUIRED")
 					return
 				}
-				if err = s.Store.LoadSubscription(r.Context(), owner, ws.ID); err != nil {
+				if err = s.Store.LoadAgentSubscription(r.Context(), owner, saved.ID, saved.Provider, ws.ID); err != nil {
 					if errors.Is(err, store.ErrSubscriptionInUse) {
 						shared.Error(w, 409, "SUBSCRIPTION_IN_USE")
 					} else {
@@ -159,11 +181,15 @@ func (s *Server) resolveSubscription(w http.ResponseWriter, r *http.Request) {
 	}
 	var input struct {
 		WorkspaceID string `json:"workspace_id"`
+		Provider    string `json:"provider"`
 	}
 	if !shared.Decode(w, r, &input, 4096) {
 		return
 	}
-	if !shared.ValidID(input.WorkspaceID) {
+	if input.Provider == "" {
+		input.Provider = "codex"
+	}
+	if !subscriptions.ValidProvider(input.Provider) || !shared.ValidID(input.WorkspaceID) {
 		shared.Error(w, 400, "INVALID_REQUEST")
 		return
 	}
@@ -171,17 +197,17 @@ func (s *Server) resolveSubscription(w http.ResponseWriter, r *http.Request) {
 		shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
 		return
 	}
-	owner, err := s.Store.SubscriptionOwner(r.Context(), input.WorkspaceID)
+	owner, id, err := s.Store.WorkerAgentSubscription(r.Context(), input.WorkspaceID, input.Provider)
 	if err != nil {
 		shared.Error(w, 503, "PROVIDER_LOGIN_REQUIRED")
 		return
 	}
-	sealed, err := s.Store.Subscription(r.Context(), owner)
-	if err != nil {
+	saved, err := s.Store.AgentSubscription(r.Context(), owner, id)
+	if err != nil || saved.Provider != input.Provider {
 		shared.Error(w, 503, "PROVIDER_LOGIN_REQUIRED")
 		return
 	}
-	c, err := subscriptions.Open(s.cfg.Token, owner, sealed)
+	c, err := subscriptions.Open(s.cfg.Token, subscriptions.Binding(owner, id), saved.Credential)
 	if err != nil || c.ExpiresAt <= s.now().Add(30*time.Second).Unix() {
 		shared.Error(w, 503, "PROVIDER_LOGIN_REQUIRED")
 		return

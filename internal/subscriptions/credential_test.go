@@ -42,3 +42,33 @@ func TestCredentialImportAndOwnerBinding(t *testing.T) {
 		}
 	}
 }
+
+func TestClaudeLoginAndRecordBinding(t *testing.T) {
+	now := time.Now()
+	raw := fmt.Sprintf(`{"claudeAiOauth":{"accessToken":"sk-ant-oat-test","expiresAt":%d,"scopes":["user:inference"],"refreshToken":"never-store"}}`, now.Add(time.Hour).UnixMilli())
+	c, err := ParseProvider("claude", []byte(raw), now)
+	if err != nil || c.ExpiresAt != now.Add(time.Hour).Unix() {
+		t.Fatal("Claude import", err)
+	}
+	sealed, err := Seal("secret", Binding("user_alice", "sub_one"), c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = Open("secret", Binding("user_alice", "sub_two"), sealed); err == nil {
+		t.Fatal("credential moved between records")
+	}
+	for _, bad := range []string{strings.Replace(raw, "user:inference", "user:profile", 1), strings.Replace(raw, "sk-ant-oat-test", "sk-ant-api-key", 1), strings.Replace(raw, "sk-ant-oat-test", "sk-ant-oat-test\\n", 1)} {
+		if _, err = ParseProvider("claude", []byte(bad), now); err == nil {
+			t.Fatal("invalid Claude credential accepted")
+		}
+	}
+	if _, err = ParseProvider("claude", []byte(raw), now.Add(2*time.Hour)); err == nil {
+		t.Fatal("expired Claude credential accepted")
+	}
+	if _, err = ParseProvider("codex", []byte(raw), now); err == nil {
+		t.Fatal("wrong provider accepted")
+	}
+	if _, err = ParseProvider("other", []byte(raw), now); err == nil {
+		t.Fatal("unknown provider accepted")
+	}
+}

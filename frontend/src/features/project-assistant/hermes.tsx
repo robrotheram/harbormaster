@@ -461,7 +461,7 @@ function HermesForm({
                     to="/connection-profiles"
                     className="underline underline-offset-4"
                   >
-                    Manage connection profiles
+                    Manage network profiles
                   </Link>
                 </p>
               </div>

@@ -38,6 +38,16 @@ const connectionsRoute = createRoute({
   path: "/connection-profiles",
   component: () => <ProjectShell globalSettings />,
 });
+const managementRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/connections",
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { tab?: "agents" | "repositories" } => ({
+    tab: search.tab === "repositories" ? "repositories" : "agents",
+  }),
+  component: () => <ProjectShell globalPage="connections" />,
+});
 const repositoriesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/repositories",
@@ -64,6 +74,7 @@ export const router = createRouter({
     projectRoute,
     connectionsRoute,
     repositoriesRoute,
+    managementRoute,
     infrastructureRoute,
     servicesRoute,
     helpRoute,

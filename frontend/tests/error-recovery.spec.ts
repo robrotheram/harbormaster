@@ -80,12 +80,12 @@ test("unknown pages provide an accessible recovery action on phones", async ({
 
 for (const scenario of [
   {
-    name: "connection profiles",
+    name: "network profiles",
     path: "/app/connection-profiles",
     endpoint: "/ui-api/connection-profiles",
     misleading: "No profiles match your search.",
     recovered:
-      "No connection profiles yet. Create a profile to reuse network rules across projects.",
+      "No network profiles yet. Create a profile to reuse network rules across projects.",
   },
   {
     name: "reviews",

@@ -9,6 +9,8 @@ spec:
       containers:
       - name: runtime-controller
         env:
+        - name: CLAUDE_MODEL
+          value: claude-sonnet-5-5
         - name: CODEX_MODEL
           value: gpt-5.4
         - name: PROVISION_PROJECT_NAMESPACES

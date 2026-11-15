@@ -335,10 +335,10 @@ test("project workflows preserve boundaries and UI behavior", async ({
   await page.getByText("Global profile · v1", { exact: true }).waitFor();
   await page.getByRole("button", { name: "Platform", exact: true }).click();
   await page
-    .getByRole("menuitem", { name: "Connection profiles", exact: true })
+    .getByRole("menuitem", { name: "Network profiles", exact: true })
     .click();
   await page
-    .getByRole("heading", { name: "Connection profiles", exact: true })
+    .getByRole("heading", { name: "Network profiles", exact: true })
     .waitFor();
   await page.getByRole("button", { name: "Edit profile", exact: true }).click();
   await page

@@ -97,9 +97,6 @@ func registerSubscriptions(mux *http.ServeMux, c Config) error {
 		}
 	}
 	for provider, policy := range c.Subscriptions.Providers {
-		if c.Subscriptions.UserAccounts && provider != "codex" {
-			return ErrDenied
-		}
 		origin := ""
 		switch provider {
 		case "codex":
@@ -133,7 +130,7 @@ func registerSubscriptions(mux *http.ServeMux, c Config) error {
 				Error(w, 401, "UNAUTHORIZED")
 				return
 			}
-			allowed := c.Subscriptions.UserAccounts && provider == "codex"
+			allowed := c.Subscriptions.UserAccounts
 			for _, p := range c.Subscriptions.Principals[id.PrincipalID] {
 				if p == provider {
 					allowed = true
@@ -165,7 +162,7 @@ func registerSubscriptions(mux *http.ServeMux, c Config) error {
 			var cred subscriptionCredential
 			if c.Subscriptions.UserAccounts {
 				var resolveErr error
-				cred, resolveErr = c.ResolveSubscription(ctx, id.WorkspaceID)
+				cred, resolveErr = c.ResolveSubscription(ctx, id.WorkspaceID, provider)
 				if resolveErr != nil {
 					Error(w, 503, "PROVIDER_LOGIN_REQUIRED")
 					return
@@ -223,7 +220,7 @@ func registerSubscriptions(mux *http.ServeMux, c Config) error {
 						return
 					case <-ticker.C:
 						if c.Subscriptions.UserAccounts {
-							current, err := c.ResolveSubscription(upstreamCtx, id.WorkspaceID)
+							current, err := c.ResolveSubscription(upstreamCtx, id.WorkspaceID, provider)
 							if err != nil || current.AccessToken != cred.AccessToken || current.AccountID != cred.AccountID {
 								stop()
 								return

@@ -166,6 +166,8 @@ func kubeProvider(t *testing.T) (*Kubernetes, *fakeKubernetes) {
 
 func TestKubernetesFixedSandboxOwnershipPersistenceAndObservedReadiness(t *testing.T) {
 	k, fake := kubeProvider(t)
+	k.cfg.CodexModel = "test-codex"
+	k.cfg.ClaudeModel = "test-claude"
 	ctx := context.Background()
 	spec := protocol.WorkspaceSpec{ProjectID: "proj_one", HomeID: "home_one", AgentKind: "t3"}
 	o, err := k.StartConfigured(ctx, "ws_test", spec)
@@ -177,6 +179,17 @@ func TestKubernetesFixedSandboxOwnershipPersistenceAndObservedReadiness(t *testi
 	}
 	body := fake.resources["project-one/test-ws-test"]
 	pod := body["spec"].(map[string]any)["podTemplate"].(map[string]any)["spec"].(map[string]any)
+	container := pod["containers"].([]any)[0].(map[string]any)
+	models := map[string]string{}
+	for _, entry := range container["env"].([]any) {
+		v := entry.(map[string]any)
+		if value, ok := v["value"].(string); ok {
+			models[v["name"].(string)] = value
+		}
+	}
+	if models["CODEX_MODEL"] != "test-codex" || models["CLAUDE_MODEL"] != "test-claude" {
+		t.Fatal("provider model configuration missing")
+	}
 	if pod["runtimeClassName"] != "kata" || pod["automountServiceAccountToken"] != false || pod["serviceAccountName"] != "workspace" {
 		t.Fatal("sandbox policy weakened")
 	}

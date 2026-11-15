@@ -110,9 +110,9 @@ const Work = lazy(() =>
 const Delivery = lazy(() =>
   import("@/features/delivery/delivery").then((m) => ({ default: m.Delivery })),
 );
-const RepositoryConnections = lazy(() =>
-  import("@/features/delivery/connections").then((m) => ({
-    default: m.RepositoryConnections,
+const Connections = lazy(() =>
+  import("@/features/connections/connections").then((m) => ({
+    default: m.Connections,
   })),
 );
 const sections = [
@@ -135,7 +135,8 @@ export function ProjectShell({
   projectID?: string;
   globalSettings?: boolean;
   section?: string;
-  globalPage?: "infrastructure" | "services" | "help" | "repositories";
+  globalPage?:
+    "infrastructure" | "services" | "help" | "repositories" | "connections";
 }) {
   const projects = useQuery({
     queryKey: keys.projects,
@@ -196,7 +197,9 @@ export function ProjectShell({
   const help = globalPage === "help" || section === "help";
   const services = globalPage === "services";
   const repositories =
-    globalPage === "repositories" || section === "repositories";
+    globalPage === "connections" ||
+    globalPage === "repositories" ||
+    section === "repositories";
   const isGlobal =
     globalSettings ||
     infrastructure ||
@@ -206,9 +209,9 @@ export function ProjectShell({
     !projectID;
   const selected = sections.find((s) => s.id === section);
   const heading = globalSettings
-    ? "Connection profiles"
+    ? "Network profiles"
     : repositories
-      ? "Repository connections"
+      ? "Connections"
       : services
         ? "Platform services"
         : infrastructure
@@ -221,7 +224,7 @@ export function ProjectShell({
   const inProject = !isGlobal && !!project;
   const projectsBlocked =
     projects.isError && (!projects.data || (!isGlobal && !project));
-  const independentPage = globalSettings || services || help;
+  const independentPage = globalSettings || services || help || repositories;
   const projectPickerLabel = projects.isPending
     ? "Loading projects"
     : projects.isError
@@ -302,14 +305,14 @@ export function ProjectShell({
                 active: infrastructure,
               },
               {
-                to: "/repositories",
-                label: "Repositories",
+                to: "/connections",
+                label: "Connections",
                 icon: FolderGit2,
                 active: repositories,
               },
               {
                 to: "/connection-profiles",
-                label: "Connection profiles",
+                label: "Network profiles",
                 icon: Settings2,
                 active: globalSettings,
               },
@@ -626,6 +629,13 @@ export function ProjectShell({
               <PlatformServices />
             ) : help ? (
               <GettingStarted />
+            ) : repositories ? (
+              <Connections
+                projects={projects.data || []}
+                repositories={
+                  globalPage === "repositories" || section === "repositories"
+                }
+              />
             ) : projects.isPending ? (
               <div role="status" aria-label="Loading projects">
                 <p className="mb-4 text-sm text-muted-foreground">
@@ -655,8 +665,6 @@ export function ProjectShell({
               </section>
             ) : infrastructure ? (
               <Infrastructure projects={projects.data || []} />
-            ) : repositories ? (
-              <RepositoryConnections projects={projects.data || []} />
             ) : !projectID ? (
               <Projects
                 projects={projects.data || []}

@@ -162,9 +162,9 @@ export function WorkspaceSettings({
             </p>
           )}
           <p className="form-note">
-            Manage shared profiles in Connection profiles in the sidebar. Save
-            here to apply the latest version. Worker-specific settings detach
-            this worker from global updates.
+            Manage shared profiles in Network profiles in the sidebar. Save here
+            to apply the latest version. Worker-specific settings detach this
+            worker from global updates.
           </p>
           {globalID && globalProfile && (
             <p>

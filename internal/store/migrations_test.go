@@ -17,10 +17,10 @@ func TestStartupMigrationsAreVersionedAndRepeatable(t *testing.T) {
 		if err = s.DB.QueryRow(`SELECT count(*) FROM schema_migrations`).Scan(&count); err != nil {
 			t.Fatal(err)
 		}
-		if count != 13 {
+		if count != 14 {
 			t.Fatalf("migration versions: %d", count)
 		}
-		for _, table := range []string{"user_subscriptions", "worker_subscriptions", "work_review_history", "forge_accounts", "work_items", "work_attempts", "schedules", "orchestration_runs", "workspaces", "agent_homes"} {
+		for _, table := range []string{"agent_subscriptions", "worker_agent_subscriptions", "work_review_history", "forge_accounts", "work_items", "work_attempts", "schedules", "orchestration_runs", "workspaces", "agent_homes"} {
 			if _, err = s.DB.Exec(`SELECT 1 FROM ` + table + ` LIMIT 1`); err != nil {
 				t.Fatalf("schema unavailable before requests: %s: %v", table, err)
 			}
@@ -133,5 +133,43 @@ func TestInlineWorkRequestMigrationUpgradesVersionSix(t *testing.T) {
 	var saved string
 	if err = reopened.DB.QueryRow(`SELECT metadata FROM work_items WHERE id='work_legacy'`).Scan(&saved); err != nil || saved != metadata {
 		t.Fatal("legacy work changed during upgrade", saved, err)
+	}
+}
+
+func TestSubscriptionMigrationRetainsDefaultLoginAndBinding(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "subscriptions.db")
+	s, err := Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.initSubscriptions(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		`INSERT INTO user_subscriptions(owner,credential) VALUES('user_old','original-encrypted-login')`,
+		`INSERT INTO worker_subscriptions(workspace_id,owner) VALUES('ws_old','user_old')`,
+		`DROP TABLE worker_agent_subscriptions`, `DROP TABLE agent_subscriptions`,
+		`DELETE FROM schema_migrations WHERE version=14`,
+	} {
+		if _, err = s.DB.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s.DB.Close()
+	for i := 0; i < 2; i++ {
+		s, err = Open(ctx, path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		v, err := s.AgentSubscription(ctx, "user_old", "default")
+		if err != nil || v.Credential != "original-encrypted-login" || v.Provider != "codex" {
+			t.Fatal("lost migrated login", v, err)
+		}
+		owner, id, err := s.WorkerAgentSubscription(ctx, "ws_old", "codex")
+		if err != nil || owner != "user_old" || id != "default" {
+			t.Fatal("lost migrated binding", err)
+		}
+		s.DB.Close()
 	}
 }

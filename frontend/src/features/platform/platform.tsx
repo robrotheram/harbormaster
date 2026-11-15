@@ -34,7 +34,7 @@ const guides = [
   {
     icon: Network,
     title: "Choose what it can reach",
-    body: "Open Platform → Connection profiles in the sidebar. Assign one through worker Settings. Allowlist entries are exact host:port pairs. Fully open uses direct networking and DNS; stop the worker before switching that mode.",
+    body: "Open Platform → Network profiles in the sidebar. Assign one through worker Settings. Allowlist entries are exact host:port pairs. Fully open uses direct networking and DNS; stop the worker before switching that mode.",
   },
   {
     icon: Files,

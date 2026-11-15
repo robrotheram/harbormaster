@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ChevronsUpDown,
+  KeyRound,
   LoaderCircle,
   LogIn,
   LogOut,
@@ -105,6 +106,12 @@ export function UserProfileMenu() {
           </p>
         )}
         <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <a href="/app/connections?tab=agents">
+            <KeyRound />
+            Connections
+          </a>
+        </DropdownMenuItem>
         <DropdownMenuItem
           disabled={!action || pending}
           onSelect={(event) => {

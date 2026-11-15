@@ -31,7 +31,7 @@ type KubernetesConfig struct {
 	APIURL, APIToken, CAFile                            string
 	Token, GatewayServiceToken, GrantSecret, Deployment string
 	Image, RuntimeClass, StorageClass, ServiceAccount   string
-	InferenceURL, BrokerURL, CodexModel                 string
+	InferenceURL, BrokerURL, CodexModel, ClaudeModel    string
 	ProjectNamespaces                                   map[string]string
 	ProvisionProjectNamespaces                          bool
 	CoreNamespace                                       string
@@ -365,7 +365,7 @@ func (k *Kubernetes) sandbox(id string, spec protocol.WorkspaceSpec, namespace s
 	if spec.AgentKind == "hermes" {
 		provider = "hermes"
 	}
-	for name, value := range map[string]string{"WORKSPACE_ID": id, "PROJECT_ID": spec.ProjectID, "AGENT_HOME_ID": spec.HomeID, "AGENT_KIND": spec.AgentKind, "WORKSPACE_NAME": spec.Name, "DATA_DIR": "/data", "MONITOR_PROCESSES": "true", "WORKSPACE_T3": fmt.Sprint(spec.AgentKind == "t3" || spec.ConsoleEnabled), "WORKSPACE_AGENT": provider, "CODEX_MODEL": k.cfg.CodexModel, "INFERENCE_URL": k.cfg.InferenceURL, "BROKER_URL": k.cfg.BrokerURL, "EGRESS_URL": k.cfg.EgressURL} {
+	for name, value := range map[string]string{"WORKSPACE_ID": id, "PROJECT_ID": spec.ProjectID, "AGENT_HOME_ID": spec.HomeID, "AGENT_KIND": spec.AgentKind, "WORKSPACE_NAME": spec.Name, "DATA_DIR": "/data", "MONITOR_PROCESSES": "true", "WORKSPACE_T3": fmt.Sprint(spec.AgentKind == "t3" || spec.ConsoleEnabled), "WORKSPACE_AGENT": provider, "CODEX_MODEL": k.cfg.CodexModel, "CLAUDE_MODEL": k.cfg.ClaudeModel, "INFERENCE_URL": k.cfg.InferenceURL, "BROKER_URL": k.cfg.BrokerURL, "EGRESS_URL": k.cfg.EgressURL} {
 		env = append(env, map[string]any{"name": name, "value": value})
 	}
 	if spec.AgentKind == "hermes" {

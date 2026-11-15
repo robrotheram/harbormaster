@@ -10,6 +10,10 @@ data:
       "subscriptions": {
         "user_accounts": true,
         "providers": {
+          "claude": {
+            "models": ["claude-sonnet-5-5"],
+            "network": {"allowed_cidrs": ["160.79.104.10/32"]}
+          },
           "codex": {
             "models": ["gpt-5.4"],
             "network": {"allowed_cidrs": ["104.18.32.47/32", "172.64.155.209/32"]}

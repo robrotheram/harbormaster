@@ -26,7 +26,13 @@ type Issue = {
   labels: string[];
   milestone: string;
 };
-export function RepositoryConnections({ projects }: { projects: Project[] }) {
+export function RepositoryConnections({
+  projects,
+  embedded = false,
+}: {
+  projects: Project[];
+  embedded?: boolean;
+}) {
   const client = useQueryClient();
   const [host, setHost] = useState("");
   const [accountForm, setAccountForm] = useState<ForgeAccount | "new" | null>(
@@ -74,7 +80,11 @@ export function RepositoryConnections({ projects }: { projects: Project[] }) {
     <div className="space-y-5">
       <div className="page-title">
         <div>
-          <h1>Repository connections</h1>
+          {embedded ? (
+            <h2 className="text-lg font-semibold">Repository connections</h2>
+          ) : (
+            <h1>Repository connections</h1>
+          )}
         </div>
       </div>
       {save.isError && <ErrorNotice error={save.error} />}

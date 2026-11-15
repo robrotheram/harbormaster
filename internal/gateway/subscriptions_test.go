@@ -155,54 +155,62 @@ func TestSubscriptionRequiresVerifiedVaultTLS(t *testing.T) {
 }
 
 func TestUserSubscriptionUsesVerifiedWorkerBinding(t *testing.T) {
-	var available atomic.Bool
-	available.Store(true)
-	var calls atomic.Int32
-	cfg := Config{Mode: "fixture", Models: []string{"fixture"}, Subscriptions: &SubscriptionConfig{UserAccounts: true, Providers: map[string]SubscriptionProvider{"codex": {Models: []string{"test-model"}, Network: NetworkPolicy{AllowedCIDRs: []string{"203.0.113.7/32"}}}}}, Verify: func(_ context.Context, token, audience string) (Identity, error) {
-		if token != "worker-grant" {
-			return Identity{}, ErrDenied
-		}
-		return Identity{WorkspaceID: "ws_verified", ProjectID: "default", PrincipalID: "operator"}, nil
-	}, ResolveSubscription: func(_ context.Context, workspace string) (subscriptionCredential, error) {
-		if workspace != "ws_verified" {
-			t.Error("unverified workspace")
-		}
-		if !available.Load() {
-			return subscriptionCredential{}, ErrDenied
-		}
-		return subscriptionCredential{AccessToken: "private-access", AccountID: "selected-account", ExpiresAt: time.Now().Add(time.Hour).Unix()}, nil
-	}}
-	cfg.subscriptionHTTP = &http.Client{Transport: subscriptionRoundTrip(func(r *http.Request) (*http.Response, error) {
-		calls.Add(1)
-		if r.Header.Get("Authorization") != "Bearer private-access" || r.Header.Get("ChatGPT-Account-Id") != "selected-account" {
-			t.Error("wrong account")
-		}
-		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("result"))}, nil
-	})}
-	h, err := NewHandler(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	call := func(token string) *httptest.ResponseRecorder {
-		r := httptest.NewRequest("POST", "/codex/responses", strings.NewReader(`{"model":"test-model"}`))
-		r.Header.Set("Authorization", "Bearer "+token)
-		r.Header.Set("X-Workbench-Subscription-User", "user_victim")
-		r.Header.Set("ChatGPT-Account-Id", "victim-account")
-		w := httptest.NewRecorder()
-		h.ServeHTTP(w, r)
-		return w
-	}
-	if w := call("worker-grant"); w.Code != 200 || strings.Contains(w.Body.String(), "private-access") {
-		t.Fatal(w.Code, w.Body)
-	}
-	if w := call("invalid"); w.Code != 401 {
-		t.Fatal(w.Code)
-	}
-	available.Store(false)
-	if w := call("worker-grant"); w.Code != 503 {
-		t.Fatal(w.Code)
-	}
-	if calls.Load() != 1 {
-		t.Fatal("unloaded credential reached provider")
+	for _, provider := range []string{"codex", "claude"} {
+		t.Run(provider, func(t *testing.T) {
+			var available atomic.Bool
+			available.Store(true)
+			var calls atomic.Int32
+			cfg := Config{Mode: "fixture", Models: []string{"fixture"}, Subscriptions: &SubscriptionConfig{UserAccounts: true, Providers: map[string]SubscriptionProvider{provider: {Models: []string{"test-model"}, Network: NetworkPolicy{AllowedCIDRs: []string{"203.0.113.7/32"}}}}}, Verify: func(_ context.Context, token, audience string) (Identity, error) {
+				if token != "worker-grant" {
+					return Identity{}, ErrDenied
+				}
+				return Identity{WorkspaceID: "ws_verified", ProjectID: "default", PrincipalID: "operator"}, nil
+			}, ResolveSubscription: func(_ context.Context, workspace, selectedProvider string) (subscriptionCredential, error) {
+				if workspace != "ws_verified" || selectedProvider != provider {
+					t.Error("unverified workspace")
+				}
+				if !available.Load() {
+					return subscriptionCredential{}, ErrDenied
+				}
+				return subscriptionCredential{AccessToken: "private-access", AccountID: "selected-account", ExpiresAt: time.Now().Add(time.Hour).Unix()}, nil
+			}}
+			cfg.subscriptionHTTP = &http.Client{Transport: subscriptionRoundTrip(func(r *http.Request) (*http.Response, error) {
+				calls.Add(1)
+				if r.Header.Get("Authorization") != "Bearer private-access" || (provider == "codex" && r.Header.Get("ChatGPT-Account-Id") != "selected-account") {
+					t.Error("wrong account")
+				}
+				return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("result"))}, nil
+			})}
+			h, err := NewHandler(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			call := func(token string) *httptest.ResponseRecorder {
+				path := "/codex/responses"
+				if provider == "claude" {
+					path = "/claude/v1/messages"
+				}
+				r := httptest.NewRequest("POST", path, strings.NewReader(`{"model":"test-model"}`))
+				r.Header.Set("Authorization", "Bearer "+token)
+				r.Header.Set("X-Workbench-Subscription-User", "user_victim")
+				r.Header.Set("ChatGPT-Account-Id", "victim-account")
+				w := httptest.NewRecorder()
+				h.ServeHTTP(w, r)
+				return w
+			}
+			if w := call("worker-grant"); w.Code != 200 || strings.Contains(w.Body.String(), "private-access") {
+				t.Fatal(w.Code, w.Body)
+			}
+			if w := call("invalid"); w.Code != 401 {
+				t.Fatal(w.Code)
+			}
+			available.Store(false)
+			if w := call("worker-grant"); w.Code != 503 {
+				t.Fatal(w.Code)
+			}
+			if calls.Load() != 1 {
+				t.Fatal("unloaded credential reached provider")
+			}
+		})
 	}
 }

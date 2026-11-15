@@ -135,9 +135,9 @@ async function fixture(page: Page) {
     ["projects", "/app/", "Projects"],
     ["infrastructure", "/app/infrastructure", "Infrastructure"],
     ["services", "/app/platform-services", "Platform services"],
-    ["connections", "/app/connection-profiles", "Connection profiles"],
+    ["connections", "/app/connection-profiles", "Network profiles"],
     ["help", "/app/help", "Getting started"],
-    ["repositories", "/app/repositories", "Repository connections"],
+    ["repositories", "/app/repositories", "Connections"],
     ...[
       ["board", "Issue board"],
       ["reviews", "Reviews"],

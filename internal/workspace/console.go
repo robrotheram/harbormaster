@@ -65,7 +65,7 @@ func (m *Manager) startConsole() error {
 	settingsPath := filepath.Join(base, "userdata/settings.json")
 	if _, err := os.Stat(settingsPath); os.IsNotExist(err) {
 		selection := map[string]any{"instanceId": "codex", "model": m.cfg.CodexModel, "options": []any{}}
-		settings := map[string]any{"enableProviderUpdateChecks": false, "enableAgentBrowserAccess": false, "defaultRuntimeMode": "full-access", "defaultModelSelection": selection, "textGenerationModelSelection": selection, "branchNamingMode": "static", "providerInstances": map[string]any{"codex": map[string]any{"driver": "codex", "enabled": true, "displayName": "Codex · Workbench subscription", "config": map[string]any{"binaryPath": "/usr/local/bin/codex-native", "homePath": codexHome, "setupMode": "existing"}}, "claudeAgent": map[string]any{"driver": "claudeAgent", "enabled": false}, "opencode": map[string]any{"driver": "opencode", "enabled": false}}}
+		settings := map[string]any{"enableProviderUpdateChecks": false, "enableAgentBrowserAccess": false, "defaultRuntimeMode": "full-access", "defaultModelSelection": selection, "textGenerationModelSelection": selection, "branchNamingMode": "static", "providerInstances": map[string]any{"codex": map[string]any{"driver": "codex", "enabled": true, "displayName": "Codex · Workbench subscription", "config": map[string]any{"binaryPath": "/usr/local/bin/codex-native", "homePath": codexHome, "setupMode": "existing"}}, "claudeAgent": map[string]any{"driver": "claudeAgent", "enabled": m.cfg.ClaudeModel != ""}, "opencode": map[string]any{"driver": "opencode", "enabled": false}}}
 		b, _ := json.Marshal(settings)
 		if err = os.WriteFile(settingsPath, b, 0600); err != nil {
 			return err
@@ -80,7 +80,7 @@ func (m *Manager) startConsole() error {
 			instances, _ := settings["providerInstances"].(map[string]any)
 			if instances != nil {
 				if _, ok := instances["claudeAgent"]; !ok {
-					instances["claudeAgent"] = map[string]any{"driver": "claudeAgent", "enabled": false}
+					instances["claudeAgent"] = map[string]any{"driver": "claudeAgent", "enabled": m.cfg.ClaudeModel != ""}
 					delete(instances, "claude")
 					encoded, _ := json.Marshal(settings)
 					_ = os.WriteFile(settingsPath, encoded, 0600)
@@ -92,6 +92,9 @@ func (m *Manager) startConsole() error {
 		return err
 	}
 	env := []string{"PATH=/usr/local/bin:/usr/bin:/bin", "HOME=" + home, "LANG=C.UTF-8", "TMPDIR=/tmp", "T3CODE_HOME=" + base, "CODEX_HOME=" + codexHome, "OPENAI_API_KEY=" + m.cfg.Token, "WORKBENCH_INFERENCE_GRANT=" + m.cfg.Token, "T3CODE_TELEMETRY_ENABLED=false", "T3CODE_OTEL_SDK_DISABLED=true", "DISABLE_AUTOUPDATER=1", "DISABLE_UPDATES=1", "DATA_DIR=" + m.cfg.DataDir}
+	if m.cfg.ClaudeModel != "" {
+		env = append(env, "CLAUDE_CODE_OAUTH_TOKEN="+m.cfg.Token, "ANTHROPIC_BASE_URL="+strings.TrimRight(m.cfg.InferenceURL, "/")+"/claude", "ANTHROPIC_MODEL="+m.cfg.ClaudeModel, "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1")
+	}
 	if m.cfg.EgressURL != "" && m.cfg.ConnectionMode != "open" {
 		env = egress.Environment(env)
 	}
