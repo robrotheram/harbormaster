@@ -70,23 +70,21 @@ test("save a private subscription, load, unload, and delete without forwarding r
   await expect(
     dialog.getByRole("button", { name: "Load into worker" }),
   ).toBeDisabled();
-  await dialog
-    .getByLabel("Import Codex login")
-    .setInputFiles({
-      name: "auth.json",
-      mimeType: "application/json",
-      buffer: Buffer.from(
-        JSON.stringify({
-          auth_mode: "chatgpt",
-          tokens: {
-            access_token: "synthetic-access",
-            account_id: "my-account",
-            refresh_token: "must-not-leave-browser",
-            id_token: "also-private",
-          },
-        }),
-      ),
-    });
+  await dialog.getByLabel("Import Codex login").setInputFiles({
+    name: "auth.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(
+      JSON.stringify({
+        auth_mode: "chatgpt",
+        tokens: {
+          access_token: "synthetic-access",
+          account_id: "my-account",
+          refresh_token: "must-not-leave-browser",
+          id_token: "also-private",
+        },
+      }),
+    ),
+  });
   await expect(dialog.getByText("Your subscription was saved.")).toBeVisible();
   expect(imported).toEqual({
     auth: {
