@@ -1,4 +1,4 @@
-# Replace project and image placeholders before applying. Provision the named
+# Override the project label and pinned image in the consuming overlay. Provision the named
 # Secret out of band with control_token, mcp_token, gateway_service_token.
 apiVersion: apps/v1
 kind: Deployment
@@ -14,7 +14,7 @@ spec:
       labels:
         app: hermes-mcp
         workbench.role: gateway
-        workbench.project: REPLACE_PROJECT_ID
+        workbench.project: default
     spec:
       automountServiceAccountToken: false
       securityContext:
@@ -25,7 +25,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: mcp
-          image: REPLACE_MCP_IMAGE_WITH_DIGEST
+          image: ghcr.io/robrotheram/harbormaster/mcp@sha256:43176ff6b9bbb84aa898c52c3197b608d6d0360f0180d2b2389c9bb936a68f11
           ports: [{containerPort: 8080}]
           env:
             - {name: CONTROLPLANE_URL, value: 'http://controlplane.workbench-system.svc:8080'}

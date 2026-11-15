@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: runtime-controller
+  namespace: workbench-system
+spec:
+  template:
+    spec:
+      containers:
+      - name: runtime-controller
+        env:
+        - name: REQUIRE_VERIFIED_ISOLATION
+          value: 'false'
+        - name: KUBERNETES_STORAGE_CLASS
+          value: harbormaster-retain
+        - name: KUBERNETES_INFERENCE_URL
+          value: http://10.43.180.206:8080
+        - name: KUBERNETES_BROKER_URL
+          value: http://10.43.153.124:8080
+        - name: KUBERNETES_EGRESS_URL
+          value: http://10.43.51.35:8080

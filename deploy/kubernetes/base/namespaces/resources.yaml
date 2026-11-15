@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: workbench-system
+  labels:
+    app.kubernetes.io/part-of: harbormaster
+  annotations:
+    argocd.argoproj.io/sync-wave: '-20'
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: workbench-egress
+  labels:
+    app.kubernetes.io/part-of: harbormaster
+  annotations:
+    argocd.argoproj.io/sync-wave: '-20'
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false

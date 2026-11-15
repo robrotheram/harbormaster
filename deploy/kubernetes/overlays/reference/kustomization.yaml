@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- ../../base
+- foundation
+- ingress.yaml
+patches:
+- target:
+    group: apps
+    version: v1
+    kind: Deployment
+  patch: |-
+    - op: add
+      path: /spec/template/spec/imagePullSecrets
+      value:
+        - name: harbormaster-registry
+- path: controlplane-patch.yaml
+- path: runtime-controller-patch.yaml
+- path: dashboard-patch.yaml
+- path: inference-gateway-patch.yaml
+- path: credential-broker-patch.yaml
+- path: egress-gateway-patch.yaml
+- path: bindings-patch.yaml
+- path: gateway-services-patch.yaml

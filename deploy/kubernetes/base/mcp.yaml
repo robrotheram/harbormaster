@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp
+  namespace: workbench-system
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: mcp
+  template:
+    metadata:
+      labels:
+        app: mcp
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - name: mcp
+        image: ghcr.io/robrotheram/harbormaster/mcp
+        ports:
+        - containerPort: 8080
+        env:
+        - name: CONTROLLER_URL
+          value: http://runtime-controller.workbench-system.svc:8080
+        - name: CONTROLPLANE_URL
+          value: http://controlplane:8080
+        - name: CONTROLPLANE_READ_URL
+          value: http://controlplane:8081
+        - name: MCP_ALLOWED_HOSTS
+          value: localhost,127.0.0.1,mcp,mcp.workbench-system.svc,mcp.workbench-system.svc.cluster.local
+        - name: CONTROL_TOKEN_FILE
+          value: /run/secrets/control_token
+        - name: MCP_TOKEN_FILE
+          value: /run/secrets/mcp_token
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: '1'
+            memory: 1Gi
+        readinessProbe:
+          exec:
+            command:
+            - /usr/local/bin/healthcheck
+          timeoutSeconds: 3
+        volumeMounts:
+        - name: secrets
+          mountPath: /run/secrets
+          readOnly: true
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: secrets
+        secret:
+          secretName: mcp-secrets
+      - name: tmp
+        emptyDir:
+          sizeLimit: 64Mi
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp
+  namespace: workbench-system
+spec:
+  selector:
+    app: mcp
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080

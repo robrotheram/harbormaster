@@ -2,7 +2,7 @@
 
 Compose remains development. This package implements production operations but
 **does not constitute M5 acceptance**. The initial implementation used simulated infrastructure. A fresh
-[k3s reference environment](../deploy/kubernetes/reference/README.md) now has live
+[k3s reference environment](../deploy/kubernetes/overlays/reference/README.md) now has live
 Kata, Longhorn, network-policy and application lifecycle checks. The default verified-isolation gate continues
 to reject starts: neither Pod readiness nor a configured RuntimeClass proves a VM.
 Do not expose an unverified test install as production.
@@ -12,28 +12,26 @@ Do not expose an unverified test install as production.
 Use Kubernetes with stable ValidatingAdmissionPolicy support, network-policy
  enforcement, pinned Agent Sandbox v1.0.9 CRDs/controller, a tested kata-qemu
 containerd handler, and snapshot-capable CSI with ReadWriteOncePod. k3s local-path
-storage is insufficient. Apply deploy/kubernetes/admission.yaml and the reviewed
-runtimeclass.yaml only after validating the node handler. Render project-template
-with render_project.py and apply it before binding that project to the runtime.
-Each project gets a unique namespace, restricted Pod security and quota.
+storage is insufficient. The application is packaged as a native Kustomize base
+and environment overlays. Its base includes Sandbox admission; the installed
+Kata Helm release owns RuntimeClasses. See the
+[deployment guide](../deploy/kubernetes/README.md) and separately managed
+[infrastructure](../deploy/kubernetes/infrastructure/README.md).
 
-render_platform.py CONFIG.json --output platform.json renders standard Kubernetes
-objects. Apply with kubectl after reviewing the output. Configuration requires:
+```sh
+kubectl kustomize deploy/kubernetes/overlays/reference
+kubectl --context default apply --dry-run=server -k deploy/kubernetes/overlays/reference
+kubectl --context default diff -k deploy/kubernetes/overlays/reference
+kubectl --context default apply -k deploy/kubernetes/overlays/reference
+```
 
-- project_id, project_namespace, storage_class, host, tls_secret; allowlist is a
-  list of exact host:port destinations (default empty).
-- images: digest references for controlplane, runtime-controller, dashboard, mcp,
-  inference-gateway, credential-broker, egress-gateway and workspace. Build these
-  from the repository's existing Dockerfile targets.
-- auth_annotations: annotations configuring the installed ingress authentication
-  middleware. Install that middleware separately and test rejection of anonymous,
-  expired and revoked sessions. TLS secret must hold the host's valid certificate.
-- environment: per-service reviewed settings, including live inference/broker
-  policy, external Vault TLS origins/CA paths, models and external DATABASE_URL
-  secret. Environment overrides are operator configuration, never guest input.
+Create new environment overlays with native `images` and `patches`. They must
+select project namespaces/bindings, a tested RWOP storage class, gateway endpoints,
+authenticated ingress/TLS and immutable image digests. Keep secrets outside Git.
+`make kubernetes-check` builds with pinned Kustomize and checks the deployment
+contract in CI. There are no Python rendering or bootstrap steps.
 
-The renderer currently packages one project per gateway set; do not relabel a
-shared gateway for multiple projects. For multiple projects, provision dedicated
+The overlay currently packages one project per gateway set. For multiple projects, provision dedicated
 DNS/gateway/registry endpoints and extend runtime project endpoint routing first.
 Project DNS must resolve the .svc endpoints and refuse arbitrary recursive DNS.
 Provision it explicitly; the project policy intentionally does not allow CoreDNS
@@ -47,7 +45,7 @@ credential belongs in workspace manifests. Keep Vault external and backed up.
 The database is external PostgreSQL; configure its TLS connection URL in the
 controlplane database_url Secret. No dashboard or workspace receives it.
 
-Only dashboard HTTPS ingress is rendered. MCP/controlplane remain cluster-private.
+Only dashboard HTTPS ingress is exposed. MCP/controlplane remain cluster-private.
 The existing platform token is a service credential, not human authentication or
 project membership. An ingress login alone does not implement per-user project
 membership: remote multi-user management remains gated on that integration.
@@ -83,7 +81,8 @@ pinned-image integration acceptance; no Hermes adapter scripts are changed here.
 ## Backup and recovery
 
 Suspend all workspaces through the runtime API first. Run backup.sh from a trusted
-host with DATABASE_URL, PROJECT_NAMESPACE, SNAPSHOT_CLASS and BACKUP_DIR. It stops
+host with jq, pg_dump and kubectl installed. Set DATABASE_URL, PROJECT_NAMESPACE,
+SNAPSHOT_CLASS and BACKUP_DIR. It stops
 the sole metadata writer, verifies observed suspension, dumps metadata, captures
 identity Secrets and creates/waits for CSI snapshots. It intentionally leaves the
 controlplane stopped. Encrypt backup files, export snapshots to independent storage

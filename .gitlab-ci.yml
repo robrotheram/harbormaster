@@ -14,6 +14,8 @@ default:
 go:
   stage: verify
   image: golang:1.27.4-bookworm
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends jq
   services:
     - name: postgres:17-alpine
       alias: postgres
@@ -32,7 +34,7 @@ go:
   script:
     - go mod download
     - go mod verify
-    - make fmt-check build
+    - make fmt-check build kubernetes-check
     - go vet ./...
     - make go-vuln-check
     - go test -race -timeout 10m -coverprofile=coverage.out ./...

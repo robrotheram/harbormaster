@@ -30,33 +30,32 @@ that import using `hermes-runner --version` and checks the pinned version/commit
 An installed script or a Ready Pod alone never establishes Hermes readiness.
 No provider fallback is configured.
 
-On an existing installation produced by deploy/kubernetes/render_platform.py:
+For a Kustomize installation, add `components/hermes` to the consuming overlay's
+`components` list (relative to that overlay). It supplies the private Deployment
+and Service without enabling Hermes workspace execution. For example, from an
+overlay under `deploy/kubernetes/overlays`:
 
-1. Render deploy/kubernetes/hermes-mcp-deployment.yaml with the bound project
-   ID and current MCP image digest, provision hermes-mcp-secrets with the three
-   file keys listed there, and apply it with `kubectl apply -f <rendered-file>`.
-   Deploy a dedicated MCP instance in workbench-egress named hermes-mcp using
-   the current MCP binary and pinned image. Use the existing MCP deployment's
-   read-only control/MCP secret file mounts and security context, without a
-   service account token. Label its Pod `app=hermes-mcp`,
-   `workbench.role=gateway`, and `workbench.project=<bound project>`.
-2. Set `MCP_ALLOWED_HOSTS=hermes-mcp.workbench-egress.svc:8080`,
-   `HERMES_CONTROLLER_URL=http://runtime-controller.workbench-system.svc:8080`,
-   and mount the controller's gateway service credential read-only at
-   `GATEWAY_SERVICE_TOKEN_FILE`. Keep CONTROL_TOKEN_FILE and MCP_TOKEN_FILE only
-   in this control-plane service. Never place these credentials in a workspace.
-   The namespace network policy must permit this service to reach the controller
-   verifier and controlplane; retain existing controller ingress restrictions.
-3. Apply the Service and set the reviewed runtime environment:
-
-```sh
-kubectl apply -f deploy/kubernetes/hermes-mcp-service.yaml
-export APPROVED_DIGEST='registry.example/workspace-hermes@sha256:REPLACE_WITH_REAL_DIGEST'
-kubectl -n workbench-system set env deployment/runtime-controller \
-  WORKSPACE_IMAGE="$APPROVED_DIGEST" \
-  KUBERNETES_HERMES_V023_APPROVED_IMAGE="$APPROVED_DIGEST" \
-  HERMES_MODEL='operator-selected-model'
+```yaml
+components:
+  - ../../components/hermes
 ```
+
+Provision `hermes-mcp-secrets` in `workbench-egress` outside Git with
+`control_token`, `mcp_token` and `gateway_service_token`. Override the component's
+pinned MCP image and project label in your overlay when needed. It has no service
+account token and reaches the controller verifier through its trusted service
+credential. Do not give those credentials to a workspace.
+
+After native integration acceptance, add a strategic-merge Deployment patch for
+`runtime-controller` setting `WORKSPACE_IMAGE`,
+`KUBERNETES_HERMES_V023_APPROVED_IMAGE` to the **same reviewed immutable digest**,
+and `HERMES_MODEL` to the operator-selected model. Keep the verified-isolation gate
+unless explicitly using an approved unverified test environment. Changing the
+workspace image also requires a plan for existing retained Sandboxes.
+
+Build and review with `kubectl kustomize`, then apply the complete consuming
+overlay with `kubectl apply -k`. Do not use imperative `set env` mutations that
+future Argo reconciliation would overwrite.
 
 The launch contract is `HERMES_MCP_TRANSPORT=kubernetes-generation`, mapped by
 Go's typed transport to the single fixed URL

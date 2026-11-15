@@ -1,0 +1,13 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inference-gateway
+  namespace: workbench-egress
+spec:
+  template:
+    spec:
+      containers:
+      - name: inference-gateway
+        env:
+        - name: GATEWAY_MODE
+          value: fixture

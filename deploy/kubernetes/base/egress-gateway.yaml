@@ -1,0 +1,103 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: egress-gateway
+  namespace: workbench-egress
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: egress-gateway
+  template:
+    metadata:
+      labels:
+        app: egress-gateway
+        workbench.project: default
+        workbench.role: gateway
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - name: egress-gateway
+        image: ghcr.io/robrotheram/harbormaster/egress-gateway
+        ports:
+        - containerPort: 8080
+        env:
+        - name: CONTROLLER_URL
+          value: http://runtime-controller.workbench-system.svc:8080
+        - name: CONTROLPLANE_URL
+          value: http://controlplane:8080
+        - name: CONTROLPLANE_READ_URL
+          value: http://controlplane:8081
+        - name: GATEWAY_MODE
+          value: upstream
+        - name: GATEWAY_CONFIG
+          value: /etc/workbench/egress-gateway.json
+        - name: GATEWAY_SERVICE_TOKEN_FILE
+          value: /run/secrets/gateway_service_token
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: '1'
+            memory: 1Gi
+        readinessProbe:
+          exec:
+            command:
+            - /usr/local/bin/healthcheck
+          timeoutSeconds: 3
+        volumeMounts:
+        - name: secrets
+          mountPath: /run/secrets
+          readOnly: true
+        - name: tmp
+          mountPath: /tmp
+        - name: config
+          mountPath: /etc/workbench
+          readOnly: true
+      volumes:
+      - name: secrets
+        secret:
+          secretName: egress-gateway-secrets
+      - name: tmp
+        emptyDir:
+          sizeLimit: 64Mi
+      - name: config
+        secret:
+          secretName: egress-gateway-config
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: egress-gateway
+  namespace: workbench-egress
+spec:
+  selector:
+    app: egress-gateway
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: egress-gateway
+  namespace: workbench-system
+spec:
+  type: ExternalName
+  externalName: egress-gateway.workbench-egress.svc.cluster.local

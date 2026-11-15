@@ -2,14 +2,21 @@ apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
   name: workbench-sandbox-policy
+  annotations:
+    argocd.argoproj.io/sync-wave: "-5"
 spec:
   failurePolicy: Fail
   matchConstraints:
+    # Explicit API defaults keep this atomic field identical during SSA adoption.
+    matchPolicy: Equivalent
+    namespaceSelector: {}
+    objectSelector: {}
     resourceRules:
       - apiGroups: [agents.x-k8s.io]
         apiVersions: [v1beta1]
         operations: [CREATE, UPDATE]
         resources: [sandboxes]
+        scope: '*'
   variables:
     - name: pod
       expression: object.spec.podTemplate.spec
@@ -46,10 +53,14 @@ apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding
 metadata:
   name: workbench-sandbox-policy
+  annotations:
+    argocd.argoproj.io/sync-wave: "-5"
 spec:
   policyName: workbench-sandbox-policy
   validationActions: [Deny]
   matchResources:
+    matchPolicy: Equivalent
+    objectSelector: {}
     namespaceSelector:
       matchLabels:
         workbench.security: enforced

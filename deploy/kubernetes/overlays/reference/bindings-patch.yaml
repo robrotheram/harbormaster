@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: runtime-bindings
+  namespace: workbench-system
+data:
+  projects.json: '{"default": "workbench-reference"}'

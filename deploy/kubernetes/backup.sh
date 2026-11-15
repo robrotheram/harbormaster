@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Run on a trusted backup host with pg_dump, kubectl and the CSI snapshot CRDs.
+# Run on a trusted backup host with pg_dump, kubectl, jq and the CSI snapshot CRDs.
 # DATABASE_URL must address the same database as the sole controlplane owner.
 : "${DATABASE_URL:?}" "${PROJECT_NAMESPACE:?}" "${SNAPSHOT_CLASS:?}" "${BACKUP_DIR:?}"
 umask 077
@@ -9,12 +9,10 @@ kubectl -n workbench-system scale deployment/controlplane --replicas=0
 trap 'echo "Controlplane remains stopped; verify all workspace suspensions before resuming" >&2' EXIT
 # Operator must suspend every Sandbox first; abort if any writer is active.
 kubectl -n "$PROJECT_NAMESPACE" get sandboxes -o json > "$BACKUP_DIR/sandboxes.json"
-python3 - "$BACKUP_DIR/sandboxes.json" <<'PY'
-import json,sys
-for s in json.load(open(sys.argv[1]))['items']:
- assert s['spec']['operatingMode']=='Suspended'
- assert any(c['type']=='Suspended' and c['status']=='True' and c.get('observedGeneration')==s['metadata']['generation'] for c in s['status']['conditions'])
-PY
+jq -e 'all(.items[]; . as $s |
+  .spec.operatingMode == "Suspended" and
+  any(.status.conditions[]; .type == "Suspended" and .status == "True" and
+      .observedGeneration == $s.metadata.generation))' "$BACKUP_DIR/sandboxes.json" >/dev/null
 pg_dump --format=custom --file="$BACKUP_DIR/metadata.dump" "$DATABASE_URL"
 kubectl -n "$PROJECT_NAMESPACE" get pvc,secrets,networkpolicies -o json > "$BACKUP_DIR/project.json"
 kubectl -n "$PROJECT_NAMESPACE" get pvc -o name | while read -r pvc; do

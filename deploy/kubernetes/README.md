@@ -1,66 +1,93 @@
-# Agent Sandbox runtime backend
+# Kubernetes deployment
 
-This is a deployment foundation, not a certification of VM or network isolation. The adapter has fake-API tests and a [k3s reference installation](reference/README.md) with live Kata, storage, network-policy and application lifecycle checks. The reference guide records acceptance evidence and remaining limitations.
-
-The implementation targets Kubernetes SIGs Agent Sandbox **v1.0.9**, `agents.x-k8s.io/v1beta1`. It creates `Sandbox` resources with an administrator-fixed digest image, `RuntimeClass`, service account and `volumeClaimTemplates`. Agent Sandbox owns Pod/PVC/Service reconciliation. Stop requests `operatingMode: Suspended` and waits for the observed suspension condition; the Sandbox/PVC persist. Deletion/retention is intentionally a separate operator action.
-
-Primary API source: <https://github.com/kubernetes-sigs/agent-sandbox/blob/v1.0.9/api/v1beta1/sandbox_types.go>. Install its pinned controller/CRDs using that release's instructions, not floating `main` manifests.
-
-## Prerequisites
-
-- Kubernetes admission support for `ValidatingAdmissionPolicy`, a tested network-policy-enforcing CNI, and project namespaces provisioned by an administrator.
-- Kata/containerd configured on eligible virtualization-capable nodes. Review `runtimeclass.yaml` and verify the `kata-qemu` handler. Label/taint only nodes with actual tested VM support. EKS instance eligibility, nested virtualization and storage/CNI behavior need a separate host validation.
-- A private built workspace image addressed by SHA-256 digest, and a CSI StorageClass supporting **ReadWriteOncePod**. This is the volume generation fence; no two writable workspace Pods may attach the same state.
-- Project-specific DNS, inference/broker and Nexus egress endpoints. The default policies permit only appropriately labelled internal endpoints; until those exist, access fails closed. The resolver must answer approved internal service names and deny arbitrary recursive DNS. No external DNS fallback, IP egress or proxy override is opened by these templates.
-- The trusted runtime controller can connect to the workspace Service on port 8080; workspaces cannot reach the Kubernetes API or other project Pods.
-
-## Provision a project
-
-Create the project through the workbench API first. Render and review its namespace policy:
+Harbormaster uses native Kustomize resources. No manifest generator, Python,
+Helm inflation, exec plugin, or cluster lookup is needed to render the application.
 
 ```sh
-python3 deploy/kubernetes/render_project.py --project-id proj_RETURNED_ID \
-  --namespace workbench-example --output /tmp/workbench-project.yaml
-kubectl apply -f deploy/kubernetes/admission.yaml
-kubectl apply -f deploy/kubernetes/runtimeclass.yaml
-kubectl apply -f /tmp/workbench-project.yaml
+kubectl kustomize deploy/kubernetes/overlays/reference
+kubectl --context default apply --dry-run=server -k deploy/kubernetes/overlays/reference
+kubectl --context default diff -k deploy/kubernetes/overlays/reference
+kubectl --context default apply -k deploy/kubernetes/overlays/reference
 ```
 
-The runtime controller ServiceAccount is `runtime-controller` in `workbench-system`. The generated RoleBinding gives it only Sandbox lifecycle and per-workspace grant Secret operations in that project namespace. It has no `pods/exec`, Pod creation, host or namespace-creation permission. Agent Sandbox's separate upstream controller has its own required infrastructure RBAC; neither credential belongs in a workspace.
+`kubectl diff` returns 1 when a difference exists; review that output before apply.
+The reference overlay preserves the existing deployment's object names and image
+digests. Its [runbook](overlays/reference/README.md) records dependencies,
+credentials, acceptance evidence and remaining limitations.
 
-Mount a private JSON file mapping real project IDs to preprovisioned namespaces, for example `{"proj_returned_id":"workbench-example"}`. A namespace can be assigned to only one project. New projects cannot provision compute until this binding and their policies exist.
+## Layout
 
-## Runtime-controller configuration
-
-Run the existing runtime-controller image with these settings instead of mounting Docker:
-
-| Variable | Value |
+| Path | Purpose |
 | --- | --- |
-| `RUNTIME_BACKEND` | `kubernetes` |
-| `KUBERNETES_API_SERVER` | `https://kubernetes.default.svc` or reviewed HTTPS API origin |
-| `KUBERNETES_TOKEN_FILE` | Controller ServiceAccount token file; defaults to normal in-cluster path |
-| `KUBERNETES_CA_FILE` | Trusted API CA file; defaults to normal in-cluster path |
-| `KUBERNETES_PROJECTS_FILE` | Administrator JSON project-to-namespace bindings |
-| `WORKSPACE_IMAGE` | Fixed built image with `@sha256:<64 hex>` |
-| `KUBERNETES_RUNTIME_CLASS` | `kata`; keep admission policy in agreement |
-| `KUBERNETES_STORAGE_CLASS` | Explicit tested RWOP-capable CSI class |
-| `KUBERNETES_WORKSPACE_SERVICE_ACCOUNT` | `workspace` |
-| `KUBERNETES_INFERENCE_URL` | Approved internal inference gateway origin |
-| `KUBERNETES_BROKER_URL` | Approved internal credential broker origin |
-| `CODEX_MODEL` | Exact subscription-approved model ID |
-| `REQUIRE_VERIFIED_ISOLATION` | Defaults `true`; starts remain blocked until a verifier exists. Set `false` only for the explicitly unverified orchestration test environment. |
+| `base/` | Seven platform services, namespace boundaries, runtime bindings and Sandbox admission policy. Workspace execution defaults to blocked; no public ingress. |
+| `overlays/reference/` | The existing single-node k3s environment: project policy, CNPG, retained Longhorn storage, TLS, Traefik/Entra integration, fixed gateway IPs and fixture gateways. |
+| `overlays/reference/bootstrap/` | Namespace/database/project foundation for an empty environment, before credentials are provisioned. Also included in the complete reference overlay. |
+| `components/hermes/` | Optional dedicated Hermes MCP service; not enabled in the reference overlay. See [Hermes](../../docs/k3s-hermes.md). |
+| `infrastructure/` | Separately managed cluster dependencies. Kata remains a Helm release requiring host maintenance; its RuntimeClasses are not application-owned. |
+| `argocd/` | Future manual-adoption Application pointing directly to the reference overlay. It is not installed by applying the application. |
 
-Supply the existing controller/gateway/grant secret files through `CONTROLLER_TOKEN_FILE`, `GATEWAY_SERVICE_TOKEN_FILE` and `GRANT_SECRET_FILE`. No secret values belong in manifests. The public control plane still uses the authenticated runtime-controller HTTP API and receives no Kubernetes credential.
+The base is reusable configuration, not a standalone production installation.
+Create another overlay to select project bindings, storage, gateway endpoints,
+image pull credentials and authenticated ingress. Use standard `patches` and
+`images`; do not edit generated build output. The reference's explicit
+`REQUIRE_VERIFIED_ISOLATION=false` is for the accepted test environment only.
 
-## Current capability limits
+## Images and credentials
 
-- Native T3/Codex workspaces, HTTP/WebSocket forwarding, project/home ownership, persistent state, durable tasks and generation-bound grants are implemented. CPU/memory samples remain unknown until a real metrics adapter is configured.
-- Kubernetes branch seeding returns `KUBERNETES_BRANCH_SEED_UNAVAILABLE` before creation. Docker branch copying remains available. A Kubernetes data mover or snapshot/clone integration needs explicit CSI and provenance policy rather than broad cross-PVC mounts.
-- Hermes is not falsely advertised as a supported workspace engine; use the separate project assistant recipe in `../hermes` until native adapter compatibility is validated.
-- No warm-pool assignment or automatic dirty-guest reuse is implemented. Adopt the upstream claim/warm-pool API only after testing data-free capacity binding. Existing used Sandbox/PVC objects are never reassigned to a different project/home.
-- API acceptance of RuntimeClass and Pod readiness are not VM attestation. Isolation and network evidence always report `unverified`; the secure gate never silently falls back to runc.
+Platform image digests live in `base/kustomization.yaml`; environment-specific
+updates belong in the consuming overlay's `images` entries. The workspace image
+is the `WORKSPACE_IMAGE` environment value on the runtime controller and must be
+changed explicitly in a reviewed Deployment patch. Existing retained Sandboxes
+reject image drift; updating a dashboard does not upgrade workspace images.
 
-The adapter now advertises blocked/allowlist and implements persisted policy application,
-project destination ceilings and installed NetworkPolicy drift checks. Network status
-remains unverified. See [production operations](../../docs/k3s.md) for packaging,
-configuration, recovery and the outstanding external acceptance gates.
+Secrets are pre-provisioned outside Git. Kustomize references their names and
+keys; it does not generate, rotate, export or commit credentials. For future
+Argo CD adoption, supply those same Secret contracts through an approved secret
+manager or provision them beforehand. The [secret contract](overlays/reference/README.md#secret-contract)
+includes database CA verification and registry credentials.
+
+## Projects and isolation
+
+Create project metadata through the application API, then add a reviewed project
+namespace/policy manifest to your overlay. Use
+`overlays/reference/foundation/project.yaml` as the concrete example. Change the
+namespace and every `workbench.project` label/selector together, and update the
+runtime's `projects.json` and `allowlists.json` ConfigMap patch. Keep the RoleBinding
+subject in `workbench-system`; a global Kustomize `namespace` transformer is
+inappropriate for this multi-namespace application.
+
+One project currently owns each gateway set. Supporting additional projects
+requires dedicated gateway/DNS/registry endpoints and runtime endpoint routing;
+simply relabelling shared gateways does not establish tenant isolation.
+
+The runtime ServiceAccount can manage Sandboxes and generation-grant Secrets in
+its bound project, and read PVC/network-policy evidence. It cannot create or exec
+Pods, create namespaces, change network policy or delete retained volumes.
+Agent Sandbox v1.0.9 owns Pod/PVC/Service reconciliation. Workspaces use Kata,
+private RWOP storage and no Kubernetes token. Stop suspends a Sandbox; deletion
+and retention remain separate operator operations.
+
+Isolation and network status remain `unverified`: readiness and a RuntimeClass
+are not continuous VM/CNI attestation. Branch seeding and automatic dirty-workspace
+reuse remain unsupported. Hermes workspace support requires separate image and
+native integration acceptance. See [operations](../../docs/k3s.md).
+
+## Validation and future Argo CD adoption
+
+`make kubernetes-check` requires Go and jq, installs Kustomize v5.8.1 into ignored `.local/tools`,
+builds the manifests offline, and checks pinned images, secret exclusion,
+credential boundaries, default execution gating, gateway IP consistency and
+manual Argo adoption. GitHub's `make check` and GitLab's Go job both run it.
+Server dry-run additionally requires the real cluster's CRDs and admission rules.
+
+The [Argo Application](argocd/application.yaml) uses the private GitHub repository,
+`main`, and `deploy/kubernetes/overlays/reference`. Register repository credentials
+and verify the Argo project permits the namespaces and cluster-scoped resources.
+Review the initial adoption diff before syncing. Automated sync and cascading
+delete are absent. Namespaces, CNPG and the StorageClass carry
+`Prune=false,Delete=false`; generated workspace state and Secrets are outside this
+Application. Do not add host-install jobs to its sync lifecycle.
+
+[Kubernetes Kustomize documentation](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/kustomization/)
+and [Argo sync options](https://argo-cd.readthedocs.io/en/stable/user-guide/sync-options/)
+describe the native mechanisms used here.

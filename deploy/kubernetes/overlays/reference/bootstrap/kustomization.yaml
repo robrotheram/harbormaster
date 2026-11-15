@@ -1,0 +1,6 @@
+# Creates namespaces/database/policies before out-of-band secret provisioning.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../base/namespaces
+  - ../foundation

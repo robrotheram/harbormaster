@@ -1,0 +1,113 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: runtime-controller
+  namespace: workbench-system
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: runtime-controller
+  template:
+    metadata:
+      labels:
+        app: runtime-controller
+    spec:
+      automountServiceAccountToken: true
+      containers:
+      - name: runtime-controller
+        image: ghcr.io/robrotheram/harbormaster/runtime-controller
+        ports:
+        - containerPort: 8080
+        env:
+        - name: CONTROLLER_URL
+          value: http://runtime-controller.workbench-system.svc:8080
+        - name: CONTROLPLANE_URL
+          value: http://controlplane:8080
+        - name: CONTROLPLANE_READ_URL
+          value: http://controlplane:8081
+        - name: RUNTIME_BACKEND
+          value: kubernetes
+        - name: REQUIRE_VERIFIED_ISOLATION
+          value: 'true'
+        - name: WORKSPACE_IMAGE
+          value: ghcr.io/robrotheram/harbormaster/workspace@sha256:f58521d5f14b191241107595030cd5d52f6b85a0152bd0b406425e950ed5493a
+        - name: KUBERNETES_STORAGE_CLASS
+          value: workbench-rwop
+        - name: KUBERNETES_PROJECTS_FILE
+          value: /etc/runtime/projects.json
+        - name: KUBERNETES_ALLOWLISTS_FILE
+          value: /etc/runtime/allowlists.json
+        - name: DEPLOYMENT_ID
+          value: harbormaster
+        - name: KUBERNETES_INFERENCE_URL
+          value: http://inference-gateway.workbench-egress.svc:8080
+        - name: KUBERNETES_BROKER_URL
+          value: http://credential-broker.workbench-egress.svc:8080
+        - name: KUBERNETES_EGRESS_URL
+          value: http://egress-gateway.workbench-egress.svc:8080
+        - name: CONTROLLER_TOKEN_FILE
+          value: /run/workbench-secrets/controller_token
+        - name: GATEWAY_SERVICE_TOKEN_FILE
+          value: /run/workbench-secrets/gateway_service_token
+        - name: GRANT_SECRET_FILE
+          value: /run/workbench-secrets/grant_secret
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: '1'
+            memory: 1Gi
+        readinessProbe:
+          exec:
+            command:
+            - /usr/local/bin/healthcheck
+          timeoutSeconds: 3
+        volumeMounts:
+        - name: secrets
+          mountPath: /run/workbench-secrets
+          readOnly: true
+        - name: tmp
+          mountPath: /tmp
+        - name: bindings
+          mountPath: /etc/runtime
+          readOnly: true
+      volumes:
+      - name: secrets
+        secret:
+          secretName: runtime-controller-secrets
+      - name: tmp
+        emptyDir:
+          sizeLimit: 64Mi
+      - name: bindings
+        configMap:
+          name: runtime-bindings
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      serviceAccountName: runtime-controller
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: runtime-controller
+  namespace: workbench-system
+spec:
+  selector:
+    app: runtime-controller
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080

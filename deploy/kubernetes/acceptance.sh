@@ -8,13 +8,10 @@ kubectl version -o json > "$EVIDENCE_DIR/version.json"
 kubectl get runtimeclass kata -o yaml > "$EVIDENCE_DIR/runtimeclass.yaml"
 kubectl -n "$PROJECT_NAMESPACE" get networkpolicy,resourcequota,pvc -o yaml > "$EVIDENCE_DIR/project.yaml"
 kubectl -n "$PROJECT_NAMESPACE" get pod "$WORKSPACE_POD" -o json > "$EVIDENCE_DIR/pod.json"
-python3 - "$EVIDENCE_DIR/pod.json" <<'PY'
-import json,sys
-p=json.load(open(sys.argv[1])); s=p['spec']
-assert s['runtimeClassName']=='kata'
-assert s['automountServiceAccountToken'] is False
-assert not any(s.get(k,False) for k in ['hostNetwork','hostPID','hostIPC'])
-PY
+jq -e '.spec | .runtimeClassName == "kata" and
+  .automountServiceAccountToken == false and
+  (.hostNetwork // false) == false and (.hostPID // false) == false and
+  (.hostIPC // false) == false' "$EVIDENCE_DIR/pod.json" >/dev/null
 # Operator credential may exec solely for these acceptance probes. Runtime RBAC cannot.
 probe() { kubectl -n "$PROJECT_NAMESPACE" exec "$WORKSPACE_POD" -- curl --max-time 5 --fail --silent "$1" >/dev/null; }
 if probe https://kubernetes.default.svc; then echo 'API reachable' >&2; exit 1; fi
