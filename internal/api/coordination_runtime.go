@@ -59,7 +59,7 @@ func (s *Server) coordinationCall(ctx context.Context, project, workspace, metho
 	unlock := s.operations.Lock(workspace)
 	defer unlock()
 	ws, err := s.Store.Workspace(ctx, workspace)
-	if err != nil || ws.ProjectID != project {
+	if err != nil || !s.workspaceInProject(ws, project) {
 		return nil, coordination.ErrDenied
 	}
 	if err = s.lifecycle().ObserveTask(ctx, &ws); err != nil {
@@ -126,7 +126,7 @@ func (s *Server) registerCoordinationRuntime(mux *http.ServeMux) {
 			return
 		}
 		workspace, err := s.Store.Workspace(r.Context(), in.WorkspaceID)
-		if err != nil || workspace.ProjectID != r.PathValue("id") {
+		if err != nil || !s.workspaceInProject(workspace, r.PathValue("id")) {
 			shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
 			return
 		}
@@ -134,7 +134,7 @@ func (s *Server) registerCoordinationRuntime(mux *http.ServeMux) {
 		if in.NotesEnabled {
 			enabled = 1
 		}
-		result, err := s.Store.DB.ExecContext(r.Context(), `INSERT INTO project_coordination(project_id,workspace_id,notes_enabled) VALUES($1,$2,$3) ON CONFLICT(project_id) DO UPDATE SET notes_enabled=$3 WHERE project_coordination.workspace_id=$2`, workspace.ProjectID, workspace.ID, enabled)
+		result, err := s.Store.DB.ExecContext(r.Context(), `INSERT INTO project_coordination(project_id,workspace_id,notes_enabled) VALUES($1,$2,$3) ON CONFLICT(project_id) DO UPDATE SET notes_enabled=$3 WHERE project_coordination.workspace_id=$2`, r.PathValue("id"), workspace.ID, enabled)
 		if err != nil {
 			shared.Error(w, 503, "STORAGE_UNAVAILABLE")
 			return
@@ -148,6 +148,6 @@ func (s *Server) registerCoordinationRuntime(mux *http.ServeMux) {
 			shared.Error(w, 409, "COORDINATION_BINDING_IMMUTABLE")
 			return
 		}
-		shared.JSON(w, 200, map[string]any{"project_id": workspace.ProjectID, "workspace_id": workspace.ID, "notes_enabled": in.NotesEnabled})
+		shared.JSON(w, 200, map[string]any{"project_id": r.PathValue("id"), "workspace_id": workspace.ID, "notes_enabled": in.NotesEnabled})
 	})
 }

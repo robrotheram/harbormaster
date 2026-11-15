@@ -9,5 +9,7 @@ spec:
       containers:
       - name: controlplane
         env:
+        - name: SHARED_WORKSPACE_ID
+          value: ws_shared
         - name: MEMORY_QUOTA_BYTES
           value: '2147483648'

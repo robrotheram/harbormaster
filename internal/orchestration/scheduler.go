@@ -38,13 +38,14 @@ type Cursor struct {
 	after string
 }
 type Scheduler struct {
-	Repository ScheduleRepository
-	Workspaces WorkspaceRepository
-	Lifecycle  WorkspaceLifecycle
-	Agent      Agent
-	Now        func() time.Time
-	Lock       func(...string) func()
-	Cursor     *Cursor
+	CanUseWorkspace func(shared.Workspace, string) bool
+	Repository      ScheduleRepository
+	Workspaces      WorkspaceRepository
+	Lifecycle       WorkspaceLifecycle
+	Agent           Agent
+	Now             func() time.Time
+	Lock            func(...string) func()
+	Cursor          *Cursor
 }
 
 func (s *Scheduler) Tick(ctx context.Context) error {
@@ -113,7 +114,7 @@ func (s *Scheduler) Tick(ctx context.Context) error {
 				report("workspace_read", run.WorkspaceID, err)
 				return
 			}
-			if err != nil || ws.ProjectID != run.ProjectID || schedule.ProjectID != run.ProjectID {
+			if err != nil || !s.canUseWorkspace(ws, run.ProjectID) || schedule.ProjectID != run.ProjectID {
 				run.State = "failed"
 				run.ErrorCode = "NOT_FOUND_OR_FORBIDDEN"
 				run.UpdatedAt = now
@@ -187,4 +188,11 @@ func (s *Scheduler) Tick(ctx context.Context) error {
 		s.Cursor.after = ""
 	}
 	return failures
+}
+
+func (s *Scheduler) canUseWorkspace(ws shared.Workspace, project string) bool {
+	if s.CanUseWorkspace != nil {
+		return s.CanUseWorkspace(ws, project)
+	}
+	return ws.ProjectID == project
 }

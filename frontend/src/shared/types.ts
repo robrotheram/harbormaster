@@ -16,6 +16,7 @@ export interface GlobalConnectionProfile {
   updated_at: string;
 }
 export interface Workspace {
+  shared?: boolean;
   retained_preview?: {
     service_id: string;
     source_workspace_id: string;

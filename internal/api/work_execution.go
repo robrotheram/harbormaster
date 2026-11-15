@@ -112,7 +112,7 @@ func (s *Server) registerWorkExecution(mux *http.ServeMux, repo orchestration.Re
 					continue
 				}
 				ws, err := s.Store.Workspace(r.Context(), a.WorkspaceID)
-				if err != nil || ws.ProjectID != project {
+				if err != nil || !s.workspaceInProject(ws, project) {
 					shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
 					return
 				}

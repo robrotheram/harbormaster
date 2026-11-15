@@ -43,10 +43,11 @@ type LegacyNetworkRuntime interface {
 	ConfigureNetwork(context.Context, string, bool) error
 }
 type Config struct {
-	IdleTimeout time.Duration
-	MaxRunning  int
-	CPUQuota    float64
-	MemoryQuota int64
+	SharedWorkspaceID string
+	IdleTimeout       time.Duration
+	MaxRunning        int
+	CPUQuota          float64
+	MemoryQuota       int64
 }
 type Service struct {
 	Store           Repository
@@ -138,6 +139,9 @@ func (s *Service) report(stage string, w shared.Workspace, err error) {
 }
 func (s *Service) Start(ctx context.Context, w *shared.Workspace) error { return s.start(ctx, w, true) }
 func (s *Service) start(ctx context.Context, w *shared.Workspace, opened bool) error {
+	if s.Config.SharedWorkspaceID != "" && w.ID != s.Config.SharedWorkspaceID {
+		return errors.New("SHARED_WORKSPACE_ONLY")
+	}
 	var hermesModel string
 	var hermesMatrix *shared.HermesMatrix
 	if w.AgentKind == "hermes" {

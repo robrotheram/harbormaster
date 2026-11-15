@@ -50,6 +50,10 @@ func (s *Server) registerDeletion(mux *http.ServeMux) {
 				if !ok {
 					return
 				}
+				if s.sharedWorkspace(ws) {
+					shared.Error(w, 409, "SHARED_WORKSPACE_ONLY")
+					return
+				}
 				targets = append(targets, ws)
 			}
 			ids := []string{}

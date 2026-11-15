@@ -71,8 +71,18 @@ export const workspacesApi = {
       destination_id,
       destination_path,
     }),
-  list: (project: string, signal?: AbortSignal) =>
-    projectList<Workspace>("/workspaces", project, signal),
+  list: async (project: string, signal?: AbortSignal) => {
+    const value = await request<{ items: Workspace[] }>(
+      "/workspaces?project_id=" + encodeURIComponent(project),
+      undefined,
+      signal,
+    );
+    requireProject(
+      value.items.filter((workspace) => workspace.shared !== true),
+      project,
+    );
+    return value.items;
+  },
   homes: (project: string, signal?: AbortSignal) =>
     projectList<AgentHome>("/agent-homes", project, signal),
   start: (id: string, idempotency_key: string = crypto.randomUUID()) =>

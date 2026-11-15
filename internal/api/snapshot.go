@@ -8,6 +8,7 @@ import (
 // snapshotWorkspace is an allowlist: adding a private configuration field to
 // shared.Workspace cannot silently publish it on the unauthenticated listener.
 type snapshotWorkspace struct {
+	Shared           bool       `json:"shared,omitempty"`
 	ID               string     `json:"id"`
 	ProjectID        string     `json:"project_id"`
 	State            string     `json:"state"`
@@ -30,7 +31,7 @@ type snapshotWorkspace struct {
 func snapshotWorkspaces(items []shared.Workspace) []snapshotWorkspace {
 	out := make([]snapshotWorkspace, 0, len(items))
 	for _, w := range items {
-		out = append(out, snapshotWorkspace{ID: w.ID, ProjectID: w.ProjectID, State: w.State, Ready: w.Ready, ActiveRuns: w.ActiveRuns, BackgroundJobs: w.BackgroundJobs, CreatedAt: w.CreatedAt, UpdatedAt: w.UpdatedAt, IdleStopAt: w.IdleStopAt, RuntimeType: w.RuntimeType, IsolationStatus: w.IsolationStatus, NetworkStatus: w.NetworkStatus, CPULimit: w.CPULimit, MemoryLimitBytes: w.MemoryLimitBytes, CPUCores: w.CPUCores, MemoryBytes: w.MemoryBytes, ObservedAt: w.ObservedAt})
+		out = append(out, snapshotWorkspace{Shared: w.Shared, ID: w.ID, ProjectID: w.ProjectID, State: w.State, Ready: w.Ready, ActiveRuns: w.ActiveRuns, BackgroundJobs: w.BackgroundJobs, CreatedAt: w.CreatedAt, UpdatedAt: w.UpdatedAt, IdleStopAt: w.IdleStopAt, RuntimeType: w.RuntimeType, IsolationStatus: w.IsolationStatus, NetworkStatus: w.NetworkStatus, CPULimit: w.CPULimit, MemoryLimitBytes: w.MemoryLimitBytes, CPUCores: w.CPUCores, MemoryBytes: w.MemoryBytes, ObservedAt: w.ObservedAt})
 	}
 	return out
 }

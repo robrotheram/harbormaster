@@ -92,11 +92,11 @@ export function GettingStarted() {
           </section>
           <section className="rounded-xl border bg-background p-5">
             <ShieldCheck className="mb-3 size-5 text-muted-foreground" />
-            <h2 className="text-sm font-semibold">One project, one boundary</h2>
+            <h2 className="text-sm font-semibold">Workspace storage</h2>
             <p className="mt-3 text-xs leading-6 text-muted-foreground">
-              Files, conversations and private agent state remain separate
-              between projects. Shared connection profiles are configuration,
-              not shared workspace storage.
+              Private workspaces keep project files and agent state separate. In
+              shared-workspace mode, all projects use the same files,
+              conversations and connection settings.
             </p>
           </section>
           <a

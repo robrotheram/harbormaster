@@ -51,7 +51,7 @@ func (s *Server) registerOrchestration(mux *http.ServeMux) {
 		unlock := s.operations.Lock("schedule-create:" + input.ProjectID)
 		defer unlock()
 		ws, err := s.Store.Workspace(r.Context(), input.WorkspaceID)
-		if err != nil || ws.ProjectID != input.ProjectID {
+		if err != nil || !s.workspaceInProject(ws, input.ProjectID) {
 			shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
 			return
 		}
@@ -100,7 +100,7 @@ func (s *Server) registerOrchestration(mux *http.ServeMux) {
 			}
 			if action != "disable" {
 				ws, err := s.Store.Workspace(r.Context(), schedule.WorkspaceID)
-				if err != nil || ws.ProjectID != schedule.ProjectID {
+				if err != nil || !s.workspaceInProject(ws, schedule.ProjectID) {
 					shared.Error(w, 409, "SCHEDULE_WORKSPACE_UNAVAILABLE")
 					return
 				}
@@ -137,7 +137,7 @@ func (s *Server) registerOrchestration(mux *http.ServeMux) {
 }
 
 func (s *Server) tickOrchestration(ctx context.Context) {
-	service := orchestration.Scheduler{Repository: orchestration.Repository{DB: s.Store.DB}, Workspaces: s.Store, Lifecycle: s.lifecycle(), Agent: s.Runtime, Now: s.now, Lock: s.operations.Lock, Cursor: &s.schedulerCursor}
+	service := orchestration.Scheduler{Repository: orchestration.Repository{DB: s.Store.DB}, Workspaces: s.Store, Lifecycle: s.lifecycle(), Agent: s.Runtime, Now: s.now, Lock: s.operations.Lock, Cursor: &s.schedulerCursor, CanUseWorkspace: s.workspaceInProject}
 	if err := service.Tick(ctx); err != nil {
 		s.reportWrite("scheduling", "", err)
 	}

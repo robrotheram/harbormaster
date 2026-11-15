@@ -54,7 +54,7 @@ func (s *Server) registerScheduleManagement(mux *http.ServeMux, repo orchestrati
 			return
 		}
 		ws, err := s.Store.Workspace(r.Context(), input.WorkspaceID)
-		if err != nil || ws.ProjectID != current.ProjectID {
+		if err != nil || !s.workspaceInProject(ws, current.ProjectID) {
 			shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
 			return
 		}

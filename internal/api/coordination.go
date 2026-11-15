@@ -165,7 +165,7 @@ func (s *Server) RegisterCoordination(mux *http.ServeMux, service *coordination.
 			return
 		}
 		ws, e := s.Store.Workspace(r.Context(), in.WorkspaceID)
-		if e != nil || ws.ProjectID != in.ProjectID {
+		if e != nil || !s.workspaceInProject(ws, in.ProjectID) {
 			reply(w, nil, coordination.ErrDenied)
 			return
 		}

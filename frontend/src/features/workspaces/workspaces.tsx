@@ -72,6 +72,7 @@ export function Workspaces({ project }: { project: Project }) {
   const [actionError, setActionError] = useState<unknown>();
   const [busy, setBusy] = useState("");
   const workspaces = query.data || [];
+  const sharedWorkspace = workspaces.some((workspace) => workspace.shared);
   const visible = workspaces.filter(
     (w) =>
       (view === "all" ||
@@ -194,12 +195,20 @@ export function Workspaces({ project }: { project: Project }) {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button onClick={() => setCreate(true)}>
-            <Plus className="size-4" />
-            Create worker
-          </Button>
+          {!sharedWorkspace && (
+            <Button onClick={() => setCreate(true)}>
+              <Plus className="size-4" />
+              Create worker
+            </Button>
+          )}
         </div>
       </div>
+      {sharedWorkspace && (
+        <p className="text-sm text-muted-foreground">
+          All projects use this shared workspace. Files, history and connection
+          settings are shared.
+        </p>
+      )}
       {query.isError && (
         <ErrorNotice
           error={query.error}

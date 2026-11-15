@@ -243,7 +243,10 @@ export function WorkerRow({
                   Enable T3
                 </DropdownMenuItem>
               )}
-              <DropdownMenuItem onSelect={() => setParent(workspace)}>
+              <DropdownMenuItem
+                disabled={workspace.shared}
+                onSelect={() => setParent(workspace)}
+              >
                 <GitBranch />
                 Branch worker
               </DropdownMenuItem>
@@ -277,6 +280,7 @@ export function WorkerRow({
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 className="text-destructive focus:text-destructive"
+                disabled={workspace.shared}
                 onSelect={() => operate(workspace, "delete")}
               >
                 Delete worker

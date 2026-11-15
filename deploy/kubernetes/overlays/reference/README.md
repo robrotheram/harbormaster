@@ -37,6 +37,22 @@ Provision the Secrets below, then apply the complete overlay. The bootstrap and
 complete overlay deliberately share the same resources; do not create separate
 Argo Applications that compete for ownership of them.
 
+## Shared workspace
+
+The reference controlplane sets `SHARED_WORKSPACE_ID=ws_shared`. All projects use
+that one T3/Codex workspace, its persistent files, agent home, history and network
+settings. Project work boards and scheduling metadata remain separately addressed;
+projects are organizational labels, not filesystem isolation boundaries in this mode.
+Use project-specific folders to organize repositories in the shared filesystem.
+
+Creating a project or submitting work does not allocate another workspace or
+namespace. The worker is provisioned idempotently at controlplane startup. The
+workspace namespace quota permits one running Pod. Existing stopped workspace
+volumes are retained for recovery; they are not adopted or deleted automatically.
+Branch workers, additional agent types and deletion of the shared worker are
+unavailable in shared mode. Remove the explicit setting only through a reviewed
+configuration change if separate workspaces are needed later.
+
 ## Dependencies and ownership
 
 - `harbormaster`: core platform, gateways, CNPG PostgreSQL 17, dashboard TLS and auth.

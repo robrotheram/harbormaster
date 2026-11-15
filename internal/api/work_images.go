@@ -54,7 +54,7 @@ func (s *Server) registerWorkImages(mux *http.ServeMux, repo orchestration.Repos
 				return
 			}
 			ws, err := s.Store.Workspace(r.Context(), item.WorkspaceID)
-			if err != nil || ws.ProjectID != in.ProjectID {
+			if err != nil || !s.workspaceInProject(ws, in.ProjectID) {
 				shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
 				return
 			}

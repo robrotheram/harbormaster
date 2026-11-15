@@ -47,7 +47,7 @@ export function Infrastructure({ projects }: { projects: Project[] }) {
   ].sort();
   const visible = workers.filter(
     (w) =>
-      (!project || w.project_id === project) &&
+      (!project || w.shared || w.project_id === project) &&
       (!runtime || (w.runtime_type || "unknown") === runtime) &&
       [w.name, w.id, w.agent_kind, w.branch].some((v) =>
         v?.toLowerCase().includes(search.toLowerCase()),

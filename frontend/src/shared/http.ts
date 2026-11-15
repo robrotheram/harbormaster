@@ -142,6 +142,8 @@ const messages: Record<string, string> = {
   NOT_READY: "The worker is still starting. Check its state and retry shortly.",
   QUOTA_EXCEEDED:
     "The running worker quota is full. Stop an idle worker and retry.",
+  SHARED_WORKSPACE_ONLY:
+    "This environment uses one shared workspace. Open the existing worker; creating, branching or deleting workers is disabled.",
   PROJECT_MISMATCH:
     "This action does not match the selected project. Reopen the intended project and check the worker selection before trying again.",
   CROSS_PROJECT_DENIED: "Content cannot be transferred between projects.",

@@ -78,7 +78,7 @@ func (r Repository) TickWork(ctx context.Context, s *Scheduler) error {
 				}
 				return
 			}
-			if ws.ProjectID != p.project {
+			if !s.canUseWorkspace(ws, p.project) {
 				a.State = "failed"
 				a.ErrorCode = "NOT_FOUND_OR_FORBIDDEN"
 				save()

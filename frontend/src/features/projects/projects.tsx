@@ -48,7 +48,7 @@ export function Projects({
             <FolderGit2 size={20} />
           </span>
           <div>
-            <h2>Your projects. An agent team for each.</h2>
+            <h2>Your projects. One place for your work.</h2>
             <p>
               Follow the work, review the results, and coordinate with Hermes.
             </p>

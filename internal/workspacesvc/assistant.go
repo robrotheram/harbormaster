@@ -19,6 +19,9 @@ type AssistantRepository interface {
 // EnsureAssistant owns selection, configuration and startup of a project's
 // private Hermes workspace. Browsers need not reproduce this workflow.
 func (s *Service) EnsureAssistant(ctx context.Context, repo AssistantRepository, project, key string, memory int64, admission func() func()) (shared.Workspace, bool, error) {
+	if s.Config.SharedWorkspaceID != "" {
+		return shared.Workspace{}, false, errors.New("SHARED_WORKSPACE_ONLY")
+	}
 	config, err := repo.HermesSetup(ctx, project)
 	if err != nil || !s.HermesAvailable(ctx) {
 		return shared.Workspace{}, false, errors.New("HERMES_SETUP_REQUIRED")

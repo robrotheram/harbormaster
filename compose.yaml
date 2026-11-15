@@ -33,6 +33,7 @@ services:
     <<: *app
     build: {context: ., target: platform, args: {SERVICE: controlplane}}
     environment:
+      SHARED_WORKSPACE_ID: ${SHARED_WORKSPACE_ID:-}
       WORKSPACE_MEMORY_BYTES: ${WORKSPACE_MEMORY_BYTES:-1073741824}
       MEMORY_QUOTA_BYTES: ${MEMORY_QUOTA_BYTES:-4294967296}
       CONTROL_TOKEN_FILE: /run/secrets/control_token

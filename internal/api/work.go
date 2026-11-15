@@ -127,9 +127,12 @@ func (s *Server) registerWork(mux *http.ServeMux) {
 				return
 			}
 		}
+		if input.WorkspaceID == "" && s.cfg.SharedWorkspaceID != "" {
+			input.WorkspaceID = s.cfg.SharedWorkspaceID
+		}
 		if input.WorkspaceID != "" {
 			ws, err := s.Store.Workspace(r.Context(), input.WorkspaceID)
-			if err != nil || ws.ProjectID != input.ProjectID {
+			if err != nil || !s.workspaceInProject(ws, input.ProjectID) {
 				shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
 				return
 			}
@@ -165,7 +168,7 @@ func (s *Server) registerWork(mux *http.ServeMux) {
 			input.WorkspaceID = allocated.ID
 		}
 		ws, err := s.Store.Workspace(r.Context(), input.WorkspaceID)
-		if err != nil || ws.ProjectID != input.ProjectID {
+		if err != nil || !s.workspaceInProject(ws, input.ProjectID) {
 			shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
 			return
 		}

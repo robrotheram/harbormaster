@@ -19,14 +19,15 @@ import (
 )
 
 type Config struct {
-	Token           string
-	ProjectTokens   map[string]string
-	IdleTimeout     time.Duration
-	MaxRunning      int
-	CPUQuota        float64
-	MemoryQuota     int64
-	WorkspaceMemory int64
-	HealthEndpoints map[string]string
+	SharedWorkspaceID string
+	Token             string
+	ProjectTokens     map[string]string
+	IdleTimeout       time.Duration
+	MaxRunning        int
+	CPUQuota          float64
+	MemoryQuota       int64
+	WorkspaceMemory   int64
+	HealthEndpoints   map[string]string
 }
 type Server struct {
 	coordination    *coordination.Service
@@ -72,7 +73,7 @@ func New(s *store.Store, rt protocol.Runtime, c Config) *Server {
 }
 func reserved(w shared.Workspace) bool { return workspacesvc.Reserved(w) }
 func (s *Server) lifecycle() *workspacesvc.Service {
-	return &workspacesvc.Service{Store: s.Store, Runtime: s.Runtime, Config: workspacesvc.Config{IdleTimeout: s.cfg.IdleTimeout, MaxRunning: s.cfg.MaxRunning, CPUQuota: s.cfg.CPUQuota, MemoryQuota: s.cfg.MemoryQuota}, Now: s.now, HermesAvailable: s.hermesAvailable, Coordinator: &s.operations}
+	return &workspacesvc.Service{Store: s.Store, Runtime: s.Runtime, Config: workspacesvc.Config{IdleTimeout: s.cfg.IdleTimeout, MaxRunning: s.cfg.MaxRunning, CPUQuota: s.cfg.CPUQuota, MemoryQuota: s.cfg.MemoryQuota, SharedWorkspaceID: s.cfg.SharedWorkspaceID}, Now: s.now, HermesAvailable: s.hermesAvailable, Coordinator: &s.operations}
 }
 func (s *Server) refresh(ctx context.Context, w *shared.Workspace) error {
 	return s.lifecycle().Refresh(ctx, w)
@@ -91,6 +92,8 @@ func apiError(w http.ResponseWriter, e error) {
 		shared.Error(w, 429, "QUOTA_EXCEEDED")
 	case "ASSISTANT_WORKSPACE_AMBIGUOUS":
 		shared.Error(w, 409, "ASSISTANT_WORKSPACE_AMBIGUOUS")
+	case "SHARED_WORKSPACE_ONLY":
+		shared.Error(w, 409, "SHARED_WORKSPACE_ONLY")
 	case "WORKSPACE_BUSY":
 		shared.Error(w, 409, "WORKSPACE_BUSY")
 	case "STOP_WORKSPACE_FIRST", "OPEN_NETWORK_FORBIDDEN_IN_SANDBOX":
@@ -120,7 +123,12 @@ func (s *Server) workspace(w http.ResponseWriter, r *http.Request) (shared.Works
 		shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
 		return ws, false
 	}
-	if !s.AuthorizeProject(w, r, ws.ProjectID) {
+	if s.sharedWorkspace(ws) {
+		if _, ok := s.ProjectForRequest(w, r, ""); !ok {
+			return ws, false
+		}
+		ws.Shared = true
+	} else if !s.AuthorizeProject(w, r, ws.ProjectID) {
 		return ws, false
 	}
 	return ws, true
@@ -217,7 +225,7 @@ func (s *Server) Handler() http.Handler {
 		}
 		filtered := []shared.Workspace{}
 		for i := range items {
-			if project != "" && items[i].ProjectID != project {
+			if (s.cfg.SharedWorkspaceID != "" && !s.sharedWorkspace(items[i])) || (project != "" && !s.workspaceInProject(items[i], project)) {
 				continue
 			}
 			unlock := s.operations.Lock(items[i].ID)
@@ -229,6 +237,7 @@ func (s *Server) Handler() http.Handler {
 			items[i] = current
 			_ = s.refresh(r.Context(), &items[i])
 			s.reportWrite("observe", items[i].ID, s.Store.Save(r.Context(), items[i]))
+			items[i].Shared = s.sharedWorkspace(items[i])
 			filtered = append(filtered, items[i])
 			unlock()
 		}
@@ -624,6 +633,29 @@ func (s *Server) createProjectWorkspace(w http.ResponseWriter, r *http.Request, 
 		}
 	}
 	if !s.AuthorizeProject(w, r, req.Project) {
+		return
+	}
+	if s.cfg.SharedWorkspaceID != "" {
+		if !shared.ValidKey(req.Key) {
+			shared.Error(w, 400, "INVALID_REQUEST")
+			return
+		}
+		if req.ParentID != "" || req.Branch != "" || (req.AgentKind != "" && req.AgentKind != "t3") || (req.TemplateID != "" && req.TemplateID != "development-v1") {
+			shared.Error(w, 409, "SHARED_WORKSPACE_ONLY")
+			return
+		}
+		s.createMu.Lock()
+		defer s.createMu.Unlock()
+		ws, err := s.EnsureSharedWorkspace(r.Context())
+		if err != nil {
+			shared.Error(w, 503, "STORAGE_UNAVAILABLE")
+			return
+		}
+		if req.ConnectionProfileID != "" && req.ConnectionProfileID != ws.ConnectionProfileID {
+			shared.Error(w, 409, "SHARED_WORKSPACE_ONLY")
+			return
+		}
+		shared.JSON(w, 200, ws)
 		return
 	}
 	if req.AgentKind == "" {
