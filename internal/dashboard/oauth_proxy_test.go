@@ -112,8 +112,21 @@ func TestOAuthProxySessionOriginAndLogout(t *testing.T) {
 	if w = request("POST", "/auth/logout", ""); w.Code != 403 {
 		t.Fatal("logout accepted without Origin")
 	}
-	if w = request("POST", "/auth/logout", "https://reference.example"); w.Code != 200 || !strings.Contains(w.Body.String(), "https://signin.example/oauth2/sign_out") {
-		t.Fatal("logout did not use configured authority")
+	if w = request("POST", "/auth/logout", "https://reference.example"); w.Code != 200 {
+		t.Fatal("logout was rejected")
+	}
+	var navigation map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &navigation); err != nil || !strings.HasPrefix(navigation["url"], "/auth/proxy-signout?ticket=") {
+		t.Fatal("logout must return a same-origin navigation URL")
+	}
+	if w = request("GET", navigation["url"], ""); w.Code != 303 || !strings.HasPrefix(w.Header().Get("Location"), "https://signin.example/oauth2/sign_out?") {
+		t.Fatal("logout did not redirect to configured authority")
+	}
+	if w = request("GET", navigation["url"], ""); w.Code != 403 {
+		t.Fatal("logout ticket was replayable")
+	}
+	if w = request("GET", "/auth/proxy-signout?ticket=forged", ""); w.Code != 403 {
+		t.Fatal("logout accepted without a valid ticket")
 	}
 	identity = false
 	if w = request("GET", "/auth/session", ""); w.Code != 503 {

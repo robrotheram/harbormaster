@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"agent-workbench/internal/shared"
@@ -33,6 +34,8 @@ func NewOAuthProxyHandler(next http.Handler, cfg OAuthProxyConfig) (http.Handler
 	client := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{Proxy: nil, MaxResponseHeaderBytes: 32 << 10}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	login := cfg.PublicURL + "/oauth2/start?" + url.Values{"rd": {cfg.Origin + "/app/"}}.Encode()
 	logout := cfg.PublicURL + "/oauth2/sign_out?" + url.Values{"rd": {cfg.Origin + "/app/"}}.Encode()
+	var logoutMu sync.Mutex
+	logoutTickets := map[string]time.Time{}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Referrer-Policy", "no-referrer")
@@ -46,6 +49,21 @@ func NewOAuthProxyHandler(next http.Handler, cfg OAuthProxyConfig) (http.Handler
 		}
 		if incoming := r.Header.Get("Origin"); incoming != "" && incoming != cfg.Origin {
 			writeError(w, 403, "ORIGIN_REJECTED")
+			return
+		}
+		// Keep browser navigation on the frontend's same-origin allowlist. Only
+		// a successful CSRF-protected logout POST can issue this one-use redirect.
+		if r.URL.Path == "/auth/proxy-signout" {
+			key := r.URL.Query().Get("ticket")
+			logoutMu.Lock()
+			expires, ok := logoutTickets[key]
+			delete(logoutTickets, key)
+			logoutMu.Unlock()
+			if r.Method != http.MethodGet || !ok || !time.Now().Before(expires) {
+				writeError(w, 403, "INVALID_LOGOUT_TICKET")
+				return
+			}
+			http.Redirect(w, r, logout, http.StatusSeeOther)
 			return
 		}
 		if r.URL.Path == "/auth/login" {
@@ -118,7 +136,21 @@ func NewOAuthProxyHandler(next http.Handler, cfg OAuthProxyConfig) (http.Handler
 			return
 		}
 		if r.URL.Path == "/auth/logout" {
-			shared.JSON(w, 200, map[string]string{"url": logout})
+			key := shared.NewID("logout_")
+			logoutMu.Lock()
+			for ticket, expires := range logoutTickets {
+				if !time.Now().Before(expires) {
+					delete(logoutTickets, ticket)
+				}
+			}
+			if len(logoutTickets) >= 256 {
+				logoutMu.Unlock()
+				writeError(w, 429, "TOO_MANY_LOGOUT_REQUESTS")
+				return
+			}
+			logoutTickets[key] = time.Now().Add(time.Minute)
+			logoutMu.Unlock()
+			shared.JSON(w, 200, map[string]string{"url": "/auth/proxy-signout?ticket=" + key})
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), authenticatedOriginKey{}, cfg.Origin)))
