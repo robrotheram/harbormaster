@@ -25,6 +25,7 @@ def main():
     credentials.add_argument('--token-file', type=Path)
     credentials.add_argument('--existing-pull-secret', action='store_true', help='Reuse the reference registry Secret without exporting credentials')
     p.add_argument('--tag', required=True)
+    p.add_argument('--service', action='append', choices=SERVICES, help='Resolve only selected services into a separate candidate lock')
     p.add_argument('--output', type=Path, required=True)
     a = p.parse_args()
     if not re.fullmatch(r'(sha-[a-f0-9]{40}|v[0-9A-Za-z._-]+)', a.tag):
@@ -42,7 +43,7 @@ def main():
             p.error('empty pull token')
         basic = base64.b64encode(f'{a.username}:{token}'.encode()).decode()
     images = {}
-    for service in SERVICES:
+    for service in a.service or SERVICES:
         repository = f'robrotheram/harbormaster/{service}'
         query = urllib.parse.urlencode({'service': 'ghcr.io', 'scope': f'repository:{repository}:pull'})
         request = urllib.request.Request('https://ghcr.io/token?' + query,

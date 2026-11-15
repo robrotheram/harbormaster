@@ -2,8 +2,8 @@
 
 Compose remains development. This package implements production operations but
 **does not constitute M5 acceptance**. The initial implementation used simulated infrastructure. A fresh
-[k3s reference environment](../deploy/kubernetes/reference/README.md) is now being
-provisioned with live Kata, Longhorn and network-policy checks. The default verified-isolation gate continues
+[k3s reference environment](../deploy/kubernetes/reference/README.md) now has live
+Kata, Longhorn, network-policy and application lifecycle checks. The default verified-isolation gate continues
 to reject starts: neither Pod readiness nor a configured RuntimeClass proves a VM.
 Do not expose an unverified test install as production.
 

@@ -35,6 +35,9 @@ class ReferenceManifestTests(unittest.TestCase):
             if name == 'dashboard':
                 self.assertEqual(env['DASHBOARD_PUBLIC_ORIGIN'], 'https://harbormaster.exceptionerror.io')
                 self.assertTrue(env['OAUTH2_PROXY_AUTH_URL'].endswith('/oauth2/auth'))
+            if name == 'mcp':
+                self.assertIn('mcp.workbench-system.svc', env['MCP_ALLOWED_HOSTS'].split(','))
+                self.assertNotIn('*', env['MCP_ALLOWED_HOSTS'])
             if name in ['inference-gateway', 'credential-broker']:
                 self.assertEqual(env['GATEWAY_MODE'], 'fixture')
         self.assertFalse(any(o['kind'] == 'Secret' for o in manifest['items']))

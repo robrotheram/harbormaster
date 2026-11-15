@@ -127,6 +127,22 @@ headers do not grant access. Configure all three `DASHBOARD_PUBLIC_ORIGIN`,
 `OAUTH2_PROXY_AUTH_URL`, and `OAUTH2_PROXY_PUBLIC_URL` values together; this mode
 cannot be combined with WorkOS authentication.
 
+The native desktop, browser console and preview links currently use `.localhost`
+worker origins. Those browser links are local-development features and are not
+remotely routable from this hostname. The management UI and workspace lifecycle
+API are the exposed reference surfaces; remote worker routing needs a separate
+origin/certificate and capability-authentication design.
+
+When updating only the dashboard, replace only its resolved digest in the lock
+file and record its source tag in `overrides`. Preserve the workspace digest:
+the runtime intentionally rejects resuming an existing Sandbox against a changed
+image. A workspace-image upgrade needs an explicit migration plan for retained
+Sandboxes; it must not silently recreate or discard their volumes.
+Use `configure_images.py --existing-pull-secret --service dashboard` with the
+desired `--tag`, `--context default`, and a separate `--output` candidate file.
+Copy that resolved dashboard digest into the full lock; a candidate containing
+only one service is not a complete deployable lock.
+
 ## Acceptance and recovery
 
 ```sh
@@ -149,6 +165,23 @@ files after stop/start. The repository's branch seeding and automatic isolation
 verification limitations still apply. CSI VolumeSnapshot APIs/controller and an
 independent backup destination require separate provisioning before the generic
 `backup.sh`/`recover.sh` workflow can be used; Longhorn alone is not that contract.
+
+Live acceptance on 2026-11-15 confirmed a distinct Kata guest kernel (6.18.56),
+RWOP second-writer rejection, retained files after application stop/start,
+recreated workspace Pods, and successful Codex/T3 workspace starts. Native T3 HTML
+was fetched through the private control-plane/runtime proxy. Workspace probes
+could reach the labelled gateway and could not reach the API, another namespace,
+or the Internet. Both named acceptance workspaces were left stopped with their
+retained volumes. A cold first image pull exceeded the API's bounded start wait;
+retrying start after the Pod became ready succeeded.
+Private MCP initialization succeeded with the scoped token through its service
+name and a loopback port-forward; anonymous requests and forged hosts were denied.
+
+The operator confirmed successful Entra sign-in and dashboard loading on
+2026-11-15. Live checks also confirmed valid public TLS, anonymous redirection to
+Entra, and rejection of forged identity headers and foreign hosts. No user session
+was synthesized for acceptance. External model calls, remote worker links and
+disaster recovery are outside the checks above.
 
 To pause the reference platform, scale its Deployments to zero. Preserve CNPG,
 Secrets and workspace PVCs. Do not delete namespaces, uninstall Longhorn, or

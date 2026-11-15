@@ -1,6 +1,6 @@
 # Agent Sandbox runtime backend
 
-This is a deployment foundation, not a certification of VM or network isolation. The adapter has fake-API tests and an in-progress [k3s reference installation](reference/README.md) with live Kata, storage and network-policy probes. Full application acceptance is tracked separately.
+This is a deployment foundation, not a certification of VM or network isolation. The adapter has fake-API tests and a [k3s reference installation](reference/README.md) with live Kata, storage, network-policy and application lifecycle checks. The reference guide records acceptance evidence and remaining limitations.
 
 The implementation targets Kubernetes SIGs Agent Sandbox **v1.0.9**, `agents.x-k8s.io/v1beta1`. It creates `Sandbox` resources with an administrator-fixed digest image, `RuntimeClass`, service account and `volumeClaimTemplates`. Agent Sandbox owns Pod/PVC/Service reconciliation. Stop requests `operatingMode: Suspended` and waits for the observed suspension condition; the Sandbox/PVC persist. Deletion/retention is intentionally a separate operator action.
 

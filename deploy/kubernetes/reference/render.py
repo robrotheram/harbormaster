@@ -31,6 +31,7 @@ config = {
             'OAUTH2_PROXY_PUBLIC_URL': 'https://oidc.exceptionerror.io',
         },
         'controlplane': {'MEMORY_QUOTA_BYTES': '2147483648'},
+        'mcp': {'MCP_ALLOWED_HOSTS': 'localhost,127.0.0.1,mcp,mcp.workbench-system.svc,mcp.workbench-system.svc.cluster.local'},
         'runtime-controller': {'DEPLOYMENT_ID': 'harbormaster', 'REQUIRE_VERIFIED_ISOLATION': 'false' if a.allow_unverified_reference else 'true'},
         'inference-gateway': {'GATEWAY_MODE': 'fixture'},
         'credential-broker': {'GATEWAY_MODE': 'fixture'},

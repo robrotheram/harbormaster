@@ -429,7 +429,7 @@
             "containers": [
               {
                 "name": "dashboard",
-                "image": "ghcr.io/robrotheram/harbormaster/dashboard@sha256:5f3b26d1e800b764ca31dbee845d8193067cda409150246396c6b813c3226c97",
+                "image": "ghcr.io/robrotheram/harbormaster/dashboard@sha256:893e61a7e9126383b9c04b87379693df1290fc98833589ea437120df68c5fc0b",
                 "ports": [
                   {
                     "containerPort": 8080
@@ -605,7 +605,7 @@
                   },
                   {
                     "name": "MCP_ALLOWED_HOSTS",
-                    "value": "harbormaster.exceptionerror.io"
+                    "value": "localhost,127.0.0.1,mcp,mcp.workbench-system.svc,mcp.workbench-system.svc.cluster.local"
                   },
                   {
                     "name": "CONTROL_TOKEN_FILE",
