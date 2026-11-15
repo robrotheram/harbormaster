@@ -33,7 +33,7 @@ spec:
         - name: REQUIRE_VERIFIED_ISOLATION
           value: 'true'
         - name: WORKSPACE_IMAGE
-          value: ghcr.io/robrotheram/harbormaster/workspace@sha256:b12e1583c4486312870a368559446a5eb816a4d4deef4ef64991c941e8e9d9e8
+          value: ghcr.io/robrotheram/harbormaster/workspace@sha256:e6b223c61f679a48057a81e7cadd741cc1952356fc8740c6dc66963d17a9c5d8
         - name: KUBERNETES_STORAGE_CLASS
           value: workbench-rwop
         - name: KUBERNETES_PROJECTS_FILE

@@ -17,16 +17,16 @@ resources:
 - egress-gateway.yaml
 images:
 - name: ghcr.io/robrotheram/harbormaster/controlplane
-  digest: sha256:06eff18c4cb8384a3ae3b078c31ef059be025ec7ccca4e9eb0bb6622ecce2689
+  digest: sha256:cfe8f76e79be2e3b1f3cd593f4a13926279e249e1c34cb03061343cb2e1ea1da
 - name: ghcr.io/robrotheram/harbormaster/runtime-controller
-  digest: sha256:c954db02ddada652f0ded1ab0bde30c5fcc27d6c9e2c08934a5f909235bdc386
+  digest: sha256:a14f7c54205f4c7dc578728b996aa269d372f7e2c85d15099d53312510419c1f
 - name: ghcr.io/robrotheram/harbormaster/dashboard
-  digest: sha256:ed86fffb854d21a6ad358b6734171da5e66b9795814c60aa0a93a58c99003f09
+  digest: sha256:218197b0db49b7a307419f53f64680f5266fec235952a961990a694fcd7245dc
 - name: ghcr.io/robrotheram/harbormaster/mcp
-  digest: sha256:00b81e0524fe638e0099cb8fe55e34f1bce2f60f69ebe32f60cfa44f15399df9
+  digest: sha256:a01056e90d4b0d96b17ccb67f99bc7b273e487de5b8d58896ed66328e0697e76
 - name: ghcr.io/robrotheram/harbormaster/inference-gateway
-  digest: sha256:de6d2a9cb33c081674dc08725f24a0714c115016b08d06e75df20cb0345ca7d4
+  digest: sha256:c619bc181592873b115690677fd37dfc4f8671a2119946d204bc8409d7714526
 - name: ghcr.io/robrotheram/harbormaster/credential-broker
-  digest: sha256:ddb1830c2ff17c94e4369835bfb50e4a3ae0df43b68c1c337f1f2dd9a694b104
+  digest: sha256:d08deb8038e9c18b118828151fb245abe443beae0864a117468400c2d5ad9919
 - name: ghcr.io/robrotheram/harbormaster/egress-gateway
-  digest: sha256:da17c02ef537e1f13c2019702710587d4097f6ef754e37c7ebe45a9584483195
+  digest: sha256:3e73a7301eee791a4768c22d3db7c3501efb59ab6fd0d075c5e843d36b124c1c

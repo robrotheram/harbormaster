@@ -14,7 +14,7 @@ endpoint discovery files to update.
 kubectl --context default get nodes
 kubectl kustomize deploy/kubernetes/overlays/reference > /tmp/harbormaster.yaml
 kubectl --context default apply --server-side --dry-run=server -k deploy/kubernetes/overlays/reference
-kubectl --context default diff -k deploy/kubernetes/overlays/reference
+kubectl --context default diff --server-side -k deploy/kubernetes/overlays/reference
 kubectl --context default apply --server-side -k deploy/kubernetes/overlays/reference
 ```
 
@@ -173,8 +173,9 @@ application Secret values and restart controlplane after CNPG credential/CA rota
 
 Platform images are pinned in `../../base/kustomization.yaml`; the workspace image
 is pinned in `../../base/runtime-controller.yaml`. The reference release uses the
-published images from commit `01ec2ac80727d73eb94b0d546b443216245da1b9`, including
-namespace consolidation, native operational tooling and shared-workspace mode.
+published images from commit `e1f59f2b5ba121fc7f5f1a4943628fb08f312070`, including
+the shared agent and Sandbox controller in the core namespace, and automatic
+application namespace provisioning for new projects.
 All nine GitHub container jobs and the release checks passed for this source.
 Rebuild any optional Hermes image against the matching workspace base as well.
 
@@ -221,6 +222,31 @@ dry-run and diff against the intended cluster to validate CRDs/admission as well
 Deployment contains no custom bootstrap, acceptance, backup or recovery scripts.
 Live acceptance uses the platform's operational tooling separately from deployment.
 
+Final consolidation acceptance on 2026-11-15 verified all eight Deployments,
+PostgreSQL and the single shared Kata workspace ready in `harbormaster`. The
+workspace retained its original backing PV, agent-home identity and all 20 checked
+file hashes; its new namespace requires a new PVC identity. The Sandbox controller
+adopted that claim. The workspace quota counted only the shared worker, and gateway
+connections succeeded while database, controlplane, Kubernetes API and public
+Internet connections remained blocked. Runtime-controller could read the registry
+pull Secret but could not read database credentials or create Pods directly.
+
+Two temporary projects automatically received distinct application namespaces,
+quotas, network policies and application ServiceAccounts. Creation retries and
+namespace repair preserved their identities; both projects used the same agent
+and home. Project deletion retained the application namespaces as designed, then
+the operator removed those test namespaces. An application Pod successfully pulled
+the private image and served HTTP during provisioning acceptance; DNS worked while
+core services, Kubernetes API and Internet access were blocked, and no Kubernetes
+token was mounted. HTTPS and Entra redirection remained valid, the authenticated
+T3 console returned HTML, and the server-side Kustomize diff was empty.
+
+`workbench-reference` and `agent-sandbox-system` were removed after migration.
+Together with the earlier retirement of `workbench-system` and `workbench-egress`,
+this leaves one Harbormaster component namespace. The two legacy workspace PVs and
+old database PV remain retained for recovery; private database and workspace
+backups were taken before moving the shared volume. Local Compose was unchanged.
+
 Before the final workspace consolidation, shared-mode acceptance on 2026-11-15 verified all seven core Deployments ready in
 `harbormaster`, a healthy restored database, valid HTTPS and Entra redirection.
 Project, workspace and agent-home metadata matched exactly before the new
@@ -236,8 +262,8 @@ ready. The final live Kustomize diff was empty. The two legacy Sandboxes stayed
 suspended with their original PVCs; local Compose was not changed. Subsequent
 cleanup removed both retired core namespaces and their old database Pod, while
 retaining the old database PV. The active `harbormaster` and `workbench-reference`
-namespaces were then in use; the final consolidation moves the shared worker into
-`harbormaster` and retires `workbench-reference`.
+namespaces were then in use; the final consolidation described above completed
+the move into `harbormaster`.
 
 Before namespace consolidation, live acceptance on 2026-11-15 confirmed guest kernel 6.18.56, RWOP second-writer
 rejection, retained files after application stop/start, recreated Pods, and Codex/T3
