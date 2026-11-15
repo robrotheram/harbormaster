@@ -8,8 +8,8 @@
   "job_timeout_seconds": 600,
   "services": [],
   "commands": {
-    "baseline": ["python3", "experiment.py", "--output", "outputs/baseline.json"],
-    "variation": ["python3", "experiment.py", "--regularisation", "10", "--output", "outputs/variation.json"]
+    "baseline": ["workbench-tools", "research", "--output", "outputs/baseline.json"],
+    "variation": ["workbench-tools", "research", "--regularisation", "10", "--output", "outputs/variation.json"]
   },
   "artifacts": ["outputs/baseline.json", "outputs/variation.json"]
 }

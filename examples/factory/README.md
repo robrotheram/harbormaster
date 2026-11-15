@@ -7,13 +7,12 @@ must be implemented before these recipes can be used as managed environments.
 
 ## Research
 
-Requires Python 3.12 or later; no third-party packages, credentials, or network.
-Run from `examples/factory/research`:
+Requires Go; run from the repository root. The compiled image command needs no network or credentials.
 
 ```sh
-python3 experiment.py --output outputs/baseline.json
-python3 experiment.py --regularisation 10 --output outputs/variation.json
-python3 -m unittest discover -v
+go run ./cmd/workbench-tools research --output outputs/baseline.json
+go run ./cmd/workbench-tools research --regularisation 10 --output outputs/variation.json
+go test ./internal/workspacetools
 ```
 
 The fixture records dataset identity, parameters, model coefficient, held-out
@@ -38,7 +37,7 @@ Generate a fresh synthetic gallery directory, then run the built binary from
 that directory with `--config gallery.yaml build`:
 
 ```sh
-python3 examples/factory/gogallery/create_fixture.py /tmp/gallery-fixture
+go run ./cmd/workbench-tools gallery-fixture /tmp/gallery-fixture
 ```
 
 The generator refuses an existing directory and uses absolute input/output paths.
@@ -49,3 +48,6 @@ not include personal photos.
 The gallery service declaration is a proposed endpoint. Port configuration,
 fixture scanning, generated-site serving, and headless GUI requirements still
 need a validated recipe. No preview is started by saving the recipe.
+
+Research output schema 2 uses `go-pcg-normal-v1`. Dataset hashes and metrics differ
+from the retired Python generator; compare runs only within the same generator version.

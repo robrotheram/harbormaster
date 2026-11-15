@@ -214,7 +214,7 @@ func TestArgoAdoptionIsManualAndNonCascading(t *testing.T) {
 	}
 }
 
-func TestDeploymentDoesNotNeedPython(t *testing.T) {
+func TestDeploymentContainsNoScripts(t *testing.T) {
 	err := filepath.WalkDir(".", func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -225,17 +225,9 @@ func TestDeploymentDoesNotNeedPython(t *testing.T) {
 			}
 			return nil
 		}
-		if strings.HasSuffix(path, ".py") {
-			t.Errorf("Python deployment helper remains: %s", path)
-		}
-		if strings.HasSuffix(path, ".sh") {
-			b, e := os.ReadFile(path)
-			if e != nil {
-				return e
-			}
-			if bytes.Contains(b, []byte("python3")) {
-				t.Errorf("shell helper still invokes Python: %s", path)
-			}
+		switch filepath.Ext(path) {
+		case ".py", ".sh", ".bash", ".ps1":
+			t.Errorf("deployment script remains: %s", path)
 		}
 		return nil
 	})

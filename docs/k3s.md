@@ -76,38 +76,31 @@ Resume checks retained PVC project/home/deployment/generation ownership, CSI cla
 and RWOP fence. Stop quiesces the agent and waits for the current Sandbox generation's
 Suspended condition. Do not delete a retained Sandbox/PVC to recover capacity.
 Branch seeding remains unsupported. Hermes remains unadvertised pending native
-pinned-image integration acceptance; no Hermes adapter scripts are changed here.
+pinned-image integration acceptance; Hermes adapters are installed from `integrations/hermes`.
 
 ## Backup and recovery
 
-Suspend all workspaces through the runtime API first. Run backup.sh from a trusted
-host with jq, pg_dump and kubectl installed. Set DATABASE_URL, PROJECT_NAMESPACE,
-SNAPSHOT_CLASS and BACKUP_DIR. It stops
-the sole metadata writer, verifies observed suspension, dumps metadata, captures
-identity Secrets and creates/waits for CSI snapshots. It intentionally leaves the
-controlplane stopped. Encrypt backup files, export snapshots to independent storage
-using the CSI provider, and back up Vault, bindings, policy and TLS configuration.
-A snapshot remaining only in the source cluster is not disaster recovery.
+The deployment contains no custom backup or recovery scripts. Configure database
+backups through CloudNativePG and workspace-volume backups through the storage
+platform, with an independent backup destination. These policies are not yet
+configured for the reference environment. Retain reclaim policy and snapshots
+remaining on the same node do not provide disaster recovery.
 
-Use recover.sh on an isolated recovery cluster with public ingress disabled. Set
-BACKUP_DIR, RECOVERY_DATABASE_URL (an empty database) and RESTORED_PVC_MANIFEST
-(JSON List). The operator maps exported snapshots to restored VolumeSnapshots;
-each PVC must preserve its original name/namespace/ownership and RWOP class.
-The script verifies backup checksums, restores metadata and applies snapshot PVCs.
-Restore reviewed identity Secrets and suspended Sandbox definitions from the backup
-without stale resourceVersion/uid/status fields. Verify file hashes, retained
-artifacts and project ownership before enabling controlplane and resuming one
-workspace. Record actual recovery duration and last recovered transaction against
-an operator-defined RTO/RPO; neither target is assumed by these scripts.
+A consistent recovery point must cover metadata, workspace files and matching
+identity/grant Secrets. Suspend workspaces and verify their observed generation
+is suspended before capturing a coordinated recovery point. Restore into an
+isolated environment with public ingress disabled, preserving project/home
+ownership and RWOP storage. Verify retained file hashes and single-writer
+reattachment before resuming execution. Record restore duration and data loss
+against explicitly chosen RTO/RPO targets.
 
 ## External acceptance gates
 
-Run acceptance.sh with PROJECT_NAMESPACE, WORKSPACE_POD, OTHER_PROJECT_ENDPOINT,
-APPROVED_ENDPOINT and EVIDENCE_DIR against a disposable actual Kata workspace. It
-records configuration and probes blocked direct Internet, cross-project/API access,
-approved service reachability and the controller's inability to create Pods.
-It requires curl inside that test image and operator-only exec permission. These
-probes alone are not full acceptance. Before production additionally record:
+Use the platform's operational tooling against a disposable Kata workspace to
+verify blocked direct Internet and cross-project/API access, approved gateway
+reachability, and the controller's inability to create Pods. The repository's
+Kustomize checks validate configuration; they do not replace live acceptance.
+Before production record:
 
 1. Host-side Kata VM/process evidence per workspace; reject runc fallback and
    scheduling on ineligible nodes. Verify no guest ServiceAccount token exists.

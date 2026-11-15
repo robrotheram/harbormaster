@@ -4,7 +4,6 @@ import (
 	"agent-workbench/internal/shared"
 	"context"
 	"database/sql"
-	_ "embed"
 	"fmt"
 	"net/http"
 	"os"
@@ -14,8 +13,13 @@ import (
 	"time"
 )
 
-//go:embed recipes/experiment.py
-var researchProgram string
+// The immutable workspace image supplies the compiled recipe command.
+var researchExecutable = "workbench-tools"
+var researchCommand = func(ctx context.Context, limit, recipe string) *exec.Cmd {
+	// Go reserves virtual arenas; the runtime bounds physical memory and tasks.
+	// RLIMIT_NPROC is host-UID-wide, so it cannot safely limit one workspace.
+	return exec.CommandContext(ctx, limit, "--as=4294967296", "--cpu=3600", "--nofile=64", "--fsize=33554432", "--", recipe, "research", "--pair", "--output", "baseline.json")
+}
 
 type recipeJob struct {
 	ID        string `json:"id"`
@@ -118,9 +122,9 @@ func (m *Manager) startRecipe(w http.ResponseWriter, r *http.Request) {
 		shared.Error(w, 422, "RESOURCE_LIMITS_UNAVAILABLE")
 		return
 	}
-	python, err := exec.LookPath("python3")
+	recipe, err := exec.LookPath(researchExecutable)
 	if err != nil {
-		shared.Error(w, 422, "PYTHON_UNAVAILABLE")
+		shared.Error(w, 422, "RECIPE_RUNTIME_UNAVAILABLE")
 		return
 	}
 	if in.Template == "gogallery-v1" {
@@ -154,7 +158,7 @@ func (m *Manager) startRecipe(w http.ResponseWriter, r *http.Request) {
 	}()
 	// Fresh output directory and fixed argv; no user command, host mount, or proxy.
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(in.Timeout)*time.Second)
-	cmd := exec.CommandContext(ctx, limit, "--as=1073741824", "--cpu=3600", "--nproc=64", "--fsize=33554432", "--", python, "-c", researchProgram+"\nimport json\nfrom pathlib import Path\nPath('variation.json').write_text(json.dumps(experiment(42, 10)))\n", "--output", "baseline.json")
+	cmd := researchCommand(ctx, limit, recipe)
 	if in.Template == "gogallery-v1" {
 		cmd = exec.CommandContext(ctx, limit, "--as=4294967296", "--cpu=3600", "--nproc=256", "--fsize=134217728", "--", "/opt/workbench/gogallery/run")
 	}

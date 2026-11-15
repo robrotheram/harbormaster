@@ -7,6 +7,7 @@ import (
 )
 
 func TestResearchAutomaticallyArchivesEvidenceBeforeSuccess(t *testing.T) {
+	installResearchTool(t)
 	cfg := Config{ID: "ws_evidence", DataDir: t.TempDir(), Token: "test-workspace-token"}
 	m, err := New(cfg)
 	if err != nil {

@@ -62,34 +62,42 @@ mount namespaces, rather than the namespace-relative text of `/proc/PID/root`.
 
 ## Installation
 
-Requires x86_64 Linux, KVM, cgroup v2 with cpu/memory/pids, Docker for building the
-trusted image, Go 1.27.3, Python 3, iproute2, e2fsprogs, systemd and administrator
-authentication. Firecracker/jailer are pinned to the same official v1.17.0 release
-and its SHA256. The staging script pins a Firecracker CI kernel URL and SHA256.
-The CI kernel is a starting artifact, not a production-hardened kernel certification.
-Review kernel support, security updates, host microcode and SMT policy separately.
+The reference deployment uses Kubernetes/Kata. Firecracker remains an optional,
+operator-managed backend; automatic host installation and image staging have been
+removed. Existing installations and private disks are unaffected.
 
-```sh
-python3 scripts/firecracker-stage.py
-pkexec python3 "$PWD/scripts/firecracker-install.py"
-```
+A new installation requires x86_64 Linux, KVM, cgroup v2 with cpu/memory/pids,
+Docker, Go, iproute2, e2fsprogs and systemd. Provision it through your host
+configuration management with these inputs:
 
-The installer copies root-owned binaries/artifacts to `/opt/agent-workbench/firecracker`,
-three controller credentials to `/etc/agent-workbench/firecracker`, and a systemd
-service to `/etc/systemd/system`. It provisions a dedicated cgroup subtree. It does
-not flush host firewall rules, change forwarding policy, grant passwordless sudo,
-or enable the service automatically at boot.
+1. Build `cmd/firecracker-controller` as a static binary. Build the guest from the
+   repository root with `deploy/firecracker/Dockerfile`, passing `WORKSPACE_IMAGE`
+   and the `HERMES_COMMIT` / `HERMES_SOURCE_SHA256` values from
+   `deploy/hermes/runtime.json`. Use a workspace image from the same source revision.
+2. Obtain matching Firecracker/jailer releases and a supported guest kernel from
+   trusted sources. Verify their approved SHA256 values before installation.
+3. Export the trusted guest image, extract it into an empty staging directory and
+   create a 6 GiB ext4 image using `mkfs.ext4 -d`. Never use a guest-modified data
+   disk as the source. Install `firecracker`, `jailer`, `controller`, `vmlinux`,
+   `rootfs.ext4` and `hermes-runtime.json` beneath `/opt/agent-workbench/firecracker`.
+   Binaries are root-owned mode 0755; image, kernel and runtime marker are mode 0444.
+4. Create root-owned mode 0444 `manifest.json`, mapping each of `firecracker`,
+   `jailer`, `vmlinux`, `rootfs.ext4` and `hermes-runtime.json` to its SHA256 hex digest.
+5. Install the existing `controller_token`, `gateway_service_token` and
+   `grant_secret` as root-owned mode 0600 files in mode 0700
+   `/etc/agent-workbench/firecracker`. Copy the existing control-plane authority
+   (`.local/secrets/control_token`) there as `project_mcp_signing_key`; do not
+   generate a different signing key.
+6. Install `deploy/firecracker/agent-workbench-firecracker.service` into systemd
+   and reload units. Run `controller --prepare-host`, then `controller --self-test`
+   with the three `*_FILE` environment variables shown in the unit. Start the unit
+   only after real KVM acceptance succeeds. The service's compiled hooks prepare
+   its cgroup subtree and clean up its own stale guests/namespaces.
 
-Before starting the host service, it boots a disposable real VM and checks boot
-readiness, guest negative-network probes, blocked egress, rejection of Fully open,
-ownership reassignment, clean stop and grant revocation. Failure leaves the
-workbench stopped. These probes are acceptance checks, not a penetration test or
-proof that a hostile guest cannot exploit the VMM.
-
-The guest also contains pinned Hermes v0.23.0 and its native Matrix crypto
-dependencies. Its runtime marker is covered by the root-owned artifact manifest.
-Acceptance imports the real engine and encryption adapter inside the VM; each
-Hermes workspace start repeats that probe before reporting readiness.
+Quiesce workspaces before replacing any installed artifacts. The self-test boots
+and stops a disposable VM and checks isolation, grants and protocol compatibility.
+Unit tests alone do not establish real-host isolation. Host lifecycle management
+is separate from Kustomize and must not be run on the reference k3s node implicitly.
 
 In `.env` select:
 
@@ -118,9 +126,8 @@ matching controller with `CGO_ENABLED=0 go build -trimpath -o
 .local/firecracker/controller ./cmd/firecracker-controller`. Pause Matrix
 listeners, wait for active work to finish, and stop workers through the API so
 their storage is synchronized. Only then stop the host service and run
-`sudo python3 scripts/firecracker-install.py --controller-only`. This preserves
-the installed guest image, provisions the existing control-plane signing authority
-for the host MCP broker, runs real KVM acceptance, and starts the host service.
+the provisioning procedure above for the controller and signing authority only.
+Retain the installed guest image, run real KVM acceptance, and start the host service.
 Recreate the Compose `runtime-controller` bridge with the Firecracker overlay
 and `--no-deps --force-recreate` to refresh its bind mount of the recreated
 systemd runtime directory. Then restart the previously running workers and

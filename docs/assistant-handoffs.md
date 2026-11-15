@@ -90,9 +90,9 @@ excluded. Hermes uses the pinned MCP2 stream yielding exactly (read, write).
 
 ```sh
 go test -race ./internal/coordination ./internal/api ./internal/mcpserver ./internal/store ./internal/runtime/firecracker
-python3 scripts/test-hermes-consume.py
+make hermes-check
 HERMES_SOURCE=/tmp/awb-hermes-pinned go test ./internal/api ./internal/runtime/firecracker
-/tmp/awb-hermes-pinned/.venv/bin/python scripts/test-hermes-digest.py
+PYTHONPATH=integrations/hermes/src:integrations/hermes/tests:/tmp/awb-hermes-pinned /tmp/awb-hermes-pinned/.venv/bin/python -m unittest workbench_hermes_tests.sdk_digest -v
 ```
 
 Composed SDK/broker tests use synthetic private fixtures, not a booted VM.

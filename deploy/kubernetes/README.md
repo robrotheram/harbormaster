@@ -74,7 +74,7 @@ native integration acceptance. See [operations](../../docs/k3s.md).
 
 ## Validation and future Argo CD adoption
 
-`make kubernetes-check` requires Go and jq, installs Kustomize v5.8.1 into ignored `.local/tools`,
+`make kubernetes-check` requires Go, installs Kustomize v5.8.1 into ignored `.local/tools`,
 builds the manifests offline, and checks pinned images, secret exclusion,
 credential boundaries, default execution gating, gateway IP consistency and
 manual Argo adoption. GitHub's `make check` and GitLab's Go job both run it.

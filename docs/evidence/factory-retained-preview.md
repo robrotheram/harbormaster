@@ -34,7 +34,7 @@ The image-native build uses a 128 MiB per-file process limit (the standard GoGal
 Live acceptance command (uses disposable, network-disabled Docker guests, never guest Docker credentials):
 
 ```
-python3 deploy/templates/gogallery/acceptance.py
+# Historical acceptance used the now-retired GoGallery acceptance helper.
 ```
 
 The acceptance probe disables generic `/proc` inventory because its own `docker exec` HTTP client would otherwise count as unrelated guest work. Owned recipe process groups, deadlines, prlimit, and Docker CPU/memory enforcement remain enabled. It exercises actual guest APIs, archives the generated tar, copies it into a different guest, stops coding compute, reads retained index content, revokes it, and reconciles a second preview's expiry. This is Docker guest acceptance, not a claim of live Firecracker enforcement or operator-origin browser attachment.

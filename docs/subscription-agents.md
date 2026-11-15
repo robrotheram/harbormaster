@@ -1,123 +1,88 @@
-# Development with Codex and Claude subscriptions
+# Subscription credentials
 
-The native Codex or Claude Code CLI runs **inside the workspace container** and edits its persistent `/data/files` directory. MCP submits and follows its tasks. Both agents are baked into the workspace image alongside Git, Bash, Python, Node and ripgrep; no runtime package downloads are needed for the included Python example.
+Subscription setup is an operator task using the provider CLI and Vault. Deployment
+manifests do not initialize Vault, sign users in, or copy host credentials. The
+former automatic setup/repair commands have been removed.
 
-Subscription authentication is separate from API-key billing. The gateway forwards each native CLI's protocol to its fixed provider endpoint. It does not translate subscription credentials into an OpenAI-compatible Chat Completions service.
+## Local development
 
-## Credential boundary
-
-Vault KV v2 holds an expiring access-token snapshot under `subscription-auth/local-operator/codex` or `subscription-auth/local-operator/claude`. The inference gateway alone receives a read-only Vault token for those two paths. It connects to Vault over TLS using a locally generated, pinned certificate.
-
-Workspaces receive generation-bound platform grants. The gateway validates the grant, binds its verified principal to a provider allowlist, checks the model and current destination IPs, and injects the real subscription token. No provider access token, refresh token, Vault token, host home directory or host CLI configuration is mounted into the workspace. Native command processes can read their workspace grant; it is authority to make approved inference calls while that workspace is running.
-
-The gateway exposes only native Codex Responses/compaction and Claude Messages/token-count operations. It rejects arbitrary paths and destinations, redirects, unknown models and expired credentials. Native inference responses stream directly to the workspace. Provider error bodies and credentials do not reach platform logs, metadata or the dashboard.
-
-Ordinary Docker isolation and complete workspace egress enforcement remain unverified. These native CLI integrations do not change that status.
-
-## Set up the local deployment
-
-Requires Docker/Compose, Python 3 and OpenSSL. First build/start the current version:
+Run `make bootstrap`, then `docker compose up -d --wait vault`. Use the Vault CLI
+inside that container (`docker compose exec vault sh`) with:
 
 ```sh
-make up
-python3 scripts/subscription_auth.py init-vault
+export VAULT_ADDR=https://vault:8200
+export VAULT_CACERT=/vault/tls/cert.pem
+vault status
 ```
 
-`init-vault` initializes an empty **local development** Vault, or unseals this deployment using its existing recovery file. It creates the dedicated KV v2 mount and read-only gateway policy. It never resets an existing Vault. Root-token and single-share unseal recovery material are kept in `.local/vault-init.json`, mode 0600, under a mode-0700 directory. Keep a separate protected backup. Storing recovery material on this host is a local-development convenience, not production key custody.
+For a new Vault, initialize it once with `vault operator init`, securely retain the
+recovery material, and unseal using `vault operator unseal`'s interactive prompt.
+For an existing Vault, use its existing recovery material; never reinitialize it.
+Authenticate using `vault login`'s interactive prompt. Do not put tokens or unseal
+keys in command arguments, shell history, source control or application logs.
 
-After a Vault restart, rerun `init-vault` to unseal it. Do not delete its persistent volume or TLS key/certificate. The gateway renews its own 24-hour periodic Vault token at startup and every ten minutes, including while no agents are making requests. If the gateway has been offline long enough for that lease to expire, `init-vault` detects the expired token and provisions a replacement. The gateway must then be recreated to load it.
-
-### Codex
-
-Sign in using ChatGPT with the normal operator CLI, then sync its access token:
+Enable a dedicated KV v2 mount named `subscription-auth` if it does not exist:
 
 ```sh
-codex login
-python3 scripts/subscription_auth.py sync codex
-python3 scripts/subscription_auth.py configure --default codex --codex-model gpt-6.1-sol
+vault secrets enable -path=subscription-auth -version=2 kv
+```
+
+The gateway policy requires only these paths:
+
+```hcl
+path "subscription-auth/data/local-operator/codex" { capabilities = ["read"] }
+path "subscription-auth/data/local-operator/claude" { capabilities = ["read"] }
+```
+
+Install that policy as `workbench-subscriptions` with `vault policy write`. Create
+an orphan periodic token with that policy (`vault token create -orphan
+-policy=workbench-subscriptions -period=24h`). Save its client token in
+`.local/secrets/subscription_vault_token`. That file must be readable by the
+container user; keep its parent directories mode 0700. Recovery/root credentials
+must never be mounted into the gateway. Recreate only the gateway when replacing
+its token; the gateway renews its own lease during normal operation.
+
+Sign in using the native Codex or Claude CLI in your trusted operator environment.
+Codex ChatGPT credentials are in `$CODEX_HOME/auth.json` (default `~/.codex/auth.json`);
+Claude subscription credentials are in `$CLAUDE_CONFIG_DIR/.credentials.json`
+(default `~/.claude/.credentials.json`). Copy only the current access token into
+Vault, using a private JSON file with `vault kv put <path> @<file>`:
+
+| Vault path | Fields |
+| --- | --- |
+| `subscription-auth/local-operator/codex` | `access_token`, `account_id`, `expires_at` |
+| `subscription-auth/local-operator/claude` | `access_token`, `expires_at` |
+
+`expires_at` is the Unix expiry in seconds. Codex requires ChatGPT auth and its
+account binding; Claude's saved `expiresAt` is milliseconds and must be divided
+by 1000. Never copy refresh tokens, API keys or entire login files. Reject missing
+or expired access tokens. Remove the temporary import file after use.
+
+Configure exact provider model IDs and public destination CIDRs in a private copy
+of `config/inference.json`; see its `subscriptions` schema and
+[the gateway configuration](../config/inference.json). Point
+`INFERENCE_POLICY_FILE` at that copy and set `WORKSPACE_AGENT`, `CODEX_MODEL` and/or
+`CLAUDE_MODEL` in `.env`. DNS changes require reviewing and updating destination
+CIDRs. Apply configuration with:
+
+```sh
 docker compose up -d --build --wait inference-gateway runtime-controller controlplane mcp
 ```
 
-If Codex is already signed in, skip `codex login`. API-key logins are rejected by the sync command. `--auth-file PATH` supports a separate native CLI auth cache. Host auth files are read privately by the operator script; it copies only the access token, expiry and account binding to Vault. No refresh token is copied or refreshed by the gateway, so it cannot rotate or invalidate the host CLI's refresh token.
+Create new workspaces to receive changed agent defaults. After recreating a gateway,
+open each running workspace in the dashboard to reconcile its network attachment.
+Existing workspace files and project state are retained.
 
-### Claude Code
+## Kubernetes reference environment
 
-Use the official native Claude Code subscription login first:
+Use the cluster's established Vault and secret provisioning procedures. The
+Kustomize overlay consumes existing Secrets; it does not run local-development
+bootstrap commands. See [the Kubernetes guide](k3s.md).
 
-```sh
-claude auth login
-python3 scripts/subscription_auth.py sync claude
-```
+## Recovery
 
-If the host Claude launcher is unavailable, use the pinned CLI in a trusted operator-only login container from an interactive terminal:
-
-```sh
-python3 scripts/subscription_auth.py login claude
-python3 scripts/subscription_auth.py sync claude
-```
-
-Complete the provider's browser/code sign-in in that terminal. The private operator cache stays under `.local/native-logins/claude`, outside workspaces. No host source or Docker socket is mounted in that login container.
-
-Then rerun `configure` with **both exact model IDs** so the allowlists include both providers:
-
-```sh
-python3 scripts/subscription_auth.py configure --default codex \
-  --codex-model gpt-6.1-sol --claude-model YOUR_CLAUDE_MODEL_ID
-docker compose up -d --build --wait inference-gateway runtime-controller controlplane mcp
-```
-
-Use an exact Claude model ID available to your account, not the literal placeholder or a `sonnet`/`opus` alias. `--default claude` selects Claude for submissions that omit `provider`. No Claude API key is requested or configured. Availability and subscription limits remain controlled by the provider.
-
-Configuration is written under ignored `.local/` and `.env`; the checked-in fixture policy stays unchanged. Configuration pins the current DNS addresses as individual allowed CIDRs. A provider DNS change fails closed: rerun `configure` to explicitly refresh that allowlist. This does not broaden it to arbitrary public addresses.
-
-## Run real development through MCP
-
-Create a **new** workspace after enabling native defaults; existing workspace containers and storage are preserved. The updated image is used when new containers are created.
-
-Ask the connected T3 agent:
-
-> Create an Agent Workbench workspace with key `my-development-workspace`. Submit a task using provider `codex` to create a Python add function and unittest tests, run the tests, and report the result. Follow its task status and result. Use the returned IDs.
-
-Use `provider: "claude"` for Claude tasks once its login and model are configured. Either agent can work on the same workspace files; tasks are serialized. Changing provider with a reused task idempotency key is a conflict. Use a new key for new work.
-
-The same operation from the terminal:
-
-```sh
-python3 scripts/client.py create --key my-development-workspace
-python3 scripts/client.py submit WORKSPACE_ID \
-  'Create arithmetic.py with add(a, b), add unittest tests, and run python3 -m unittest -v.' \
-  --provider codex --key python-development-v1
-python3 scripts/client.py status WORKSPACE_ID TASK_ID
-python3 scripts/client.py result WORKSPACE_ID TASK_ID
-```
-
-Tasks continue after MCP disconnects, stop on confirmed cancellation, and have a ten-minute overall limit. Their native subprocess group is terminated when execution ends. The native CLIs use their file/command tools within the existing container boundary; the older thirty-second command-tool limit applies to the built-in Chat Completions runner, not native CLI commands. Background processes are unsupported and tracked processes block idle-stop. Files persist across tasks and workspace stop/start. Native runs currently start fresh conversations; recorded task results are durable, but CLI conversation resume is not implemented.
-
-The runtime overview remains read-only. The [workspace launcher](interactive-workspaces.md) can manage projects and open native T3 chat, files and terminals. Private repositories, dependency downloads and preview servers require additional explicit import/network work; no host repository is implicitly mounted or copied.
-
-## Expiry and troubleshooting
-
-Native response streams use a write deadline bounded by the ten-minute request
-limit and credential expiry. The inference server's ordinary 40-second write
-timeout is too short for longer generations: it can truncate a response and
-cause repeated native retries before a generic execution failure. The subscription
-handler overrides that deadline only for authenticated, approved native requests;
-revocation and request cancellation still terminate the stream.
-
-For `503 CREDENTIAL_UNAVAILABLE`, recover the local Vault lease, sync the existing Codex login and recreate the gateway with one command:
-
-```sh
-python3 scripts/subscription_auth.py repair
-```
-
-This uses the existing local recovery material, preserves Vault and workspace volumes, and reconciles gateway network attachments for already-running workspaces. It does not perform a new provider login or change the inference destination/model allowlist. If the host subscription login has expired, refresh it with the normal Codex CLI, then rerun repair. OpenAI documents automatic token refresh during normal signed-in Codex use; the gateway stores only an access-token snapshot and cannot refresh it independently. [OpenAI authentication](https://learn.chatgpt.com/docs/auth)
-
-`CREDENTIAL_UNAVAILABLE` indicates Vault access or lease renewal failed; it does not establish that the ChatGPT subscription expired. `PROVIDER_LOGIN_REQUIRED` indicates a missing, expired or rejected provider credential. No provider body or token is included in those errors.
-
-- Subscription access tokens expire. Refresh the normal native CLI login, then rerun `sync codex` or `sync claude`. Do not paste tokens into chat. Vault is the workspace system's credential store; the native operator login retains its own cache.
-- A missing/expired Vault secret or a sealed Vault fails closed. No API billing or synthetic fallback is used for a native task.
-- `AGENT_EXECUTABLE_UNAVAILABLE` means a workspace was created from an older image. Build the workspace image and create a new workspace; its existing storage is not deleted automatically.
-- `NATIVE_AGENT_FAILED` means the CLI exited unsuccessfully. Check credential expiry, the configured model, the gateway process health and the destination allowlist. Raw provider errors are deliberately kept out of platform responses.
-- Existing stopped containers retain their original defaults. Pass an explicit provider only to containers with the native runner/image; new workspaces are the supported upgrade path for this MVP.
-
-Reference: [OpenAI authentication](https://learn.chatgpt.com/docs/auth), [Codex noninteractive execution](https://learn.chatgpt.com/docs/non-interactive-mode), [Claude Code authentication](https://code.claude.com/docs/en/authentication), [Claude native gateway protocol](https://code.claude.com/docs/en/llm-gateway-protocol).
+Check Vault seal state and the gateway token lease first. Unseal with the existing
+recovery keys, or replace an expired gateway token using operator authority. Refresh
+expired provider logins through the native CLI, then replace only the corresponding
+Vault access-token record. There is no API-billing fallback. Recreate the gateway
+only when its mounted Vault token changes, then reopen running workspaces.

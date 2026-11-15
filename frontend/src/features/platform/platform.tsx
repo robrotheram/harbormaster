@@ -81,13 +81,10 @@ export function GettingStarted() {
           <section className="rounded-xl border bg-background p-5">
             <h2 className="text-sm font-semibold">Operator troubleshooting</h2>
             <p className="mt-3 text-xs leading-6 text-muted-foreground">
-              If credentials are unavailable, an administrator can run this from
-              the Workbench source directory on the host to sync the existing
-              Codex login and repair Vault connectivity.
+              If credentials are unavailable, ask an administrator to check
+              Vault connectivity and refresh the provider access token using the
+              operator procedure in docs/subscription-agents.md.
             </p>
-            <pre className="mt-4 whitespace-pre-wrap break-all">
-              python3 scripts/subscription_auth.py repair
-            </pre>
             <p className="mt-3 text-xs leading-6 text-muted-foreground">
               Expired logins need refreshing through the native provider CLI.
               There is no automatic API-billing fallback.

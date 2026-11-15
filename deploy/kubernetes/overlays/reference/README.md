@@ -170,9 +170,8 @@ routing needs separate origins/certificates and capability-authentication design
 
 `make kubernetes-check` validates the declarative deployment offline. Use server
 dry-run and diff against the intended cluster to validate CRDs/admission as well.
-`../../acceptance.sh` records infrastructure and probes an operator-provisioned
-Kata workspace; it requires kubectl, jq, and curl in the disposable probe image.
-It neither installs the platform nor claims complete VM attestation.
+Deployment contains no custom bootstrap, acceptance, backup or recovery scripts.
+Live acceptance uses the platform's operational tooling separately from deployment.
 
 Live acceptance on 2026-11-15 confirmed guest kernel 6.18.56, RWOP second-writer
 rejection, retained files after application stop/start, recreated Pods, and Codex/T3
@@ -187,10 +186,10 @@ The operator confirmed Entra sign-in and dashboard loading. Live checks also
 confirmed valid TLS, anonymous Entra redirection and forged-header rejection.
 External model calls, remote worker links and disaster recovery were not accepted.
 
-CSI VolumeSnapshot APIs/controller and an independent backup destination still
-need provisioning before the generic backup/recover scripts can be used. Those
-scripts now require jq rather than Python. Retain and Longhorn alone are not a
-backup contract. Pause by scaling platform Deployments, preserving CNPG, Secrets,
+Database and volume backup policies, CSI snapshot support and an independent
+backup destination still need provisioning through the cluster's operators.
+Retain and Longhorn alone are not a backup contract. Pause by scaling platform
+Deployments, preserving CNPG, Secrets,
 Sandboxes and PVCs; never uninstall Kata/Longhorn as routine rollback. See
 [operations](../../../../docs/k3s.md) for recovery and schema rollback limits.
 

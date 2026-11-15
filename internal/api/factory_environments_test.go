@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -17,6 +18,16 @@ import (
 )
 
 func TestFactoryProjectAPIExecutesRealRecipeAndFencesTemplates(t *testing.T) {
+	if os.Getenv("FACTORY_LIVE_GALLERY") != "1" {
+		dir := t.TempDir()
+		cmd := exec.Command("go", "build", "-o", filepath.Join(dir, "workbench-tools"), "../../cmd/workbench-tools")
+		cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
+		if output, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("build recipe: %v %s", err, output)
+		}
+		t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	}
+
 	s, rt := setup(t)
 	ws := create(t, s, "factory-api")
 	base := "/v1/workspaces/" + ws.ID + "/recipe-jobs"

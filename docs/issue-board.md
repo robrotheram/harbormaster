@@ -147,5 +147,5 @@ container does not refresh the listener's cached schemas. An error such as
 
 No host-controller or guest-image update is needed for fields added to an
 already allowed tool. Verify fresh discovery with
-`scripts/test-hermes-mcp-live.py`: it checks the description input schema and
+`integrations/hermes/tests/workbench_hermes_tests/live_discovery.py`: it checks the description input schema and
 makes a read-only board call using the pinned Hermes MCP client.

@@ -14,6 +14,18 @@ import (
 )
 
 func main() {
+	if len(os.Args) == 2 && (os.Args[1] == "--prepare-host" || os.Args[1] == "--cleanup") {
+		if err := hostOperation(os.Args[1]); err != nil {
+			slog.Error("host operation failed", "error", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if len(os.Args) > 1 && (len(os.Args) != 2 || os.Args[1] != "--self-test") {
+		slog.Error("unknown controller option")
+		os.Exit(1)
+	}
+
 	token, e := shared.Secret("CONTROLLER_TOKEN")
 	if e != nil {
 		panic("controller credential unavailable")

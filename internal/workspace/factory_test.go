@@ -1,14 +1,17 @@
 package workspace
 
 import (
+	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
 )
 
 func TestFactoryArtifactsAndResearch(t *testing.T) {
+	installResearchTool(t)
 	cfg := Config{ID: "ws_factory", DataDir: t.TempDir(), Token: "test-workspace-token"}
 	m, err := New(cfg)
 	if err != nil {
@@ -104,9 +107,12 @@ func TestFactoryRestartEvidence(t *testing.T) {
 }
 
 func TestRecipeCancellationOwnsProcess(t *testing.T) {
-	original := researchProgram
-	researchProgram = "import time\ntime.sleep(60)\n"
-	defer func() { researchProgram = original }()
+	original, executable := researchCommand, researchExecutable
+	researchExecutable = "sleep"
+	researchCommand = func(ctx context.Context, limit, recipe string) *exec.Cmd {
+		return exec.CommandContext(ctx, limit, "--cpu=60", "--", recipe, "60")
+	}
+	defer func() { researchCommand, researchExecutable = original, executable }()
 	cfg := Config{ID: "ws_cancel", DataDir: t.TempDir(), Token: "test-workspace-token"}
 	m, err := New(cfg)
 	if err != nil {
@@ -172,4 +178,15 @@ func TestWorkspaceCoordinationIsPrivateAndBounded(t *testing.T) {
 	if got := invoke(t, m.Handler(), "POST", "/v1/coordination/notes", `{"path":"../escape.md","body":"escape","occurrence":"escape-one","sources":["https://example.com"]}`); got.Code != 400 {
 		t.Fatal("note escaped root", got.Code)
 	}
+}
+
+func installResearchTool(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	cmd := exec.Command("go", "build", "-o", filepath.Join(dir, "workbench-tools"), "../../cmd/workbench-tools")
+	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("build recipe tool: %v %s", err, output)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }

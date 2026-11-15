@@ -13,7 +13,8 @@ COPY . .
 ARG SERVICE=controlplane
 RUN --mount=type=cache,target=/root/.cache/go-build CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/service ./cmd/${SERVICE} && \
     CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/healthcheck ./cmd/healthcheck && \
-    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/workspace-mcp ./cmd/workspace-mcp
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/workspace-mcp ./cmd/workspace-mcp && \
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/workbench-tools ./cmd/workbench-tools
 
 FROM alpine:3.23 AS platform
 RUN apk add --no-cache ca-certificates tzdata && \
@@ -51,8 +52,8 @@ RUN CODEX_NATIVE=$(rg --files /usr/local/lib/node_modules/@openai | rg '/codex$'
     done
 FROM workspace-tools AS workspace
 RUN apt-get update && apt-get install -y --no-install-recommends xvfb fluxbox x11vnc novnc websockify xterm x11-utils fonts-dejavu-core && rm -rf /var/lib/apt/lists/*
-COPY --chmod=755 scripts/workbench-desktop.sh /usr/local/bin/workbench-desktop
-COPY --chmod=755 scripts/workbench-preview.py /usr/local/bin/workbench-preview
+COPY --from=build /out/workbench-tools /usr/local/bin/workbench-tools
+RUN ln -s workbench-tools /usr/local/bin/workbench-desktop && ln -s workbench-tools /usr/local/bin/workbench-preview
 COPY --from=build /out/service /usr/local/bin/service
 COPY --from=build /out/healthcheck /usr/local/bin/healthcheck
 COPY --from=build /out/workspace-mcp /usr/local/bin/workspace-mcp
@@ -68,6 +69,5 @@ RUN apt-get update && apt-get install -y --no-install-recommends util-linux gcc 
 COPY --from=golang:1.27.4-bookworm /usr/local/go /usr/local/go
 ENV PATH=/usr/local/go/bin:$PATH
 RUN mkdir -p /opt/workbench/gogallery && git clone https://github.com/robrotheram/gogallery.git /opt/workbench/gogallery/source && cd /opt/workbench/gogallery/source && git checkout --detach 5f1bfd6a41afec65bc7ab791a14863180d944ee0 && GOMODCACHE=/opt/workbench/gogallery/modules go mod download && rm -rf .git
-COPY deploy/templates/gogallery/run deploy/templates/gogallery/create_fixture.py /opt/workbench/gogallery/
-RUN chmod -R a+rX /opt/workbench/gogallery && chmod 755 /opt/workbench/gogallery/run
+RUN ln -s /usr/local/bin/workbench-tools /opt/workbench/gogallery/run && chmod -R a+rX /opt/workbench/gogallery
 USER 10001:10001

@@ -14,8 +14,6 @@ default:
 go:
   stage: verify
   image: golang:1.27.4-bookworm
-  before_script:
-    - apt-get update && apt-get install -y --no-install-recommends jq
   services:
     - name: postgres:17-alpine
       alias: postgres
@@ -65,11 +63,11 @@ frontend:
     paths: [frontend/artifacts/]
     expire_in: 7 days
 
-python:
+hermes:
   stage: verify
   image: python:3.12-bookworm
   script:
-    - make python-check
+    - make hermes-check
 
 compose:
   stage: verify

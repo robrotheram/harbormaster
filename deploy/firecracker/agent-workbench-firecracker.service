@@ -9,9 +9,9 @@ UMask=0077
 Environment=CONTROLLER_TOKEN_FILE=/etc/agent-workbench/firecracker/controller_token
 Environment=GATEWAY_SERVICE_TOKEN_FILE=/etc/agent-workbench/firecracker/gateway_service_token
 Environment=GRANT_SECRET_FILE=/etc/agent-workbench/firecracker/grant_secret
-ExecStartPre=/opt/agent-workbench/firecracker/prepare-host
+ExecStartPre=/opt/agent-workbench/firecracker/controller --prepare-host
 ExecStart=/opt/agent-workbench/firecracker/controller
-ExecStopPost=/opt/agent-workbench/firecracker/cleanup
+ExecStopPost=/opt/agent-workbench/firecracker/controller --cleanup
 RuntimeDirectory=agent-workbench
 RuntimeDirectoryMode=0700
 Delegate=cpu memory pids

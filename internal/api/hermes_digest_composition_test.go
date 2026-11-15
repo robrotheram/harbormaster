@@ -41,14 +41,14 @@ func TestPinnedHermesDigestPublishesThroughRealMCPAndWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	script, err := filepath.Abs("../../scripts/test-hermes-digest-live.py")
+	integration, err := filepath.Abs("../../integrations/hermes")
 	if err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, filepath.Join(source, ".venv/bin/python"), script)
-	cmd.Env = append(os.Environ(), "TEST_MCP_ENDPOINT="+mcp.URL+"/project-mcp", "TEST_MCP_GRANT="+grant, "TEST_PROJECT_ID="+project.ID, "TEST_WORKSPACE_ID="+ws.ID)
+	cmd := exec.CommandContext(ctx, filepath.Join(source, ".venv/bin/python"), "-m", "workbench_hermes_tests.live_digest")
+	cmd.Env = append(os.Environ(), "PYTHONPATH="+filepath.Join(integration, "src")+string(os.PathListSeparator)+filepath.Join(integration, "tests")+string(os.PathListSeparator)+source, "TEST_MCP_ENDPOINT="+mcp.URL+"/project-mcp", "TEST_MCP_GRANT="+grant, "TEST_PROJECT_ID="+project.ID, "TEST_WORKSPACE_ID="+ws.ID)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("real digest failed: %s %v", output, err)
@@ -103,14 +103,14 @@ func TestPinnedHermesConsumerCreatesOneProjectWorkAttempt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	script, err := filepath.Abs("../../scripts/test-hermes-consume-live.py")
+	integration, err := filepath.Abs("../../integrations/hermes")
 	if err != nil {
 		t.Fatal(err)
 	}
 	processCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(processCtx, filepath.Join(source, ".venv/bin/python"), script)
-	cmd.Env = append(os.Environ(), "TEST_MCP_ENDPOINT="+endpoint.URL+"/project-mcp", "TEST_MCP_GRANT="+token, "TEST_PROJECT_ID="+research.ID)
+	cmd := exec.CommandContext(processCtx, filepath.Join(source, ".venv/bin/python"), "-m", "workbench_hermes_tests.live_consumer")
+	cmd.Env = append(os.Environ(), "PYTHONPATH="+filepath.Join(integration, "src")+string(os.PathListSeparator)+filepath.Join(integration, "tests")+string(os.PathListSeparator)+source, "TEST_MCP_ENDPOINT="+endpoint.URL+"/project-mcp", "TEST_MCP_GRANT="+token, "TEST_PROJECT_ID="+research.ID)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("real consumer failed: %s %v", output, err)
 	}

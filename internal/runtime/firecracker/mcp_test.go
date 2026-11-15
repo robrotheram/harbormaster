@@ -96,9 +96,9 @@ func TestProjectMCPGenerationToolInvocation(t *testing.T) {
 	}
 
 	if source := os.Getenv("HERMES_SOURCE"); source != "" {
-		script, _ := filepath.Abs("../../../scripts/test-hermes-mcp-live.py")
-		cmd := exec.CommandContext(ctx, filepath.Join(source, ".venv/bin/python"), script)
-		cmd.Env = append(os.Environ(), "PYTHONPATH="+source, "TEST_MCP_ENDPOINT="+broker.URL+"/mcp", "TEST_MCP_GRANT="+f.grant(v))
+		integration, _ := filepath.Abs("../../../integrations/hermes")
+		cmd := exec.CommandContext(ctx, filepath.Join(source, ".venv/bin/python"), "-m", "workbench_hermes_tests.live_discovery")
+		cmd.Env = append(os.Environ(), "PYTHONPATH="+filepath.Join(integration, "src")+string(os.PathListSeparator)+filepath.Join(integration, "tests")+string(os.PathListSeparator)+source, "TEST_MCP_ENDPOINT="+broker.URL+"/mcp", "TEST_MCP_GRANT="+f.grant(v))
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("pinned Hermes: %s %v", out, err)
 		}

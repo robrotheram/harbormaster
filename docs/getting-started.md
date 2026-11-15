@@ -34,10 +34,10 @@ A workspace is the persistent home for an agent's files, task records and result
 Paste this block into the terminal:
 
 ```sh
-WORKSPACE_ID=$(python3 scripts/client.py create --key getting-started-workspace \
-  | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+WORKSPACE_ID=$(go run ./cmd/workbench workspace create --key getting-started-workspace \
+  | jq -r .id)
 printf 'Your workspace: %s\n' "$WORKSPACE_ID"
-python3 scripts/client.py get "$WORKSPACE_ID"
+go run ./cmd/workbench workspace get "$WORKSPACE_ID"
 ```
 
 The first command creates the workspace and saves its returned ID in a shell variable, so you do not have to copy a long identifier. `get` prints its details as JSON. Expect `state: STOPPED` for a newly created workspace.
@@ -49,10 +49,10 @@ Refresh the dashboard if needed. Your workspace should appear in Workspaces.
 ## 3. Submit a task
 
 ```sh
-TASK_ID=$(python3 scripts/client.py submit "$WORKSPACE_ID" \
+TASK_ID=$(go run ./cmd/workbench workspace submit "$WORKSPACE_ID" \
   'Getting started: check that this workspace can accept a task.' \
   --key getting-started-task-v1 \
-  | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+  | jq -r .id)
 printf 'Your task: %s\n' "$TASK_ID"
 ```
 
@@ -65,7 +65,7 @@ The client reads its local API credential automatically. You do not need to copy
 ## 4. Check status and read the result
 
 ```sh
-python3 scripts/client.py status "$WORKSPACE_ID" "$TASK_ID"
+go run ./cmd/workbench workspace status "$WORKSPACE_ID" "$TASK_ID"
 ```
 
 Look at `state` in the JSON response:
@@ -82,7 +82,7 @@ Look at `state` in the JSON response:
 If it is queued or running, wait a moment and run the status command again. Once it succeeds:
 
 ```sh
-python3 scripts/client.py result "$WORKSPACE_ID" "$TASK_ID"
+go run ./cmd/workbench workspace result "$WORKSPACE_ID" "$TASK_ID"
 ```
 
 The `content` field should begin `[SYNTHETIC FIXTURE] messages_sha256=...`. That is the expected demonstration response. It proves the request passed through the task service and inference gateway; it does not prove that a real model completed the instruction.
@@ -92,15 +92,15 @@ Results and instructions are deliberately absent from the dashboard. Read them t
 ## 5. Prove that the result survives a restart
 
 ```sh
-python3 scripts/client.py stop "$WORKSPACE_ID" --key getting-started-stop
-python3 scripts/client.py get "$WORKSPACE_ID"
+go run ./cmd/workbench workspace stop "$WORKSPACE_ID" --key getting-started-stop
+go run ./cmd/workbench workspace get "$WORKSPACE_ID"
 ```
 
 Expect `STOPPED`. Then start the same workspace and read the same task:
 
 ```sh
-python3 scripts/client.py start "$WORKSPACE_ID" --key getting-started-restart
-python3 scripts/client.py result "$WORKSPACE_ID" "$TASK_ID"
+go run ./cmd/workbench workspace start "$WORKSPACE_ID" --key getting-started-restart
+go run ./cmd/workbench workspace result "$WORKSPACE_ID" "$TASK_ID"
 ```
 
 The result should be unchanged. It was retrieved from persistent workspace storage, rather than running the instruction again. Reading a task or result while its workspace is stopped also wakes that workspace automatically.
@@ -112,9 +112,9 @@ This preserves files and recorded task state. It does not resume a process that 
 Stop your workspace when you are done:
 
 ```sh
-python3 scripts/client.py stop "$WORKSPACE_ID" --key getting-started-finish
-python3 scripts/client.py list
-python3 scripts/client.py usage
+go run ./cmd/workbench workspace stop "$WORKSPACE_ID" --key getting-started-finish
+go run ./cmd/workbench workspace list
+go run ./cmd/workbench workspace usage
 ```
 
 Alternatively, an idle workspace stops automatically after 60 minutes by default once all runs and background processes have finished. Dashboard polling does not keep it alive.
@@ -134,15 +134,15 @@ Avoid `docker compose down --volumes` when you want to retain platform metadata 
 Run these from the project folder. Keep the shell variables from the walkthrough, or replace them with IDs returned by `list` and task submission.
 
 ```sh
-python3 scripts/client.py list
-python3 scripts/client.py get "$WORKSPACE_ID"
-python3 scripts/client.py start "$WORKSPACE_ID"
-python3 scripts/client.py submit "$WORKSPACE_ID" 'A different synthetic test.' --key another-task-v1
-python3 scripts/client.py status "$WORKSPACE_ID" TASK_ID_FROM_SUBMISSION
-python3 scripts/client.py result "$WORKSPACE_ID" TASK_ID_FROM_SUBMISSION
-python3 scripts/client.py cancel "$WORKSPACE_ID" TASK_ID_FROM_SUBMISSION
-python3 scripts/client.py stop "$WORKSPACE_ID"
-python3 scripts/client.py usage
+go run ./cmd/workbench workspace list
+go run ./cmd/workbench workspace get "$WORKSPACE_ID"
+go run ./cmd/workbench workspace start "$WORKSPACE_ID"
+go run ./cmd/workbench workspace submit "$WORKSPACE_ID" 'A different synthetic test.' --key another-task-v1
+go run ./cmd/workbench workspace status "$WORKSPACE_ID" TASK_ID_FROM_SUBMISSION
+go run ./cmd/workbench workspace result "$WORKSPACE_ID" TASK_ID_FROM_SUBMISSION
+go run ./cmd/workbench workspace cancel "$WORKSPACE_ID" TASK_ID_FROM_SUBMISSION
+go run ./cmd/workbench workspace stop "$WORKSPACE_ID"
+go run ./cmd/workbench workspace usage
 ```
 
 `TASK_ID_FROM_SUBMISSION` is a placeholder: use the new task's returned `id`, not the literal text. Cancellation affects active work; a task that already finished keeps its terminal outcome.
@@ -206,7 +206,7 @@ docker compose logs --tail=50 controlplane runtime-controller inference-gateway
 
 For a repeatable synthetic functional check, run `make smoke`. It exercises task deduplication, inference, stop/start and result persistence, and leaves its test workspace stopped. It does not validate VM isolation or full egress containment.
 
-These commands assume the default ports from `.env.example`. If you changed `CONTROL_PORT`, use `scripts/client.py --url http://127.0.0.1:YOUR_PORT ...` or set `CONTROLPLANE_URL` in your terminal. Use the configured dashboard/MCP ports for their URLs too.
+These commands assume the default ports from `.env.example`. If you changed `CONTROL_PORT`, use `go run ./cmd/workbench workspace --url http://127.0.0.1:YOUR_PORT ...` or set `CONTROLPLANE_URL` in your terminal. Use the configured dashboard/MCP ports for their URLs too.
 
 ## What comes after the walkthrough?
 

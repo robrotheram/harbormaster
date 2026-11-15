@@ -98,13 +98,13 @@ Sources: [pinned upstream source](https://github.com/NousResearch/hermes-agent/t
 ## Adapter maintenance
 
 The Firecracker guest's pinned Hermes identity and source checksum are defined
-in `runtime.json`. `scripts/firecracker-stage.py` uses this manifest for the
+in `runtime.json`. The Firecracker Docker build takes the manifest commit and source hash as build arguments for the
 Docker build arguments, installed guest identity and host admission record.
-Task and Matrix entrypoints share `scripts/hermes_common.py` for their fixed
+Task and Matrix entrypoints share `integrations/hermes/src/workbench_hermes/common.py` for their fixed
 inference route, private no-fallback configuration and versioned event framing.
 Rebuild and restage the guest when changing these files.
 
-Run `python3 scripts/test-hermes-adapters.py` for portable routing, authorization,
+Run `make hermes-check` for portable routing, authorization,
 delivery and failure tests with SDK import stubs and no network. The existing
 `test-hermes-runner.py` and `test-hermes-matrix.py` can also run in the guest with
 its real pinned SDK; portable tests do not replace that image acceptance check.

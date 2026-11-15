@@ -75,7 +75,7 @@ allowlist internet traffic still requires the authenticated egress gateway.
 No guest-chosen upstream, host mount, privileged flag, or SA token is introduced.
 
 Run `go test ./internal/runtime/kubernetes ./internal/mcpserver
-./internal/workspace/... ./cmd/workspace` and the scripts/test-hermes-*.py tests.
+./internal/workspace/... ./cmd/workspace` and the Hermes package tests (`make hermes-check`).
 Actual image acceptance, CNI deny/allow probes, cross-project isolation, restart
 revocation, Kata VM evidence, and production approval must be performed on k3s.
 RuntimeClass and NetworkPolicy API objects do not prove VM/network isolation.

@@ -42,12 +42,12 @@ Only these loopback ports are published. PostgreSQL, Vault and the runtime contr
 ## Exercise a workspace
 
 ```sh
-python3 scripts/client.py create --key first-workspace
-python3 scripts/client.py list
-python3 scripts/client.py submit WORKSPACE_ID 'Describe the current workspace.' --key first-task
-python3 scripts/client.py status WORKSPACE_ID TASK_ID
-python3 scripts/client.py result WORKSPACE_ID TASK_ID
-python3 scripts/client.py stop WORKSPACE_ID --key stop-workspace
+go run ./cmd/workbench workspace create --key first-workspace
+go run ./cmd/workbench workspace list
+go run ./cmd/workbench workspace submit WORKSPACE_ID 'Describe the current workspace.' --key first-task
+go run ./cmd/workbench workspace status WORKSPACE_ID TASK_ID
+go run ./cmd/workbench workspace result WORKSPACE_ID TASK_ID
+go run ./cmd/workbench workspace stop WORKSPACE_ID --key stop-workspace
 ```
 
 Replace the returned opaque IDs. Reuse a mutation key to safely retry the same request. Changing task instructions with a previously accepted task key returns a conflict. Fixture responses are synthetic and do not represent a real model/provider call.
@@ -123,3 +123,14 @@ open/start or settings save. Existing workspaces retain their current policy.
 See [private message history and JSONL evaluation exports](docs/workspace-history.md) for retained conversations, tool interactions and metadata.
 
 **Repository delivery:** [GitHub/GitLab connections, issue board and reviews](docs/repository-connections.md) covers authenticated ticket import, the local Kanban board, review decisions and server-side credential setup.
+
+## Deployment and operator commands
+
+Kubernetes resources are native [Kustomize overlays](deploy/kubernetes/README.md).
+There are no repository deployment scripts. Build the optional local operator CLI
+with `go build -o bin/workbench ./cmd/workbench`; run it from the repository root.
+`make bootstrap`, `make up` and `make smoke` use this Go implementation.
+Workspace desktop, preview and recipe helpers are compiled into the images.
+The [Hermes SDK adapter](integrations/hermes/README.md) is an installed Python
+package. Vault provisioning and optional Firecracker host installation follow the
+operator procedures in `docs/subscription-agents.md` and `docs/firecracker.md`.
