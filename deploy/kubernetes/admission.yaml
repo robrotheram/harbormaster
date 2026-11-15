@@ -14,23 +14,32 @@ spec:
     - name: pod
       expression: object.spec.podTemplate.spec
   validations:
-    - expression: has(object.metadata.labels) && object.metadata.labels['workbench.project'] == namespaceObject.metadata.labels['workbench.project']
+    - expression: >-
+        has(object.metadata.labels) && object.metadata.labels['workbench.project'] == namespaceObject.metadata.labels['workbench.project']
       message: Sandbox must belong to its namespace project.
-    - expression: has(variables.pod.runtimeClassName) && variables.pod.runtimeClassName == 'kata'
+    - expression: >-
+        has(variables.pod.runtimeClassName) && variables.pod.runtimeClassName == 'kata'
       message: Kata runtime is mandatory.
-    - expression: has(variables.pod.automountServiceAccountToken) && variables.pod.automountServiceAccountToken == false && variables.pod.serviceAccountName == 'workspace'
+    - expression: >-
+        has(variables.pod.automountServiceAccountToken) && variables.pod.automountServiceAccountToken == false && variables.pod.serviceAccountName == 'workspace'
       message: Workspace Kubernetes credentials are prohibited.
-    - expression: (!has(variables.pod.hostNetwork) || !variables.pod.hostNetwork) && (!has(variables.pod.hostPID) || !variables.pod.hostPID) && (!has(variables.pod.hostIPC) || !variables.pod.hostIPC)
+    - expression: >-
+        (!has(variables.pod.hostNetwork) || !variables.pod.hostNetwork) && (!has(variables.pod.hostPID) || !variables.pod.hostPID) && (!has(variables.pod.hostIPC) || !variables.pod.hostIPC)
       message: Host namespaces are prohibited.
-    - expression: variables.pod.containers.size() == 1 && (!has(variables.pod.initContainers) || variables.pod.initContainers.size() == 0)
+    - expression: >-
+        variables.pod.containers.size() == 1 && (!has(variables.pod.initContainers) || variables.pod.initContainers.size() == 0)
       message: Only the fixed workspace container is supported.
-    - expression: variables.pod.containers.all(c, c.image.matches('^.+@sha256:[a-f0-9]{64}$') && has(c.securityContext) && c.securityContext.readOnlyRootFilesystem && !c.securityContext.allowPrivilegeEscalation && (!has(c.securityContext.privileged) || !c.securityContext.privileged) && c.securityContext.capabilities.drop.exists(d, d == 'ALL'))
+    - expression: >-
+        variables.pod.containers.all(c, c.image.matches('^.+@sha256:[a-f0-9]{64}$') && has(c.securityContext) && c.securityContext.readOnlyRootFilesystem && !c.securityContext.allowPrivilegeEscalation && (!has(c.securityContext.privileged) || !c.securityContext.privileged) && c.securityContext.capabilities.drop.exists(d, d == 'ALL'))
       message: Pinned images and restricted container security are mandatory.
-    - expression: has(variables.pod.securityContext) && variables.pod.securityContext.runAsNonRoot && variables.pod.securityContext.runAsUser == 10001 && variables.pod.securityContext.seccompProfile.type == 'RuntimeDefault'
+    - expression: >-
+        has(variables.pod.securityContext) && variables.pod.securityContext.runAsNonRoot && variables.pod.securityContext.runAsUser == 10001 && variables.pod.securityContext.seccompProfile.type == 'RuntimeDefault'
       message: Workspace must run as the restricted runtime user.
-    - expression: has(object.spec.volumeClaimTemplates) && object.spec.volumeClaimTemplates.size() == 1 && object.spec.volumeClaimTemplates.all(v, v.metadata.name == 'data' && v.spec.accessModes == ['ReadWriteOncePod'] && has(v.spec.storageClassName) && v.spec.storageClassName != '' && !has(v.spec.volumeName) && !has(v.spec.dataSource))
+    - expression: >-
+        has(object.spec.volumeClaimTemplates) && object.spec.volumeClaimTemplates.size() == 1 && object.spec.volumeClaimTemplates.all(v, v.metadata.name == 'data' && v.spec.accessModes == ['ReadWriteOncePod'] && has(v.spec.storageClassName) && v.spec.storageClassName != '' && !has(v.spec.volumeName) && !has(v.spec.dataSource))
       message: Private RWOP claims with explicit CSI class are mandatory.
-    - expression: !has(variables.pod.volumes) || variables.pod.volumes.all(v, has(v.emptyDir))
+    - expression: >-
+        !has(variables.pod.volumes) || variables.pod.volumes.all(v, has(v.emptyDir))
       message: Only ephemeral pod volumes are permitted outside the private claim template.
 ---
 apiVersion: admissionregistration.k8s.io/v1

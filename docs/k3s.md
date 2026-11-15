@@ -1,8 +1,9 @@
 # k3s production operations (M5)
 
 Compose remains development. This package implements production operations but
-**does not constitute M5 acceptance**. No k3s, Kata host, CSI or kubectl was
-available during implementation. The default verified-isolation gate continues
+**does not constitute M5 acceptance**. The initial implementation used simulated infrastructure. A fresh
+[k3s reference environment](../deploy/kubernetes/reference/README.md) is now being
+provisioned with live Kata, Longhorn and network-policy checks. The default verified-isolation gate continues
 to reject starts: neither Pod readiness nor a configured RuntimeClass proves a VM.
 Do not expose an unverified test install as production.
 

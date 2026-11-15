@@ -1,0 +1,1288 @@
+{
+  "apiVersion": "v1",
+  "kind": "List",
+  "items": [
+    {
+      "apiVersion": "v1",
+      "kind": "Namespace",
+      "metadata": {
+        "name": "workbench-system",
+        "namespace": "workbench-system"
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Namespace",
+      "metadata": {
+        "name": "workbench-egress",
+        "namespace": "workbench-egress"
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ServiceAccount",
+      "metadata": {
+        "name": "runtime-controller",
+        "namespace": "workbench-system"
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "runtime-bindings",
+        "namespace": "workbench-system"
+      },
+      "data": {
+        "projects.json": "{\"default\": \"workbench-reference\"}",
+        "allowlists.json": "{\"default\": []}"
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "name": "controlplane",
+        "namespace": "workbench-system"
+      },
+      "spec": {
+        "replicas": 1,
+        "strategy": {
+          "type": "Recreate"
+        },
+        "selector": {
+          "matchLabels": {
+            "app": "controlplane"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "app": "controlplane"
+            }
+          },
+          "spec": {
+            "automountServiceAccountToken": false,
+            "containers": [
+              {
+                "name": "controlplane",
+                "image": "ghcr.io/robrotheram/harbormaster/controlplane@sha256:b9d773399603d9df682482ab8b3b69ea588a67d8c42e97de5b78f19dcfb3c1c9",
+                "ports": [
+                  {
+                    "containerPort": 8080
+                  }
+                ],
+                "env": [
+                  {
+                    "name": "CONTROLLER_URL",
+                    "value": "http://runtime-controller.workbench-system.svc:8080"
+                  },
+                  {
+                    "name": "CONTROLPLANE_URL",
+                    "value": "http://controlplane:8080"
+                  },
+                  {
+                    "name": "CONTROLPLANE_READ_URL",
+                    "value": "http://controlplane:8081"
+                  },
+                  {
+                    "name": "MEMORY_QUOTA_BYTES",
+                    "value": "2147483648"
+                  },
+                  {
+                    "name": "CONTROL_TOKEN_FILE",
+                    "value": "/run/secrets/control_token"
+                  },
+                  {
+                    "name": "CONTROLLER_TOKEN_FILE",
+                    "value": "/run/secrets/controller_token"
+                  },
+                  {
+                    "name": "DATABASE_URL_FILE",
+                    "value": "/run/secrets/database_url"
+                  }
+                ],
+                "securityContext": {
+                  "allowPrivilegeEscalation": false,
+                  "readOnlyRootFilesystem": true,
+                  "capabilities": {
+                    "drop": [
+                      "ALL"
+                    ]
+                  }
+                },
+                "resources": {
+                  "requests": {
+                    "cpu": "100m",
+                    "memory": "128Mi"
+                  },
+                  "limits": {
+                    "cpu": "1",
+                    "memory": "1Gi"
+                  }
+                },
+                "readinessProbe": {
+                  "exec": {
+                    "command": [
+                      "/usr/local/bin/healthcheck"
+                    ]
+                  },
+                  "timeoutSeconds": 3
+                },
+                "volumeMounts": [
+                  {
+                    "name": "secrets",
+                    "mountPath": "/run/secrets",
+                    "readOnly": true
+                  },
+                  {
+                    "name": "tmp",
+                    "mountPath": "/tmp"
+                  }
+                ]
+              }
+            ],
+            "volumes": [
+              {
+                "name": "secrets",
+                "secret": {
+                  "secretName": "controlplane-secrets"
+                }
+              },
+              {
+                "name": "tmp",
+                "emptyDir": {
+                  "sizeLimit": "64Mi"
+                }
+              }
+            ],
+            "securityContext": {
+              "runAsNonRoot": true,
+              "runAsUser": 10001,
+              "runAsGroup": 10001,
+              "seccompProfile": {
+                "type": "RuntimeDefault"
+              }
+            },
+            "imagePullSecrets": [
+              {
+                "name": "harbormaster-registry"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "controlplane",
+        "namespace": "workbench-system"
+      },
+      "spec": {
+        "selector": {
+          "app": "controlplane"
+        },
+        "ports": [
+          {
+            "name": "http",
+            "port": 8080,
+            "targetPort": 8080
+          },
+          {
+            "name": "read",
+            "port": 8081,
+            "targetPort": 8081
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "name": "runtime-controller",
+        "namespace": "workbench-system"
+      },
+      "spec": {
+        "replicas": 1,
+        "strategy": {
+          "type": "Recreate"
+        },
+        "selector": {
+          "matchLabels": {
+            "app": "runtime-controller"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "app": "runtime-controller"
+            }
+          },
+          "spec": {
+            "automountServiceAccountToken": true,
+            "containers": [
+              {
+                "name": "runtime-controller",
+                "image": "ghcr.io/robrotheram/harbormaster/runtime-controller@sha256:e8c04f74908dde18b1b8572a262b3b1c1ef59237f59a5ae398000b95102a7022",
+                "ports": [
+                  {
+                    "containerPort": 8080
+                  }
+                ],
+                "env": [
+                  {
+                    "name": "CONTROLLER_URL",
+                    "value": "http://runtime-controller.workbench-system.svc:8080"
+                  },
+                  {
+                    "name": "CONTROLPLANE_URL",
+                    "value": "http://controlplane:8080"
+                  },
+                  {
+                    "name": "CONTROLPLANE_READ_URL",
+                    "value": "http://controlplane:8081"
+                  },
+                  {
+                    "name": "RUNTIME_BACKEND",
+                    "value": "kubernetes"
+                  },
+                  {
+                    "name": "REQUIRE_VERIFIED_ISOLATION",
+                    "value": "false"
+                  },
+                  {
+                    "name": "WORKSPACE_IMAGE",
+                    "value": "ghcr.io/robrotheram/harbormaster/workspace@sha256:f58521d5f14b191241107595030cd5d52f6b85a0152bd0b406425e950ed5493a"
+                  },
+                  {
+                    "name": "KUBERNETES_STORAGE_CLASS",
+                    "value": "harbormaster-retain"
+                  },
+                  {
+                    "name": "KUBERNETES_PROJECTS_FILE",
+                    "value": "/etc/runtime/projects.json"
+                  },
+                  {
+                    "name": "KUBERNETES_ALLOWLISTS_FILE",
+                    "value": "/etc/runtime/allowlists.json"
+                  },
+                  {
+                    "name": "DEPLOYMENT_ID",
+                    "value": "harbormaster"
+                  },
+                  {
+                    "name": "KUBERNETES_INFERENCE_URL",
+                    "value": "http://10.43.180.206:8080"
+                  },
+                  {
+                    "name": "KUBERNETES_BROKER_URL",
+                    "value": "http://10.43.153.124:8080"
+                  },
+                  {
+                    "name": "KUBERNETES_EGRESS_URL",
+                    "value": "http://10.43.51.35:8080"
+                  },
+                  {
+                    "name": "CONTROLLER_TOKEN_FILE",
+                    "value": "/run/workbench-secrets/controller_token"
+                  },
+                  {
+                    "name": "GATEWAY_SERVICE_TOKEN_FILE",
+                    "value": "/run/workbench-secrets/gateway_service_token"
+                  },
+                  {
+                    "name": "GRANT_SECRET_FILE",
+                    "value": "/run/workbench-secrets/grant_secret"
+                  }
+                ],
+                "securityContext": {
+                  "allowPrivilegeEscalation": false,
+                  "readOnlyRootFilesystem": true,
+                  "capabilities": {
+                    "drop": [
+                      "ALL"
+                    ]
+                  }
+                },
+                "resources": {
+                  "requests": {
+                    "cpu": "100m",
+                    "memory": "128Mi"
+                  },
+                  "limits": {
+                    "cpu": "1",
+                    "memory": "1Gi"
+                  }
+                },
+                "readinessProbe": {
+                  "exec": {
+                    "command": [
+                      "/usr/local/bin/healthcheck"
+                    ]
+                  },
+                  "timeoutSeconds": 3
+                },
+                "volumeMounts": [
+                  {
+                    "name": "secrets",
+                    "mountPath": "/run/workbench-secrets",
+                    "readOnly": true
+                  },
+                  {
+                    "name": "tmp",
+                    "mountPath": "/tmp"
+                  },
+                  {
+                    "name": "bindings",
+                    "mountPath": "/etc/runtime",
+                    "readOnly": true
+                  }
+                ]
+              }
+            ],
+            "volumes": [
+              {
+                "name": "secrets",
+                "secret": {
+                  "secretName": "runtime-controller-secrets"
+                }
+              },
+              {
+                "name": "tmp",
+                "emptyDir": {
+                  "sizeLimit": "64Mi"
+                }
+              },
+              {
+                "name": "bindings",
+                "configMap": {
+                  "name": "runtime-bindings"
+                }
+              }
+            ],
+            "securityContext": {
+              "runAsNonRoot": true,
+              "runAsUser": 10001,
+              "runAsGroup": 10001,
+              "seccompProfile": {
+                "type": "RuntimeDefault"
+              }
+            },
+            "imagePullSecrets": [
+              {
+                "name": "harbormaster-registry"
+              }
+            ],
+            "serviceAccountName": "runtime-controller"
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "runtime-controller",
+        "namespace": "workbench-system"
+      },
+      "spec": {
+        "selector": {
+          "app": "runtime-controller"
+        },
+        "ports": [
+          {
+            "name": "http",
+            "port": 8080,
+            "targetPort": 8080
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "name": "dashboard",
+        "namespace": "workbench-system"
+      },
+      "spec": {
+        "replicas": 1,
+        "strategy": {
+          "type": "Recreate"
+        },
+        "selector": {
+          "matchLabels": {
+            "app": "dashboard"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "app": "dashboard"
+            }
+          },
+          "spec": {
+            "automountServiceAccountToken": false,
+            "containers": [
+              {
+                "name": "dashboard",
+                "image": "ghcr.io/robrotheram/harbormaster/dashboard@sha256:5f3b26d1e800b764ca31dbee845d8193067cda409150246396c6b813c3226c97",
+                "ports": [
+                  {
+                    "containerPort": 8080
+                  }
+                ],
+                "env": [
+                  {
+                    "name": "CONTROLLER_URL",
+                    "value": "http://runtime-controller.workbench-system.svc:8080"
+                  },
+                  {
+                    "name": "CONTROLPLANE_URL",
+                    "value": "http://controlplane:8080"
+                  },
+                  {
+                    "name": "CONTROLPLANE_READ_URL",
+                    "value": "http://controlplane:8081"
+                  },
+                  {
+                    "name": "DASHBOARD_PUBLIC_ORIGIN",
+                    "value": "https://harbormaster.exceptionerror.io"
+                  },
+                  {
+                    "name": "OAUTH2_PROXY_AUTH_URL",
+                    "value": "http://oauth2-proxy.oauth2-proxy.svc.cluster.local:80/oauth2/auth"
+                  },
+                  {
+                    "name": "OAUTH2_PROXY_PUBLIC_URL",
+                    "value": "https://oidc.exceptionerror.io"
+                  },
+                  {
+                    "name": "CONTROL_TOKEN_FILE",
+                    "value": "/run/secrets/control_token"
+                  }
+                ],
+                "securityContext": {
+                  "allowPrivilegeEscalation": false,
+                  "readOnlyRootFilesystem": true,
+                  "capabilities": {
+                    "drop": [
+                      "ALL"
+                    ]
+                  }
+                },
+                "resources": {
+                  "requests": {
+                    "cpu": "100m",
+                    "memory": "128Mi"
+                  },
+                  "limits": {
+                    "cpu": "1",
+                    "memory": "1Gi"
+                  }
+                },
+                "readinessProbe": {
+                  "exec": {
+                    "command": [
+                      "/usr/local/bin/healthcheck"
+                    ]
+                  },
+                  "timeoutSeconds": 3
+                },
+                "volumeMounts": [
+                  {
+                    "name": "secrets",
+                    "mountPath": "/run/secrets",
+                    "readOnly": true
+                  },
+                  {
+                    "name": "tmp",
+                    "mountPath": "/tmp"
+                  }
+                ]
+              }
+            ],
+            "volumes": [
+              {
+                "name": "secrets",
+                "secret": {
+                  "secretName": "dashboard-secrets"
+                }
+              },
+              {
+                "name": "tmp",
+                "emptyDir": {
+                  "sizeLimit": "64Mi"
+                }
+              }
+            ],
+            "securityContext": {
+              "runAsNonRoot": true,
+              "runAsUser": 10001,
+              "runAsGroup": 10001,
+              "seccompProfile": {
+                "type": "RuntimeDefault"
+              }
+            },
+            "imagePullSecrets": [
+              {
+                "name": "harbormaster-registry"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "dashboard",
+        "namespace": "workbench-system"
+      },
+      "spec": {
+        "selector": {
+          "app": "dashboard"
+        },
+        "ports": [
+          {
+            "name": "http",
+            "port": 8080,
+            "targetPort": 8080
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "name": "mcp",
+        "namespace": "workbench-system"
+      },
+      "spec": {
+        "replicas": 1,
+        "strategy": {
+          "type": "Recreate"
+        },
+        "selector": {
+          "matchLabels": {
+            "app": "mcp"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "app": "mcp"
+            }
+          },
+          "spec": {
+            "automountServiceAccountToken": false,
+            "containers": [
+              {
+                "name": "mcp",
+                "image": "ghcr.io/robrotheram/harbormaster/mcp@sha256:43176ff6b9bbb84aa898c52c3197b608d6d0360f0180d2b2389c9bb936a68f11",
+                "ports": [
+                  {
+                    "containerPort": 8080
+                  }
+                ],
+                "env": [
+                  {
+                    "name": "CONTROLLER_URL",
+                    "value": "http://runtime-controller.workbench-system.svc:8080"
+                  },
+                  {
+                    "name": "CONTROLPLANE_URL",
+                    "value": "http://controlplane:8080"
+                  },
+                  {
+                    "name": "CONTROLPLANE_READ_URL",
+                    "value": "http://controlplane:8081"
+                  },
+                  {
+                    "name": "MCP_ALLOWED_HOSTS",
+                    "value": "harbormaster.exceptionerror.io"
+                  },
+                  {
+                    "name": "CONTROL_TOKEN_FILE",
+                    "value": "/run/secrets/control_token"
+                  },
+                  {
+                    "name": "MCP_TOKEN_FILE",
+                    "value": "/run/secrets/mcp_token"
+                  }
+                ],
+                "securityContext": {
+                  "allowPrivilegeEscalation": false,
+                  "readOnlyRootFilesystem": true,
+                  "capabilities": {
+                    "drop": [
+                      "ALL"
+                    ]
+                  }
+                },
+                "resources": {
+                  "requests": {
+                    "cpu": "100m",
+                    "memory": "128Mi"
+                  },
+                  "limits": {
+                    "cpu": "1",
+                    "memory": "1Gi"
+                  }
+                },
+                "readinessProbe": {
+                  "exec": {
+                    "command": [
+                      "/usr/local/bin/healthcheck"
+                    ]
+                  },
+                  "timeoutSeconds": 3
+                },
+                "volumeMounts": [
+                  {
+                    "name": "secrets",
+                    "mountPath": "/run/secrets",
+                    "readOnly": true
+                  },
+                  {
+                    "name": "tmp",
+                    "mountPath": "/tmp"
+                  }
+                ]
+              }
+            ],
+            "volumes": [
+              {
+                "name": "secrets",
+                "secret": {
+                  "secretName": "mcp-secrets"
+                }
+              },
+              {
+                "name": "tmp",
+                "emptyDir": {
+                  "sizeLimit": "64Mi"
+                }
+              }
+            ],
+            "securityContext": {
+              "runAsNonRoot": true,
+              "runAsUser": 10001,
+              "runAsGroup": 10001,
+              "seccompProfile": {
+                "type": "RuntimeDefault"
+              }
+            },
+            "imagePullSecrets": [
+              {
+                "name": "harbormaster-registry"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "mcp",
+        "namespace": "workbench-system"
+      },
+      "spec": {
+        "selector": {
+          "app": "mcp"
+        },
+        "ports": [
+          {
+            "name": "http",
+            "port": 8080,
+            "targetPort": 8080
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "name": "inference-gateway",
+        "namespace": "workbench-egress"
+      },
+      "spec": {
+        "replicas": 1,
+        "strategy": {
+          "type": "Recreate"
+        },
+        "selector": {
+          "matchLabels": {
+            "app": "inference-gateway"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "app": "inference-gateway",
+              "workbench.project": "default",
+              "workbench.role": "gateway"
+            }
+          },
+          "spec": {
+            "automountServiceAccountToken": false,
+            "containers": [
+              {
+                "name": "inference-gateway",
+                "image": "ghcr.io/robrotheram/harbormaster/inference-gateway@sha256:f2e77d9ee88b9e02dfaeb8a6a2405be5f611b519accdbb5b29791c5ed28b1511",
+                "ports": [
+                  {
+                    "containerPort": 8080
+                  }
+                ],
+                "env": [
+                  {
+                    "name": "CONTROLLER_URL",
+                    "value": "http://runtime-controller.workbench-system.svc:8080"
+                  },
+                  {
+                    "name": "CONTROLPLANE_URL",
+                    "value": "http://controlplane:8080"
+                  },
+                  {
+                    "name": "CONTROLPLANE_READ_URL",
+                    "value": "http://controlplane:8081"
+                  },
+                  {
+                    "name": "GATEWAY_MODE",
+                    "value": "fixture"
+                  },
+                  {
+                    "name": "GATEWAY_CONFIG",
+                    "value": "/etc/workbench/inference-gateway.json"
+                  },
+                  {
+                    "name": "GATEWAY_SERVICE_TOKEN_FILE",
+                    "value": "/run/secrets/gateway_service_token"
+                  },
+                  {
+                    "name": "SUBSCRIPTION_VAULT_TOKEN_FILE",
+                    "value": "/run/secrets/subscription_vault_token"
+                  }
+                ],
+                "securityContext": {
+                  "allowPrivilegeEscalation": false,
+                  "readOnlyRootFilesystem": true,
+                  "capabilities": {
+                    "drop": [
+                      "ALL"
+                    ]
+                  }
+                },
+                "resources": {
+                  "requests": {
+                    "cpu": "100m",
+                    "memory": "128Mi"
+                  },
+                  "limits": {
+                    "cpu": "1",
+                    "memory": "1Gi"
+                  }
+                },
+                "readinessProbe": {
+                  "exec": {
+                    "command": [
+                      "/usr/local/bin/healthcheck"
+                    ]
+                  },
+                  "timeoutSeconds": 3
+                },
+                "volumeMounts": [
+                  {
+                    "name": "secrets",
+                    "mountPath": "/run/secrets",
+                    "readOnly": true
+                  },
+                  {
+                    "name": "tmp",
+                    "mountPath": "/tmp"
+                  },
+                  {
+                    "name": "config",
+                    "mountPath": "/etc/workbench",
+                    "readOnly": true
+                  }
+                ]
+              }
+            ],
+            "volumes": [
+              {
+                "name": "secrets",
+                "secret": {
+                  "secretName": "inference-gateway-secrets"
+                }
+              },
+              {
+                "name": "tmp",
+                "emptyDir": {
+                  "sizeLimit": "64Mi"
+                }
+              },
+              {
+                "name": "config",
+                "secret": {
+                  "secretName": "inference-gateway-config"
+                }
+              }
+            ],
+            "securityContext": {
+              "runAsNonRoot": true,
+              "runAsUser": 10001,
+              "runAsGroup": 10001,
+              "seccompProfile": {
+                "type": "RuntimeDefault"
+              }
+            },
+            "imagePullSecrets": [
+              {
+                "name": "harbormaster-registry"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "inference-gateway",
+        "namespace": "workbench-egress"
+      },
+      "spec": {
+        "selector": {
+          "app": "inference-gateway"
+        },
+        "ports": [
+          {
+            "name": "http",
+            "port": 8080,
+            "targetPort": 8080
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "name": "credential-broker",
+        "namespace": "workbench-egress"
+      },
+      "spec": {
+        "replicas": 1,
+        "strategy": {
+          "type": "Recreate"
+        },
+        "selector": {
+          "matchLabels": {
+            "app": "credential-broker"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "app": "credential-broker",
+              "workbench.project": "default",
+              "workbench.role": "gateway"
+            }
+          },
+          "spec": {
+            "automountServiceAccountToken": false,
+            "containers": [
+              {
+                "name": "credential-broker",
+                "image": "ghcr.io/robrotheram/harbormaster/credential-broker@sha256:2cce623483a2004598fd66f3316e8c5f6cd9cc62d92dbb555439cdf3b76d5f3d",
+                "ports": [
+                  {
+                    "containerPort": 8080
+                  }
+                ],
+                "env": [
+                  {
+                    "name": "CONTROLLER_URL",
+                    "value": "http://runtime-controller.workbench-system.svc:8080"
+                  },
+                  {
+                    "name": "CONTROLPLANE_URL",
+                    "value": "http://controlplane:8080"
+                  },
+                  {
+                    "name": "CONTROLPLANE_READ_URL",
+                    "value": "http://controlplane:8081"
+                  },
+                  {
+                    "name": "GATEWAY_MODE",
+                    "value": "fixture"
+                  },
+                  {
+                    "name": "GATEWAY_CONFIG",
+                    "value": "/etc/workbench/credential-broker.json"
+                  },
+                  {
+                    "name": "GATEWAY_SERVICE_TOKEN_FILE",
+                    "value": "/run/secrets/gateway_service_token"
+                  }
+                ],
+                "securityContext": {
+                  "allowPrivilegeEscalation": false,
+                  "readOnlyRootFilesystem": true,
+                  "capabilities": {
+                    "drop": [
+                      "ALL"
+                    ]
+                  }
+                },
+                "resources": {
+                  "requests": {
+                    "cpu": "100m",
+                    "memory": "128Mi"
+                  },
+                  "limits": {
+                    "cpu": "1",
+                    "memory": "1Gi"
+                  }
+                },
+                "readinessProbe": {
+                  "exec": {
+                    "command": [
+                      "/usr/local/bin/healthcheck"
+                    ]
+                  },
+                  "timeoutSeconds": 3
+                },
+                "volumeMounts": [
+                  {
+                    "name": "secrets",
+                    "mountPath": "/run/secrets",
+                    "readOnly": true
+                  },
+                  {
+                    "name": "tmp",
+                    "mountPath": "/tmp"
+                  },
+                  {
+                    "name": "config",
+                    "mountPath": "/etc/workbench",
+                    "readOnly": true
+                  }
+                ]
+              }
+            ],
+            "volumes": [
+              {
+                "name": "secrets",
+                "secret": {
+                  "secretName": "credential-broker-secrets"
+                }
+              },
+              {
+                "name": "tmp",
+                "emptyDir": {
+                  "sizeLimit": "64Mi"
+                }
+              },
+              {
+                "name": "config",
+                "secret": {
+                  "secretName": "credential-broker-config"
+                }
+              }
+            ],
+            "securityContext": {
+              "runAsNonRoot": true,
+              "runAsUser": 10001,
+              "runAsGroup": 10001,
+              "seccompProfile": {
+                "type": "RuntimeDefault"
+              }
+            },
+            "imagePullSecrets": [
+              {
+                "name": "harbormaster-registry"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "credential-broker",
+        "namespace": "workbench-egress"
+      },
+      "spec": {
+        "selector": {
+          "app": "credential-broker"
+        },
+        "ports": [
+          {
+            "name": "http",
+            "port": 8080,
+            "targetPort": 8080
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "name": "egress-gateway",
+        "namespace": "workbench-egress"
+      },
+      "spec": {
+        "replicas": 1,
+        "strategy": {
+          "type": "Recreate"
+        },
+        "selector": {
+          "matchLabels": {
+            "app": "egress-gateway"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "app": "egress-gateway",
+              "workbench.project": "default",
+              "workbench.role": "gateway"
+            }
+          },
+          "spec": {
+            "automountServiceAccountToken": false,
+            "containers": [
+              {
+                "name": "egress-gateway",
+                "image": "ghcr.io/robrotheram/harbormaster/egress-gateway@sha256:95b4b48c6622bacde99cc8cab3233513132b0af046c9824734c06a7d166845f0",
+                "ports": [
+                  {
+                    "containerPort": 8080
+                  }
+                ],
+                "env": [
+                  {
+                    "name": "CONTROLLER_URL",
+                    "value": "http://runtime-controller.workbench-system.svc:8080"
+                  },
+                  {
+                    "name": "CONTROLPLANE_URL",
+                    "value": "http://controlplane:8080"
+                  },
+                  {
+                    "name": "CONTROLPLANE_READ_URL",
+                    "value": "http://controlplane:8081"
+                  },
+                  {
+                    "name": "GATEWAY_MODE",
+                    "value": "fixture"
+                  },
+                  {
+                    "name": "GATEWAY_CONFIG",
+                    "value": "/etc/workbench/egress-gateway.json"
+                  },
+                  {
+                    "name": "GATEWAY_SERVICE_TOKEN_FILE",
+                    "value": "/run/secrets/gateway_service_token"
+                  }
+                ],
+                "securityContext": {
+                  "allowPrivilegeEscalation": false,
+                  "readOnlyRootFilesystem": true,
+                  "capabilities": {
+                    "drop": [
+                      "ALL"
+                    ]
+                  }
+                },
+                "resources": {
+                  "requests": {
+                    "cpu": "100m",
+                    "memory": "128Mi"
+                  },
+                  "limits": {
+                    "cpu": "1",
+                    "memory": "1Gi"
+                  }
+                },
+                "readinessProbe": {
+                  "exec": {
+                    "command": [
+                      "/usr/local/bin/healthcheck"
+                    ]
+                  },
+                  "timeoutSeconds": 3
+                },
+                "volumeMounts": [
+                  {
+                    "name": "secrets",
+                    "mountPath": "/run/secrets",
+                    "readOnly": true
+                  },
+                  {
+                    "name": "tmp",
+                    "mountPath": "/tmp"
+                  },
+                  {
+                    "name": "config",
+                    "mountPath": "/etc/workbench",
+                    "readOnly": true
+                  }
+                ]
+              }
+            ],
+            "volumes": [
+              {
+                "name": "secrets",
+                "secret": {
+                  "secretName": "egress-gateway-secrets"
+                }
+              },
+              {
+                "name": "tmp",
+                "emptyDir": {
+                  "sizeLimit": "64Mi"
+                }
+              },
+              {
+                "name": "config",
+                "secret": {
+                  "secretName": "egress-gateway-config"
+                }
+              }
+            ],
+            "securityContext": {
+              "runAsNonRoot": true,
+              "runAsUser": 10001,
+              "runAsGroup": 10001,
+              "seccompProfile": {
+                "type": "RuntimeDefault"
+              }
+            },
+            "imagePullSecrets": [
+              {
+                "name": "harbormaster-registry"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "egress-gateway",
+        "namespace": "workbench-egress"
+      },
+      "spec": {
+        "selector": {
+          "app": "egress-gateway"
+        },
+        "ports": [
+          {
+            "name": "http",
+            "port": 8080,
+            "targetPort": 8080
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "networking.k8s.io/v1",
+      "kind": "Ingress",
+      "metadata": {
+        "name": "workbench",
+        "namespace": "workbench-system",
+        "annotations": {
+          "traefik.ingress.kubernetes.io/router.entrypoints": "websecure",
+          "traefik.ingress.kubernetes.io/router.tls": "true",
+          "traefik.ingress.kubernetes.io/router.middlewares": "oauth2-proxy-oauth-redirect@kubernetescrd,workbench-system-harbormaster-auth@kubernetescrd"
+        }
+      },
+      "spec": {
+        "ingressClassName": "traefik",
+        "tls": [
+          {
+            "hosts": [
+              "harbormaster.exceptionerror.io"
+            ],
+            "secretName": "harbormaster-tls"
+          }
+        ],
+        "rules": [
+          {
+            "host": "harbormaster.exceptionerror.io",
+            "http": {
+              "paths": [
+                {
+                  "path": "/",
+                  "pathType": "Prefix",
+                  "backend": {
+                    "service": {
+                      "name": "dashboard",
+                      "port": {
+                        "number": 8080
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "inference-gateway",
+        "namespace": "workbench-system"
+      },
+      "spec": {
+        "type": "ExternalName",
+        "externalName": "inference-gateway.workbench-egress.svc.cluster.local"
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "credential-broker",
+        "namespace": "workbench-system"
+      },
+      "spec": {
+        "type": "ExternalName",
+        "externalName": "credential-broker.workbench-egress.svc.cluster.local"
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "egress-gateway",
+        "namespace": "workbench-system"
+      },
+      "spec": {
+        "type": "ExternalName",
+        "externalName": "egress-gateway.workbench-egress.svc.cluster.local"
+      }
+    }
+  ]
+}

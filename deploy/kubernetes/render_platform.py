@@ -47,7 +47,7 @@ for name in services:
         labels.update({'workbench.project': c['project_id'], 'workbench.role': 'gateway'})
     env = dict(base)
     if gateway:
-        env.update(GATEWAY_MODE='live', GATEWAY_CONFIG='/etc/workbench/' + name + '.json')
+        env.update(GATEWAY_MODE='upstream', GATEWAY_CONFIG='/etc/workbench/' + name + '.json')
     if name == 'runtime-controller':
         env.update(RUNTIME_BACKEND='kubernetes', REQUIRE_VERIFIED_ISOLATION='true',
                    WORKSPACE_IMAGE=c['images']['workspace'], KUBERNETES_STORAGE_CLASS=c['storage_class'],
@@ -56,12 +56,13 @@ for name in services:
         env['MCP_ALLOWED_HOSTS'] = c['host']
     env.update(c.get('environment', {}).get(name, {}))
     # An explicitly unverified test install must be selected in reviewed config.
+    secret_dir = '/run/workbench-secrets' if name == 'runtime-controller' else '/run/secrets'
     container = dict(name=name, image=c['images'][name], ports=[dict(containerPort=8080)],
-        env=[dict(name=k, value=str(v)) for k,v in env.items()] + [dict(name=k+'_FILE', value='/run/secrets/'+k.lower()) for k in secret_env[name]],
+        env=[dict(name=k, value=str(v)) for k,v in env.items()] + [dict(name=k+'_FILE', value=secret_dir+'/'+k.lower()) for k in secret_env[name]],
         securityContext=dict(allowPrivilegeEscalation=False, readOnlyRootFilesystem=True, capabilities={'drop':['ALL']}),
         resources={'requests':{'cpu':'100m','memory':'128Mi'},'limits':{'cpu':'1','memory':'1Gi'}},
-        readinessProbe={'httpGet':{'path':'/healthz','port':8080}},
-        volumeMounts=[dict(name='secrets', mountPath='/run/secrets', readOnly=True),dict(name='tmp',mountPath='/tmp')])
+        readinessProbe={'exec':{'command':['/usr/local/bin/healthcheck']}, 'timeoutSeconds':3},
+        volumeMounts=[dict(name='secrets', mountPath=secret_dir, readOnly=True),dict(name='tmp',mountPath='/tmp')])
     volumes = [dict(name='secrets',secret={'secretName':name+'-secrets'}),dict(name='tmp',emptyDir={'sizeLimit':'64Mi'})]
     if name == 'runtime-controller':
         volumes.append(dict(name='bindings', configMap={'name':'runtime-bindings'}))
@@ -71,6 +72,8 @@ for name in services:
         container['volumeMounts'].append(dict(name='config',mountPath='/etc/workbench',readOnly=True))
     pod = dict(automountServiceAccountToken=name=='runtime-controller', containers=[container],volumes=volumes,
                securityContext=dict(runAsNonRoot=True,runAsUser=10001,runAsGroup=10001,seccompProfile={'type':'RuntimeDefault'}))
+    if c.get('image_pull_secrets'):
+        pod['imagePullSecrets'] = [dict(name=name) for name in c['image_pull_secrets']]
     if name=='runtime-controller':
         pod['serviceAccountName']='runtime-controller'
     add('Deployment',name,ns,dict(replicas=1,strategy={'type':'Recreate'},selector={'matchLabels':{'app':name}},template={'metadata':{'labels':labels},'spec':pod}))

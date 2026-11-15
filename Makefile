@@ -17,6 +17,7 @@ python-check:
 	python3 scripts/test-hermes-coordination.py
 	python3 scripts/test-hermes-consume.py
 	python3 scripts/test-firecracker-install.py
+	python3 -m unittest discover -s deploy/kubernetes/reference -p 'test_*.py' -v
 go-vuln-check:
 	go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 postgres-check:

@@ -1,0 +1,26 @@
+# Kata Containers chart 4.3.1; authorized single-node maintenance installation.
+k8sDistribution: k3s
+deploymentMode: job
+image:
+  tag: "4.3.1"
+job:
+  nodes: [ds9.exceptionerror.io]
+  parallelism: 1
+  backoffLimit: 0
+  activeDeadlineSeconds: 900
+selinux:
+  enabled: true
+shims:
+  disableAll: true
+  qemu:
+    enabled: true
+defaultShim:
+  amd64: qemu
+runtimeClasses:
+  enabled: true
+  createDefault: true
+  defaultName: kata
+node-feature-discovery:
+  enabled: false
+monitor:
+  enabled: false
