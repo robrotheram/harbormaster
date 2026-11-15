@@ -31,11 +31,11 @@ images:
 - name: ghcr.io/robrotheram/harbormaster/runtime-controller
   digest: sha256:970123fa6d559cdb5f7d5d69f95cb3fcd1cf480ed829802d20bd84f7a97aee65
 - name: ghcr.io/robrotheram/harbormaster/dashboard
-  digest: sha256:105d807549c2b110dc1bcfd797c93a00a7f211d4ed0104c08301f4203e286f74
+  digest: sha256:88a8eacd886c7083e58255960cabaa6eb845ed3cadaf497aade0f89ececa7589
 - name: ghcr.io/robrotheram/harbormaster/mcp
   digest: sha256:d12573e0c26704ac223a149a2da1defb0fc2f15399ad156811acae86d71c0aa8
 - name: ghcr.io/robrotheram/harbormaster/inference-gateway
-  digest: sha256:4fecd2c458aacf3ca7f8b744cd99d5bf115da595604688f7f9d67689b19eedba
+  digest: sha256:6e995aad33ad3547e317ec8b8335a44796026b6ebd6d0f003bf9536fa6aadc06
 - name: ghcr.io/robrotheram/harbormaster/credential-broker
   digest: sha256:c952a4f67805ec0381e5c48413782c5e20e1974d72a46044afd0f657b8348697
 - name: ghcr.io/robrotheram/harbormaster/egress-gateway
