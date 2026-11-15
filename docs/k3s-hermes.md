@@ -40,7 +40,7 @@ components:
   - ../../components/hermes
 ```
 
-Provision `hermes-mcp-secrets` in `workbench-egress` outside Git with
+Provision `hermes-mcp-secrets` in `harbormaster` outside Git with
 `control_token`, `mcp_token` and `gateway_service_token`. Override the component's
 pinned MCP image and project label in your overlay when needed. It has no service
 account token and reaches the controller verifier through its trusted service
@@ -59,7 +59,7 @@ future Argo reconciliation would overwrite.
 
 The launch contract is `HERMES_MCP_TRANSPORT=kubernetes-generation`, mapped by
 Go's typed transport to the single fixed URL
-`http://hermes-mcp.workbench-egress.svc:8080/hermes-mcp`. Unknown transport values
+`http://hermes-mcp.harbormaster.svc:8080/hermes-mcp`. Unknown transport values
 fail. Firecracker's default remains loopback port 18085 with no NIC requirement.
 The guest receives only its workspace generation grant. Every MCP request calls
 the trusted controller `/v1/grants/verify` with audience `hermes-mcp`; the live,

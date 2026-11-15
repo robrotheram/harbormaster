@@ -166,7 +166,7 @@ func TestPlatformSecurityAndReferenceContract(t *testing.T) {
 					t.Fatalf("live credentials unexpectedly enabled: %s", service)
 				}
 				for _, o := range objects {
-					if o["kind"] == "Service" && field(map[string]any(o), "metadata", "name") == service && field(map[string]any(o), "metadata", "namespace") == "workbench-egress" {
+					if o["kind"] == "Service" && field(map[string]any(o), "metadata", "name") == service && field(map[string]any(o), "metadata", "namespace") == "harbormaster" {
 						ip, _ := field(map[string]any(o), "spec", "clusterIP").(string)
 						if ip == "" || values[variable] != "http://"+ip+":8080" {
 							t.Fatalf("gateway IP and runtime endpoint differ: %s", service)
@@ -183,7 +183,7 @@ func TestPlatformSecurityAndReferenceContract(t *testing.T) {
 				}
 			}
 			binding := find(t, objects, "RoleBinding", "workbench-runtime")
-			if field(list(binding["subjects"])[0], "namespace") != "workbench-system" {
+			if field(list(binding["subjects"])[0], "namespace") != "harbormaster" {
 				t.Fatal("runtime service account binding was rewritten")
 			}
 			deny := find(t, objects, "NetworkPolicy", "workspace-default-deny")
@@ -284,5 +284,71 @@ func TestHermesIsAnOptInComponent(t *testing.T) {
 	}
 	if env(find(t, objects, "Deployment", "runtime-controller"))["REQUIRE_VERIFIED_ISOLATION"] != "true" {
 		t.Fatal("optional component must not open workspace execution")
+	}
+}
+
+func TestConsolidatedCoreRetainsWorkspaceBoundary(t *testing.T) {
+	for _, path := range []string{"base", "overlays/reference"} {
+		t.Run(path, func(t *testing.T) {
+			objects := build(t, path)
+			namespaces := map[string]bool{}
+			for _, o := range objects {
+				raw := map[string]any(o)
+				name, _ := field(raw, "metadata", "name").(string)
+				ns, _ := field(raw, "metadata", "namespace").(string)
+				if o["kind"] == "Namespace" {
+					namespaces[name] = true
+				}
+				switch o["kind"] {
+				case "Deployment", "Service", "Cluster", "Certificate", "Middleware", "Ingress", "ConfigMap", "ServiceAccount":
+					if name == "workspace" && o["kind"] == "ServiceAccount" {
+						if ns != "workbench-reference" {
+							t.Fatal("workspace identity moved into core")
+						}
+						continue
+					}
+					if ns != "harbormaster" {
+						t.Fatalf("core resource outside consolidated namespace: %s", key(raw))
+					}
+				}
+				if o["kind"] == "Service" && field(raw, "spec", "type") == "ExternalName" {
+					t.Fatal("obsolete cross-namespace service alias")
+				}
+			}
+			expected := map[string]bool{"harbormaster": true}
+			if path == "overlays/reference" {
+				expected["workbench-reference"] = true
+			}
+			if !reflect.DeepEqual(namespaces, expected) {
+				t.Fatalf("unexpected namespace layout: %v", namespaces)
+			}
+			if path == "base" {
+				return
+			}
+			for _, policyName := range []string{"workspace-controller-ingress", "workspace-project-egress"} {
+				policy := map[string]any(find(t, objects, "NetworkPolicy", policyName))
+				if field(policy, "metadata", "namespace") != "workbench-reference" {
+					t.Fatal("workspace policy moved into core")
+				}
+				direction, peers := "egress", "to"
+				if policyName == "workspace-controller-ingress" {
+					direction, peers = "ingress", "from"
+				}
+				for _, rule := range list(field(policy, "spec", direction)) {
+					for _, peer := range list(field(rule, peers)) {
+						if field(peer, "namespaceSelector", "matchLabels", "kubernetes.io/metadata.name") != "harbormaster" {
+							t.Fatal("wrong core namespace selector")
+						}
+						labels, ok := field(peer, "podSelector", "matchLabels").(map[string]any)
+						if !ok || len(labels) == 0 {
+							t.Fatal("workspace can reach entire core namespace")
+						}
+						if direction == "egress" && (labels["workbench.project"] != "default" || labels["workbench.role"] == nil) {
+							t.Fatal("gateway project/role restrictions lost")
+						}
+					}
+				}
+			}
+		})
 	}
 }

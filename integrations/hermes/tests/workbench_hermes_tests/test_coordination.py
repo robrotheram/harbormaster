@@ -13,7 +13,7 @@ class CoordinationConfig(unittest.TestCase):
     def test_fixed_runtime_command_transport(self):
         with patch.dict(os.environ, {}, clear=True):
             self.assertEqual(workbench_endpoint(), 'http://127.0.0.1:18085/mcp')
-        with patch.dict(os.environ, {'WORKBENCH_MCP_URL': 'http://hermes-mcp.workbench-egress.svc:8080/hermes-mcp'}, clear=True):
+        with patch.dict(os.environ, {'WORKBENCH_MCP_URL': 'http://hermes-mcp.harbormaster.svc:8080/hermes-mcp'}, clear=True):
             self.assertEqual(workbench_endpoint(), os.environ['WORKBENCH_MCP_URL'])
         with patch.dict(os.environ, {'WORKBENCH_MCP_URL': 'http://metadata.invalid/mcp'}, clear=True):
             with self.assertRaises(ValueError):

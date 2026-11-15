@@ -19,7 +19,7 @@ apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
   name: harbormaster-db
-  namespace: workbench-system
+  namespace: harbormaster
   annotations:
     argocd.argoproj.io/sync-wave: '-10'
     argocd.argoproj.io/sync-options: Prune=false,Delete=false
@@ -46,7 +46,7 @@ apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: harbormaster-tls
-  namespace: workbench-system
+  namespace: harbormaster
   annotations:
     argocd.argoproj.io/sync-wave: '-5'
 spec:
@@ -61,7 +61,7 @@ apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: harbormaster-auth
-  namespace: workbench-system
+  namespace: harbormaster
   annotations:
     argocd.argoproj.io/sync-wave: '-5'
 spec:

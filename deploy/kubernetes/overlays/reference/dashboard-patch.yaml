@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: dashboard
-  namespace: workbench-system
+  namespace: harbormaster
 spec:
   template:
     spec:

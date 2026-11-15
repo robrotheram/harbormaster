@@ -17,7 +17,7 @@ import (
 type MCPTransport string
 
 const KubernetesGeneration MCPTransport = "kubernetes-generation"
-const KubernetesMCPURL = "http://hermes-mcp.workbench-egress.svc:8080/hermes-mcp"
+const KubernetesMCPURL = "http://hermes-mcp.harbormaster.svc:8080/hermes-mcp"
 
 type Config struct {
 	HermesMCPTransport MCPTransport

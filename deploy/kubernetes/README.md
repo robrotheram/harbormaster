@@ -53,7 +53,7 @@ namespace/policy manifest to your overlay. Use
 `overlays/reference/foundation/project.yaml` as the concrete example. Change the
 namespace and every `workbench.project` label/selector together, and update the
 runtime's `projects.json` and `allowlists.json` ConfigMap patch. Keep the RoleBinding
-subject in `workbench-system`; a global Kustomize `namespace` transformer is
+subject in `harbormaster`; a global Kustomize `namespace` transformer is
 inappropriate for this multi-namespace application.
 
 One project currently owns each gateway set. Supporting additional projects
@@ -91,3 +91,11 @@ Application. Do not add host-install jobs to its sync lifecycle.
 [Kubernetes Kustomize documentation](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/kustomization/)
 and [Argo sync options](https://argo-cd.readthedocs.io/en/stable/user-guide/sync-options/)
 describe the native mechanisms used here.
+
+## Core namespace migration
+
+Core services and gateways share `harbormaster`; agent project namespaces remain
+separate. The legacy pinned runtime/workspace images must be updated to builds
+from the namespace-consolidation change before deploying this layout. See the
+[reference cutover procedure](overlays/reference/namespace-migration.md) for
+database, identity, Service IP and retained-workspace migration requirements.

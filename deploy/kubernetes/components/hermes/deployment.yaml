@@ -4,7 +4,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: hermes-mcp
-  namespace: workbench-egress
+  namespace: harbormaster
 spec:
   replicas: 1
   selector:
@@ -28,9 +28,9 @@ spec:
           image: ghcr.io/robrotheram/harbormaster/mcp@sha256:43176ff6b9bbb84aa898c52c3197b608d6d0360f0180d2b2389c9bb936a68f11
           ports: [{containerPort: 8080}]
           env:
-            - {name: CONTROLPLANE_URL, value: 'http://controlplane.workbench-system.svc:8080'}
-            - {name: HERMES_CONTROLLER_URL, value: 'http://runtime-controller.workbench-system.svc:8080'}
-            - {name: MCP_ALLOWED_HOSTS, value: 'hermes-mcp.workbench-egress.svc:8080'}
+            - {name: CONTROLPLANE_URL, value: 'http://controlplane.harbormaster.svc:8080'}
+            - {name: HERMES_CONTROLLER_URL, value: 'http://runtime-controller.harbormaster.svc:8080'}
+            - {name: MCP_ALLOWED_HOSTS, value: 'hermes-mcp.harbormaster.svc:8080'}
             - {name: CONTROL_TOKEN_FILE, value: /run/secrets/control_token}
             - {name: MCP_TOKEN_FILE, value: /run/secrets/mcp_token}
             - {name: GATEWAY_SERVICE_TOKEN_FILE, value: /run/secrets/gateway_service_token}

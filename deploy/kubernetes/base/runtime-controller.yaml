@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: runtime-controller
-  namespace: workbench-system
+  namespace: harbormaster
 spec:
   replicas: 1
   strategy:
@@ -23,7 +23,7 @@ spec:
         - containerPort: 8080
         env:
         - name: CONTROLLER_URL
-          value: http://runtime-controller.workbench-system.svc:8080
+          value: http://runtime-controller.harbormaster.svc:8080
         - name: CONTROLPLANE_URL
           value: http://controlplane:8080
         - name: CONTROLPLANE_READ_URL
@@ -43,11 +43,11 @@ spec:
         - name: DEPLOYMENT_ID
           value: harbormaster
         - name: KUBERNETES_INFERENCE_URL
-          value: http://inference-gateway.workbench-egress.svc:8080
+          value: http://inference-gateway.harbormaster.svc:8080
         - name: KUBERNETES_BROKER_URL
-          value: http://credential-broker.workbench-egress.svc:8080
+          value: http://credential-broker.harbormaster.svc:8080
         - name: KUBERNETES_EGRESS_URL
-          value: http://egress-gateway.workbench-egress.svc:8080
+          value: http://egress-gateway.harbormaster.svc:8080
         - name: CONTROLLER_TOKEN_FILE
           value: /run/workbench-secrets/controller_token
         - name: GATEWAY_SERVICE_TOKEN_FILE
@@ -103,7 +103,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: runtime-controller
-  namespace: workbench-system
+  namespace: harbormaster
 spec:
   selector:
     app: runtime-controller

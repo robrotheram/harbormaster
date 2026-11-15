@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: controlplane
-  namespace: workbench-system
+  namespace: harbormaster
 spec:
   replicas: 1
   strategy:
@@ -23,7 +23,7 @@ spec:
         - containerPort: 8080
         env:
         - name: CONTROLLER_URL
-          value: http://runtime-controller.workbench-system.svc:8080
+          value: http://runtime-controller.harbormaster.svc:8080
         - name: CONTROLPLANE_URL
           value: http://controlplane:8080
         - name: CONTROLPLANE_READ_URL
@@ -76,7 +76,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: controlplane
-  namespace: workbench-system
+  namespace: harbormaster
 spec:
   selector:
     app: controlplane

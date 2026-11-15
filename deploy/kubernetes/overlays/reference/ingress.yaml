@@ -2,11 +2,11 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: workbench
-  namespace: workbench-system
+  namespace: harbormaster
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: 'true'
-    traefik.ingress.kubernetes.io/router.middlewares: oauth2-proxy-oauth-redirect@kubernetescrd,workbench-system-harbormaster-auth@kubernetescrd
+    traefik.ingress.kubernetes.io/router.middlewares: oauth2-proxy-oauth-redirect@kubernetescrd,harbormaster-harbormaster-auth@kubernetescrd
 spec:
   ingressClassName: traefik
   tls:

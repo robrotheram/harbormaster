@@ -55,7 +55,7 @@ func NewKubernetes(c KubernetesConfig) (*Kubernetes, error) {
 		return nil, errors.New("invalid Kubernetes runtime configuration")
 	}
 	if c.EgressURL == "" {
-		c.EgressURL = "http://egress-gateway.workbench-egress.svc:8080"
+		c.EgressURL = "http://egress-gateway.harbormaster.svc:8080"
 	}
 	for project, destinations := range c.ProjectAllowlists {
 		if _, ok := c.ProjectNamespaces[project]; !ok {

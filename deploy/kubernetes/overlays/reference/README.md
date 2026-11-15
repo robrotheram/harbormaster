@@ -19,18 +19,17 @@ kubectl --context default apply -k deploy/kubernetes/overlays/reference
 ```
 
 Review differences first. `kubectl diff` exits 1 when changes are present.
-A first adoption may roll Pods because Kustomize orders patched environment
-entries differently; values, images, identities and retained volumes stay the same.
-This packaging migration does not reinstall Kata or transfer ownership to Argo CD.
-The migration was checked against all 36 prior resources and the live cluster.
-Server-side dry-run using the future Argo field manager passed without forcing
-conflicts; admission-policy API defaults are explicit to preserve atomic fields.
+This layout uses one core namespace, `harbormaster`, and separate workspace
+namespaces. It is **not an in-place rename** of the earlier two-core-namespace
+installation. Existing installations must follow [the migration procedure](namespace-migration.md)
+before applying this overlay. Applying directly would initialize a new empty database,
+leave existing Secrets behind and conflict with the reserved gateway Service IPs.
 
 For an empty reference environment, install the external prerequisites, then:
 
 ```sh
 kubectl --context default apply -k deploy/kubernetes/overlays/reference/bootstrap
-kubectl --context default -n workbench-system wait cluster/harbormaster-db \
+kubectl --context default -n harbormaster wait cluster/harbormaster-db \
   --for=condition=Ready --timeout=5m
 ```
 
@@ -40,8 +39,7 @@ Argo Applications that compete for ownership of them.
 
 ## Dependencies and ownership
 
-- `workbench-system`: platform, CNPG PostgreSQL 17, dashboard TLS and auth.
-- `workbench-egress`: dedicated gateways for project `default`.
+- `harbormaster`: core platform, gateways, CNPG PostgreSQL 17, dashboard TLS and auth.
 - `workbench-reference`: restricted project policy, retained workspace state.
 - Existing Longhorn 1.11.2, CloudNativePG 1.29.1, cert-manager with
   `letsencrypt-prod`, Traefik and oauth2-proxy are cluster-owned prerequisites.
@@ -69,17 +67,17 @@ literals, shell command arguments or Argo Application parameters.
 
 | Namespace | Secret | Required file keys |
 | --- | --- | --- |
-| workbench-system | controlplane-secrets | control_token, controller_token, database_url, database_ca.crt |
-| workbench-system | runtime-controller-secrets | controller_token, gateway_service_token, grant_secret |
-| workbench-system | dashboard-secrets | control_token |
-| workbench-system | mcp-secrets | control_token, mcp_token |
-| workbench-egress | inference-gateway-secrets | gateway_service_token, subscription_vault_token (empty in fixture mode) |
-| workbench-egress | credential-broker-secrets | gateway_service_token |
-| workbench-egress | egress-gateway-secrets | gateway_service_token |
-| workbench-egress | inference-gateway-config | inference-gateway.json |
-| workbench-egress | credential-broker-config | credential-broker.json |
-| workbench-egress | egress-gateway-config | empty Secret in fixture mode |
-| all three namespaces | harbormaster-registry | .dockerconfigjson; type kubernetes.io/dockerconfigjson |
+| harbormaster | controlplane-secrets | control_token, controller_token, database_url, database_ca.crt |
+| harbormaster | runtime-controller-secrets | controller_token, gateway_service_token, grant_secret |
+| harbormaster | dashboard-secrets | control_token |
+| harbormaster | mcp-secrets | control_token, mcp_token |
+| harbormaster | inference-gateway-secrets | gateway_service_token, subscription_vault_token (empty in fixture mode) |
+| harbormaster | credential-broker-secrets | gateway_service_token |
+| harbormaster | egress-gateway-secrets | gateway_service_token |
+| harbormaster | inference-gateway-config | inference-gateway.json |
+| harbormaster | credential-broker-config | credential-broker.json |
+| harbormaster | egress-gateway-config | empty Secret in fixture mode |
+| both namespaces | harbormaster-registry | .dockerconfigjson; type kubernetes.io/dockerconfigjson |
 
 Use the same control token wherever `control_token` is required, the same controller
 token across controlplane/runtime, and the same gateway token across runtime and
@@ -92,19 +90,19 @@ Use native `kubectl create secret ... --from-file` or the secret manager to sati
 these contracts. For example, on a **new** installation with prepared files:
 
 ```sh
-kubectl --context default -n workbench-system create secret generic controlplane-secrets \
+kubectl --context default -n harbormaster create secret generic controlplane-secrets \
   --from-file=control_token=/secure/harbormaster/control_token \
   --from-file=controller_token=/secure/harbormaster/controller_token \
   --from-file=database_url=/secure/harbormaster/database_url \
   --from-file=database_ca.crt=/secure/harbormaster/database_ca.crt
 
-kubectl --context default -n workbench-egress create secret generic inference-gateway-config \
+kubectl --context default -n harbormaster create secret generic inference-gateway-config \
   --from-file=inference-gateway.json=config/inference.json
-kubectl --context default -n workbench-egress create secret generic credential-broker-config \
+kubectl --context default -n harbormaster create secret generic credential-broker-config \
   --from-file=credential-broker.json=config/broker.json
-kubectl --context default -n workbench-egress create secret generic egress-gateway-config
+kubectl --context default -n harbormaster create secret generic egress-gateway-config
 
-for ns in workbench-system workbench-egress workbench-reference; do
+for ns in harbormaster workbench-reference; do
   kubectl --context default -n "$ns" create secret generic harbormaster-registry \
     --type=kubernetes.io/dockerconfigjson \
     --from-file=.dockerconfigjson=/secure/harbormaster/registry.json
@@ -118,17 +116,20 @@ The overlay sets imagePullSecrets on both platform Pods and the workspace SA.
 
 CNPG generates `harbormaster-db-app` and `harbormaster-db-ca`. Prepare the database
 URL from that application's username/password with proper URL encoding, using
-`harbormaster-db-rw.workbench-system.svc:5432/workbench`,
+`harbormaster-db-rw.harbormaster.svc:5432/workbench`,
 `sslmode=verify-full&sslrootcert=/run/secrets/database_ca.crt`; copy `ca.crt` to the
 application's `database_ca.crt` file. Never disable verification. Refresh those
 application Secret values and restart controlplane after CNPG credential/CA rotation.
 
 ## Images and updates
 
-Platform images are pinned in `../../base/kustomization.yaml`. The deployed
+Platform images are pinned in `../../base/kustomization.yaml`. The currently pinned legacy
 platform images originate from commit `9e0238383601cd1f81ca411a91077a4cf66d5f24`,
 with the authenticated dashboard from `8edda8f89beefbb19b32a72b1f253889be1b3199`.
-Both source builds passed their required checks; all nine images were published.
+These legacy pins predate namespace consolidation. Before cutover, replace the
+runtime-controller and workspace image pins with digests built from the consolidation
+commit or later; old binaries enforce the previous namespace policy contract.
+Rebuild any optional Hermes image against the matching workspace base as well.
 
 After a successful GitHub build, obtain the immutable digest from its build output
 or authenticated registry inspection. Add an `images` override to this overlay
@@ -173,7 +174,7 @@ dry-run and diff against the intended cluster to validate CRDs/admission as well
 Deployment contains no custom bootstrap, acceptance, backup or recovery scripts.
 Live acceptance uses the platform's operational tooling separately from deployment.
 
-Live acceptance on 2026-11-15 confirmed guest kernel 6.18.56, RWOP second-writer
+Before namespace consolidation, live acceptance on 2026-11-15 confirmed guest kernel 6.18.56, RWOP second-writer
 rejection, retained files after application stop/start, recreated Pods, and Codex/T3
 workspace starts. T3 HTML was fetched through the private controlplane/runtime
 proxy. Workspace probes reached the labelled gateway and could not reach the API,
