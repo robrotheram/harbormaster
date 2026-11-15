@@ -171,13 +171,11 @@ application Secret values and restart controlplane after CNPG credential/CA rota
 
 ## Images and updates
 
-Platform images are pinned in `../../base/kustomization.yaml`; the workspace image
-is pinned in `../../base/runtime-controller.yaml`. The reference release uses the
-published images from commit `e1f59f2b5ba121fc7f5f1a4943628fb08f312070`, including
-the shared agent and Sandbox controller in the core namespace, and automatic
-application namespace provisioning for new projects.
-All nine GitHub container jobs and the release checks passed for this source.
-Rebuild any optional Hermes image against the matching workspace base as well.
+The reference image overrides are pinned in this overlay's `kustomization.yaml`;
+the matching workspace digest is in `runtime-controller-patch.yaml`. This release
+uses source commit `88bedf9939c75b611019d0f9a76ca54906f47bae`, adding personal
+Codex subscription imports and separate HTTPS browser/desktop worker origins.
+The base retains its independently pinned default release.
 
 After a successful GitHub build, obtain the immutable digest from its build output
 or authenticated registry inspection. Add an `images` override to this overlay
@@ -219,12 +217,26 @@ no operator OAuth middleware: the dashboard requires a one-use browser ticket or
 native desktop bearer. Cookies are secure and host-only. Worker origins cannot
 access the operator API. Application preview hosting remains separately configured.
 
-After upgrading, restart the idle shared worker to receive `CODEX_MODEL`. The
+For an upgrade, stop the idle shared worker through the application API, update
+its suspended Sandbox image and `CODEX_MODEL` environment entry to match the
+controller defaults, then start it through the application API. Preserve the
+Sandbox UID, grant generation, existing claim, home ID and project state. Changing
+controller defaults alone does not rewrite an existing Sandbox template. The
 workspace supervisor repairs empty initial model selections while retaining
-explicit model choices. Existing image pins must be updated to builds containing
-these changes before applying this overlay; configuration alone cannot add the UI.
+explicit model choices.
 
 ## Acceptance and recovery
+
+The 2026-11-15 personal-subscription rollout was verified live: all seven platform
+deployments and the shared worker became Ready; the subscription API required a
+verified user identity, rejected API-key imports, and kept credential resolution
+separate from control authority. Both worker origins presented valid TLS, browser
+access required a ticket, and desktop session inspection remained unauthenticated
+without native credentials. The native T3 console responded through controlplane.
+The runtime, console and initial T3 selection use `gpt-5.4`. All 19 workspace file
+checksums matched before and after the upgrade, with the same PVC and PV. No user
+subscription was imported or charged during acceptance; a real Codex turn still
+requires the user to save and load a current ChatGPT login.
 
 `make kubernetes-check` validates the declarative deployment offline. Use server
 dry-run and diff against the intended cluster to validate CRDs/admission as well.

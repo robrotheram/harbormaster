@@ -38,8 +38,10 @@ The gateway's policy still bounds allowed model IDs and destination CIDRs. Revie
 For other deployments, configure the gateway's `CONTROLPLANE_URL`, enable
 `subscriptions.user_accounts`, provide a Codex provider policy, set `CODEX_MODEL`
 on the runtime controller, and supply the same gateway service token through
-`SUBSCRIPTION_GATEWAY_TOKEN_FILE` on controlplane. Restart retained workers to
-receive a changed model setting. No user login is bundled in deployment manifests.
+`SUBSCRIPTION_GATEWAY_TOKEN_FILE` on controlplane. For retained Kubernetes workers,
+update the suspended Sandbox image/model template before restarting; controller
+defaults do not rewrite existing templates. No user login is bundled in deployment
+manifests.
 
 ## Legacy operator-managed credentials
 

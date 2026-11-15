@@ -25,3 +25,18 @@ patches:
 - path: egress-gateway-patch.yaml
 - path: bindings-patch.yaml
 - path: gateway-services-patch.yaml
+images:
+- name: ghcr.io/robrotheram/harbormaster/controlplane
+  digest: sha256:9a9e8105f6601e078880c9e6988fa5667ef9b5470cc454d1b55d3c5068592812
+- name: ghcr.io/robrotheram/harbormaster/runtime-controller
+  digest: sha256:2dacc3fad91d7fd90752ff03cf57070f6c0b81514701df22abd78ccb0d4a7d40
+- name: ghcr.io/robrotheram/harbormaster/dashboard
+  digest: sha256:fc68285006b7940ad8f9ce910e48ef485098b4dbfb9c0d170e5bdbba2e7ab45d
+- name: ghcr.io/robrotheram/harbormaster/mcp
+  digest: sha256:ee41cf2a93f44fe7a99cde8554090ce8f9b8d819caa35c64c91cb7f746586238
+- name: ghcr.io/robrotheram/harbormaster/inference-gateway
+  digest: sha256:5f86a9e0d54d344a408dd6792d35a9020f5d85f68f8f5281b528e536ce9edf87
+- name: ghcr.io/robrotheram/harbormaster/credential-broker
+  digest: sha256:9e73ce23a922cafd433879e79d36f17ec9c8b84dc3366a59bb2817c33136aa85
+- name: ghcr.io/robrotheram/harbormaster/egress-gateway
+  digest: sha256:f7a7d102fd04f5810097ee811ced326d93cb88a502ef0502f47b829a3eb71dfb
