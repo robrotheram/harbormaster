@@ -229,7 +229,7 @@ export function Workspaces({ project }: { project: Project }) {
         </div>
       )}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="inline-flex h-8 items-center border bg-background p-0.5">
+        <div className="inline-flex min-h-8 max-w-full flex-wrap items-center border bg-background p-0.5">
           {(
             [
               ["all", "All"],
