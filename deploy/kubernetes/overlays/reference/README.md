@@ -24,6 +24,9 @@ namespaces. It is **not an in-place rename** of the earlier two-core-namespace
 installation. Existing installations must follow [the migration procedure](namespace-migration.md)
 before applying this overlay. Applying directly would initialize a new empty database,
 leave existing Secrets behind and conflict with the reserved gateway Service IPs.
+The reference cluster completed this migration on 2026-11-15; the old application
+Deployments are scaled to zero, with its database and stopped volumes retained
+for rollback.
 
 For an empty reference environment, install the external prerequisites, then:
 
@@ -47,7 +50,8 @@ Use project-specific folders to organize repositories in the shared filesystem.
 
 Creating a project or submitting work does not allocate another workspace or
 namespace. The worker is provisioned idempotently at controlplane startup. The
-workspace namespace quota permits one running Pod. Existing stopped workspace
+workspace namespace quota permits one running Pod. Its CPU and memory budget
+includes the Kata VM overhead. Existing stopped workspace
 volumes are retained for recovery; they are not adopted or deleted automatically.
 Branch workers, additional agent types and deletion of the shared worker are
 unavailable in shared mode. Remove the explicit setting only through a reviewed
@@ -139,12 +143,11 @@ application Secret values and restart controlplane after CNPG credential/CA rota
 
 ## Images and updates
 
-Platform images are pinned in `../../base/kustomization.yaml`. The currently pinned legacy
-platform images originate from commit `9e0238383601cd1f81ca411a91077a4cf66d5f24`,
-with the authenticated dashboard from `8edda8f89beefbb19b32a72b1f253889be1b3199`.
-These legacy pins predate namespace consolidation. Before cutover, replace the
-runtime-controller and workspace image pins with digests built from the consolidation
-commit or later; old binaries enforce the previous namespace policy contract.
+Platform images are pinned in `../../base/kustomization.yaml`; the workspace image
+is pinned in `../../base/runtime-controller.yaml`. The reference release uses the
+published images from commit `01ec2ac80727d73eb94b0d546b443216245da1b9`, including
+namespace consolidation, native operational tooling and shared-workspace mode.
+All nine GitHub container jobs and the release checks passed for this source.
 Rebuild any optional Hermes image against the matching workspace base as well.
 
 After a successful GitHub build, obtain the immutable digest from its build output
@@ -189,6 +192,20 @@ routing needs separate origins/certificates and capability-authentication design
 dry-run and diff against the intended cluster to validate CRDs/admission as well.
 Deployment contains no custom bootstrap, acceptance, backup or recovery scripts.
 Live acceptance uses the platform's operational tooling separately from deployment.
+
+Shared-mode acceptance on 2026-11-15 verified all seven core Deployments ready in
+`harbormaster`, a healthy restored database, valid HTTPS and Entra redirection.
+Project, workspace and agent-home metadata matched exactly before the new
+controlplane started. Two temporary projects saw the same `ws_shared` worker and
+agent home, and created distinct instruction files on its shared filesystem.
+Those files and the PVC/volume identities survived stop/start unchanged. The T3
+console returned HTML through the authenticated API. The single worker ran with
+Kata on `ds9.exceptionerror.io` (guest kernel 6.18.56). Gateway connections succeeded;
+controlplane, PostgreSQL, cluster API and public Internet connections were blocked.
+The Pod quota reported one of one in use, including Kata resource overhead.
+Temporary projects and their test files were removed; the shared worker was left
+ready. The final live Kustomize diff was empty. The two legacy Sandboxes stayed
+suspended with their original PVCs; local Compose was not changed.
 
 Before namespace consolidation, live acceptance on 2026-11-15 confirmed guest kernel 6.18.56, RWOP second-writer
 rejection, retained files after application stop/start, recreated Pods, and Codex/T3
