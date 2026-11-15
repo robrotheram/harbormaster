@@ -89,6 +89,9 @@ func serveConnectionPage(w http.ResponseWriter, r *http.Request, kind, code stri
 		host = net.JoinHostPort(host, port)
 	}
 	workbench := (&url.URL{Scheme: "http", Host: host, Path: "/app/"}).String()
+	if label, ok := r.Context().Value(publicWorkerIngressKey{}).(string); ok {
+		workbench = (&url.URL{Scheme: "https", Host: strings.TrimPrefix(r.Host, label+"."), Path: "/app/"}).String()
+	}
 	config, _ := json.Marshal(messages)
 	parents := "'none'"
 	if kind == "preview" {

@@ -49,6 +49,10 @@ func TestHostedSharedWorkerRequiresTicketAndSecureCookie(t *testing.T) {
 	if w := call("GET", "https://ws-shared.reference.example/ui-api/subscription", "", nil); w.Code != 401 {
 		t.Fatal("worker origin can manage subscriptions", w.Code)
 	}
+	landing := call("GET", "https://ws-shared.reference.example/", "", nil)
+	if !strings.Contains(landing.Body.String(), "https://reference.example/app/") {
+		t.Fatal("hosted recovery link points away from dashboard")
+	}
 	connected := call("POST", "https://ws-shared.reference.example/connect", `{"ticket":"`+result.Ticket+`"}`, nil)
 	if connected.Code != 200 {
 		t.Fatal(connected.Code, connected.Body)
