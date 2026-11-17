@@ -23,3 +23,20 @@ To review finished work again, move it from Done to Review on the issue board.
 Moving it to Planned or In progress reopens the task for further work without
 starting the agent. The previous approval or closure is retained in review
 history; the current decision is cleared.
+
+Request changes also supports **Capture screenshot** (choose a browser tab, window,
+or screen) and **Attach screenshot** (PNG/JPEG). Add a note to each image, remove
+unwanted captures, then send the changes with your overall comment. Up to four
+screenshots are resized to a maximum dimension of 1920 pixels and limited to
+1 MiB each. Draft images stay in memory for the current session; sending saves
+immutable private workspace files referenced by the revision request. Browsers
+without screen capture support can still attach existing screenshots.
+
+**Agent review** starts a separate research work item in the same workspace,
+using the task's agent selection. Add an optional focus, open its conversation,
+or copy its returned findings into the change notes for editing before sending.
+The review is instructed to inspect and report without making changes; this is
+an agent instruction, not a read-only workspace sandbox. It does not decide the
+original review. The source revision and retained outputs are included in its
+request; workspace files remain live. The separate review remains available in
+Work after leaving the page.

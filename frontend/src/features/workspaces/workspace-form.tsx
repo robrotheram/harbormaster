@@ -75,8 +75,8 @@ export function WorkspaceForm({
             <p className="form-note">
               Copy the current project files from{" "}
               {parent.name || "the parent worker"} into separate storage. Its
-              conversations and agent home are not copied. The parent must be
-              running and idle.
+              conversations and agent settings are not copied. The parent must
+              be running and idle.
             </p>
           )}
           <label>
@@ -106,7 +106,8 @@ export function WorkspaceForm({
             </NativeSelect>
             <Link
               to="/projects/$projectId/$section"
-              params={{ projectId: project.id, section: "hermes" }}
+              params={{ projectId: project.id, section: "settings" }}
+              search={{ tab: "hermes" }}
               className="text-xs font-normal underline underline-offset-4"
             >
               Configure Hermes for this project

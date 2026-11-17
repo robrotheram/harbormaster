@@ -86,3 +86,49 @@ func TestDeleteRefreshesStaleStoppedMetadata(t *testing.T) {
 		t.Fatal("deleted workspace still running")
 	}
 }
+
+func TestHumanProjectAdminDeletion(t *testing.T) {
+	for _, sharedMode := range []bool{false, true} {
+		t.Run(fmt.Sprintf("shared=%t", sharedMode), func(t *testing.T) {
+			s, _ := setup(t)
+			if sharedMode {
+				s.cfg.SharedWorkspaceID = "ws_shared"
+				if _, err := s.EnsureSharedWorkspace(t.Context()); err != nil {
+					t.Fatal(err)
+				}
+			}
+			project := domainProject(t, s, "human-delete")
+			path := "/v1/projects/" + project.ID
+			for _, person := range []struct{ email, role string }{{"admin@example.com", "admin"}, {"member@example.com", "member"}} {
+				body := fmt.Sprintf(`{"email":%q,"role":%q,"revision":0,"action":"invite"}`, person.email, person.role)
+				if got := request(t, s, "POST", path+"/members", body); got.Code != 200 {
+					t.Fatal(got.Code, got.Body)
+				}
+				if got := humanRequest(t, s, person.email, "POST", path+"/accept-invitation", `{"revision":1}`); got.Code != 200 {
+					t.Fatal(got.Code, got.Body)
+				}
+			}
+			body := fmt.Sprintf(`{"confirm_id":%q}`, project.ID)
+			for _, email := range []string{"member@example.com", "outsider@example.com"} {
+				got := humanRequest(t, s, email, "POST", path+"/delete", body)
+				if got.Code != 403 && got.Code != 404 {
+					t.Fatalf("unauthorized deletion: %d %s", got.Code, got.Body)
+				}
+			}
+			if got := humanRequest(t, s, "admin@example.com", "POST", path+"/delete", `{"confirm_id":"wrong"}`); got.Code != 400 {
+				t.Fatal("confirmation bypassed", got.Code, got.Body)
+			}
+			if got := humanRequest(t, s, "admin@example.com", "POST", path+"/delete", body); got.Code != 200 {
+				t.Fatal("admin deletion denied", got.Code, got.Body)
+			}
+			if _, err := s.Store.Project(t.Context(), project.ID); err == nil {
+				t.Fatal("project retained")
+			}
+			if sharedMode {
+				if _, err := s.Store.Workspace(t.Context(), "ws_shared"); err != nil {
+					t.Fatal("shared worker removed", err)
+				}
+			}
+		})
+	}
+}

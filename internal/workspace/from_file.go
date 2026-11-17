@@ -19,13 +19,14 @@ func (m *Manager) submitFile(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		Digest   string `json:"specification_digest"`
 		Path     string `json:"instruction_path"`
+		Model    string `json:"model,omitempty"`
 		Provider string `json:"provider"`
 		Key      string `json:"idempotency_key"`
 	}
 	if !shared.Decode(w, r, &input, 2048) {
 		return
 	}
-	if !shared.ValidProjectFile(input.Path) || !shared.ValidKey(input.Key) || (input.Provider != "" && input.Provider != "codex" && input.Provider != "claude" && !(input.Provider == "hermes" && m.cfg.AgentKind == "hermes")) {
+	if (input.Model != "" && !shared.ValidWorkSelection(input.Provider, input.Model)) || !shared.ValidProjectFile(input.Path) || !shared.ValidKey(input.Key) || (input.Provider != "" && input.Provider != "codex" && input.Provider != "claude" && !(input.Provider == "hermes" && m.cfg.AgentKind == "hermes")) {
 		shared.Error(w, 400, "INVALID_REQUEST")
 		return
 	}
@@ -41,7 +42,7 @@ func (m *Manager) submitFile(w http.ResponseWriter, r *http.Request) {
 	if input.Provider == "" {
 		input.Provider = m.cfg.DefaultProvider
 	}
-	task, err := m.tasks.FileAcceptance(r.Context(), input.Key, input.Path, input.Provider, input.Digest)
+	task, err := m.tasks.FileAcceptance(r.Context(), input.Key, input.Path, input.Provider, input.Digest, input.Model)
 	if errors.Is(err, taskstore.ErrConflict) {
 		shared.Error(w, 409, "IDEMPOTENCY_CONFLICT")
 		return
@@ -82,7 +83,7 @@ func (m *Manager) submitFile(w http.ResponseWriter, r *http.Request) {
 		shared.Error(w, 409, "SPECIFICATION_DIGEST_MISMATCH")
 		return
 	}
-	task, status, err := m.submitLocked(submit{Instruction: string(b), Key: input.Key, Provider: input.Provider, SourcePath: input.Path, SpecificationDigest: input.Digest})
+	task, status, err := m.submitLocked(submit{Instruction: string(b), Key: input.Key, Provider: input.Provider, Model: input.Model, SourcePath: input.Path, SpecificationDigest: input.Digest})
 	if err != nil {
 		shared.Error(w, status, err.Error())
 		return

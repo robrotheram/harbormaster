@@ -1,0 +1,54 @@
+.review-comment {
+  max-height: 42vh;
+  overflow-y: auto;
+}
+.review-screenshots {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+}
+.review-screenshots > div:first-of-type {
+  flex-wrap: wrap;
+}
+.review-screenshots input[type="file"] {
+  display: block;
+  max-width: 100%;
+  font-size: 0.8rem;
+}
+.review-screenshot {
+  display: grid;
+  gap: 0.5rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+}
+.review-screenshot img {
+  object-fit: contain;
+  justify-self: start;
+}
+.review-agent {
+  flex-shrink: 0;
+  max-height: 30vh;
+  overflow-y: auto;
+  border-top: 1px solid var(--border);
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+}
+.review-agent summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.review-agent > :not(summary) {
+  margin-top: 0.75rem;
+}
+
+/* Keep evidence usable when feedback or findings occupy a short viewport. */
+.review-detail {
+  overflow-y: auto;
+}
+.review-detail .review-content {
+  min-height: 160px;
+  flex-shrink: 0;
+}

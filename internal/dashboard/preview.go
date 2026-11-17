@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -20,6 +21,7 @@ import (
 // previewIngress has no target supplied by the browser. Its only byte source is
 // authenticated workspace services, which check revocation on every request.
 type previewBinding struct {
+	Human                             *shared.HumanIdentity
 	Embedded                          bool
 	ParentOrigin                      string
 	Application                       bool
@@ -42,7 +44,7 @@ func (p *previewIngress) call(r *http.Request, method, endpoint string, body []b
 	if err != nil {
 		return 503, nil
 	}
-	req.Header.Set("Authorization", "Bearer "+p.token)
+	req.Header.Set("Authorization", "Bearer "+humanToken(r, p.token))
 	req.Header.Set("Content-Type", "application/json")
 	res, err := p.client.Do(req)
 	if err != nil {
@@ -94,6 +96,15 @@ func (p *previewIngress) issue(w http.ResponseWriter, r *http.Request, workspace
 	}
 	_, port, _ := net.SplitHostPort(r.Host)
 	host := previewHost(workspace, service, port)
+	parentOrigin := "http://" + r.Host
+	scheme := "http"
+	// Only the authenticated dashboard origin determines public preview URLs.
+	// Forwarded headers and browser-supplied targets are not trusted.
+	if origin, ok := r.Context().Value(authenticatedOriginKey{}).(string); ok && strings.HasPrefix(origin, "https://") {
+		parentOrigin = origin
+		scheme = "https"
+		host = strings.TrimSuffix(previewHost(workspace, service, ""), ".localhost") + "." + strings.TrimPrefix(origin, "https://")
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	for k, v := range p.tickets {
@@ -111,14 +122,18 @@ func (p *previewIngress) issue(w http.ResponseWriter, r *http.Request, workspace
 		return
 	}
 	key := shared.NewID("ticket_")
-	p.tickets[key] = previewBinding{Embedded: input.Embedded, ParentOrigin: "http://" + r.Host, Application: state.Kind == "application", Workspace: workspace, Service: service, Host: host, Project: owner.Project, Expiry: time.Now().Add(time.Minute), ServiceExpiry: time.Unix(state.Expiry, 0)}
-	shared.JSON(w, 200, map[string]string{"preview_url": "http://" + host + "/connect#ticket=" + url.QueryEscape(key)})
+	var human *shared.HumanIdentity
+	if h, ok := r.Context().Value(humanIdentityKey{}).(shared.HumanIdentity); ok {
+		human = &h
+	}
+	p.tickets[key] = previewBinding{Human: human, Embedded: input.Embedded, ParentOrigin: parentOrigin, Application: state.Kind == "application", Workspace: workspace, Service: service, Host: host, Project: owner.Project, Expiry: time.Now().Add(time.Minute), ServiceExpiry: time.Unix(state.Expiry, 0)}
+	shared.JSON(w, 200, map[string]string{"preview_url": scheme + "://" + host + "/connect#ticket=" + url.QueryEscape(key)})
 }
 func (p *previewIngress) serve(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; font-src 'self'; media-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors "+previewParents(r.Host)+"; worker-src 'none'")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; font-src 'self'; media-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors "+previewParents(r)+"; worker-src 'none'")
 	if serveConnectionAsset(w, r) {
 		return
 	}
@@ -127,7 +142,7 @@ func (p *previewIngress) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Path == "/connect" && r.Method == "POST" {
-		if r.Header.Get("Origin") != "http://"+r.Host || r.Header.Get("X-Workbench-Request") != "1" {
+		if r.Header.Get("Origin") != previewOrigin(r) || r.Header.Get("X-Workbench-Request") != "1" {
 			writeConnectionError(w, r, 403, "ORIGIN_REJECTED", "preview")
 			return
 		}
@@ -152,7 +167,7 @@ func (p *previewIngress) serve(w http.ResponseWriter, r *http.Request) {
 		key := shared.NewID("session_")
 		p.sessions[key] = binding
 		p.mu.Unlock()
-		cookie := &http.Cookie{Name: "awb_preview", Value: key, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, Expires: binding.Expiry}
+		cookie := &http.Cookie{Name: "awb_preview", Value: key, Path: "/", HttpOnly: true, Secure: workerSecure(r), SameSite: http.SameSiteStrictMode, Expires: binding.Expiry}
 		if binding.Embedded {
 			cookie.Secure = true
 			cookie.SameSite = http.SameSiteNoneMode
@@ -178,8 +193,11 @@ func (p *previewIngress) serve(w http.ResponseWriter, r *http.Request) {
 		writeConnectionError(w, r, 401, "SESSION_EXPIRED", "preview")
 		return
 	}
+	if binding.Human != nil {
+		r = r.WithContext(context.WithValue(r.Context(), humanIdentityKey{}, *binding.Human))
+	}
 	if binding.Application {
-		if (r.Header.Get("Upgrade") != "" || (r.Method != "GET" && r.Method != "HEAD" && r.Method != "OPTIONS")) && r.Header.Get("Origin") != "http://"+r.Host {
+		if (r.Header.Get("Upgrade") != "" || (r.Method != "GET" && r.Method != "HEAD" && r.Method != "OPTIONS")) && r.Header.Get("Origin") != previewOrigin(r) {
 			writeConnectionError(w, r, 403, "ORIGIN_REJECTED", "preview")
 			return
 		}

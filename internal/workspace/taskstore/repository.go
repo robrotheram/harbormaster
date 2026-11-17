@@ -41,7 +41,7 @@ func (r *Repository) Init(ctx context.Context) error {
 		}
 	}
 	// Additive migration: old receipts retain the empty digest contract.
-	var count int
+	var count, modelCount int
 	rows, err := tx.QueryContext(ctx, `PRAGMA table_info(file_acceptances)`)
 	if err != nil {
 		return err
@@ -53,6 +53,9 @@ func (r *Repository) Init(ctx context.Context) error {
 		if err := rows.Scan(&cid, &name, &typ, &nn, &def, &pk); err != nil {
 			rows.Close()
 			return err
+		}
+		if name == "model" {
+			modelCount++
 		}
 		if name == "specification_digest" {
 			count++
@@ -66,10 +69,15 @@ func (r *Repository) Init(ctx context.Context) error {
 			return err
 		}
 	}
+	if modelCount == 0 {
+		if _, err := tx.ExecContext(ctx, `ALTER TABLE file_acceptances ADD COLUMN model TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
 	return tx.Commit()
 }
 
-type Submission struct{ Instruction, Key, Provider, SourcePath, SpecificationDigest string }
+type Submission struct{ Instruction, Key, Provider, Model, SourcePath, SpecificationDigest string }
 type Acceptance struct {
 	Task    shared.Task
 	Created bool
@@ -95,15 +103,19 @@ func (r *Repository) Get(ctx context.Context, id string) (shared.Task, error) {
 	return r.scan(r.db.QueryRowContext(ctx, `SELECT id,state,error_code,created_at,updated_at FROM tasks WHERE id=?`, id))
 }
 func (r *Repository) FileAcceptance(ctx context.Context, key, path, provider string, digest ...string) (shared.Task, error) {
-	var oldPath, oldProvider, id, oldDigest string
-	if err := r.db.QueryRowContext(ctx, `SELECT instruction_path,provider,task_id,specification_digest FROM file_acceptances WHERE idem_key=?`, key).Scan(&oldPath, &oldProvider, &id, &oldDigest); err != nil {
+	var oldPath, oldProvider, id, oldDigest, oldModel string
+	if err := r.db.QueryRowContext(ctx, `SELECT instruction_path,provider,task_id,specification_digest,model FROM file_acceptances WHERE idem_key=?`, key).Scan(&oldPath, &oldProvider, &id, &oldDigest, &oldModel); err != nil {
 		return shared.Task{}, err
 	}
 	requested := ""
 	if len(digest) > 0 {
 		requested = digest[0]
 	}
-	if path != oldPath || provider != oldProvider || requested != oldDigest {
+	model := ""
+	if len(digest) > 1 {
+		model = digest[1]
+	}
+	if model != oldModel || path != oldPath || provider != oldProvider || requested != oldDigest {
 		return shared.Task{}, ErrConflict
 	}
 	return r.Get(ctx, id)
@@ -118,6 +130,9 @@ func (r *Repository) Accept(ctx context.Context, s Submission, now time.Time) (A
 	}
 	if s.Provider != "" {
 		input += "\x00" + s.Provider
+	}
+	if s.Model != "" {
+		input += "\x00model:" + s.Model
 	}
 	sum := sha256.Sum256([]byte(input))
 	fingerprint := hex.EncodeToString(sum[:])
@@ -150,7 +165,7 @@ func (r *Repository) Accept(ctx context.Context, s Submission, now time.Time) (A
 		return Acceptance{}, err
 	}
 	if s.SourcePath != "" {
-		if _, err = tx.ExecContext(ctx, `INSERT INTO file_acceptances(idem_key,instruction_path,provider,task_id,specification_digest) VALUES(?,?,?,?,?)`, s.Key, s.SourcePath, s.Provider, id, s.SpecificationDigest); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO file_acceptances(idem_key,instruction_path,provider,task_id,specification_digest,model) VALUES(?,?,?,?,?,?)`, s.Key, s.SourcePath, s.Provider, id, s.SpecificationDigest, s.Model); err != nil {
 			return Acceptance{}, err
 		}
 	}

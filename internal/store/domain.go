@@ -57,66 +57,47 @@ func (s *Store) CreateProject(ctx context.Context, p shared.Project, key string)
 	if err != nil {
 		return err
 	}
-	_, err = s.DB.ExecContext(ctx, s.query(`INSERT INTO projects(id,create_key,metadata) VALUES(?,?,?)`), p.ID, key, string(b))
-	return err
-}
-func (s *Store) AgentHomes(ctx context.Context, project string) ([]shared.AgentHome, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT metadata FROM agent_homes WHERE workspace_id NOT IN (SELECT id FROM deleted_resources WHERE kind='workspace') ORDER BY id`)
+	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	defer rows.Close()
-	out := []shared.AgentHome{}
-	for rows.Next() {
-		var h shared.AgentHome
-		var b string
-		if err = rows.Scan(&b); err != nil {
-			return nil, err
-		}
-		if err = json.Unmarshal([]byte(b), &h); err != nil {
-			return nil, err
-		}
-		if project == "" || h.ProjectID == project {
-			out = append(out, h)
+	defer tx.Rollback()
+	if _, err = tx.ExecContext(ctx, s.query(`INSERT INTO projects(id,create_key,metadata) VALUES(?,?,?)`), p.ID, key, string(b)); err != nil {
+		return err
+	}
+	if p.Sample {
+		if err = s.createSampleTasks(ctx, tx, p); err != nil {
+			return err
 		}
 	}
-	return out, rows.Err()
+	return tx.Commit()
 }
 func (s *Store) initDomains(ctx context.Context) error {
 	for _, q := range []string{
 		`CREATE TABLE IF NOT EXISTS projects(id TEXT PRIMARY KEY,create_key TEXT UNIQUE NOT NULL,metadata TEXT NOT NULL)`,
+		// Historical catalog retained for upgrades; no active readers or writers.
 		`CREATE TABLE IF NOT EXISTS agent_homes(id TEXT PRIMARY KEY,project_id TEXT NOT NULL,workspace_id TEXT UNIQUE NOT NULL,metadata TEXT NOT NULL)`,
 	} {
 		if _, err := s.DB.ExecContext(ctx, q); err != nil {
 			return err
 		}
 	}
-	return s.reconcileLegacyHomes(ctx)
+	return s.reconcileLegacyProjects(ctx)
 }
 
-func (s *Store) reconcileLegacyHomes(ctx context.Context) error {
+func (s *Store) reconcileLegacyProjects(ctx context.Context) error {
 	legacy := shared.Project{ID: "default", Name: "Legacy workspaces", Legacy: true, CreatedAt: time.Now().UTC()}
 	b, _ := json.Marshal(legacy)
 	if _, err := s.DB.ExecContext(ctx, s.query(`INSERT INTO projects(id,create_key,metadata) VALUES(?,?,?) ON CONFLICT(id) DO NOTHING`), legacy.ID, "legacy-default", string(b)); err != nil {
 		return err
 	}
-	// Read the old metadata first; do not hold a rows connection while creating
-	// homes because the SQLite development store deliberately uses one connection.
+	// Validate legacy workspace project bindings without rewriting storage IDs.
 	workspaces, err := s.Workspaces(ctx)
 	if err != nil {
 		return err
 	}
 	for _, w := range workspaces {
 		if _, err = s.Project(ctx, w.ProjectID); err != nil {
-			return err
-		}
-		homeID := w.HomeID
-		if homeID == "" {
-			homeID = "legacy_" + w.ID
-		}
-		h := shared.AgentHome{ID: homeID, ProjectID: w.ProjectID, WorkspaceID: w.ID, Kind: w.AgentKind, CreatedAt: w.CreatedAt}
-		b, _ := json.Marshal(h)
-		if _, err = s.DB.ExecContext(ctx, s.query(`INSERT INTO agent_homes(id,project_id,workspace_id,metadata) VALUES(?,?,?,?) ON CONFLICT(workspace_id) DO NOTHING`), h.ID, h.ProjectID, h.WorkspaceID, string(b)); err != nil {
 			return err
 		}
 	}
@@ -153,11 +134,6 @@ func (s *Store) createWorkspace(ctx context.Context, w shared.Workspace, key str
 		return err
 	}
 	if _, err = tx.ExecContext(ctx, s.query(`INSERT INTO workspaces(id,create_key,metadata) VALUES(?,?,?)`), w.ID, workspaceKey(w.ProjectID, key), string(b)); err != nil {
-		return err
-	}
-	h := shared.AgentHome{ID: w.HomeID, ProjectID: w.ProjectID, WorkspaceID: w.ID, Kind: w.AgentKind, CreatedAt: w.CreatedAt}
-	b, _ = json.Marshal(h)
-	if _, err = tx.ExecContext(ctx, s.query(`INSERT INTO agent_homes(id,project_id,workspace_id,metadata) VALUES(?,?,?,?)`), h.ID, h.ProjectID, h.WorkspaceID, string(b)); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -209,4 +185,26 @@ func (s *Store) SaveProjectNamespace(ctx context.Context, p shared.Project) erro
 		return sql.ErrNoRows
 	}
 	return err
+}
+
+// RenameProject changes only the display name. Callers serialize project mutations.
+func (s *Store) RenameProject(ctx context.Context, id, name string) (shared.Project, error) {
+	p, err := s.Project(ctx, id)
+	if err != nil {
+		return p, err
+	}
+	p.Name = name
+	body, err := json.Marshal(p)
+	if err != nil {
+		return p, err
+	}
+	result, err := s.DB.ExecContext(ctx, s.query(`UPDATE projects SET metadata=? WHERE id=? AND id NOT IN (SELECT id FROM deleted_resources WHERE kind='project')`), string(body), id)
+	if err != nil {
+		return p, err
+	}
+	n, err := result.RowsAffected()
+	if err == nil && n != 1 {
+		err = sql.ErrNoRows
+	}
+	return p, err
 }

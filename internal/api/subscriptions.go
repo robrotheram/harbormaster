@@ -17,6 +17,10 @@ import (
 const subscriptionUserHeader = "X-Workbench-Subscription-User"
 
 func (s *Server) subscriptionUser(w http.ResponseWriter, r *http.Request) string {
+	p, _ := r.Context().Value(principalKey{}).(principal)
+	if p.human.ID != "" {
+		return p.human.ID
+	}
 	if !s.admin(w, r) {
 		return ""
 	}

@@ -31,7 +31,7 @@ export function SubscriptionButton({ workspace }: { workspace: Workspace }) {
     </>
   );
 }
-function SubscriptionDialog({
+export function SubscriptionDialog({
   workspace,
   onClose,
 }: {

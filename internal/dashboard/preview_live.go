@@ -13,7 +13,18 @@ import (
 	"strings"
 )
 
-func previewParents(host string) string {
+func previewOrigin(r *http.Request) string {
+	if workerSecure(r) {
+		return "https://" + r.Host
+	}
+	return "http://" + r.Host
+}
+
+func previewParents(r *http.Request) string {
+	if label, ok := r.Context().Value(publicWorkerIngressKey{}).(string); ok {
+		return "https://" + strings.TrimPrefix(r.Host, label+".")
+	}
+	host := r.Host
 	_, port, _ := net.SplitHostPort(host)
 	suffix := ""
 	if port != "" {
@@ -21,8 +32,13 @@ func previewParents(host string) string {
 	}
 	return "http://127.0.0.1" + suffix + " http://localhost" + suffix
 }
-func previewPolicy(host string) string {
-	return "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self' ws://" + host + "; font-src 'self' data:; media-src 'self' blob:; base-uri 'self'; form-action 'self'; frame-ancestors " + previewParents(host) + "; worker-src 'self' blob:"
+func previewPolicy(r *http.Request) string {
+	host := r.Host
+	websocketScheme := "ws://"
+	if workerSecure(r) {
+		websocketScheme = "wss://"
+	}
+	return "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self' " + websocketScheme + host + "; font-src 'self' data:; media-src 'self' blob:; base-uri 'self'; form-action 'self'; frame-ancestors " + previewParents(r) + "; worker-src 'self' blob:"
 }
 func (p *previewIngress) live(w http.ResponseWriter, r *http.Request, binding previewBinding) {
 	// ReverseProxy adds response headers. Replace the connect-page policy, rather
@@ -34,10 +50,10 @@ func (p *previewIngress) live(w http.ResponseWriter, r *http.Request, binding pr
 		pr.Out.URL.Host = target.Host
 		pr.Out.URL.Path = "/v1/workspaces/" + binding.Workspace + "/application-proxy/" + binding.Service + r.URL.Path
 		pr.Out.URL.RawPath = ""
-		pr.Out.Header.Set("Authorization", "Bearer "+p.token)
+		pr.Out.Header.Set("Authorization", "Bearer "+humanToken(r, p.token))
 		pr.Out.Header.Del("Accept-Encoding")
 	}, ModifyResponse: func(res *http.Response) error {
-		res.Header.Set("Content-Security-Policy", previewPolicy(r.Host))
+		res.Header.Set("Content-Security-Policy", previewPolicy(r))
 		res.Header.Del("X-Frame-Options")
 		res.Header.Set("Cache-Control", "no-store")
 		res.Header.Set("Referrer-Policy", "no-referrer")

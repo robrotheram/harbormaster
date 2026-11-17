@@ -16,6 +16,7 @@ func (s *Server) registerWork(mux *http.ServeMux) {
 	repo := orchestration.Repository{DB: s.Store.DB}
 	s.registerWorkExecution(mux, repo)
 	s.registerWorkConversation(mux, repo)
+	s.registerWorkResponsibility(mux, repo)
 	mux.HandleFunc("GET /v1/work-items", func(w http.ResponseWriter, r *http.Request) {
 		project, ok := s.ProjectForRequest(w, r, r.URL.Query().Get("project_id"))
 		if !ok {
@@ -65,6 +66,9 @@ func (s *Server) registerWork(mux *http.ServeMux) {
 		}
 		unlock := s.operations.Lock("work:" + r.PathValue("id"))
 		defer unlock()
+		if !s.authorizeWorkController(w, r, input.ProjectID, r.PathValue("id"), repo) {
+			return
+		}
 		item, err := repo.CancelWork(r.Context(), input.ProjectID, r.PathValue("id"), s.now())
 		if errors.Is(err, orchestration.ErrConflict) {
 			shared.Error(w, 409, "WORK_STATE_CONFLICT")
@@ -83,6 +87,8 @@ func (s *Server) registerWork(mux *http.ServeMux) {
 
 	mux.HandleFunc("POST /v1/work-items", func(w http.ResponseWriter, r *http.Request) {
 		var input struct {
+			Provider      string   `json:"provider,omitempty"`
+			Model         string   `json:"model,omitempty"`
 			Instruction   *string  `json:"instruction,omitempty"`
 			Presentation  string   `json:"presentation,omitempty"`
 			ArtifactPaths []string `json:"artifact_paths"`
@@ -96,7 +102,7 @@ func (s *Server) registerWork(mux *http.ServeMux) {
 		if !shared.Decode(w, r, &input, 400000) || !s.AuthorizeProject(w, r, input.ProjectID) {
 			return
 		}
-		if !shared.ValidKey(input.Key) || !shared.ValidID(input.ProjectID) || (input.Presentation != "" && input.Presentation != "interactive-v1") {
+		if !shared.ValidWorkSelection(input.Provider, input.Model) || !shared.ValidKey(input.Key) || !shared.ValidID(input.ProjectID) || (input.Presentation != "" && input.Presentation != "interactive-v1") {
 			shared.Error(w, 400, "INVALID_REQUEST")
 			return
 		}
@@ -216,7 +222,8 @@ func (s *Server) registerWork(mux *http.ServeMux) {
 				}
 			}
 		}
-		item, created, err := repo.CreateWork(r.Context(), shared.WorkItem{ArtifactPaths: input.ArtifactPaths, ProjectID: input.ProjectID, WorkspaceID: input.WorkspaceID, SpecificationPath: input.Path, SpecificationDigest: input.Digest, Kind: input.Kind, CreatedAt: s.now()}, input.Key)
+		actor, _ := r.Context().Value(principalKey{}).(principal)
+		item, created, err := repo.CreateWork(r.Context(), shared.WorkItem{ControllerID: actor.human.ID, Provider: input.Provider, Model: input.Model, ArtifactPaths: input.ArtifactPaths, ProjectID: input.ProjectID, WorkspaceID: input.WorkspaceID, SpecificationPath: input.Path, SpecificationDigest: input.Digest, Kind: input.Kind, CreatedAt: s.now()}, input.Key)
 		if errors.Is(err, orchestration.ErrConflict) {
 			shared.Error(w, 409, "IDEMPOTENCY_CONFLICT")
 			return

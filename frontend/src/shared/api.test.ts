@@ -67,7 +67,6 @@ describe("project data boundaries", () => {
     expect(fetch.mock.calls[0][0]).toBe(
       "/ui-api/workspaces?project_id=project-a",
     );
-    expect(keys.homes("a")).not.toEqual(keys.homes("b"));
     expect(keys.runs("a")).not.toEqual(keys.runs("b"));
     expect(keys.schedules("a")).not.toEqual(keys.schedules("b"));
   });

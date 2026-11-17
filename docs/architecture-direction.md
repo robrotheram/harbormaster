@@ -25,7 +25,7 @@ Use these concepts, with immutable project ownership:
 | --- | --- |
 | Project | Isolation root: members, approved providers, retention, network policy, credential bindings, export policy and security tier. |
 | WorkspaceTemplate | Administrator-approved, versioned image digest, agent support, MCP manifest, resource defaults and required isolation/network policy. A template is not an isolation boundary. |
-| AgentHome | Persistent agent identity, memories, schedules, tool state and conversations. Bound to one project and, by default, one workspace or dedicated project assistant. |
+| Worker private storage | Persistent agent identity, memories, tool state and conversations. Bound to one project and worker through immutable storage ownership; no separate AgentHome catalog or UI. |
 | Workspace | Stable identity and private storage for interactive or task execution. A pod/container is an instance of this workspace, not its identity. |
 | Run | Durable execution identity bound to one project, agent home and workspace, including native thread/session reference, state, cancellation and activity. |
 | Schedule | Durable trigger, owner, project, concurrency policy and a project-local reference to instructions. It must work while execution pods are stopped. |

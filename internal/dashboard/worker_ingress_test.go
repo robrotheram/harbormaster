@@ -1,15 +1,31 @@
 package dashboard
 
 import (
+	"agent-workbench/internal/shared"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestHostedSharedWorkerRequiresTicketAndSecureCookie(t *testing.T) {
-	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(`{"id":"ws_shared","state":"READY"}`)) }))
+	var revoked atomic.Bool
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		human, err := shared.VerifyHumanAccess("control", strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "), time.Now())
+		if err != nil || human.Email != "alice@example.com" {
+			t.Errorf("console lost principal: %+v %v", human, err)
+			w.WriteHeader(401)
+			return
+		}
+		if revoked.Load() {
+			w.WriteHeader(403)
+			return
+		}
+		w.Write([]byte(`{"id":"ws_shared","state":"READY"}`))
+	}))
 	defer up.Close()
 	interactive, err := NewInteractiveHandler(up.URL, up.URL, "control")
 	if err != nil {
@@ -17,6 +33,7 @@ func TestHostedSharedWorkerRequiresTicketAndSecureCookie(t *testing.T) {
 	}
 	auth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Auth-Request-User", "alice")
+		w.Header().Set("X-Auth-Request-Email", "alice@example.com")
 		w.WriteHeader(202)
 	}))
 	defer auth.Close()
@@ -67,6 +84,10 @@ func TestHostedSharedWorkerRequiresTicketAndSecureCookie(t *testing.T) {
 	}
 	if w := call("GET", "https://ws-shared.reference.example/", "", cookies[0]); w.Code != 200 {
 		t.Fatal(w.Code, w.Body)
+	}
+	revoked.Store(true)
+	if w := call("GET", "https://ws-shared.reference.example/", "", cookies[0]); w.Code != 403 {
+		t.Fatal("revoked console access", w.Code)
 	}
 	if w := call("POST", "https://ws-shared.reference.example/connect", `{"ticket":"`+result.Ticket+`"}`, nil); w.Code != 403 {
 		t.Fatal("replayed ticket accepted")

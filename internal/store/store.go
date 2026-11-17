@@ -38,7 +38,7 @@ func Open(ctx context.Context, dsn string) (*Store, error) {
 		db.Close()
 		return nil, e
 	}
-	if e = s.reconcileLegacyHomes(ctx); e != nil {
+	if e = s.reconcileLegacyProjects(ctx); e != nil {
 		db.Close()
 		return nil, e
 	}

@@ -81,7 +81,7 @@ func TestProjectCredentialsFenceEveryWorkspaceRoute(t *testing.T) {
 	if rt.starts != 0 {
 		t.Fatal("denied operations started a workspace")
 	}
-	for _, route := range []string{"/v1/workspaces", "/v1/agent-homes", "/v1/projects"} {
+	for _, route := range []string{"/v1/workspaces", "/v1/projects"} {
 		w := domainRequest(t, s, "project-a-credential", "GET", route, "")
 		if w.Code != 200 {
 			t.Fatalf("scoped list: %d", w.Code)
@@ -93,7 +93,7 @@ func TestProjectCredentialsFenceEveryWorkspaceRoute(t *testing.T) {
 			t.Fatal("own project absent from " + route)
 		}
 	}
-	for _, route := range []string{"/v1/workspaces", "/v1/agent-homes", "/v1/usage"} {
+	for _, route := range []string{"/v1/workspaces", "/v1/usage"} {
 		if w := domainRequest(t, s, "project-a-credential", "GET", route+"?project_id="+b.ID, ""); w.Code != 404 {
 			t.Fatal("foreign project filter accepted")
 		}

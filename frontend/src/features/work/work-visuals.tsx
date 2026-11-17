@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -6,7 +6,10 @@ import { Modal } from "@/shared/components";
 import { privateContentOptions } from "@/shared/private-content";
 import { evidenceURL, type Artifact } from "./api";
 import { ChartContent } from "./chart-content";
-import { readOutput } from "./read-output";
+import { readOutput, readWorkspaceData } from "./read-output";
+import type { ReplyOutput } from "./reply-outputs";
+import type { Attempt } from "./api";
+import { dataPath } from "./workspace-output";
 
 export function WorkVisuals({
   project,
@@ -14,8 +17,14 @@ export function WorkVisuals({
   initialEditing = false,
   onDismiss,
   onAsk,
+  sources = [],
+  attempt,
+  openRequest = 0,
 }: {
   project: string;
+  sources?: ReplyOutput[];
+  attempt?: Attempt;
+  openRequest?: number;
   artifacts: Artifact[];
   initialEditing?: boolean;
   onDismiss?: () => void;
@@ -27,25 +36,54 @@ export function WorkVisuals({
   const [file, setFile] = useState("");
   const [pasted, setPasted] = useState("");
   const [draft, setDraft] = useState("");
-  const [edit, setEdit] = useState(initialEditing);
+  const linked = sources.filter(
+    (s) => s.source || (s.path && dataPath(s.path)),
+  );
+  const [edit, setEdit] = useState(
+    initialEditing && !files.length && !linked.length,
+  );
+  const root = useRef<HTMLDivElement>(null);
+  const selectedReply =
+    linked.find((s) => s.name === file) ||
+    (!file && !files.length && !pasted ? linked[0] : undefined);
   const chosen =
     files.find((a) => a.content_url === file) ||
-    (!pasted ? files[0] : undefined);
+    (!pasted && !selectedReply ? files[0] : undefined);
   const url = evidenceURL(chosen?.content_url);
   const query = useQuery({
     ...privateContentOptions,
-    queryKey: ["project", project, "visual-data", url],
-    queryFn: ({ signal }) => readOutput(url!, signal),
-    enabled: !!url?.startsWith("/ui-api/"),
+    queryKey: [
+      "project",
+      project,
+      "visual-data",
+      url,
+      attempt?.id,
+      selectedReply?.path,
+    ],
+    queryFn: ({ signal }) =>
+      selectedReply?.path && attempt
+        ? readWorkspaceData(project, attempt, selectedReply.path, signal)
+        : readOutput(url!, signal),
+    enabled:
+      !!url?.startsWith("/ui-api/") || (!!selectedReply?.path && !!attempt),
   });
-  const source = pasted || query.data || "";
+  const source = pasted || selectedReply?.source || query.data || "";
+  useEffect(() => {
+    if (!openRequest) return;
+    root.current?.scrollIntoView({ block: "nearest" });
+    if (!source && !chosen && !selectedReply) setEdit(true);
+  }, [openRequest, source, !!chosen, !!selectedReply]);
   return (
-    <div className="visual-data-pane">
+    <div className="visual-data-pane" ref={root}>
       {!!source && (
         <div className="visual-toolbar">
           <select
             aria-label="Visual data source"
-            value={pasted ? "pasted" : chosen?.content_url || ""}
+            value={
+              pasted
+                ? "pasted"
+                : selectedReply?.name || chosen?.content_url || ""
+            }
             onChange={(e) => {
               setFile(e.target.value);
               setPasted("");
@@ -53,6 +91,11 @@ export function WorkVisuals({
           >
             {pasted && <option value="pasted">Pasted data</option>}
             {!files.length && !pasted && <option value="">Data source</option>}
+            {linked.map((s) => (
+              <option key={s.name} value={s.name}>
+                {s.name}
+              </option>
+            ))}
             {files.map((a) => (
               <option key={a.content_url} value={a.content_url}>
                 {a.source_path || a.name}
@@ -76,7 +119,7 @@ export function WorkVisuals({
       {!!source && (
         <ChartContent
           source={source}
-          title={chosen?.source_path || "Explore data"}
+          title={selectedReply?.name || chosen?.source_path || "Explore data"}
           onAsk={onAsk}
         />
       )}

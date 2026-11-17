@@ -1,3 +1,4 @@
+import { capabilityOptions } from "./capabilities";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -23,7 +24,10 @@ export function IssueImport({
   const [results, setResults] = useState<{ number: number; error?: unknown }[]>(
     [],
   );
+  const capabilities = useQuery(capabilityOptions(project));
   const connections = useQuery({
+    enabled: capabilities.data?.can_import === true,
+    retry: false,
     queryKey: ["platform", "forge-connections"],
     queryFn: () => request<{ items: Connection[] }>("/forge-connections"),
   });
@@ -58,13 +62,52 @@ export function IssueImport({
       await client.invalidateQueries({ queryKey: workKeys.list(project) });
     },
   });
+  if (!capabilities.data?.can_import)
+    return (
+      <section
+        className="board-import import-guidance"
+        aria-label="Import repository issues"
+      >
+        <div className="board-panel-heading">
+          <h2>Import repository issues</h2>
+          <Button variant="ghost" onClick={onClose}>
+            Close
+          </Button>
+        </div>
+        {capabilities.isPending ? (
+          <p role="status">Checking import access…</p>
+        ) : capabilities.isError ? (
+          <ErrorNotice
+            error={capabilities.error}
+            onRetry={() => void capabilities.refetch()}
+          />
+        ) : (
+          <>
+            <h3>Ask a platform operator to import issues</h3>
+            <p>
+              Repository connections are managed at platform level. Your project
+              membership lets you manage tasks here, but does not grant access
+              to those connections.
+            </p>
+            <p>
+              Ask an operator to choose this project when importing from GitHub
+              or GitLab. Imported tasks will appear in Overview.
+            </p>
+            <Button variant="outline" onClick={onClose}>
+              Back to tasks
+            </Button>
+          </>
+        )}
+      </section>
+    );
   return (
     <section className="board-import" aria-label="Import repository issues">
       <div className="board-panel-heading">
         <div>
-          <h2>Bring repository issues onto this board</h2>
+          <h2>Import repository issues</h2>
           <p>
-            Choose the issues to track here. Importing does not start a worker.
+            Choose the issues to track here. Importing does not dispatch an
+            agent.
           </p>
         </div>
         <Button variant="ghost" disabled={imports.isPending} onClick={onClose}>

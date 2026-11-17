@@ -5,11 +5,21 @@ Open http://127.0.0.1:8080/app/. The UI uses React, TanStack Router and TanStack
 ## Start working
 
 1. Create a project in the project selector. The selected project stays visible throughout the UI.
-2. Create a workspace. Choose T3 for interactive native browser/desktop work, or Codex for task execution. Each new workspace has a private persistent agent home.
+2. Create a workspace. Choose T3 for interactive native browser/desktop work, or Codex for task execution. Each new workspace has a private persistent storage for agent settings and history.
 3. Open T3 or Connect T3 desktop, or submit a workspace task. Native desktop pairing continues to use the same workspace files and conversations.
-4. For a PR workspace, branch from an idle workspace in the same project. This copies code, not conversation or agent-home state.
+4. For a PR workspace, branch from an idle workspace in the same project. This copies code, not conversation or agent settings.
 
 Existing workspaces remain in **Workspaces**, project `default`. Their storage and native histories are preserved. This grouping is not a claim that the earlier use-case names were separate legal projects. Create explicit projects for new isolated work; there is no automatic content reclassification.
+
+## Project settings
+
+Open **Settings → General** to rename a project. Its ID, worker storage and deployment namespace stay the same. **Settings → Hermes setup** contains the agent and Matrix configuration. Existing Hermes setup bookmarks open this tab.
+
+## Review work
+
+Use **Reviews** to inspect task outputs: UI previews, code, data and reports. Outputs & previews is no longer a separate page; its old URL opens Reviews. Agent homes is also retired as a page; its old URL opens Workers.
+
+Workers still retain their private storage. Internal `home_id` values, runtime ownership labels and existing directory paths remain unchanged because they identify that storage and protect it from reuse by another worker. The separate agent-home catalog, HTTP endpoint and MCP discovery tool have been removed. Historical `agent_homes` database rows remain inert for upgrade compatibility; new workers do not write them.
 
 ## Schedule work
 
@@ -30,7 +40,7 @@ go run ./cmd/workbench project access PROJECT_ID
 
 The command writes a private, expiring MCP configuration under `.local/project-access/` and prints its path, never its credential. Configure the corresponding project's T3/agent environment using that file. The MCP endpoint is http://127.0.0.1:8082/mcp. Project credentials cannot create projects or operate other projects. The original bootstrap MCP credential is now restricted to the legacy `default` project instead of receiving global control authority.
 
-The MCP tools include project/home discovery, workspace creation and lifecycle, native task submission/results/cancellation, and schedule creation/listing/actions/run metadata. The shared human desktop can use several project connections; an agent connection carries only its authorized project.
+The MCP tools include project discovery, workspace creation and lifecycle, native task submission/results/cancellation, and schedule creation/listing/actions/run metadata. The shared human desktop can use several project connections; an agent connection carries only its authorized project.
 
 ## Sharing
 

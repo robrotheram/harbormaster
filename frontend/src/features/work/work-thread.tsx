@@ -1,3 +1,9 @@
+import { Responsibility } from "./responsibility";
+import { usePersonalWork, useLayoutPreference } from "./personal-work";
+import { AgentSelection, type AgentModel } from "./agent-selection";
+import { Link, useSearch, useNavigate } from "@tanstack/react-router";
+import { replyOutputs } from "./reply-outputs";
+import { LinkedOutputs } from "./linked-outputs";
 import { instructionOptions } from "./conversation-title";
 import { composerKeyDown } from "./composer-keydown";
 import {
@@ -5,7 +11,6 @@ import {
   useEffect,
   useRef,
   useState,
-  type CSSProperties,
   type ReactNode,
   type Dispatch,
   type SetStateAction,
@@ -14,7 +19,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowDown,
   ArrowUp,
-  Check,
+  RotateCcw,
+  CircleAlert,
+  Server,
+  Play,
   FileText,
   Loader2,
   Square,
@@ -22,7 +30,7 @@ import {
   Download,
   PanelRightOpen,
   BarChart3,
-  MoreHorizontal,
+  MessageSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -60,12 +68,6 @@ import { WorkVisuals } from "./work-visuals";
 import { workStatus } from "./stages";
 import { WorkPreview } from "./work-preview";
 import { MessageContent } from "./message-content";
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-} from "@/components/ui/dropdown-menu";
 
 export function WorkConversation({
   project,
@@ -75,11 +77,13 @@ export function WorkConversation({
   navigation,
   message,
   setMessage,
+  owner,
 }: {
   project: Project;
   id: string;
   startError?: unknown;
   title?: string;
+  owner?: string;
   navigation?: ReactNode;
   message: string;
   setMessage: Dispatch<SetStateAction<string>>;
@@ -88,31 +92,73 @@ export function WorkConversation({
   const key = useRequestKey();
   const [earlier, setEarlier] = useState(false);
   const [files, setFiles] = useState(false);
-  const [previewOpen, setPreviewOpen] = useState(true);
-  const collapsePreview = useCallback(() => {
-    setPreviewOpen(false);
-    setMobileView("chat");
-  }, []);
-  const revealPreview = useCallback(() => setPreviewOpen(true), []);
+  const personal = usePersonalWork();
+  const route = useSearch({ strict: false });
+  const navigate = useNavigate();
+  const [layout, setLayout] = useLayoutPreference<string>("output", "closed");
+  // Existing split/output preferences now open the unified workspace.
+  const workspaceOpen = layout !== "closed";
+  const workspaceVisible = useRef(workspaceOpen);
+  workspaceVisible.current = workspaceOpen;
+  const [unreadReply, setUnreadReply] = useState(false);
+  const observedReplies = useRef(new Map<string, string>());
+  const revealPreview = useCallback(() => {}, []);
   const [visuals, setVisuals] = useState(false);
-  const [mobileView, setMobileView] = useState("chat");
-  const [ratio, setRatio] = useState(47);
-  const split = useRef<HTMLElement>(null);
+  const [visualsOpen, setVisualsOpen] = useState(false);
+  const [visualRequest, setVisualRequest] = useState(0);
+  const [reply, setReply] = useState({ attempt: "", content: "" });
+  const recordReply = useCallback((attempt: string, content: string) => {
+    const previous = observedReplies.current.get(attempt);
+    if (
+      previous !== undefined &&
+      content &&
+      content !== previous &&
+      workspaceVisible.current
+    )
+      setUnreadReply(true);
+    if (content || previous === undefined)
+      observedReplies.current.set(attempt, content);
+    setReply((old) =>
+      old.attempt === attempt && old.content === content
+        ? old
+        : { attempt, content },
+    );
+  }, []);
   const selectElement = useCallback(
     (text: string) => {
       setMessage((old) => (old ? old + "\n" + text : text));
-      setMobileView("chat");
       requestAnimationFrame(() => composer.current?.focus());
     },
     [setMessage],
   );
   const composer = useRef<HTMLTextAreaElement>(null);
   const feed = useRef<HTMLDivElement>(null);
-  const follow = useRef(true);
+  const attachFeed = useCallback(
+    (node: HTMLDivElement | null) => {
+      if (node) node.scrollTop = personal.positions.current.get(id) || 0;
+      feed.current = node;
+    },
+    [id, personal.positions],
+  );
+  const restorePosition = useRef(personal.positions.current.get(id));
+  const follow = useRef(!personal.positions.current.has(id) && !route.attempt);
   const [newActivity, setNewActivity] = useState(false);
   const announceActivity = useCallback(() => {
-    if (!follow.current) setNewActivity(true);
+    if (!workspaceVisible.current && !follow.current) setNewActivity(true);
   }, []);
+  const showConversation = (latestMessage = false) => {
+    setLayout("closed");
+    setUnreadReply(false);
+    if (latestMessage) follow.current = true;
+    requestAnimationFrame(() => {
+      const el = feed.current;
+      if (el)
+        el.scrollTop = latestMessage
+          ? el.scrollHeight
+          : personal.positions.current.get(id) || 0;
+      if (latestMessage) el?.focus({ preventScroll: true });
+    });
+  };
   const itemQuery = useQuery({
     queryKey: workKeys.detail(project.id, id),
     queryFn: ({ signal }) => workApi.detail(project.id, id, signal),
@@ -132,10 +178,14 @@ export function WorkConversation({
         a.created_at.localeCompare(b.created_at),
       );
   const latest = attempts.find((a) => a.id === item?.latest_attempt_id);
+  const outputSources = replyOutputs(
+    reply.attempt === latest?.id ? reply.content : "",
+  );
   const actions = item && workActions(item.state);
   const running =
     !!item && (actions?.cancel || (!!latest && activeAttempt(latest.state)));
   const worker = workers.data?.find((w) => w.id === item?.workspace_id);
+  const [selection, setSelection] = useState<AgentModel>();
   const [actionSequence, setActionSequence] = useState(0);
   const mutation = useMutation({
     mutationFn: (action: "run" | "cancel" | "accept" | "continue" | "wake") => {
@@ -144,6 +194,7 @@ export function WorkConversation({
         actionSequence,
         id,
         message,
+        selection,
         attempt: item?.latest_attempt_id,
       });
       if (action === "run") return workApi.run(project.id, id, delivery);
@@ -158,6 +209,7 @@ export function WorkConversation({
         message,
         item!.latest_attempt_id!,
         delivery,
+        selection,
       );
     },
     onSuccess: async (_, action) => {
@@ -165,6 +217,14 @@ export function WorkConversation({
       if (action === "continue") {
         setMessage("");
         follow.current = true;
+        if (route.attempt) {
+          await navigate({
+            to: "/projects/$projectId/$section",
+            params: { projectId: project.id, section: "work" },
+            search: { work: id },
+            replace: true,
+          });
+        }
       }
       await client.invalidateQueries({ queryKey: workKeys.list(project.id) });
       if (action === "wake")
@@ -176,7 +236,12 @@ export function WorkConversation({
     const el = feed.current;
     if (!el) return;
     const observer = new MutationObserver(() => {
-      if (follow.current) el.scrollTop = el.scrollHeight;
+      if (workspaceVisible.current) return;
+      if (restorePosition.current !== undefined) {
+        el.scrollTop = restorePosition.current;
+        if (el.scrollHeight - el.clientHeight >= restorePosition.current)
+          restorePosition.current = undefined;
+      } else if (follow.current) el.scrollTop = el.scrollHeight;
     });
     observer.observe(el, {
       childList: true,
@@ -208,6 +273,7 @@ export function WorkConversation({
     [
       "planned",
       "in_progress",
+      "changes_requested",
       "completed",
       "accepted",
       "awaiting_review",
@@ -220,109 +286,132 @@ export function WorkConversation({
     canContinue &&
     !!message.trim() &&
     new TextEncoder().encode(message).length <= 16000;
+  const retry = latest && !["planned", "in_progress"].includes(item.state);
+  const runAction = actions?.run ? (
+    <div className="conversation-message-actions">
+      <Button
+        variant="outline"
+        size="default"
+        disabled={mutation.isPending}
+        onClick={() => mutation.mutate("run")}
+      >
+        {mutation.isPending && mutation.variables === "run" ? (
+          <Loader2 size={14} className="animate-spin" />
+        ) : retry ? (
+          <RotateCcw size={14} />
+        ) : (
+          <Play size={14} />
+        )}
+        {retry ? "Retry task" : "Start task"}
+      </Button>
+      {mutation.isError && mutation.variables === "run" && (
+        <ErrorNotice error={mutation.error} />
+      )}
+      {!!startError && item.state === "draft" && (
+        <ErrorNotice error={startError} />
+      )}
+    </div>
+  ) : null;
   return (
     <section
-      ref={split}
-      className={`conversation-session visual-session show-${mobileView} ${previewOpen ? "" : "is-preview-collapsed"}`}
-      style={{ "--conversation-ratio": `${ratio}%` } as CSSProperties}
+      className={`conversation-session visual-session unified-thread ${workspaceOpen ? "is-workspace-open" : ""}`}
       aria-label="Work conversation"
     >
-      <div className="conversation-mobile-switch">
-        {navigation}
-        <button
-          aria-pressed={mobileView === "chat"}
-          onClick={() => setMobileView("chat")}
-        >
-          Conversation
-        </button>
-        <button
-          aria-pressed={mobileView === "preview"}
-          onClick={() => {
-            setPreviewOpen(true);
-            setMobileView("preview");
-          }}
-        >
-          Preview
-        </button>
-      </div>
       <div className="conversation-main">
         <header className="conversation-thread-heading">
           <div className="conversation-heading-title">
+            {navigation}
             <div className="min-w-0">
               <h2 title={title} className="line-clamp-2">
                 {title || `${label(item.kind)} conversation`}
               </h2>
-              <p>
-                {worker?.name || "Assigned worker"}
-                <span>Started {date(item.created_at)}</span>
-              </p>
+              <div className="thread-heading-state">
+                <State value={workStatus(item.state)} />
+              </div>
             </div>
           </div>
+          {latest &&
+            attempts.some(
+              (a) => a.id !== latest.id && a.review_state === "accepted",
+            ) && (
+              <span className="text-xs text-muted-foreground">
+                Previous output approved · Current work:{" "}
+                {workStatus(item.state)}
+              </span>
+            )}
           <div className="conversation-heading-actions">
-            {!previewOpen && (
+            <Responsibility item={item} running={running}>
+              <Link
+                className="conversation-worker-link"
+                to="/projects/$projectId/$section"
+                params={{ projectId: project.id, section: "workspaces" }}
+                search={{ worker: item.workspace_id }}
+                title={item.workspace_id}
+              >
+                <Server size={14} /> Worker: {worker?.name || "Task worker"}
+              </Link>
+              <p>Created {date(item.created_at)}</p>
+              {owner && <p>Task assignee: {owner}</p>}
+            </Responsibility>
+            <div
+              className="thread-view-switch"
+              role="group"
+              aria-label="Thread view"
+            >
               <Button
-                className="conversation-preview-toggle"
                 variant="ghost"
                 size="sm"
-                onClick={() => setPreviewOpen(true)}
+                aria-pressed={!workspaceOpen}
+                onClick={() => showConversation(unreadReply)}
               >
-                <PanelRightOpen size={14} />
-                Show preview
+                <MessageSquare size={15} /> Conversation
+                {unreadReply && (
+                  <span
+                    className="thread-unread-dot"
+                    aria-label="New agent message"
+                  />
+                )}
               </Button>
-            )}
-            <span className="conversation-thread-status">
-              <State value={workStatus(item.state)} />
-            </span>
-            {actions?.review && (
               <Button
-                variant="outline"
+                variant="ghost"
                 size="sm"
-                disabled={mutation.isPending || itemQuery.isFetching}
-                onClick={() => mutation.mutate("accept")}
-                aria-label="Accept result"
+                aria-pressed={workspaceOpen}
+                onClick={() => setLayout("workspace")}
               >
-                <Check size={14} />{" "}
-                <span className="hidden min-[480px]:inline">Accept result</span>
-                <span className="min-[480px]:hidden">Accept</span>
+                <PanelRightOpen size={15} /> Workspace
+              </Button>
+            </div>
+            {actions?.review && (
+              <Button asChild variant="outline" size="sm">
+                <Link
+                  to="/projects/$projectId/$section"
+                  params={{ projectId: project.id, section: "reviews" }}
+                  search={{ work: id, attempt: item.latest_attempt_id }}
+                >
+                  Review output
+                </Link>
               </Button>
             )}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="Conversation options"
-                >
-                  <MoreHorizontal size={16} />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onSelect={() => setFiles(true)}>
-                  <FileText size={14} /> Files
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() => {
-                    setVisuals(true);
-                    follow.current = true;
-                  }}
-                >
-                  <BarChart3 size={14} /> Visualize data
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
           </div>
         </header>
-        {!!startError && item.state === "draft" && (
-          <div className="conversation-notice">
-            <p>Your request is saved. Starting the task failed; retry below.</p>
-            <ErrorNotice error={startError} />
-          </div>
-        )}
         <div
           className="conversation-feed"
-          ref={feed}
+          hidden={workspaceOpen}
+          onWheel={() => {
+            restorePosition.current = undefined;
+          }}
+          onPointerDown={() => {
+            restorePosition.current = undefined;
+          }}
+          onKeyDown={() => {
+            restorePosition.current = undefined;
+          }}
+          ref={attachFeed}
           onScroll={() => {
             const el = feed.current!;
+            if (workspaceVisible.current) return;
+            if (restorePosition.current !== undefined) return;
+            personal.positions.current.set(id, el.scrollTop);
             follow.current =
               el.scrollHeight - el.scrollTop - el.clientHeight < 100;
             if (follow.current) setNewActivity(false);
@@ -331,84 +420,98 @@ export function WorkConversation({
           role="region"
           tabIndex={0}
         >
-          {attemptQuery.isError && <ErrorNotice error={attemptQuery.error} />}
-          {!attempts.length &&
-            !attemptQuery.isPending &&
-            !attemptQuery.isError && (
-              <DraftMessage project={project.id} item={item} />
-            )}
-          {!earlier && attempts.length > 1 && (
-            <Button
-              variant="ghost"
-              onClick={() => {
-                follow.current = false;
-                setEarlier(true);
-              }}
-            >
-              Show earlier conversation
-            </Button>
-          )}
-          {earlier && (
-            <Button size="sm" variant="ghost" onClick={() => setEarlier(false)}>
-              Hide earlier conversation
-            </Button>
-          )}
-          {(earlier ? attempts : attempts.slice(-1)).map((a) => (
-            <RunConversation
-              key={a.id}
-              project={project.id}
-              attempt={a}
-              onAsk={selectElement}
-              onActivity={announceActivity}
-              onOlder={() => {
-                follow.current = false;
-              }}
-            />
-          ))}
-          {visuals && (
-            <section
-              className="conversation-visualization"
-              aria-label="Conversation visualization"
-            >
-              <WorkVisuals
-                key={latest?.id || "draft"}
-                project={project.id}
-                onAsk={selectElement}
-                artifacts={latest?.artifacts || []}
-                initialEditing={visuals}
-                onDismiss={() => setVisuals(false)}
-              />
-            </section>
-          )}
-          {running && (
-            <div className="conversation-live" role="status">
-              <Loader2 size={14} className="animate-spin" />
-              <span>
-                {latest?.state === "cancel_requested"
-                  ? "Stopping the task…"
-                  : latest?.task_id
-                    ? "Agent is working. Recorded activity updates here."
-                    : "Preparing the worker and waiting for task acceptance…"}
-              </span>
-            </div>
-          )}
-          {worker?.state === "STOPPED" && (
-            <div className="conversation-notice">
-              <p>
-                The worker is stopped. Start it here to read the private
-                conversation.
+          <div className="conversation-timeline">
+            {attemptQuery.isError && <ErrorNotice error={attemptQuery.error} />}
+            {route.attempt && (
+              <p className="review-context">
+                Viewing output revision {route.attempt}.{" "}
+                <Link
+                  to="/projects/$projectId/$section"
+                  params={{ projectId: project.id, section: "work" }}
+                  search={{ work: id }}
+                >
+                  Return to current conversation
+                </Link>
               </p>
+            )}
+            {!attempts.length &&
+              !attemptQuery.isPending &&
+              !attemptQuery.isError && (
+                <DraftMessage
+                  project={project.id}
+                  item={item}
+                  action={runAction}
+                />
+              )}
+            {!earlier && attempts.length > 1 && (
               <Button
-                variant="outline"
-                disabled={mutation.isPending}
-                onClick={() => mutation.mutate("wake")}
+                variant="ghost"
+                onClick={() => {
+                  follow.current = false;
+                  setEarlier(true);
+                }}
               >
-                Load conversation
+                Show earlier conversation
               </Button>
-            </div>
-          )}
+            )}
+            {earlier && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setEarlier(false)}
+              >
+                Hide earlier conversation
+              </Button>
+            )}
+            {(route.attempt
+              ? attempts.filter((a) => a.id === route.attempt)
+              : earlier
+                ? attempts
+                : attempts.slice(-1)
+            ).map((a) => (
+              <RunConversation
+                key={a.id}
+                project={project.id}
+                attempt={a}
+                action={a.id === latest?.id ? runAction : null}
+                onReply={a.id === latest?.id ? recordReply : undefined}
+                onAsk={selectElement}
+                onActivity={announceActivity}
+                onOlder={() => {
+                  follow.current = false;
+                }}
+              />
+            ))}
+            {running && (
+              <div className="conversation-live" role="status">
+                <Loader2 size={14} className="animate-spin" />
+                <span>
+                  {latest?.state === "cancel_requested"
+                    ? "Stopping the task…"
+                    : latest?.task_id
+                      ? "Agent is working. Recorded activity updates here."
+                      : "Preparing the worker and waiting for task acceptance…"}
+                </span>
+              </div>
+            )}
+            {worker?.state === "STOPPED" && (
+              <div className="conversation-notice">
+                <p>
+                  The worker is stopped. Start it here to read the private
+                  conversation.
+                </p>
+                <Button
+                  variant="outline"
+                  disabled={mutation.isPending}
+                  onClick={() => mutation.mutate("wake")}
+                >
+                  Load conversation
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
-        {newActivity && (
+        {newActivity && !workspaceOpen && (
           <Button
             className="conversation-new-activity"
             size="sm"
@@ -428,28 +531,92 @@ export function WorkConversation({
             <ArrowDown size={14} /> New activity
           </Button>
         )}
+        <section
+          className="thread-workspace"
+          aria-label="Task workspace"
+          hidden={!workspaceOpen}
+        >
+          <div
+            className="thread-workspace-tools"
+            role="group"
+            aria-label="Workspace tools"
+          >
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-pressed={!visualsOpen}
+              onClick={() => setVisualsOpen(false)}
+            >
+              <PanelRightOpen size={15} /> Preview
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setFiles(true)}>
+              <FileText size={15} /> Files
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-pressed={visualsOpen}
+              onClick={() => {
+                setVisuals(true);
+                setVisualsOpen(true);
+                setVisualRequest((v) => v + 1);
+              }}
+            >
+              <BarChart3 size={15} /> Visualize data
+            </Button>
+          </div>
+          <div className="thread-workspace-preview" hidden={visualsOpen}>
+            <WorkPreview
+              project={project.id}
+              workspace={item.workspace_id}
+              revision={
+                latest && !activeAttempt(latest.state) ? latest.id : undefined
+              }
+              collapsible={false}
+              onCollapse={() => showConversation()}
+              onReady={revealPreview}
+              onSelection={selectElement}
+            />
+          </div>
+          {visuals && (
+            <section
+              className="conversation-visualization"
+              aria-label="Conversation visualization"
+              hidden={!visualsOpen}
+            >
+              <WorkVisuals
+                key={latest?.id || "draft"}
+                project={project.id}
+                onAsk={selectElement}
+                artifacts={latest?.artifacts || []}
+                initialEditing={visuals}
+                openRequest={visualRequest}
+                sources={outputSources}
+                attempt={latest}
+                onDismiss={() => setVisualsOpen(false)}
+              />
+            </section>
+          )}
+        </section>
+        {workspaceOpen && unreadReply && (
+          <div className="thread-message-notice" role="status">
+            <MessageSquare size={16} />
+            <span>New agent message</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => showConversation(true)}
+            >
+              View message
+            </Button>
+          </div>
+        )}
+        {workspaceOpen && runAction && (
+          <div className="thread-workspace-recovery">{runAction}</div>
+        )}
         <div className="conversation-composer">
-          {mutation.isError && <ErrorNotice error={mutation.error} />}
-          {actions?.run && (
-            <div className="conversation-run-retry">
-              <span>
-                {item.state === "planned" || item.state === "in_progress"
-                  ? "Reopened. Start the agent or send a new request to continue."
-                  : latest
-                    ? "This task did not finish. Retry it or send a revised request below."
-                    : "Your draft is ready to start."}
-              </span>
-              <Button
-                disabled={mutation.isPending}
-                onClick={() => mutation.mutate("run")}
-              >
-                {latest &&
-                item.state !== "planned" &&
-                item.state !== "in_progress"
-                  ? "Retry task"
-                  : "Start task"}
-              </Button>
-            </div>
+          {mutation.isError && mutation.variables !== "run" && (
+            <ErrorNotice error={mutation.error} />
           )}
           <Form
             onSubmit={() => {
@@ -459,52 +626,85 @@ export function WorkConversation({
             <label className="sr-only" htmlFor="work-followup">
               Message to your agent
             </label>
-            <Textarea
-              ref={composer}
-              id="work-followup"
-              aria-invalid={
-                new TextEncoder().encode(message).length > 16000 || undefined
-              }
-              aria-describedby={
-                new TextEncoder().encode(message).length > 16000
-                  ? "work-followup-error"
-                  : undefined
-              }
-              rows={2}
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              onKeyDown={(e) => composerKeyDown(e, canSend)}
-              placeholder={
-                running
-                  ? "You can draft your next message while the agent works…"
-                  : "Ask for a change or a new task…"
-              }
-              disabled={!item.latest_attempt_id || mutation.isPending}
-            />
-            <div className="conversation-compose-actions">
-              <span>
-                {running
-                  ? "Wait for the agent to finish, or stop it before sending."
-                  : "Enter to send · Shift+Enter for a new line"}
-              </span>
-              {running ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={
-                    mutation.isPending || latest?.state === "cancel_requested"
+            <div className="conversation-compose-input">
+              <Textarea
+                ref={composer}
+                id="work-followup"
+                aria-invalid={
+                  new TextEncoder().encode(message).length > 16000 || undefined
+                }
+                aria-describedby={
+                  new TextEncoder().encode(message).length > 16000
+                    ? "work-followup-error"
+                    : undefined
+                }
+                rows={1}
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                onKeyDown={(e) => composerKeyDown(e, canSend)}
+                placeholder={
+                  running
+                    ? "Draft your next instruction…"
+                    : "Tell the agent what to do next…"
+                }
+                disabled={!item.latest_attempt_id || mutation.isPending}
+              />
+              <div className="thread-composer-footer">
+                <AgentSelection
+                  compact
+                  workspace={item.workspace_id}
+                  provider={selection?.provider ?? item.provider ?? ""}
+                  model={selection?.model ?? item.model ?? ""}
+                  disabled={running || mutation.isPending}
+                  onProvider={(provider) =>
+                    setSelection(provider ? { provider, model: "" } : undefined)
                   }
-                  onClick={() => mutation.mutate("cancel")}
-                >
-                  <Square size={13} /> Stop task
-                </Button>
-              ) : (
-                <Button disabled={!canSend}>
-                  <ArrowUp size={15} />
-                  {mutation.isPending ? "Sending…" : "Send"}
-                </Button>
-              )}
+                  onModel={(model) =>
+                    setSelection((value) =>
+                      value ? { ...value, model } : undefined,
+                    )
+                  }
+                />
+                <div className="conversation-compose-actions">
+                  {running ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="default"
+                      aria-label="Stop task"
+                      disabled={
+                        mutation.isPending ||
+                        latest?.state === "cancel_requested"
+                      }
+                      onClick={() => mutation.mutate("cancel")}
+                    >
+                      <Square size={14} />
+                      {latest?.state === "cancel_requested"
+                        ? "Stopping…"
+                        : "Stop"}
+                    </Button>
+                  ) : (
+                    <Button
+                      disabled={!canSend}
+                      size="default"
+                      aria-label="Send"
+                    >
+                      {mutation.isPending ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : (
+                        <ArrowUp size={16} />
+                      )}
+                      Send
+                    </Button>
+                  )}
+                </div>
+              </div>
             </div>
+            {running && (
+              <p className="thread-composer-hint">
+                Stop the run to send new instructions.
+              </p>
+            )}
             {new TextEncoder().encode(message).length > 16000 && (
               <p
                 id="work-followup-error"
@@ -518,67 +718,32 @@ export function WorkConversation({
           </Form>
         </div>
       </div>
-      <div
-        className="conversation-divider"
-        role="separator"
-        aria-label="Resize conversation and preview"
-        aria-orientation="vertical"
-        aria-valuemin={30}
-        aria-valuemax={70}
-        aria-valuenow={ratio}
-        tabIndex={0}
-        onKeyDown={(e) => {
-          if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-            e.preventDefault();
-            setRatio((r) =>
-              Math.max(30, Math.min(70, r + (e.key === "ArrowLeft" ? -2 : 2))),
-            );
-          }
-        }}
-        onPointerDown={(e) => {
-          e.preventDefault();
-          e.currentTarget.setPointerCapture(e.pointerId);
-        }}
-        onPointerMove={(e) => {
-          if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
-          const rect = split.current!.getBoundingClientRect();
-          setRatio(
-            Math.max(
-              30,
-              Math.min(70, ((e.clientX - rect.left) / rect.width) * 100),
-            ),
-          );
-        }}
-        onPointerUp={(e) => e.currentTarget.releasePointerCapture(e.pointerId)}
-      />
-      <WorkPreview
-        project={project.id}
-        workspace={item.workspace_id}
-        revision={
-          latest && !activeAttempt(latest.state) ? latest.id : undefined
-        }
-        onCollapse={collapsePreview}
-        onReady={revealPreview}
-        onSelection={selectElement}
-      />
       {files && (
         <Modal title="Task files" wide onClose={() => setFiles(false)}>
           <div className="conversation-file-drawer">
-            <div className="conversation-results-heading">
-              <h3>Saved files</h3>
-            </div>
-            {latest ? (
+            {!!latest?.artifacts?.length && (
+              <div className="conversation-results-heading">
+                <h3>Saved files</h3>
+              </div>
+            )}
+            {latest &&
+            (latest.artifacts?.length || !outputSources.some((s) => s.path)) ? (
               <Outputs
                 key={latest.id}
                 project={project.id}
                 work={id}
                 attempt={latest}
               />
-            ) : (
-              <p className="conversation-muted">
-                Files you choose to retain will appear here when the agent
-                finishes.
-              </p>
+            ) : !latest ? (
+              <p className="conversation-muted">No files yet.</p>
+            ) : null}
+            {latest && (
+              <LinkedOutputs
+                key={latest.id}
+                project={project.id}
+                attempt={latest}
+                sources={outputSources}
+              />
             )}
             <details className="conversation-technical">
               <summary>Technical details</summary>
@@ -587,6 +752,10 @@ export function WorkConversation({
                 <dd>{item.id}</dd>
                 <dt>Worker</dt>
                 <dd>{item.workspace_id}</dd>
+                <dt>Agent</dt>
+                <dd>{item.provider || "Worker default"}</dd>
+                <dt>Model</dt>
+                <dd>{item.model || "Configured default"}</dd>
                 <dt>Attempt</dt>
                 <dd>{latest?.id || "Not started"}</dd>
                 <dt>Task</dt>
@@ -602,7 +771,15 @@ export function WorkConversation({
   );
 }
 
-function DraftMessage({ project, item }: { project: string; item: WorkItem }) {
+function DraftMessage({
+  project,
+  item,
+  action,
+}: {
+  project: string;
+  item: WorkItem;
+  action?: ReactNode;
+}) {
   const query = useQuery(instructionOptions(project, item));
   if (query.isError) return <ErrorNotice error={query.error} />;
   return (
@@ -615,6 +792,7 @@ function DraftMessage({ project, item }: { project: string; item: WorkItem }) {
           ? userMessage(query.data, {})
           : "Loading your saved request…"}
       </div>
+      {action}
     </article>
   );
 }
@@ -625,9 +803,13 @@ function RunConversation({
   onOlder,
   onAsk,
   onActivity,
+  action,
+  onReply,
 }: {
   project: string;
   attempt: Attempt;
+  action?: ReactNode;
+  onReply?: (attempt: string, content: string) => void;
   onOlder: () => void;
   onAsk: (message: string) => void;
   onActivity: () => void;
@@ -708,18 +890,25 @@ function RunConversation({
         !history.isPending,
     ),
   );
+  const replyContent =
+    records
+      .filter((r) => r.kind === "assistant.message")
+      .map((r) => r.content || "")
+      .join("\n\n") ||
+    result.data?.content ||
+    "";
+  useEffect(() => {
+    onReply?.(attempt.id, replyContent);
+  }, [onReply, attempt.id, replyContent]);
+  const lastMessage = records
+    .filter((r) => r.kind === "user.message" || r.kind === "assistant.message")
+    .at(-1);
   const next = cursor ?? history.data?.page.next_before;
   return (
     <section className="conversation-run" aria-label="Task activity">
       <div className="conversation-run-heading">
         <time>{date(attempt.created_at)}</time>
       </div>
-      {attempt.error_code && (
-        <div className="conversation-notice" role="alert">
-          <strong>{label(attempt.error_code)}</strong>
-          <p>{new APIError(attempt.error_code, 409).message}</p>
-        </div>
-      )}
       {!!next && (
         <Button
           size="sm"
@@ -780,6 +969,10 @@ function RunConversation({
                     />
                   )}
                 </div>
+                {!attempt.error_code &&
+                  !result.data?.content &&
+                  record.id === lastMessage?.id &&
+                  action}
                 {record.truncated && (
                   <p className="conversation-muted">
                     This recorded message was shortened.
@@ -843,6 +1036,7 @@ function RunConversation({
               onAsk={onAsk}
             />
           </div>
+          {!attempt.error_code && action}
           {result.data.next_offset !== -1 && (
             <p className="conversation-muted">
               This view shows the first 64 KiB of the reply.
@@ -850,7 +1044,26 @@ function RunConversation({
           )}
         </article>
       )}
+      {attempt.error_code && (
+        <article
+          className="conversation-notice conversation-failure"
+          role="alert"
+        >
+          <div className="conversation-failure-heading">
+            <CircleAlert size={16} aria-hidden="true" />
+            <strong>{label(attempt.error_code)}</strong>
+          </div>
+          <p>{new APIError(attempt.error_code, 409).message}</p>
+          {action}
+        </article>
+      )}
       {result.isError && <ErrorNotice error={result.error} />}
+      {!attempt.error_code &&
+        !lastMessage &&
+        !result.data?.content &&
+        action && (
+          <article className="conversation-message is-agent">{action}</article>
+        )}
     </section>
   );
 }

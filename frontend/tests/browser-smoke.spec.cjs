@@ -109,17 +109,7 @@ test("project workflows preserve boundaries and UI behavior", async ({
           await new Promise((resolve) => setTimeout(resolve, 150));
         value = { items: workspaces[p] || [] };
       }
-    } else if (url.pathname === "/ui-api/agent-homes")
-      value = {
-        items: (workspaces[p] || []).map((w) => ({
-          id: w.home_id,
-          workspace_id: w.id,
-          project_id: p,
-          kind: "t3",
-          created_at: w.created_at,
-        })),
-      };
-    else if (url.pathname === "/ui-api/schedules") {
+    } else if (url.pathname === "/ui-api/schedules") {
       if (req.method() === "POST") {
         value = {
           ...body,
@@ -289,11 +279,7 @@ test("project workflows preserve boundaries and UI behavior", async ({
     .fill("incoming/finding.md");
   await page.getByRole("button", { name: "Copy file", exact: true }).click();
   await page.getByText(/File copied \(42 B\)/).waitFor();
-  await page.getByRole("link", { name: /Agent homes/ }).click();
-  await page
-    .getByRole("heading", { name: "Agent homes", exact: true })
-    .waitFor();
-  await page.getByText("home_1", { exact: true }).waitFor();
+  assert.equal(await page.getByRole("link", { name: "Agent homes", exact: true }).count(), 0);
   assert.equal(
     await page.getByRole("link", { name: "Schedules", exact: true }).count(),
     0,
@@ -439,6 +425,6 @@ test("project workflows preserve boundaries and UI behavior", async ({
     "removed tool profile APIs must never be requested",
   );
   console.log(
-    "Browser checks passed: project switching has no stale cross-project rows; workspace creation, native desktop pairing, file handoff, homes, removed scheduling navigation, global profile assignment/editor, search, dark theme persistence, global navigation and mobile layout. Uncaught errors: 0.",
+    "Browser checks passed: project switching has no stale cross-project rows; workspace creation, native desktop pairing, file handoff, retired home navigation, removed scheduling navigation, global profile assignment/editor, search, dark theme persistence, global navigation and mobile layout. Uncaught errors: 0.",
   );
 });

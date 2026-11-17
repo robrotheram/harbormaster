@@ -25,6 +25,11 @@ test("signed-out users cannot load project data and can start AuthKit sign-in", 
   );
   await page.goto("/app/");
   await expect(
+    page.getByRole("heading", { name: "A home for your agent work." }),
+  ).toBeVisible();
+  expect(privateRequests).toBe(0);
+  await page.getByRole("link", { name: "Open your workbench" }).click();
+  await expect(
     page.getByRole("heading", { name: "Sign in to your workbench" }),
   ).toBeVisible();
   expect(privateRequests).toBe(0);
@@ -83,7 +88,7 @@ test("session failures fail closed and allow retry", async ({ page }) => {
   unavailable = false;
   await page.getByRole("button", { name: "Try again" }).click();
   await expect(
-    page.getByRole("button", { name: "Sign in with AuthKit" }),
+    page.getByRole("link", { name: "Open your workbench" }),
   ).toBeVisible();
 });
 
@@ -105,7 +110,7 @@ test("session expiry removes private views on focus", async ({ page }) => {
   expired = true;
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await expect(
-    page.getByRole("heading", { name: "Sign in to your workbench" }),
+    page.getByRole("heading", { name: "A home for your agent work." }),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: /User profile: .*Test Operator/ }),
@@ -123,4 +128,55 @@ test("callback errors are readable and removed from the URL", async ({
     "does not have operator access",
   );
   await expect(page).toHaveURL(/\/app\/$/);
+});
+
+for (const width of [375, 1280]) {
+  test(`public entry supports navigation at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 850 });
+    await page.route("**/auth/session", (route) =>
+      route.fulfill({ json: { status: "anonymous" } }),
+    );
+    await page.goto("/app/");
+    await expect(page).toHaveTitle("Workbench · A home for your agent work");
+    await expect(
+      page.getByRole("heading", { name: "A home for your agent work." }),
+    ).toBeVisible();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await page.getByRole("link", { name: "Sign in", exact: true }).click();
+    await expect(
+      page.getByRole("button", { name: "Sign in with AuthKit" }),
+    ).toBeVisible();
+    await expect(page).toHaveTitle("Sign in · Workbench");
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await page.getByRole("link", { name: "Back to home" }).click();
+    await expect(
+      page.getByRole("heading", { name: "A home for your agent work." }),
+    ).toBeVisible();
+  });
+}
+
+test("private deep links show sign-in without mounting project views", async ({
+  page,
+}) => {
+  let privateRequests = 0;
+  await page.route("**/ui-api/**", (route) => {
+    privateRequests++;
+    return route.fulfill({ json: [] });
+  });
+  await page.route("**/auth/session", (route) =>
+    route.fulfill({ json: { status: "anonymous" } }),
+  );
+  await page.goto("/app/projects/example/work");
+  await expect(
+    page.getByRole("heading", { name: "Sign in to your workbench" }),
+  ).toBeVisible();
+  expect(privateRequests).toBe(0);
 });

@@ -66,6 +66,13 @@ func NewHandler(controlplaneReadURL string) (http.Handler, error) {
 				writeError(w, 503, "SNAPSHOT_UNAVAILABLE")
 				return
 			}
+			if r.Context().Value(humanIdentityKey{}) != nil {
+				body, err = serviceHealthSummary(body)
+				if err != nil {
+					writeError(w, 503, "SNAPSHOT_UNAVAILABLE")
+					return
+				}
+			}
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write(body)
 		case "/", "/workspaces":
@@ -86,4 +93,44 @@ func writeError(w http.ResponseWriter, status int, code string) {
 		Message   string `json:"message"`
 		Retryable bool   `json:"retryable"`
 	}{code, "Dashboard request unavailable", status == 503})
+}
+
+// Human members can observe shared service health, never global worker inventory,
+// task details, quotas, addresses or arbitrary diagnostic payloads.
+func serviceHealthSummary(body []byte) ([]byte, error) {
+	type observation struct {
+		Name   string    `json:"name"`
+		Status string    `json:"status"`
+		Reason string    `json:"reason_code,omitempty"`
+		At     time.Time `json:"observed_at"`
+	}
+	var snapshot struct {
+		Generated time.Time `json:"generated_at"`
+		Services  struct {
+			Items []observation `json:"items"`
+		} `json:"services"`
+	}
+	if err := json.Unmarshal(body, &snapshot); err != nil {
+		return nil, err
+	}
+	services := []observation{}
+	for _, service := range snapshot.Services.Items {
+		switch service.Name {
+		case "Control plane", "Platform metadata", "Runtime controller", "Inference gateway", "Credential broker", "MCP":
+		default:
+			continue
+		}
+		switch service.Status {
+		case "healthy", "degraded", "unavailable", "unhealthy", "failed", "down", "unknown":
+		default:
+			service.Status = "unknown"
+		}
+		switch service.Reason {
+		case "PROCESS_READY", "HEALTH_CHECK_FAILED", "NOT_PROBED":
+		default:
+			service.Reason = ""
+		}
+		services = append(services, service)
+	}
+	return json.Marshal(map[string]any{"scope": "services", "generated_at": snapshot.Generated, "services": map[string]any{"items": services}})
 }

@@ -1,3 +1,4 @@
+import { AgentSelection } from "./agent-selection";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,8 @@ export function CreateWork({
   created: (id: string) => void;
 }) {
   const workspaces = useQuery(workspaceOptions(project));
+  const [provider, setProvider] = useState("");
+  const [model, setModel] = useState("");
   const [workspace, setWorkspace] = useState("");
   const [mode, setMode] = useState("inline");
   const [instruction, setInstruction] = useState("");
@@ -39,6 +42,8 @@ export function CreateWork({
       const payload = {
         project_id: project,
         workspace_id: workspace,
+        ...(provider ? { provider } : {}),
+        ...(provider && model ? { model } : {}),
         ...(mode === "inline"
           ? { instruction }
           : {
@@ -125,6 +130,14 @@ export function CreateWork({
               )}
             </div>
           )}
+          <AgentSelection
+            workspace={workspace}
+            provider={provider}
+            model={model}
+            onProvider={setProvider}
+            onModel={setModel}
+            disabled={mutation.isPending}
+          />
           <label>
             Worker
             <NativeSelect
@@ -132,7 +145,7 @@ export function CreateWork({
               value={workspace}
               onChange={(e) => setWorkspace(e.target.value)}
             >
-              <option value="">Create approved Codex worker</option>
+              <option value="">Automatic worker</option>
               {workspaces.data?.map((w) => (
                 <option key={w.id} value={w.id}>
                   {w.name}

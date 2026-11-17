@@ -1,4 +1,4 @@
-import { APIError } from "@/shared/http";
+import { APIError, request } from "@/shared/http";
 export async function readOutput(url: string, signal: AbortSignal) {
   const response = await fetch(url, {
     signal,
@@ -31,4 +31,25 @@ export async function readOutput(url: string, signal: AbortSignal) {
     offset += c.length;
   }
   return new TextDecoder().decode(bytes);
+}
+
+export async function readWorkspaceData(
+  project: string,
+  attempt: { work_item_id: string; id: string },
+  path: string,
+  signal: AbortSignal,
+) {
+  const file = await request<{ path: string; content: string }>(
+    `/work-items/${attempt.work_item_id}/data`,
+    { project_id: project, attempt_id: attempt.id, path },
+    signal,
+  );
+  if (file.path !== path)
+    throw new Error("The worker returned a different file.");
+  const content = atob(file.content || "");
+  if (content.length > 262144)
+    throw new Error("Use data smaller than 256 KiB.");
+  return new TextDecoder().decode(
+    Uint8Array.from(content, (c) => c.charCodeAt(0)),
+  );
 }

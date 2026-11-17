@@ -1,9 +1,13 @@
+import { usePersonalWork, useLayoutPreference } from "./personal-work";
+import { AgentSelection } from "./agent-selection";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { conversationTitle } from "./conversation-title";
 import { useThreadTitles } from "./thread-titles";
 import { composerKeyDown } from "./composer-keydown";
 import {
   useState,
+  useEffect,
+  type CSSProperties,
   useCallback,
   useRef,
   type SetStateAction,
@@ -15,7 +19,6 @@ import {
   Plus,
   Search,
   MessageSquare,
-  SlidersHorizontal,
   Bot,
   ArrowUp,
   PanelLeftOpen,
@@ -37,7 +40,6 @@ import { date, label } from "@/shared/format";
 import type { Project } from "@/shared/types";
 import { workspaceOptions } from "@/features/workspaces/api";
 import { ProjectCompanion } from "@/features/project-assistant/companion";
-import { CreateWork } from "./create-work";
 import { WorkConversation } from "./work-thread";
 import { workApi, workKeys, workOptions, type WorkCreate } from "./api";
 import { stages, workStage, workStatus, type WorkStage } from "./stages";
@@ -48,14 +50,23 @@ export function Work({ project }: { project: Project }) {
 function ProjectConversations({ project }: { project: Project }) {
   const navigate = useNavigate();
   const search = useSearch({ strict: false });
-  const selected = search.work || "";
+  const personal = usePersonalWork();
+  const selected = search.work ?? personal.lastThread;
+  const [railWidth, setRailWidth] = useLayoutPreference<number>(
+    "thread-width",
+    252,
+  );
+  const rail = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    personal.setLastThread(selected);
+  }, [selected]);
   const query = useQuery(workOptions(project.id));
   const [filter, setFilter] = useState("");
   const [visibleLimit, setVisibleLimit] = useState(20);
   const [stage, setStage] = useState<WorkStage>("all");
   const [worklist, setWorklist] = useState(false);
   const threadSwitch = useRef<HTMLButtonElement>(null);
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const { drafts, setDrafts } = personal;
   const setThreadDraft = useCallback(
     (value: SetStateAction<string>) => {
       setDrafts((old) => ({
@@ -66,7 +77,6 @@ function ProjectConversations({ project }: { project: Project }) {
     },
     [selected],
   );
-  const [advanced, setAdvanced] = useState(false);
   const [assistant, setAssistant] = useState(false);
   const [startError, setStartError] = useState<unknown>();
   const select = (id: string) => {
@@ -75,11 +85,20 @@ function ProjectConversations({ project }: { project: Project }) {
     navigate({
       to: "/projects/$projectId/$section",
       params: { projectId: project.id, section: "work" },
-      search: id ? { work: id } : {},
+      search: { work: id },
     });
   };
-  const items = [...(query.data || [])].sort((a, b) =>
-    b.updated_at.localeCompare(a.updated_at),
+  const order = useRef<string[]>([]);
+  // Planning records without an execution context belong in Overview.
+  const loaded = (query.data || [])
+    .filter(
+      (item) => !(item.workspace_id === "" && item.specification_path === ""),
+    )
+    .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+  for (const item of loaded)
+    if (!order.current.includes(item.id)) order.current.push(item.id);
+  const items = loaded.sort(
+    (a, b) => order.current.indexOf(a.id) - order.current.indexOf(b.id),
   );
   const term = filter.trim().toLowerCase();
   const eligible = items.filter(
@@ -102,6 +121,7 @@ function ProjectConversations({ project }: { project: Project }) {
       i.specification_path,
       i.id,
       i.kind,
+      titleState.owners.get(i.id) || "",
     ].some((v) => v.toLowerCase().includes(term)),
   );
   const visible = matches.slice(0, visibleLimit);
@@ -118,13 +138,8 @@ function ProjectConversations({ project }: { project: Project }) {
           : items.filter((item) => workStage(item.state) === id).length;
     return `${label} (${count})`;
   };
-  const renderWorkList = (drawer = false) => (
+  const renderWorkList = () => (
     <aside className="conversation-worklist" aria-label="Threads">
-      {!drawer && (
-        <div className="conversation-rail-heading">
-          <h2>Threads</h2>
-        </div>
-      )}
       <Button className="w-full" onClick={() => select("")}>
         <Plus size={14} /> New thread
       </Button>
@@ -233,15 +248,21 @@ function ProjectConversations({ project }: { project: Project }) {
           >
             <span className="conversation-work-name">
               <span className="line-clamp-2">{titles.get(item.id)}</span>
+              {titles.get(item.id) === "Untitled conversation" && (
+                <small>{item.id}</small>
+              )}
             </span>
             <span className="conversation-work-meta">
-              <span
-                className="thread-state"
-                data-stage={workStage(item.state)}
-                data-state={workStatus(item.state)}
-              >
-                {label(workStatus(item.state))}
-              </span>
+              <span>{titleState.owners.get(item.id) || "Unassigned"}</span>
+              {workStatus(item.state) !== "accepted" && (
+                <span
+                  className="thread-state"
+                  data-stage={workStage(item.state)}
+                  data-state={workStatus(item.state)}
+                >
+                  {label(workStatus(item.state))}
+                </span>
+              )}
               {drafts[item.id]?.trim() && (
                 <span className="thread-draft">Draft</span>
               )}
@@ -297,9 +318,6 @@ function ProjectConversations({ project }: { project: Project }) {
         <Button variant="ghost" size="sm" onClick={() => setAssistant(true)}>
           <Bot size={14} /> Project assistant
         </Button>
-        <Button variant="ghost" size="sm" onClick={() => setAdvanced(true)}>
-          <SlidersHorizontal size={14} /> Create work item
-        </Button>
       </div>
     </aside>
   );
@@ -318,15 +336,65 @@ function ProjectConversations({ project }: { project: Project }) {
     </Button>
   );
   return (
-    <div className="work-page">
+    <div
+      className="work-page"
+      style={
+        {
+          "--thread-rail-width": `${Math.max(240, Math.min(280, railWidth))}px`,
+        } as CSSProperties
+      }
+    >
       <h1 className="sr-only">Project work</h1>
       <div
         className={`conversation-workbench ${selected ? "has-conversation" : ""}`}
       >
-        <div className="conversation-thread-rail">
+        <div className="conversation-thread-rail" ref={rail}>
           <div id="thread-sidebar" className="conversation-rail-expanded">
             {renderWorkList()}
           </div>
+          <div
+            className="thread-resizer"
+            role="separator"
+            aria-label="Resize thread list"
+            aria-orientation="vertical"
+            aria-valuemin={240}
+            aria-valuemax={280}
+            aria-valuenow={railWidth}
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (["ArrowLeft", "ArrowRight"].includes(e.key)) {
+                e.preventDefault();
+                setRailWidth((w) =>
+                  Math.max(
+                    240,
+                    Math.min(280, w + (e.key === "ArrowRight" ? 4 : -4)),
+                  ),
+                );
+              }
+            }}
+            onPointerDown={(e) => {
+              e.preventDefault();
+              e.currentTarget.setPointerCapture(e.pointerId);
+            }}
+            onPointerMove={(e) => {
+              if (
+                e.currentTarget.hasPointerCapture(e.pointerId) &&
+                rail.current
+              )
+                setRailWidth(
+                  Math.max(
+                    240,
+                    Math.min(
+                      280,
+                      e.clientX - rail.current.getBoundingClientRect().left,
+                    ),
+                  ),
+                );
+            }}
+            onPointerUp={(e) =>
+              e.currentTarget.releasePointerCapture(e.pointerId)
+            }
+          />
         </div>
         <Sheet open={worklist} onOpenChange={setWorklist}>
           <SheetContent
@@ -339,7 +407,7 @@ function ProjectConversations({ project }: { project: Project }) {
             aria-describedby={undefined}
           >
             <SheetTitle>Threads</SheetTitle>
-            {renderWorkList(true)}
+            {renderWorkList()}
           </SheetContent>
         </Sheet>
         {selected ? (
@@ -349,6 +417,7 @@ function ProjectConversations({ project }: { project: Project }) {
             id={selected}
             startError={startError}
             title={titles.get(selected)}
+            owner={titleState.owners.get(selected)}
             navigation={mobileNavigation}
             message={drafts[selected] || ""}
             setMessage={setThreadDraft}
@@ -372,16 +441,6 @@ function ProjectConversations({ project }: { project: Project }) {
           </div>
         )}
       </div>
-      {advanced && (
-        <CreateWork
-          project={project.id}
-          close={() => setAdvanced(false)}
-          created={(id) => {
-            setAdvanced(false);
-            select(id);
-          }}
-        />
-      )}
       {assistant && (
         <Modal
           title={`Project assistant in ${project.name}`}
@@ -405,10 +464,21 @@ function NewConversation({
   project: Project;
   onStarted: (id: string, error?: unknown) => void;
 }) {
+  const [provider, setProvider] = useState("");
+  const [model, setModel] = useState("");
   const [workspace, setWorkspace] = useState("");
   const [kind, setKind] = useState<WorkCreate["kind"]>("software");
   const [outputs, setOutputs] = useState("");
   const workers = useQuery(workspaceOptions(project.id));
+  const availableWorkers =
+    workers.data?.filter(
+      (w) => w.agent_kind !== "hermes" && !w.retained_preview,
+    ) || [];
+  const selectedWorkspace =
+    workspace ||
+    availableWorkers.find((w) => w.ready)?.id ||
+    availableWorkers[0]?.id ||
+    "";
   const key = useRequestKey();
   const client = useQueryClient();
   const instructionTooLong =
@@ -422,7 +492,9 @@ function NewConversation({
     mutationFn: () => {
       const payload = {
         project_id: project.id,
-        workspace_id: workspace,
+        workspace_id: selectedWorkspace,
+        ...(provider ? { provider } : {}),
+        ...(provider && model ? { model } : {}),
         instruction,
         kind,
         artifact_paths: outputPaths,
@@ -483,16 +555,28 @@ function NewConversation({
             in a worker file, then refer to that file in your instructions.
           </p>
         )}
+        <AgentSelection
+          workspace={selectedWorkspace}
+          provider={provider}
+          model={model}
+          onProvider={setProvider}
+          onModel={setModel}
+          disabled={mutation.isPending}
+        />
         <div className="conversation-new-options">
           <label>
             Worker
             <NativeSelect
               aria-label="Worker"
-              value={workspace}
-              onChange={(e) => setWorkspace(e.target.value)}
+              value={selectedWorkspace}
+              onChange={(e) => {
+                setWorkspace(e.target.value);
+                setProvider("");
+                setModel("");
+              }}
               disabled={mutation.isPending}
             >
-              <option value="">Create a private Codex worker</option>
+              <option value="">Automatic worker</option>
               {workers.data
                 ?.filter(
                   (w) => w.agent_kind !== "hermes" && !w.retained_preview,
@@ -552,11 +636,6 @@ function NewConversation({
         )}
         {mutation.isError && <ErrorNotice error={mutation.error} />}
         <div className="conversation-compose-actions">
-          <span>
-            {mutation.isPending
-              ? "Preparing the worker and starting your run…"
-              : "Enter to send · Shift+Enter for a new line"}
-          </span>
           <Button disabled={!canSend}>
             <ArrowUp size={15} />
             {mutation.isPending ? "Starting…" : "Start work"}

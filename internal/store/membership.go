@@ -1,0 +1,133 @@
+package store
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+)
+
+type ProjectMember struct {
+	ProjectID string `json:"project_id"`
+	Email     string `json:"email"`
+	UserID    string `json:"user_id"`
+	Role      string `json:"role"`
+	Status    string `json:"status"`
+	Revision  int    `json:"revision"`
+}
+
+var ErrMembershipConflict = errors.New("membership changed or last admin")
+
+func (s *Store) initMembership(ctx context.Context) error {
+	_, err := s.DB.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS project_members(project_id TEXT NOT NULL,email TEXT NOT NULL,user_id TEXT NOT NULL,role TEXT NOT NULL,status TEXT NOT NULL,revision INTEGER NOT NULL,PRIMARY KEY(project_id,email))`)
+	return err
+}
+func (s *Store) ProjectMembers(ctx context.Context, project string) ([]ProjectMember, error) {
+	rows, err := s.DB.QueryContext(ctx, s.query(`SELECT project_id,email,user_id,role,status,revision FROM project_members WHERE project_id=? ORDER BY email`), project)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []ProjectMember{}
+	for rows.Next() {
+		var m ProjectMember
+		if err = rows.Scan(&m.ProjectID, &m.Email, &m.UserID, &m.Role, &m.Status, &m.Revision); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+func (s *Store) MemberRole(ctx context.Context, project, user string) (string, error) {
+	var role string
+	err := s.DB.QueryRowContext(ctx, s.query(`SELECT role FROM project_members WHERE project_id=? AND user_id=? AND status='active'`), project, user).Scan(&role)
+	return role, err
+}
+func (s *Store) Invitations(ctx context.Context, email string) ([]ProjectMember, error) {
+	rows, err := s.DB.QueryContext(ctx, s.query(`SELECT project_id,email,user_id,role,status,revision FROM project_members WHERE email=? AND status='invited' AND project_id NOT IN (SELECT id FROM deleted_resources WHERE kind='project')`), email)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []ProjectMember{}
+	for rows.Next() {
+		var m ProjectMember
+		if err = rows.Scan(&m.ProjectID, &m.Email, &m.UserID, &m.Role, &m.Status, &m.Revision); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// The write lock on the project serializes roster changes across API instances.
+func (s *Store) SaveMember(ctx context.Context, m ProjectMember, expected int, actor string, system bool) error {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	res, err := tx.ExecContext(ctx, s.query(`UPDATE projects SET metadata=metadata WHERE id=? AND id NOT IN (SELECT id FROM deleted_resources WHERE kind='project')`), m.ProjectID)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n != 1 {
+		return sql.ErrNoRows
+	}
+	if !system {
+		var role string
+		err = tx.QueryRowContext(ctx, s.query(`SELECT role FROM project_members WHERE project_id=? AND user_id=? AND status='active'`), m.ProjectID, actor).Scan(&role)
+		if err != nil || role != "admin" {
+			return sql.ErrNoRows
+		}
+	}
+	var oldRole, oldStatus string
+	var oldRev int
+	err = tx.QueryRowContext(ctx, s.query(`SELECT role,status,revision FROM project_members WHERE project_id=? AND email=?`), m.ProjectID, m.Email).Scan(&oldRole, &oldStatus, &oldRev)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if oldRev != expected {
+		return ErrMembershipConflict
+	}
+	if oldRole == "admin" && oldStatus == "active" && (m.Role != "admin" || m.Status != "active") {
+		var count int
+		if err = tx.QueryRowContext(ctx, s.query(`SELECT count(*) FROM project_members WHERE project_id=? AND role='admin' AND status='active'`), m.ProjectID).Scan(&count); err != nil {
+			return err
+		}
+		if count <= 1 {
+			return ErrMembershipConflict
+		}
+	}
+	_, err = tx.ExecContext(ctx, s.query(`INSERT INTO project_members(project_id,email,user_id,role,status,revision) VALUES(?,?,?,?,?,?) ON CONFLICT(project_id,email) DO UPDATE SET user_id=excluded.user_id,role=excluded.role,status=excluded.status,revision=excluded.revision`), m.ProjectID, m.Email, m.UserID, m.Role, m.Status, expected+1)
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+func (s *Store) AcceptInvitation(ctx context.Context, project, email, user string, revision int) error {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	// Use the same project lock as roster edits. Acceptance must not race past
+	// the last-admin check or overwrite a concurrent revocation.
+	result, err := tx.ExecContext(ctx, s.query(`UPDATE projects SET metadata=metadata WHERE id=? AND id NOT IN (SELECT id FROM deleted_resources WHERE kind='project')`), project)
+	if err != nil {
+		return err
+	}
+	n, _ := result.RowsAffected()
+	if n != 1 {
+		return ErrMembershipConflict
+	}
+	result, err = tx.ExecContext(ctx, s.query(`UPDATE project_members SET user_id=?,status='active',revision=revision+1 WHERE project_id=? AND email=? AND status='invited' AND revision=?`), user, project, email, revision)
+	if err != nil {
+		return err
+	}
+	n, _ = result.RowsAffected()
+	if n != 1 {
+		return ErrMembershipConflict
+	}
+	return tx.Commit()
+}

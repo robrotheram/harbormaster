@@ -254,7 +254,7 @@ test("create a standalone issue without a repository", async ({ page }) => {
   await page
     .getByLabel("Description", { exact: true })
     .fill("Support partial matches");
-  await page.getByRole("button", { name: "Create issue", exact: true }).click();
+  await page.getByRole("button", { name: "Create task", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Improve search", exact: true }),
   ).toBeVisible();

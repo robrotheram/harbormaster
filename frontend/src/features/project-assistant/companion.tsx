@@ -55,7 +55,8 @@ export function ProjectCompanion({ project }: { project: Project }) {
           </div>
           <Link
             to="/projects/$projectId/$section"
-            params={{ projectId: project.id, section: "hermes" }}
+            params={{ projectId: project.id, section: "settings" }}
+            search={{ tab: "hermes" }}
             aria-label="Configure Hermes"
             className="ml-auto icon-link"
           >
@@ -130,7 +131,8 @@ export function ProjectCompanion({ project }: { project: Project }) {
                 <Link
                   className="factory-action-link"
                   to="/projects/$projectId/$section"
-                  params={{ projectId: project.id, section: "hermes" }}
+                  params={{ projectId: project.id, section: "settings" }}
+                  search={{ tab: "hermes" }}
                 >
                   Set up Hermes
                   <ArrowUpRight size={14} />

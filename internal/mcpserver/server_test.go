@@ -93,10 +93,13 @@ func TestSDKTools(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if len(list.Tools) != 42 {
+	if len(list.Tools) != 41 {
 		t.Fatalf("tools=%d", len(list.Tools))
 	}
 	for _, tool := range list.Tools {
+		if tool.Name == "agent_home_list" {
+			t.Fatal("retired catalog tool advertised")
+		}
 		if tool.InputSchema == nil || tool.OutputSchema == nil {
 			t.Fatalf("missing schemas: %s", tool.Name)
 		}

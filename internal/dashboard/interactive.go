@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"bytes"
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -31,11 +32,13 @@ func NewInteractiveHandler(readURL, controlURL, token string) (http.Handler, err
 		return nil, errors.New("invalid launcher upstream")
 	}
 	type ticket struct {
+		human   *shared.HumanIdentity
 		id      string
 		expires time.Time
 	}
 	var ticketsMu sync.Mutex
 	tickets := map[string]ticket{}
+	consoleSessions := map[string]ticket{}
 	client := &http.Client{Timeout: 35 * time.Second, Transport: &http.Transport{Proxy: nil}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	previews := newPreviewIngress(client, controlURL, token)
 	sign := func(id, expires string) string {
@@ -113,13 +116,37 @@ func NewInteractiveHandler(readURL, controlURL, token string) (http.Handler, err
 					return
 				}
 				expiry := time.Now().Add(12 * time.Hour)
-				http.SetCookie(w, &http.Cookie{Name: "awb_console", Value: sign(id, strconv.FormatInt(expiry.Unix(), 10)), Path: "/", HttpOnly: true, Secure: workerSecure(r), SameSite: http.SameSiteStrictMode, Expires: expiry})
+				cookieValue := sign(id, strconv.FormatInt(expiry.Unix(), 10))
+				if issued.human != nil {
+					cookieValue = shared.NewID("session_")
+					ticketsMu.Lock()
+					for key, session := range consoleSessions {
+						if time.Now().After(session.expires) {
+							delete(consoleSessions, key)
+						}
+					}
+					if len(consoleSessions) >= 256 {
+						ticketsMu.Unlock()
+						writeError(w, 429, "TOO_MANY_CONNECTIONS")
+						return
+					}
+					consoleSessions[cookieValue] = ticket{human: issued.human, id: id, expires: expiry}
+					ticketsMu.Unlock()
+				}
+				http.SetCookie(w, &http.Cookie{Name: "awb_console", Value: cookieValue, Path: "/", HttpOnly: true, Secure: workerSecure(r), SameSite: http.SameSiteStrictMode, Expires: expiry})
 				shared.JSON(w, 200, map[string]bool{"connected": true})
 				return
 			}
 			cookie, e := r.Cookie("awb_console")
 			valid := false
 			if e == nil {
+				ticketsMu.Lock()
+				session, ok := consoleSessions[cookie.Value]
+				ticketsMu.Unlock()
+				if ok && session.id == id && time.Now().Before(session.expires) && session.human != nil {
+					valid = true
+					r = r.WithContext(context.WithValue(r.Context(), humanIdentityKey{}, *session.human))
+				}
 				parts := strings.Split(cookie.Value, ".")
 				if len(parts) == 2 {
 					expires, e := strconv.ParseInt(parts[0], 10, 64)
@@ -130,7 +157,7 @@ func NewInteractiveHandler(readURL, controlURL, token string) (http.Handler, err
 				writeConnectionError(w, r, 401, "OPEN_FROM_WORKSPACE_LAUNCHER", "worker")
 				return
 			}
-			shared.Proxy(w, r, controlURL, "/v1/workspaces/"+id+"/console"+r.URL.Path, token)
+			shared.Proxy(w, r, controlURL, "/v1/workspaces/"+id+"/console"+r.URL.Path, humanToken(r, token))
 			return
 		}
 		if host != "127.0.0.1" && host != "localhost" && r.Context().Value(authenticatedOriginKey{}) == nil {
@@ -143,7 +170,9 @@ func NewInteractiveHandler(readURL, controlURL, token string) (http.Handler, err
 		if serveFrontend(w, r) {
 			return
 		}
+
 		if strings.HasPrefix(r.URL.Path, "/ui-api/") {
+			requestToken := humanToken(r, token)
 			r.Header.Del("X-Workbench-Subscription-User")
 			if identity, ok := r.Context().Value(subscriptionIdentityKey{}).(string); ok {
 				r.Header.Set("X-Workbench-Subscription-User", identity)
@@ -184,11 +213,17 @@ func NewInteractiveHandler(readURL, controlURL, token string) (http.Handler, err
 				return
 			}
 			limit := int64(4096)
+			if parts[0] == "board" && len(parts) <= 2 {
+				limit = 100000
+			}
 			if path == "/subscription" || path == "/subscriptions" || strings.HasPrefix(path, "/subscriptions/") {
 				limit = 70 << 10
 			}
 			if parts[0] == "work-items" && len(parts) == 1 {
 				limit = 400000
+			}
+			if parts[0] == "work-items" && len(parts) == 3 && parts[2] == "continue" {
+				limit = 6 << 20
 			}
 			if parts[0] == "note-publications" || (parts[0] == "project-exchanges" && len(parts) == 3 && parts[2] == "exports") {
 				limit = 100000
@@ -200,7 +235,11 @@ func NewInteractiveHandler(readURL, controlURL, token string) (http.Handler, err
 				limit = 70 << 10
 			}
 			r.Body = http.MaxBytesReader(w, r.Body, limit)
-			if len(parts) == 3 && (parts[2] == "start" || parts[2] == "desktop-pair") {
+			if len(parts) == 3 && parts[2] == "desktop-pair" && r.Context().Value(humanIdentityKey{}) != nil {
+				writeError(w, 403, "OPERATOR_ACCESS_REQUIRED")
+				return
+			}
+			if len(parts) == 3 && parts[0] == "workspaces" && (parts[2] == "start" || parts[2] == "desktop-pair") {
 				payload, e := io.ReadAll(r.Body)
 				if e != nil {
 					writeError(w, 400, "INVALID_REQUEST")
@@ -211,7 +250,7 @@ func NewInteractiveHandler(readURL, controlURL, token string) (http.Handler, err
 					writeError(w, 503, "CONSOLE_UNAVAILABLE")
 					return
 				}
-				request.Header.Set("Authorization", "Bearer "+token)
+				request.Header.Set("Authorization", "Bearer "+requestToken)
 				request.Header.Set("Content-Type", "application/json")
 				response, e := client.Do(request)
 				if e != nil {
@@ -246,14 +285,18 @@ func NewInteractiveHandler(readURL, controlURL, token string) (http.Handler, err
 						writeError(w, 429, "TOO_MANY_CONNECTIONS")
 						return
 					}
-					tickets[key] = ticket{parts[1], time.Now().Add(time.Minute)}
+					var human *shared.HumanIdentity
+					if h, ok := r.Context().Value(humanIdentityKey{}).(shared.HumanIdentity); ok {
+						human = &h
+					}
+					tickets[key] = ticket{human: human, id: parts[1], expires: time.Now().Add(time.Minute)}
 					ticketsMu.Unlock()
 					result["console_ticket"] = key
 				}
 				shared.JSON(w, response.StatusCode, result)
 				return
 			}
-			shared.Proxy(w, r, controlURL, "/v1"+path, token)
+			shared.Proxy(w, r, controlURL, "/v1"+path, requestToken)
 			return
 		}
 

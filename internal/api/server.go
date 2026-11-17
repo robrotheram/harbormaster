@@ -168,6 +168,7 @@ func (s *Server) Handler() http.Handler {
 	})
 	secured := http.NewServeMux()
 	s.registerConnectionProfiles(secured)
+	s.registerAgentModels(secured)
 	s.registerWorkspaceSettings(secured)
 	s.registerConsoleUpgrade(secured)
 	s.registerDomains(secured)

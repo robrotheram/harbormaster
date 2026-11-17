@@ -59,11 +59,6 @@ export function ConnectionProfiles() {
         </Button>
       </div>
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <p className="max-w-2xl text-xs leading-6 text-muted-foreground">
-          Global edits apply on the next explicit worker start or settings save.
-          Running work keeps its applied policy; direct network changes require
-          a stop/start.
-        </p>
         <div className="compact-search">
           <Search size={14} />
           <Input
@@ -368,7 +363,7 @@ function ProfileEditor({
         {mode === "open" && (
           <p className="notice">
             Fully open allows Internet, LAN and reachable host services through
-            direct networking and DNS. Project files and private agent homes
+            direct networking and DNS. Project files and private worker data
             remain separate.
           </p>
         )}

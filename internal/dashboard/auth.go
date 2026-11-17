@@ -19,7 +19,8 @@ import (
 	workos "github.com/workos/workos-go/v10"
 )
 
-// AuthConfig gates the shared operator console, not per-project tenancy.
+// AuthConfig gates login. Verified human identity is forwarded to the API,
+// which enforces explicit project membership.
 // With no configuration the existing loopback-only local mode is preserved.
 type AuthConfig struct {
 	ClientID, APIKey, RedirectURI string
@@ -215,7 +216,7 @@ func (a *authHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 401, "AUTH_REQUIRED")
 		return
 	}
-	a.next.ServeHTTP(w, withSubscriptionIdentity(r, "workos:"+a.cfg.ClientID, result.User.ID))
+	a.next.ServeHTTP(w, withHumanIdentity(r, "workos:"+a.cfg.ClientID, result.User.ID, result.User.Email))
 }
 
 func (a *authHandler) login(w http.ResponseWriter, r *http.Request) {

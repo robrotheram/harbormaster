@@ -57,14 +57,6 @@ export interface Workspace {
   cpu_cores?: number | null;
   memory_bytes?: number | null;
 }
-export interface AgentHome {
-  shared?: boolean;
-  id: string;
-  project_id: string;
-  workspace_id: string;
-  kind: string;
-  created_at: string;
-}
 export interface Schedule {
   revision?: number;
   id: string;
@@ -100,13 +92,11 @@ export interface Pairing {
   expires_at: string;
 }
 export type Section =
+  | "team"
   | "board"
   | "reviews"
-  | "factory"
   | "work"
   | "workspaces"
-  | "homes"
   | "settings"
-  | "hermes"
   | "overview"
   | "help";

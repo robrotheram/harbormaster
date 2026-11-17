@@ -40,8 +40,8 @@ export function conversationTitle(
   if (!item.specification_path.startsWith("work-requests/")) {
     return (
       item.specification_path.split("/").at(-1) ||
-      `Conversation ${item.id.slice(-8)}`
+      "Untitled conversation"
     );
   }
-  return `Conversation ${item.id.slice(-8)}`;
+  return "Untitled conversation";
 }

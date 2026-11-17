@@ -137,7 +137,11 @@ export function StartWorker({
             <Button variant="outline" size="sm" asChild>
               <Link
                 to="/projects/$projectId/$section"
-                params={{ projectId: workspace.project_id, section: "hermes" }}
+                params={{
+                  projectId: workspace.project_id,
+                  section: "settings",
+                }}
+                search={{ tab: "hermes" }}
               >
                 Hermes setup
               </Link>

@@ -10,6 +10,11 @@ export type Artifact = {
   content_url?: string;
 };
 export type WorkItem = {
+  controller_id?: string;
+  reviewer_id?: string;
+  control_history?: { from: string; to: string; actor: string; at: string }[];
+  provider?: string;
+  model?: string;
   id: string;
   project_id: string;
   workspace_id: string;
@@ -24,6 +29,7 @@ export type WorkItem = {
   updated_at: string;
 };
 export type Attempt = {
+  reviewed_by?: string;
   id: string;
   work_item_id: string;
   workspace_id: string;
@@ -38,6 +44,8 @@ export type Attempt = {
   updated_at: string;
 };
 export type WorkCreate = {
+  provider?: string;
+  model?: string;
   project_id: string;
   workspace_id?: string;
   instruction?: string;
@@ -83,11 +91,15 @@ export const workApi = {
     instruction: string,
     expected_attempt_id: string,
     idempotency_key: string,
+    selection?: { provider: string; model: string },
+    screenshots?: { content: string; note: string }[],
   ) =>
     request<Attempt>(path(id) + "/continue", {
       project_id: project,
       instruction,
       presentation: "interactive-v1",
+      ...(selection ? { selection } : {}),
+      ...(screenshots?.length ? { screenshots } : {}),
       expected_attempt_id,
       idempotency_key,
     }),
@@ -168,6 +180,7 @@ export function workActions(state: string) {
       "draft",
       "planned",
       "in_progress",
+      "changes_requested",
       "failed",
       "cancelled",
       "rejected",

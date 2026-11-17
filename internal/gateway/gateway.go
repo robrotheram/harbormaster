@@ -90,6 +90,7 @@ func NewHandler(c Config) (http.Handler, error) {
 		client = &http.Client{Transport: tr, Timeout: 30 * time.Second, CheckRedirect: NoRedirect}
 	}
 	mux := http.NewServeMux()
+	registerModels(mux, c)
 	if err := registerSubscriptions(mux, c); err != nil {
 		return nil, err
 	}

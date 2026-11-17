@@ -5,7 +5,6 @@ import {
   Files,
   ShieldCheck,
   TerminalSquare,
-  ArrowUpRight,
 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
@@ -14,7 +13,7 @@ const guides = [
   {
     icon: TerminalSquare,
     title: "Start with a conversation",
-    body: "Open a project and choose Work → New thread. Describe the result you need, select a worker, and choose Start work. Follow the agent’s messages and activity in the conversation.",
+    body: "Open a project and choose Workspace → New thread. Describe the result you need, select a worker, and choose Start work. Follow the agent’s messages and activity in the conversation.",
   },
   {
     icon: ShieldCheck,
@@ -100,15 +99,6 @@ export function GettingStarted() {
               conversations and connection settings.
             </p>
           </section>
-          <a
-            href="https://github.com/pingdotgg/t3code"
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center justify-between rounded-lg border bg-background px-4 py-3 text-xs text-muted-foreground hover:text-foreground"
-          >
-            T3 Code project
-            <ArrowUpRight className="size-3.5" />
-          </a>
         </aside>
       </div>
     </>

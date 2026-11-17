@@ -12,6 +12,15 @@ func TestUIRouteBoundary(t *testing.T) {
 		method, path string
 		allowed      bool
 	}{
+		{"GET", "/projects/project_one/capabilities", true},
+		{"POST", "/projects/project_one/capabilities", false},
+		{"GET", "/projects/project_one/capabilities/extra", false},
+		{"POST", "/board/work_one/start", true},
+		{"GET", "/board/work_one/start", false},
+		{"POST", "/board/work_one/start/extra", false},
+		{"POST", "/projects/project_one/rename", true},
+		{"GET", "/projects/project_one/rename", false},
+		{"POST", "/projects/project_one/rename/extra", false},
 		{"POST", "/workspaces/ws_one/terminals", true},
 		{"POST", "/workspaces/ws_one/terminals/terminal_one/exchange", true},
 		{"POST", "/workspaces/ws_one/terminals/terminal_one/close", true},

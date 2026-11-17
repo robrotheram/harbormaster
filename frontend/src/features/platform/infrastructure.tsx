@@ -39,7 +39,13 @@ export function Infrastructure({ projects }: { projects: Project[] }) {
   const [bulkMode, setBulkMode] = useState(false);
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [batch, setBatch] = useState<WorkerBatch>();
-  const workers = queries.flatMap((q) => (q.isError ? [] : q.data || []));
+  const workers = [
+    ...new Map(
+      queries
+        .flatMap((q) => (q.isError ? [] : q.data || []))
+        .map((w) => [w.id, w]),
+    ).values(),
+  ];
   const pending = queries.some((q) => q.isPending);
   const failures = projects.filter((_, i) => queries[i].isError);
   const runtimes = [
@@ -64,7 +70,7 @@ export function Infrastructure({ projects }: { projects: Project[] }) {
     <>
       <div className="page-title">
         <div>
-          <h1>Infrastructure</h1>
+          <h1>Workers</h1>
         </div>
         <Button
           variant="outline"
@@ -77,37 +83,40 @@ export function Infrastructure({ projects }: { projects: Project[] }) {
           Refresh
         </Button>
       </div>
-      <div className="infra-resources">
-        <span>
-          <Boxes size={13} />
-          Running{" "}
-          <strong>
-            {usage?.running_workspaces ?? "—"}
-            <em> / {usage?.max_running_workspaces ?? "—"}</em>
-          </strong>
-        </span>
-        <span>
-          <Cpu size={13} />
-          Allocated CPU{" "}
-          <strong>
-            {usage?.cpu_allocated == null
-              ? "—"
-              : `${usage.cpu_allocated} ${usage.cpu_allocated === 1 ? "core" : "cores"}`}
-          </strong>
-        </span>
-        <span>
-          <MemoryStick size={13} />
-          Allocated memory{" "}
-          <strong>
-            {usage?.memory_allocated_bytes == null
-              ? "—"
-              : bytes(usage.memory_allocated_bytes)}
-          </strong>
-        </span>
-      </div>
+      {snapshot.data?.scope !== "services" && (
+        <div className="infra-resources">
+          <span>
+            <Boxes size={13} />
+            Running{" "}
+            <strong>
+              {usage?.running_workspaces ?? "—"}
+              <em> / {usage?.max_running_workspaces ?? "—"}</em>
+            </strong>
+          </span>
+          <span>
+            <Cpu size={13} />
+            Allocated CPU{" "}
+            <strong>
+              {usage?.cpu_allocated == null
+                ? "—"
+                : `${usage.cpu_allocated} ${usage.cpu_allocated === 1 ? "core" : "cores"}`}
+            </strong>
+          </span>
+          <span>
+            <MemoryStick size={13} />
+            Allocated memory{" "}
+            <strong>
+              {usage?.memory_allocated_bytes == null
+                ? "—"
+                : bytes(usage.memory_allocated_bytes)}
+            </strong>
+          </span>
+        </div>
+      )}
       {snapshot.isError && <ErrorNotice error={snapshot.error} />}
       {failures.length > 0 && (
         <div className="notice error" role="alert">
+          {queries.find((q) => q.isError)?.error?.message} <br />
           Worker inventory unavailable for{" "}
           {failures.map((p) => p.name).join(", ")}. Counts exclude these
           projects.{" "}
@@ -439,7 +448,7 @@ function WorkerDetails({
         params={{ projectId: w.project_id, section: "workspaces" }}
         className="factory-action-link"
       >
-        Manage worker & desktop connection
+        Open worker controls
         <ArrowUpRight size={14} />
       </Link>
     </div>

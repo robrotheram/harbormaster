@@ -1,11 +1,11 @@
+import {
+  retryTransient,
+  pollUnlessBlocked,
+  refocusUnlessBlocked,
+} from "@/shared/query-policy";
 import { request, requireProject } from "@/shared/http";
 import { keys } from "@/shared/query-keys";
-import type {
-  Workspace,
-  StartResult,
-  Pairing,
-  AgentHome,
-} from "@/shared/types";
+import type { Workspace, StartResult, Pairing } from "@/shared/types";
 export type WorkspaceCreate = {
   project_id: string;
   name: string;
@@ -83,18 +83,6 @@ export const workspacesApi = {
     );
     return value.items;
   },
-  homes: async (project: string, signal?: AbortSignal) => {
-    const value = await request<{ items: AgentHome[] }>(
-      "/agent-homes?project_id=" + encodeURIComponent(project),
-      undefined,
-      signal,
-    );
-    requireProject(
-      value.items.filter((home) => home.shared !== true),
-      project,
-    );
-    return value.items;
-  },
   start: (id: string, idempotency_key: string = crypto.randomUUID()) =>
     request<StartResult>(`/workspaces/${encodeURIComponent(id)}/start`, {
       idempotency_key,
@@ -113,7 +101,11 @@ export function workspaceOptions(project: string) {
     queryKey: keys.workspaces(project),
     queryFn: ({ signal }: { signal: AbortSignal }) =>
       workspacesApi.list(project, signal),
-    refetchInterval: 10000,
-    retry: 1,
+    refetchInterval: pollUnlessBlocked(10000),
+    retry: retryTransient,
+    retryOnMount: false,
+    refetchOnWindowFocus: refocusUnlessBlocked,
+    refetchOnReconnect: refocusUnlessBlocked,
+    refetchOnMount: refocusUnlessBlocked,
   };
 }

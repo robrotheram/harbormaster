@@ -33,7 +33,11 @@ func serveFrontend(w http.ResponseWriter, r *http.Request) bool {
 	if !strings.HasPrefix(r.URL.Path, "/app/") {
 		return false
 	}
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src 'self'; frame-src http://*.localhost:*; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
+	frames := "http://*.localhost:*"
+	if origin, ok := r.Context().Value(authenticatedOriginKey{}).(string); ok && strings.HasPrefix(origin, "https://") {
+		frames = "https://*." + strings.TrimPrefix(origin, "https://")
+	}
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src 'self'; frame-src "+frames+"; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
 	name := strings.TrimPrefix(r.URL.Path, "/app/")
 	if name == "" || path.Ext(name) == "" {
 		http.ServeFile(w, r, dir+"/index.html")

@@ -8,7 +8,11 @@ import (
 func (s *Server) registerDeletion(mux *http.ServeMux) {
 	for _, kind := range []string{"workspaces", "projects"} {
 		mux.HandleFunc("POST /v1/"+kind+"/{id}/delete", func(w http.ResponseWriter, r *http.Request) {
-			if !s.admin(w, r) {
+			if kind == "projects" {
+				if !s.projectAdmin(w, r, r.PathValue("id")) {
+					return
+				}
+			} else if !s.admin(w, r) {
 				return
 			}
 			var in struct {

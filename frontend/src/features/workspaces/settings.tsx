@@ -224,7 +224,7 @@ export function WorkspaceSettings({
               Fully open allows direct TCP/UDP connections and external DNS,
               including Internet, LAN and reachable host services. Destination
               restrictions are disabled for this worker. Project storage and
-              private agent homes stay separate.
+              private worker data stay separate.
             </p>
           ) : (
             <p className="form-note">

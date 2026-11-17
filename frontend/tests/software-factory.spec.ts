@@ -378,7 +378,7 @@ test("factory layout review at desktop and mobile widths", async ({ page }) => {
   await page.getByRole("button", { name: "Open navigation" }).click();
   await page
     .getByRole("dialog")
-    .getByRole("link", { name: "Work", exact: true })
+    .getByRole("link", { name: "Workspace", exact: true })
     .click();
   await expect(
     page.getByRole("heading", { name: "Project work", exact: true }),
@@ -527,7 +527,7 @@ test("headers align in both sidebar states and services have a separate page", a
   expect(errors).toEqual([]);
 });
 
-test("project sections stay in the sidebar and threads belong only to Work", async ({
+test("project sections stay in the sidebar and threads belong only to Workspace", async ({
   page,
 }) => {
   const errors = await fixture(page);
@@ -538,7 +538,7 @@ test("project sections stay in the sidebar and threads belong only to Work", asy
     name: "Project navigation",
   });
   await expect(
-    projectNav.getByRole("link", { name: "Work", exact: true }),
+    projectNav.getByRole("link", { name: "Workspace", exact: true }),
   ).toHaveAttribute("aria-current", "page");
   const initial = (await projectNav.boundingBox())!;
   await expect(page.locator(".project-tabs")).toHaveCount(0);
@@ -593,7 +593,7 @@ test("project sections stay in the sidebar and threads belong only to Work", asy
   await page
     .getByRole("button", { name: "Open navigation", exact: true })
     .click();
-  await drawer.getByRole("link", { name: "Work", exact: true }).click();
+  await drawer.getByRole("link", { name: "Workspace", exact: true }).click();
   await page
     .getByRole("button", { name: "Switch thread", exact: true })
     .click();
@@ -667,7 +667,7 @@ test("project-first sidebar stays fixed on global pages and remembers the projec
           sidebar.getByRole("button", { name: "Platform", exact: true }),
         ).toHaveClass(/is-active/);
       await expect(
-        sidebar.getByRole("link", { name: "Work", exact: true }),
+        sidebar.getByRole("link", { name: "Workspace", exact: true }),
       ).toHaveAttribute("href", /projects\/sdk\/work$/);
       if (label === "Infrastructure")
         await page.screenshot({
@@ -677,7 +677,7 @@ test("project-first sidebar stays fixed on global pages and remembers the projec
     await page.reload();
     await expect(switcher).toBeVisible();
     expect(await measure()).toEqual(before);
-    await sidebar.getByRole("link", { name: "Work", exact: true }).click();
+    await sidebar.getByRole("link", { name: "Workspace", exact: true }).click();
     await expect(page).toHaveURL(/projects\/sdk\/work$/);
     await expect(
       page.getByRole("heading", { name: "Project work", exact: true }),
@@ -696,7 +696,7 @@ test("project-first sidebar stays fixed on global pages and remembers the projec
   await expect(
     drawer.getByRole("button", { name: "Switch project: Developer SDK" }),
   ).toBeVisible();
-  await drawer.getByRole("link", { name: "Work", exact: true }).click();
+  await drawer.getByRole("link", { name: "Workspace", exact: true }).click();
   await expect(page).toHaveURL(/projects\/sdk\/work$/);
   expect(errors).toEqual([]);
 });

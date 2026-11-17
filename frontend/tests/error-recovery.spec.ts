@@ -94,20 +94,6 @@ for (const scenario of [
     misleading: "Your review queue is clear",
     recovered: "Your review queue is clear",
   },
-  {
-    name: "agent homes",
-    path: "/app/projects/recovery/homes",
-    endpoint: "/ui-api/agent-homes",
-    misleading: "Homes are created with workers",
-    recovered: "Homes are created with workers",
-  },
-  {
-    name: "output workers",
-    path: "/app/projects/recovery/factory",
-    endpoint: "/ui-api/workspaces",
-    misleading: "No workers in this project yet.",
-    recovered: "Choose a worker above to see its jobs and outputs.",
-  },
 ]) {
   test(`${scenario.name} distinguishes unavailable data from empty data and retries in place`, async ({
     page,

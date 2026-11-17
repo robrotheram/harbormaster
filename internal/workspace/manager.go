@@ -70,6 +70,7 @@ type Manager struct {
 	console          *console
 }
 type submit struct {
+	Model               string `json:"model,omitempty"`
 	SpecificationDigest string `json:"-"`
 	SourcePath          string `json:"-"`
 	Instruction         string `json:"instruction"`
@@ -220,6 +221,9 @@ func (m *Manager) submit(s submit) (shared.Task, int, error) {
 }
 
 func (m *Manager) submitLocked(s submit) (shared.Task, int, error) {
+	if s.Model != "" && !shared.ValidWorkSelection(s.Provider, s.Model) {
+		return shared.Task{}, 400, errors.New("INVALID_REQUEST")
+	}
 	if m.closed || m.quiescing {
 		return shared.Task{}, 503, errors.New("WORKSPACE_STOPPING")
 	}
@@ -237,7 +241,7 @@ func (m *Manager) submitLocked(s submit) (shared.Task, int, error) {
 		return shared.Task{}, 409, errors.New("WORKSPACE_BUSY")
 	}
 	now := time.Now().UTC()
-	accepted, err := m.tasks.Accept(context.Background(), taskstore.Submission{Instruction: s.Instruction, Key: s.Key, Provider: s.Provider, SourcePath: s.SourcePath, SpecificationDigest: s.SpecificationDigest}, now)
+	accepted, err := m.tasks.Accept(context.Background(), taskstore.Submission{Instruction: s.Instruction, Key: s.Key, Provider: s.Provider, Model: s.Model, SourcePath: s.SourcePath, SpecificationDigest: s.SpecificationDigest}, now)
 	if err != nil {
 		if errors.Is(err, taskstore.ErrConflict) {
 			return shared.Task{}, 409, err
@@ -261,10 +265,10 @@ func (m *Manager) submitLocked(s submit) (shared.Task, int, error) {
 	}
 	m.history(shared.HistoryRecord{ID: stableHistoryID(id, "user.message", "prompt"), EpisodeID: id, Source: source, Kind: "user.message", Role: "user", Content: s.Instruction})
 	m.event("workspace", "task.queued", id, "", "")
-	go m.execute(ctx, id, s.Instruction, s.Provider)
+	go m.execute(ctx, id, s.Instruction, s.Provider, s.Model)
 	return accepted.Task, 202, nil
 }
-func (m *Manager) execute(ctx context.Context, id, instruction, provider string) {
+func (m *Manager) execute(ctx context.Context, id, instruction, provider string, models ...string) {
 	defer m.wg.Done()
 	m.serial.Lock()
 	defer m.serial.Unlock()
@@ -282,7 +286,7 @@ func (m *Manager) execute(ctx context.Context, id, instruction, provider string)
 	if provider == "" {
 		result, code = m.run(ctx, id, instruction)
 	} else {
-		result, code = m.runNativeTask(ctx, provider, instruction, id)
+		result, code = m.runNativeTask(ctx, provider, instruction, id, models...)
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -520,6 +524,8 @@ func (m *Manager) Handler() http.Handler {
 	})
 	api.HandleFunc("GET /v1/matrix/status", m.matrixStatus)
 	api.HandleFunc("POST /v1/console/enable", m.enableConsole)
+	api.HandleFunc("GET /v1/models", m.models)
+	api.HandleFunc("POST /v1/tasks/{id}/context", m.conversationContext)
 	api.HandleFunc("POST /v1/files/read", m.handoff)
 	api.HandleFunc("POST /v1/files/write-new", m.handoff)
 	api.HandleFunc("/v1/t3/{path...}", m.consoleProxy)

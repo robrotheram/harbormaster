@@ -23,7 +23,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { NativeSelect } from "@/components/ui/native-select";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Project } from "@/shared/types";
 
@@ -37,14 +36,6 @@ export function HermesSettings({ project }: { project: Project }) {
   const query = useQuery(assistantOptions(project.id));
   return (
     <div className="hermes-setup w-full">
-      <div className="page-title">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <h1>Hermes setup</h1>
-            <Badge variant="outline">Project settings</Badge>
-          </div>
-        </div>
-      </div>
       {query.isError && (
         <ErrorNotice
           error={query.error}

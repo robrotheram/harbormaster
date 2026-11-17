@@ -2,7 +2,7 @@
 
 # Agent Workbench
 
-**Project workbench:** open [the TanStack React UI](http://127.0.0.1:8080/app/). [Project guide](docs/project-workbench.md) covers private agent homes, workspace/PR orchestration, schedules and project-scoped MCP credentials. Existing data stays in the labelled legacy project.
+**Project workbench:** open [the TanStack React UI](http://127.0.0.1:8080/app/). [Project guide](docs/project-workbench.md) covers private worker storage, workspace/PR orchestration, schedules and project-scoped MCP credentials. Existing data stays in the labelled legacy project.
 
 Local primitives for an agent-operated workbench. Go services, Docker Compose, persistent workspaces, a T3 workspace launcher, an operational dashboard and an external-agent MCP interface.
 

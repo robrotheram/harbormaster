@@ -133,7 +133,21 @@ func TestSubscriptionCredentialBoundary(t *testing.T) {
 			}
 		}
 	})
+	assertCatalog := func(want int) {
+		r := httptest.NewRequest("GET", "/v1/models", nil)
+		r.Header.Set("Authorization", "Bearer workspace-grant")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		var catalog struct {
+			Items []map[string]string `json:"items"`
+		}
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &catalog) != nil || len(catalog.Items) != want || strings.Contains(w.Body.String(), "secret-marker") {
+			t.Fatalf("catalog credential boundary: %d %s", w.Code, w.Body.String())
+		}
+	}
+	assertCatalog(2)
 	expiry.Store(time.Now().Add(-time.Second).Unix())
+	assertCatalog(0)
 	if w := request("/codex/responses", "workspace-grant", "approved-codex"); w.Code != 503 || !strings.Contains(w.Body.String(), "PROVIDER_LOGIN_REQUIRED") {
 		t.Fatal("expired credential accepted")
 	}

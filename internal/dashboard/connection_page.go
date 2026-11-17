@@ -95,7 +95,7 @@ func serveConnectionPage(w http.ResponseWriter, r *http.Request, kind, code stri
 	config, _ := json.Marshal(messages)
 	parents := "'none'"
 	if kind == "preview" {
-		parents = previewParents(r.Host)
+		parents = previewParents(r)
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors "+parents)

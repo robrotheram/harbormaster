@@ -3,21 +3,13 @@ package shared
 import "time"
 
 type Project struct {
+	Sample              bool      `json:"sample,omitempty"`
 	DeploymentNamespace string    `json:"deployment_namespace,omitempty"`
 	NamespaceReady      bool      `json:"namespace_ready,omitempty"`
 	ID                  string    `json:"id"`
 	Name                string    `json:"name"`
 	CreatedAt           time.Time `json:"created_at"`
 	Legacy              bool      `json:"legacy,omitempty"`
-}
-
-type AgentHome struct {
-	Shared      bool      `json:"shared,omitempty"`
-	ID          string    `json:"id"`
-	ProjectID   string    `json:"project_id"`
-	WorkspaceID string    `json:"workspace_id"`
-	Kind        string    `json:"kind"`
-	CreatedAt   time.Time `json:"created_at"`
 }
 
 func ValidAgentKind(kind string) bool { return kind == "t3" || kind == "codex" || kind == "hermes" }

@@ -63,3 +63,31 @@ spec:
             name: dashboard
             port:
               number: 8080
+---
+# Each preview service has its own capability-authenticated HTTPS origin.
+# The dashboard rejects wildcard labels that are not recognized worker/preview hosts.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: previews
+  namespace: harbormaster
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: 'true'
+spec:
+  ingressClassName: traefik
+  tls:
+  - hosts:
+    - '*.harbormaster.exceptionerror.io'
+    secretName: harbormaster-previews-tls
+  rules:
+  - host: '*.harbormaster.exceptionerror.io'
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: dashboard
+            port:
+              number: 8080

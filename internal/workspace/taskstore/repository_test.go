@@ -104,3 +104,30 @@ func TestDigestReceiptAndLegacyMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestSelectedModelSurvivesRestartAndConflictsOnReplay(t *testing.T) {
+	r, db := repository(t)
+	ctx := context.Background()
+	s := Submission{Key: "model-choice", Instruction: "hello", Provider: "codex", Model: "chosen-model", SourcePath: "request.md", SpecificationDigest: "abc"}
+	first, err := r.Accept(ctx, s, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	restarted := New(db, "workspace_one")
+	if err := restarted.Init(ctx); err != nil {
+		t.Fatal(err)
+	}
+	receipt, err := restarted.FileAcceptance(ctx, s.Key, s.SourcePath, s.Provider, s.SpecificationDigest, s.Model)
+	if err != nil || receipt.ID != first.Task.ID {
+		t.Fatal(receipt, err)
+	}
+	for _, model := range []string{"", "other-model"} {
+		if _, err := restarted.FileAcceptance(ctx, s.Key, s.SourcePath, s.Provider, s.SpecificationDigest, model); !errors.Is(err, ErrConflict) {
+			t.Fatal("changed receipt accepted", err)
+		}
+		s.Model = model
+		if _, err := restarted.Accept(ctx, s, time.Now()); !errors.Is(err, ErrConflict) {
+			t.Fatal("changed submission accepted", err)
+		}
+	}
+}

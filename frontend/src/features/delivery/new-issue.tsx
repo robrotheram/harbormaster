@@ -49,14 +49,15 @@ export function NewIssue({
   });
   return (
     <Modal
-      title="New issue"
+      title="Create task"
       onClose={() => {
         if (!create.isPending) onClose();
       }}
     >
       <Form onSubmit={() => create.mutate()}>
         <p className="text-sm text-muted-foreground">
-          Add planned work to this project. No repository required.
+          Plan an outcome for this project. Creating a task does not start an
+          agent.
         </p>
         <label>
           Title
@@ -126,7 +127,7 @@ export function NewIssue({
         {create.isError && <ErrorNotice error={create.error} />}
         <div className="flex gap-2">
           <Button disabled={!title.trim() || create.isPending}>
-            {create.isPending ? "Creating…" : "Create issue"}
+            {create.isPending ? "Creating…" : "Create task"}
           </Button>
           <Button
             type="button"

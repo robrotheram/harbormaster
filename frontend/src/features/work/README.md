@@ -19,7 +19,8 @@ Action availability is centralized in workActions in api.ts for parent adaptatio
 draft/failed/cancelled/rejected allow run; queued/running/blocked/pending allow
 cancel; awaiting_review/review/review_required/pending_review allow review.
 The backend stores `completed` when a human accepts a work item. Display it as
-Accepted, group it under Done, and offer no further review actions. Attempt
+without an Accepted badge in the thread header or list, group it under Done,
+and offer no further review actions. Attempt
 execution state remains `awaiting_review`; the latest attempt's displayed outcome
 uses its parent work item's acceptance. The backend remains authoritative for
 transitions. Run delivery retries
@@ -138,3 +139,59 @@ In progress (`in_progress`) states allow Start task or a follow-up request but
 do not imply an active execution. Returning to Review clears the current decision
 and preserves it in `work_review_history`. The attempt and its retained outputs
 are reused until the user explicitly starts further work.
+
+New threads and follow-up messages load their model choices from the selected
+worker's `/models` endpoint. The worker filters the gateway's configured,
+authorized model catalog by installed agents. The composer retains the current
+thread model unless the user selects another; selecting the worker default uses
+the worker's advertised configuration. There are no custom model ID fields or
+browser-wide overrides. The separate Create work item entry is removed from the
+thread sidebar.
+
+Follow-up requests record an immutable provider/model selection on the attempt.
+They retain the same work item and worker, with private context files containing
+the previous request and reply and links to earlier turns. Conversation bodies
+remain on the worker; the control plane stores references only. This transfers
+conversation context across native agent invocations, rather than resuming a
+provider-specific hidden session. Updated gateway, control plane, dashboard and
+worker binaries must be deployed together for model discovery and context capture.
+
+The thread Workspace menu groups Preview, Files, and Visualize data.
+
+The thread header links to its assigned worker, using the `worker` search
+parameter to filter the Workers view. Files also lists image and data links from
+the latest agent reply, with inspection/download through the existing scoped
+output endpoints. Visualize data uses chart blocks and linked CSV/JSON from that
+reply before offering paste input. These private sources are kept in memory only.
+Expired application previews can restart their saved launch configuration.
+
+## Consolidated project surfaces
+
+Work, Reviews and Team share explicit planning titles and private in-memory title
+fallbacks. `?work=<id>&attempt=<id>` identifies a review revision; the conversation
+can open that attempt. Review actions always target the selected current attempt.
+Approval completes the work item, without merging or deploying. The repository
+checks the expected attempt inside the compare-and-swap snapshot.
+
+The project shell now retains drafts and title/reading context through route
+changes in memory, and discards them when the project or authenticated identity
+changes. This supersedes the earlier mounted-view-only draft lifetime above.
+The shell defaults compact, the thread rail is resizable from 240 to 280px, and
+output defaults closed. Layout preferences persist without private text.
+Readiness never automatically expands output. Team replaces the board default;
+legacy board URLs and planning/import/archive operations remain available.
+See `docs/workbench-consolidation.md` for verified gaps and remaining multiplayer
+work. Owner labels are planning metadata, not authorization or agent control.
+
+
+Explicit project membership is now required for authenticated humans. Project
+settings supplies invitations and revocation; Projects supplies acceptance.
+Work Details assigns a controller and one optional required reviewer using active
+membership IDs. Controller handoffs are recorded and require an idle work item.
+The API enforces controller-only run/cancel/continue and assigned-reviewer decisions.
+Review decisions record `reviewed_by`; `changes_requested` is distinct from run
+failure. A reviewer who does not control the agent records a decision without
+starting a run. Local/system operator access remains the recovery boundary.
+Shared-worker mode is incompatible with per-project human isolation and rejects
+human execution/private-output access until isolated workers are provisioned.
+See the rollout section in `docs/workbench-consolidation.md`.

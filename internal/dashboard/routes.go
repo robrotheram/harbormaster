@@ -22,7 +22,7 @@ func allowedUIRoute(method, path string) bool {
 		switch path {
 		case "/subscriptions", "/subscription", "/board", "/forge-hosts", "/forge-connections", "/work-items", "/connection-profiles", "/projects", "/schedules", "/workspaces":
 			return true
-		case "/exchange-inbox", "/workspace-logs", "/templates", "/agent-homes", "/runs":
+		case "/project-invitations", "/exchange-inbox", "/workspace-logs", "/templates", "/runs":
 			return get
 		case "/project-exchanges", "/note-publications", "/file-handoffs":
 			return post
@@ -42,7 +42,7 @@ func allowedUIRoute(method, path string) bool {
 	case "subscriptions":
 		return post && (len(parts) == 2 || len(parts) == 3 && parts[2] == "delete")
 	case "board":
-		return post && (len(parts) == 2 || len(parts) == 3 && parts[2] == "sync")
+		return post && (len(parts) == 2 || len(parts) == 3 && (parts[2] == "sync" || parts[2] == "start"))
 	case "forge-connections":
 		if len(parts) == 3 {
 			return parts[2] == "issues" || post && parts[2] == "delete"
@@ -65,7 +65,7 @@ func allowedUIRoute(method, path string) bool {
 		switch parts[2] {
 		case "attempts", "instruction":
 			return get
-		case "run", "cancel", "review", "continue", "image", "data":
+		case "responsibility", "run", "cancel", "review", "continue", "image", "data":
 			return post
 		}
 		return false
@@ -76,7 +76,16 @@ func allowedUIRoute(method, path string) bool {
 	case "exchange-exports":
 		return len(parts) == 2 && get || len(parts) == 3 && post && parts[2] == "submit"
 	case "projects":
-		if len(parts) == 3 && (parts[2] == "delete" || parts[2] == "namespace") {
+		if len(parts) == 3 && parts[2] == "capabilities" {
+			return get
+		}
+		if len(parts) == 3 && parts[2] == "members" {
+			return get || post
+		}
+		if len(parts) == 3 && parts[2] == "accept-invitation" {
+			return post
+		}
+		if len(parts) == 3 && (parts[2] == "delete" || parts[2] == "namespace" || parts[2] == "rename") {
 			return post
 		}
 		if len(parts) == 3 && parts[2] == "coordination" {
@@ -106,7 +115,7 @@ func allowedUIRoute(method, path string) bool {
 			return post && (len(parts) == 3 || len(parts) == 5 && shared.ValidID(parts[3]) && (parts[4] == "exchange" || parts[4] == "close"))
 		case "start-readiness":
 			return len(parts) == 3 && get
-		case "ports":
+		case "ports", "models":
 			return len(parts) == 3 && get
 		case "applications":
 			return len(parts) == 3 && (get || post)

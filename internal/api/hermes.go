@@ -167,7 +167,7 @@ func (s *Server) registerHermes(mux *http.ServeMux) {
 	})
 
 	mux.HandleFunc("POST /v1/projects/{id}/hermes/discover", func(w http.ResponseWriter, r *http.Request) {
-		if !s.admin(w, r) || !s.AuthorizeProject(w, r, r.PathValue("id")) {
+		if !s.projectAdmin(w, r, r.PathValue("id")) {
 			return
 		}
 		var body struct {
@@ -187,7 +187,7 @@ func (s *Server) registerHermes(mux *http.ServeMux) {
 	})
 	mux.HandleFunc("POST /v1/projects/{id}/hermes/matrix-credential", func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
-		if !s.admin(w, r) || !s.AuthorizeProject(w, r, id) {
+		if !s.projectAdmin(w, r, id) {
 			return
 		}
 		var body struct {
@@ -237,7 +237,7 @@ func (s *Server) registerHermes(mux *http.ServeMux) {
 		action := action
 		mux.HandleFunc("POST /v1/projects/{id}/hermes/matrix/"+action, func(w http.ResponseWriter, r *http.Request) {
 			id := r.PathValue("id")
-			if !s.admin(w, r) || !s.AuthorizeProject(w, r, id) {
+			if !s.projectAdmin(w, r, id) {
 				return
 			}
 			c, err := s.Store.HermesSetup(r.Context(), id)

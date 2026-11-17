@@ -44,10 +44,11 @@ func (r Repository) RunWork(ctx context.Context, project, id, key string, now ti
 // WorkRevision contains private file references, never conversational content.
 type WorkRevision struct {
 	ExpectedAttemptID, Path, Digest string
+	Selection                       *shared.AgentModel
 }
 
 func (r Repository) ContinueWork(ctx context.Context, project, id, key string, revision WorkRevision, now time.Time) (shared.WorkAttempt, error) {
-	if !shared.ValidID(revision.ExpectedAttemptID) || !shared.ValidProjectFile(revision.Path) || len(revision.Digest) != 64 {
+	if (revision.Selection != nil && !shared.ValidWorkSelection(revision.Selection.Provider, revision.Selection.Model)) || !shared.ValidID(revision.ExpectedAttemptID) || !shared.ValidProjectFile(revision.Path) || len(revision.Digest) != 64 {
 		return shared.WorkAttempt{}, ErrInvalidWork
 	}
 	return r.runWork(ctx, project, id, key, &revision, now)
@@ -67,7 +68,7 @@ func (r Repository) runWork(ctx context.Context, project, id, key string, revisi
 	err = tx.QueryRowContext(ctx, `SELECT metadata FROM work_attempts WHERE project_id=$1 AND work_item_id=$2 AND delivery_key=$3`, project, id, key).Scan(&b)
 	if err == nil {
 		err = json.Unmarshal([]byte(b), &a)
-		if err == nil && revision != nil && (a.ParentAttemptID != revision.ExpectedAttemptID || a.SpecificationPath != revision.Path || a.SpecificationDigest != revision.Digest) {
+		if err == nil && revision != nil && (a.ParentAttemptID != revision.ExpectedAttemptID || a.SpecificationPath != revision.Path || a.SpecificationDigest != revision.Digest || (revision.Selection != nil && (a.Provider != revision.Selection.Provider || a.Model != revision.Selection.Model))) {
 			return a, ErrConflict
 		}
 		return a, err
@@ -82,11 +83,18 @@ func (r Repository) runWork(ctx context.Context, project, id, key string, revisi
 	if err = json.Unmarshal([]byte(b), &item); err != nil {
 		return a, err
 	}
+	// Planning-only items have no executable specification or worker yet.
+	if item.WorkspaceID == "" || item.SpecificationPath == "" || item.SpecificationDigest == "" {
+		return a, ErrConflict
+	}
+	if !workActorAllowed(ctx, item) {
+		return a, ErrConflict
+	}
 	if revision != nil && item.LatestAttemptID != revision.ExpectedAttemptID {
 		return a, ErrConflict
 	}
 	switch item.State {
-	case "draft", "planned", "in_progress", "failed", "cancelled", "awaiting_review":
+	case "draft", "planned", "in_progress", "changes_requested", "failed", "cancelled", "awaiting_review":
 	case "completed":
 		if revision == nil {
 			return a, ErrConflict
@@ -113,13 +121,19 @@ func (r Repository) runWork(ctx context.Context, project, id, key string, revisi
 		} else if item.State == "awaiting_review" {
 			prior.ReviewState = "changes_requested"
 		}
+		if !prior.SelectionRecorded {
+			prior.Provider, prior.Model, prior.SelectionRecorded = item.Provider, item.Model, true
+		}
 		pb, _ := json.Marshal(prior)
 		if _, err = tx.ExecContext(ctx, `UPDATE work_attempts SET metadata=$1 WHERE id=$2 AND project_id=$3`, string(pb), prior.ID, project); err != nil {
 			return a, err
 		}
 		item.SpecificationPath, item.SpecificationDigest = revision.Path, revision.Digest
+		if revision.Selection != nil {
+			item.Provider, item.Model = revision.Selection.Provider, revision.Selection.Model
+		}
 	}
-	a = shared.WorkAttempt{ID: shared.NewID("attempt_"), WorkItemID: id, WorkspaceID: item.WorkspaceID, SpecificationPath: item.SpecificationPath, SpecificationDigest: item.SpecificationDigest, State: "queued", Artifacts: []shared.WorkArtifact{}, CreatedAt: now.UTC(), UpdatedAt: now.UTC()}
+	a = shared.WorkAttempt{Provider: item.Provider, Model: item.Model, SelectionRecorded: true, ID: shared.NewID("attempt_"), WorkItemID: id, WorkspaceID: item.WorkspaceID, SpecificationPath: item.SpecificationPath, SpecificationDigest: item.SpecificationDigest, State: "queued", Artifacts: []shared.WorkArtifact{}, CreatedAt: now.UTC(), UpdatedAt: now.UTC()}
 	if revision != nil {
 		a.ParentAttemptID = revision.ExpectedAttemptID
 	}
@@ -192,17 +206,38 @@ func (r Repository) ReviewWork(ctx context.Context, project, id string, accepted
 	if accepted {
 		decision = "accepted"
 	}
-	return r.reviewDecision(ctx, project, id, decision, now)
+	return r.reviewDecision(ctx, project, id, decision, "", "", now)
 }
 func (r Repository) CloseWork(ctx context.Context, project, id string, now time.Time) (shared.WorkItem, error) {
-	return r.reviewDecision(ctx, project, id, "closed", now)
+	return r.reviewDecision(ctx, project, id, "closed", "", "", now)
 }
-func (r Repository) reviewDecision(ctx context.Context, project, id, decision string, now time.Time) (shared.WorkItem, error) {
+
+// ReviewRevision checks the reviewed revision in the same snapshot used by the
+// compare-and-swap update, including concurrent requests on another API instance.
+func (r Repository) ReviewRevision(ctx context.Context, project, id, decision, expected string, now time.Time) (shared.WorkItem, error) {
+	if expected == "" || (decision != "accepted" && decision != "changes_requested" && decision != "closed") {
+		return shared.WorkItem{}, ErrInvalidWork
+	}
+	return r.reviewDecision(ctx, project, id, decision, expected, "", now)
+}
+func (r Repository) ReviewRevisionBy(ctx context.Context, project, id, decision, expected, actor string, now time.Time) (shared.WorkItem, error) {
+	if expected == "" || (decision != "accepted" && decision != "changes_requested" && decision != "closed") {
+		return shared.WorkItem{}, ErrInvalidWork
+	}
+	return r.reviewDecision(ctx, project, id, decision, expected, actor, now)
+}
+func (r Repository) reviewDecision(ctx context.Context, project, id, decision, expected, actor string, now time.Time) (shared.WorkItem, error) {
 	item, err := r.Work(ctx, project, id)
 	if err != nil {
 		return item, err
 	}
-	target := "failed"
+	if actor != "" && item.ReviewerID != "" && item.ReviewerID != actor {
+		return item, ErrConflict
+	}
+	if expected != "" && item.LatestAttemptID != expected {
+		return item, ErrConflict
+	}
+	target := "changes_requested"
 	if decision == "accepted" {
 		target = "completed"
 	}
@@ -242,6 +277,7 @@ func (r Repository) reviewDecision(ctx context.Context, project, id, decision st
 			return item, err
 		}
 		attempt.ReviewState = decision
+		attempt.ReviewedBy = actor
 		attempt.UpdatedAt = now.UTC()
 		data, _ := json.Marshal(attempt)
 		if _, err = tx.ExecContext(ctx, `UPDATE work_attempts SET metadata=$1 WHERE id=$2 AND project_id=$3`, string(data), attempt.ID, project); err != nil {

@@ -35,10 +35,6 @@ func TestLegacyReopenPreservesRuntimePathsAndPrivateIdentity(t *testing.T) {
 	if ws.ProjectID != "default" || ws.HomeID != "" || ws.Name != old.Name || ws.AgentKind != "t3" {
 		t.Fatal("legacy workspace silently migrated")
 	}
-	homes, err := s.AgentHomes(ctx, "default")
-	if err != nil || len(homes) != 1 || homes[0].WorkspaceID != old.ID || homes[0].ProjectID != "default" {
-		t.Fatal("legacy home metadata missing")
-	}
 	p, err := s.Project(ctx, "default")
 	if err != nil || !p.Legacy {
 		t.Fatal("legacy project not labeled")
@@ -68,5 +64,40 @@ func TestTaskMetadataCannotChangeWorkspace(t *testing.T) {
 	items, err := s.Tasks(context.Background())
 	if err != nil || len(items) != 1 || items[0].WorkspaceID != "ws_a" {
 		t.Fatal("original task metadata changed")
+	}
+}
+
+func TestRetiredHomeCatalogDoesNotChangeWorkerStorage(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "retired.db")
+	s, err := Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := `{"id":"home_old","workspace_id":"ws_old","project_id":"default"}`
+	if _, err := s.DB.Exec(`INSERT INTO agent_homes(id,project_id,workspace_id,metadata) VALUES('home_old','default','ws_old',?)`, original); err != nil {
+		t.Fatal(err)
+	}
+	ws := shared.Workspace{ID: "ws_new", ProjectID: "default", HomeID: "home_new", AgentKind: "codex", State: "STOPPED", CreatedAt: time.Now()}
+	if err := s.Create(ctx, ws, "new-worker"); err != nil {
+		t.Fatal(err)
+	}
+	s.DB.Close()
+	s, err = Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.DB.Close()
+	stored, err := s.Workspace(ctx, ws.ID)
+	if err != nil || stored.HomeID != ws.HomeID {
+		t.Fatal("worker storage identity changed", stored, err)
+	}
+	var count int
+	if err := s.DB.QueryRow(`SELECT count(*) FROM agent_homes`).Scan(&count); err != nil || count != 1 {
+		t.Fatal("catalog still being populated", count, err)
+	}
+	var historical string
+	if err := s.DB.QueryRow(`SELECT metadata FROM agent_homes WHERE id='home_old'`).Scan(&historical); err != nil || historical != original {
+		t.Fatal("historical metadata changed", err)
 	}
 }

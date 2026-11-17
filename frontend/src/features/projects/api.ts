@@ -4,9 +4,17 @@ export const projectsApi = {
   list: (signal?: AbortSignal) =>
     request<{ items: Project[] }>("/projects", undefined, signal).then((x) =>
       x.items.map((project) =>
-        project.id === "default" ? { ...project, name: "Workspaces" } : project,
+        project.id === "default" && project.name === "Legacy workspaces"
+          ? { ...project, name: "Workspaces" }
+          : project,
       ),
     ),
-  create: (name: string, idempotency_key: string) =>
-    request<Project>("/projects", { name, idempotency_key }),
+  rename: (id: string, name: string) =>
+    request<Project>(`/projects/${encodeURIComponent(id)}/rename`, { name }),
+  create: (name: string, idempotency_key: string, sample = false) =>
+    request<Project>("/projects", {
+      name,
+      idempotency_key,
+      ...(sample ? { sample: true } : {}),
+    }),
 };

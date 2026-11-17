@@ -65,17 +65,6 @@ async function fixture(page: Page) {
       "/ui-api/projects": { items: [project] },
       "/ui-api/workspaces": { items: [worker] },
       "/ui-api/work-items": { items: [] },
-      "/ui-api/agent-homes": {
-        items: [
-          {
-            id: "home_" + "a".repeat(32),
-            project_id: project.id,
-            workspace_id: worker.id,
-            kind: "codex",
-            created_at: timestamp,
-          },
-        ],
-      },
       "/ui-api/schedules": { items: [schedule] },
       "/ui-api/runs": {
         items: [
@@ -133,7 +122,7 @@ async function fixture(page: Page) {
   });
   const pages = [
     ["projects", "/app/", "Projects"],
-    ["infrastructure", "/app/infrastructure", "Infrastructure"],
+    ["workers", "/app/workers", "Workers"],
     ["services", "/app/platform-services", "Platform services"],
     ["connections", "/app/connection-profiles", "Network profiles"],
     ["help", "/app/help", "Getting started"],
@@ -143,9 +132,7 @@ async function fixture(page: Page) {
       ["reviews", "Reviews"],
       ["work", "Project work"],
       ["workspaces", "Workers"],
-      ["factory", "Outputs & previews"],
-      ["homes", "Agent homes"],
-      ["hermes", "Hermes setup"],
+      ["hermes", "Project settings"],
       ["settings", "Project settings"],
     ].map(([key, title]) => [key, `/app/projects/audit/${key}`, title]),
   ];

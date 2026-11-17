@@ -1,10 +1,13 @@
+import { projectsApi } from "./api";
+import { keys } from "@/shared/query-keys";
+import { ProjectInvitations } from "./members";
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowUpRight, FolderGit2, Plus, Search, Network } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Empty } from "@/shared/components";
+import { Empty, ErrorNotice, useRequestKey } from "@/shared/components";
 import type { Project } from "@/shared/types";
 import { workOptions } from "@/features/work/api";
 import { workStage } from "@/features/work/stages";
@@ -17,6 +20,28 @@ export function Projects({
   projects: Project[];
   onCreate: () => void;
 }) {
+  const client = useQueryClient();
+  const navigate = useNavigate();
+  const requestKey = useRequestKey();
+  const sample = useMutation({
+    mutationFn: () =>
+      projectsApi.create(
+        "Sample project",
+        requestKey({ name: "Sample project", sample: true }),
+        true,
+      ),
+    onSuccess: async (project) => {
+      client.setQueryData<Project[]>(keys.projects, (old) => [
+        ...(old || []).filter((p) => p.id !== project.id),
+        project,
+      ]);
+      await navigate({
+        to: "/projects/$projectId/$section",
+        params: { projectId: project.id, section: "team" },
+      });
+      await client.invalidateQueries({ queryKey: keys.projects });
+    },
+  });
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const pageSize = 20;
@@ -33,6 +58,7 @@ export function Projects({
   };
   return (
     <>
+      <ProjectInvitations />
       <div className="page-title">
         <div>
           <h1>Projects</h1>
@@ -42,54 +68,73 @@ export function Projects({
           New project
         </Button>
       </div>
-      <div className="factory-intro">
-        <div>
-          <span className="intro-symbol">
-            <FolderGit2 size={20} />
-          </span>
+      {!!projects.length && (
+        <div className="factory-intro">
           <div>
-            <h2>Your projects. One place for your work.</h2>
-            <p>
-              Follow the work, review the results, and coordinate with Hermes.
-            </p>
+            <span className="intro-symbol">
+              <FolderGit2 size={20} />
+            </span>
+            <div>
+              <h2>Your projects. One place for your work.</h2>
+              <p>
+                Follow the work, review the results, and coordinate with Hermes.
+              </p>
+            </div>
+          </div>
+          <Link to="/infrastructure">
+            <Network size={14} />
+            View infrastructure
+            <ArrowUpRight size={14} />
+          </Link>
+        </div>
+      )}
+      {!!projects.length && (
+        <div className="inventory-toolbar">
+          <span aria-live="polite">
+            {search.trim()
+              ? `${visible.length} of ${projects.length}`
+              : projects.length}{" "}
+            {projects.length === 1 ? "project" : "projects"}
+          </span>
+          <div className="compact-search">
+            <Search size={14} />
+            <Input
+              className="h-8 pl-8 text-xs md:text-xs shadow-none"
+              aria-label="Search projects"
+              placeholder="Find a project…"
+              value={search}
+              onChange={(e) => changeSearch(e.target.value)}
+            />
           </div>
         </div>
-        <Link to="/infrastructure">
-          <Network size={14} />
-          View infrastructure
-          <ArrowUpRight size={14} />
-        </Link>
-      </div>
-      <div className="inventory-toolbar">
-        <span aria-live="polite">
-          {search.trim()
-            ? `${visible.length} of ${projects.length}`
-            : projects.length}{" "}
-          {projects.length === 1 ? "project" : "projects"}
-        </span>
-        <div className="compact-search">
-          <Search size={14} />
-          <Input
-            className="h-8 pl-8 text-xs md:text-xs shadow-none"
-            aria-label="Search projects"
-            placeholder="Find a project…"
-            value={search}
-            onChange={(e) => changeSearch(e.target.value)}
-          />
-        </div>
-      </div>
+      )}
+      {!projects.length && sample.isError && (
+        <ErrorNotice error={sample.error} />
+      )}
       {!projects.length ? (
         <Empty
-          title="Start your software factory"
+          title="Getting started"
           action={
-            <Button onClick={onCreate}>
-              <Plus />
-              Create project
-            </Button>
+            <div className="flex flex-wrap justify-center gap-2">
+              <Button onClick={onCreate} disabled={sample.isPending}>
+                <Plus />
+                Create project
+              </Button>
+              <Button
+                variant="outline"
+                disabled={sample.isPending}
+                onClick={() => sample.mutate()}
+              >
+                {sample.isPending
+                  ? "Adding sample project…"
+                  : "Add sample project"}
+              </Button>
+            </div>
           }
         >
-          Create a project, give your agents an instruction, and review what
-          they deliver.
+          Create your own project, or add a sample project with three planned
+          tasks in Overview to explore ownership, priorities and dependencies. No
+          agents run automatically.
         </Empty>
       ) : !visible.length ? (
         <Empty

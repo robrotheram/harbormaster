@@ -148,6 +148,12 @@ func (m *Manager) history(v shared.HistoryRecord) {
 			v.Synthetic = m.cfg.Model == "fixture"
 		}
 	}
+	if !v.Backfilled && v.EpisodeID != "" {
+		var selected string
+		if err := m.db.QueryRow(`SELECT model FROM file_acceptances WHERE task_id=?`, v.EpisodeID).Scan(&selected); err == nil && selected != "" {
+			v.Model = selected
+		}
+	}
 	// All string fields use the same redaction boundary, including source IDs.
 	fields := []*string{&v.Tool, &v.ToolCallID, &v.SessionID, &v.RoomID, &v.SenderID, &v.Model, &v.Provider, &v.Status, &v.MessageID, &v.RequesterID, &v.NativeRunID}
 	for _, f := range fields {

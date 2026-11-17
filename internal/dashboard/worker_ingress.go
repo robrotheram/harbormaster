@@ -9,6 +9,8 @@ import (
 
 type publicWorkerIngressKey struct{}
 
+var previewDNSLabel = regexp.MustCompile(`^preview-[a-f0-9]{32}$`)
+
 var workerDNSLabel = regexp.MustCompile(`^(desktop-)?ws-[a-z0-9][a-z0-9-]{0,60}$`)
 
 // Hosted workers have separate origins and capability authentication. They must
@@ -19,7 +21,7 @@ func publicWorkerLabel(host, dashboardHost string) string {
 		return ""
 	}
 	label := strings.TrimSuffix(host, suffix)
-	if !workerDNSLabel.MatchString(label) {
+	if !workerDNSLabel.MatchString(label) && !previewDNSLabel.MatchString(label) {
 		return ""
 	}
 	return label

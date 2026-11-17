@@ -234,9 +234,7 @@ func TestInlineWorkQuotaIsObservableAndRetryable(t *testing.T) {
 	if got.Code != 429 || !strings.Contains(got.Body.String(), "QUOTA_EXCEEDED") {
 		t.Fatal(got.Code, got.Body.String())
 	}
-	if _, err := s.Store.DB.Exec(`DELETE FROM agent_homes WHERE workspace_id='ws_quota_0'`); err != nil {
-		t.Fatal(err)
-	}
+
 	if _, err := s.Store.DB.Exec(`DELETE FROM workspaces WHERE id='ws_quota_0'`); err != nil {
 		t.Fatal(err)
 	}

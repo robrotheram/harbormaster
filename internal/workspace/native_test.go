@@ -19,6 +19,7 @@ test -z "$OPENAI_API_KEY$ANTHROPIC_API_KEY$VAULT_TOKEN$WORKSPACE_TOKEN" || exit 
 input=$(cat)
 case "$input" in *workbench-preview*'implement sample') ;; *) exit 12;; esac
 test "$WORKBENCH_WORKSPACE_GRANT" = workspace-only-grant || exit 15
+case "$*" in *selected-model*) ;; *) exit 16;; esac
 printf 'native file\n' > native.txt
 if [ -n "$WORKBENCH_INFERENCE_GRANT" ]; then
   test "$WORKBENCH_INFERENCE_GRANT" = workspace-only-grant || exit 13
@@ -41,7 +42,7 @@ fi
 	}
 	defer m.Close()
 	for _, provider := range []string{"codex", "claude"} {
-		result, code := m.runNativeTask(context.Background(), provider, "implement sample", "")
+		result, code := m.runNativeTask(context.Background(), provider, "implement sample", "", "selected-model")
 		if code != "" || result != provider+" result" {
 			t.Fatalf("%s runner: %s %q", provider, code, result)
 		}
@@ -49,7 +50,7 @@ fi
 	if b, err := os.ReadFile(filepath.Join(m.cfg.DataDir, "files/native.txt")); err != nil || !strings.Contains(string(b), "native file") {
 		t.Fatal("agent did not execute in workspace")
 	}
-	first, status, err := m.submit(submit{Instruction: "implement sample", Key: "native-task", Provider: "codex"})
+	first, status, err := m.submit(submit{Instruction: "implement sample", Key: "native-task", Model: "selected-model", Provider: "codex"})
 	if err != nil || status != 202 {
 		t.Fatal("submit failed")
 	}
@@ -57,11 +58,11 @@ fi
 	if done.State != "succeeded" {
 		t.Fatalf("native task %+v", done)
 	}
-	duplicate, _, err := m.submit(submit{Instruction: "implement sample", Key: "native-task", Provider: "codex"})
+	duplicate, _, err := m.submit(submit{Instruction: "implement sample", Key: "native-task", Model: "selected-model", Provider: "codex"})
 	if err != nil || duplicate.ID != first.ID {
 		t.Fatal("native dedup failed")
 	}
-	if _, status, err := m.submit(submit{Instruction: "implement sample", Key: "native-task", Provider: "claude"}); err == nil || status != 409 {
+	if _, status, err := m.submit(submit{Instruction: "implement sample", Key: "native-task", Model: "selected-model", Provider: "claude"}); err == nil || status != 409 {
 		t.Fatal("provider change did not conflict")
 	}
 }

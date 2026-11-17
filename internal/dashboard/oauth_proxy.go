@@ -156,6 +156,6 @@ func NewOAuthProxyHandler(next http.Handler, cfg OAuthProxyConfig) (http.Handler
 			shared.JSON(w, 200, map[string]string{"url": "/auth/proxy-signout?ticket=" + key})
 			return
 		}
-		next.ServeHTTP(w, withSubscriptionIdentity(r.WithContext(context.WithValue(r.Context(), authenticatedOriginKey{}, cfg.Origin)), "oauth:"+cfg.PublicURL, id))
+		next.ServeHTTP(w, withHumanIdentity(r.WithContext(context.WithValue(r.Context(), authenticatedOriginKey{}, cfg.Origin)), "oauth:"+cfg.PublicURL, id, email))
 	}), nil
 }

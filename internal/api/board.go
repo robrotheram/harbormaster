@@ -5,11 +5,11 @@ import (
 	"agent-workbench/internal/orchestration"
 	"agent-workbench/internal/shared"
 	"agent-workbench/internal/store"
-	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -50,6 +50,7 @@ func (s *Server) boardForge(ctx context.Context, id string) (forge.Client, strin
 	return forge.Client{}, "", errors.New("FORGE_CONNECTION_REMOVED")
 }
 func (s *Server) registerBoard(mux *http.ServeMux) {
+	s.registerBoardStart(mux)
 	repo := orchestration.Repository{DB: s.Store.DB}
 	mux.HandleFunc("POST /v1/board", func(w http.ResponseWriter, r *http.Request) {
 		var in shared.BoardCreate
@@ -61,47 +62,39 @@ func (s *Server) registerBoard(mux *http.ServeMux) {
 			shared.Error(w, 400, "INVALID_REQUEST")
 			return
 		}
+
+		if (in.Kind != "software" && in.Kind != "research" && in.Kind != "digest") || strings.ContainsRune(in.Description, 0) {
+			shared.Error(w, 400, "INVALID_REQUEST")
+			return
+		}
 		unlock := s.operations.Lock("board-create:" + in.ProjectID + ":" + in.IdempotencyKey)
 		defer unlock()
-		payload, _ := json.Marshal(map[string]any{"project_id": in.ProjectID, "kind": in.Kind, "instruction": "# " + in.Title + "\n\n" + in.Description, "idempotency_key": in.IdempotencyKey})
-		req := r.Clone(r.Context())
-		u := *r.URL
-		u.Path = "/v1/work-items"
-		u.RawQuery = ""
-		req.URL = &u
-		req.Body = io.NopCloser(bytes.NewReader(payload))
-		req.ContentLength = int64(len(payload))
-		response := &coordinationResponse{headers: make(http.Header)}
-		mux.ServeHTTP(response, req)
-		if response.Code >= 300 {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(response.Code)
-			_, _ = w.Write(response.Body.Bytes())
+		fingerprint, _ := json.Marshal(in)
+		hash := sha256.Sum256(fingerprint)
+		if err := repo.ClaimWorkRequest(r.Context(), in.ProjectID, in.IdempotencyKey, hex.EncodeToString(hash[:])); err != nil {
+			if errors.Is(err, orchestration.ErrConflict) {
+				shared.Error(w, 409, "IDEMPOTENCY_CONFLICT")
+			} else {
+				workError(w, err)
+			}
 			return
 		}
-		var work shared.WorkItem
-		if json.Unmarshal(response.Body.Bytes(), &work) != nil {
-			shared.Error(w, 503, "STORAGE_UNAVAILABLE")
+		p, _ := r.Context().Value(principalKey{}).(principal)
+		work, created, err := s.Store.CreatePlannedTask(r.Context(), in, p.human.ID, s.now())
+		if err != nil {
+			workError(w, err)
 			return
 		}
-		release := s.operations.Lock("board:" + work.ID)
-		defer release()
 		b, err := s.Store.BoardItem(r.Context(), in.ProjectID, work.ID)
 		if err != nil {
 			workError(w, err)
 			return
 		}
-		if b.Revision == 0 {
-			b = b.Effective(work)
-			b.Title = in.Title
-			b.Description = &in.Description
-			if err = s.Store.SaveBoardItem(r.Context(), b, 0); err != nil {
-				workError(w, err)
-				return
-			}
-			b.Revision = 1
+		status := 200
+		if created {
+			status = 201
 		}
-		shared.JSON(w, response.Code, newBoardCard(b, work))
+		shared.JSON(w, status, newBoardCard(b, work))
 	})
 	mux.HandleFunc("GET /v1/board", func(w http.ResponseWriter, r *http.Request) {
 		project, ok := s.ProjectForRequest(w, r, r.URL.Query().Get("project_id"))
@@ -130,13 +123,17 @@ func (s *Server) registerBoard(mux *http.ServeMux) {
 	})
 	handle := func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
-			DiscardLocal bool    `json:"discard_local"`
-			ProjectID    string  `json:"project_id"`
-			Revision     int     `json:"revision"`
-			Stage        string  `json:"stage"`
-			Title        *string `json:"title"`
-			Description  *string `json:"description"`
-			Direction    string  `json:"direction"`
+			OwnerID      *string   `json:"owner_id"`
+			Owner        *string   `json:"owner"`
+			Priority     *string   `json:"priority"`
+			Dependencies *[]string `json:"dependencies"`
+			DiscardLocal bool      `json:"discard_local"`
+			ProjectID    string    `json:"project_id"`
+			Revision     int       `json:"revision"`
+			Stage        string    `json:"stage"`
+			Title        *string   `json:"title"`
+			Description  *string   `json:"description"`
+			Direction    string    `json:"direction"`
 		}
 		if !shared.Decode(w, r, &in, 100000) || !s.AuthorizeProject(w, r, in.ProjectID) {
 			return
@@ -185,6 +182,62 @@ func (s *Server) registerBoard(mux *http.ServeMux) {
 			return
 		}
 		if !sync {
+			if in.OwnerID != nil {
+				b.OwnerID = *in.OwnerID
+				b.Owner = ""
+				if b.OwnerID != "" {
+					members, err := s.Store.ProjectMembers(r.Context(), in.ProjectID)
+					if err != nil {
+						workError(w, err)
+						return
+					}
+					for _, member := range members {
+						if member.UserID == b.OwnerID && member.Status == "active" {
+							b.Owner = member.Email
+							break
+						}
+					}
+					if b.Owner == "" {
+						shared.Error(w, 400, "ACTIVE_MEMBER_REQUIRED")
+						return
+					}
+				}
+			}
+			if in.Owner != nil && in.OwnerID == nil {
+				owner := strings.TrimSpace(*in.Owner)
+				if len(owner) > 160 || !utf8.ValidString(owner) || strings.ContainsAny(owner, "\r\n\x00") {
+					shared.Error(w, 400, "INVALID_OWNER")
+					return
+				}
+				b.Owner = owner
+				b.OwnerID = ""
+			}
+			if in.Priority != nil {
+				if *in.Priority != "" && *in.Priority != "low" && *in.Priority != "normal" && *in.Priority != "high" {
+					shared.Error(w, 400, "INVALID_PRIORITY")
+					return
+				}
+				b.Priority = *in.Priority
+			}
+			if in.Dependencies != nil {
+				if len(*in.Dependencies) > 32 {
+					shared.Error(w, 400, "INVALID_DEPENDENCIES")
+					return
+				}
+				seen := map[string]bool{}
+				for _, id := range *in.Dependencies {
+					if id == work.ID || seen[id] || !shared.ValidID(id) {
+						shared.Error(w, 400, "INVALID_DEPENDENCIES")
+						return
+					}
+					if _, err := repo.Work(r.Context(), in.ProjectID, id); err != nil {
+						shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
+						return
+					}
+					seen[id] = true
+				}
+				b.Dependencies = *in.Dependencies
+			}
 			if in.Description != nil {
 				b.Description = in.Description
 			}

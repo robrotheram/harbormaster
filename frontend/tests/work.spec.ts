@@ -8,10 +8,11 @@ async function previewTool(page: Page, name: string) {
   await page.getByRole("menuitem", { name, exact: true }).click();
 }
 async function conversationTool(page: Page, name: string) {
+  await page.getByRole("button", { name: "Workspace", exact: true }).click();
   await page
-    .getByRole("button", { name: "Conversation options", exact: true })
+    .getByRole("group", { name: "Workspace tools" })
+    .getByRole("button", { name, exact: true })
     .click();
-  await page.getByRole("menuitem", { name, exact: true }).click();
 }
 
 async function conversationFixture(page: Page) {
@@ -77,6 +78,18 @@ async function conversationFixture(page: Page) {
     const req = route.request(),
       url = new URL(req.url()),
       path = url.pathname;
+    if (path.endsWith("/models"))
+      return route.fulfill({
+        json: {
+          workspace_id: "ws_one",
+          default_provider: "codex",
+          default_model: "worker-model",
+          items: [
+            { provider: "codex", model: "worker-model" },
+            { provider: "claude", model: "chosen-model" },
+          ],
+        },
+      });
     if (path.endsWith("/ports"))
       return route.fulfill({ json: { items: ports } });
     if (path.endsWith("/applications")) {
@@ -103,7 +116,7 @@ async function conversationFixture(page: Page) {
       state.connects++;
       return route.fulfill({
         json: {
-          preview_url: `http://preview-abc123.localhost:8080/connect#ticket=test${state.connects}`,
+          preview_url: `http://preview-0123456789abcdef0123456789abcdef.localhost:4173/connect#ticket=test${state.connects}`,
         },
       });
     }
@@ -118,6 +131,7 @@ async function conversationFixture(page: Page) {
         return route.fulfill({ status: 202, json: addRun() });
       if (path.endsWith("/review")) {
         item.state = "completed";
+        attempts.at(-1)!.review_state = "accepted";
         return route.fulfill({ json: item });
       }
       if (path.endsWith("/continue")) {
@@ -254,10 +268,16 @@ test("starts work, shows live tools, inspects files, accepts, and sends changes 
     .getByLabel("Message to your agent")
     .fill("Investigate the experiment.");
   await page.getByLabel("Worker", { exact: true }).selectOption("ws_one");
+  await page
+    .getByLabel("Model", { exact: true })
+    .selectOption(JSON.stringify(["claude", "chosen-model"]));
   await page.getByText("Keep specific output files", { exact: true }).click();
   await page.getByLabel("Retained output paths").fill("outputs/report.md");
   await page.getByRole("button", { name: "Start work", exact: true }).click();
   await expect(page).toHaveURL(/work=work_one/);
+  expect(
+    f.posts.find((p) => p.path === "/ui-api/work-items")?.body,
+  ).toMatchObject({ provider: "claude", model: "chosen-model" });
   await expect(
     page
       .locator(".conversation-message")
@@ -272,9 +292,9 @@ test("starts work, shows live tools, inspects files, accepts, and sends changes 
     page.getByRole("button", { name: "Stop task", exact: true }),
   ).toBeVisible();
   f.finish();
-  await expect(page.getByRole("button", { name: "Accept result" })).toBeVisible(
-    { timeout: 10000 },
-  );
+  await expect(page.getByRole("link", { name: "Review output" })).toBeVisible({
+    timeout: 10000,
+  });
   await expect(
     page.getByText("All four tests passed. The report is ready.", {
       exact: true,
@@ -290,12 +310,16 @@ test("starts work, shows live tools, inspects files, accepts, and sends changes 
     .getByRole("dialog")
     .getByRole("button", { name: "Close", exact: true })
     .click();
+  await page.getByRole("button", { name: "Conversation", exact: true }).click();
+  await page.getByRole("link", { name: "Review output", exact: true }).click();
+  await expect(page).toHaveURL(/attempt=attempt_1/);
   await page
-    .getByRole("button", { name: "Accept result", exact: true })
+    .getByRole("button", { name: "Approve this revision", exact: true })
     .click();
-  await expect(
-    page.getByRole("button", { name: "Accept result", exact: true }),
-  ).toHaveCount(0);
+  await expect(page.getByText("This revision was approved.")).toBeVisible();
+  await page
+    .getByRole("link", { name: "Open conversation", exact: true })
+    .click();
   await page.getByRole("button", { name: "Filter threads by status" }).click();
   await expect(
     page.getByRole("menuitemradio", { name: "Done (1)", exact: true }),
@@ -306,7 +330,7 @@ test("starts work, shows live tools, inspects files, accepts, and sends changes 
     page
       .locator(".conversation-thread-heading")
       .getByText("Accepted", { exact: true }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await page
     .getByLabel("Message to your agent")
     .fill("Add a comparison experiment.");
@@ -317,6 +341,7 @@ test("starts work, shows live tools, inspects files, accepts, and sends changes 
     "Add a comparison experiment.",
   );
   await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(page).not.toHaveURL(/attempt=/);
   await expect(
     page.getByText("Add a comparison experiment.", { exact: true }),
   ).toBeVisible();
@@ -329,6 +354,27 @@ test("starts work, shows live tools, inspects files, accepts, and sends changes 
   await expect(
     page.getByRole("button", { name: "Retry task", exact: true }),
   ).toBeVisible();
+  const retry = page
+    .locator(".conversation-message")
+    .getByRole("button", { name: "Retry task", exact: true });
+  await expect(retry).toHaveCount(1);
+  await expect(
+    page
+      .locator(".conversation-composer")
+      .getByRole("button", { name: "Retry task" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText("Enter to send · Shift+Enter for a new line", {
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  await retry.click();
+  await expect(
+    page.getByRole("button", { name: "Stop task", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Retry task", exact: true }),
+  ).toHaveCount(0);
   const revisions = f.posts.filter((p) => p.path.endsWith("/continue"));
   expect(revisions).toHaveLength(2);
   expect(revisions[0].body.idempotency_key).toBe(
@@ -431,11 +477,13 @@ test("starts and stops a workspace application from the conversation", async ({
 }) => {
   const f = await conversationFixture(page);
   f.state.exists = true;
-  await context.route("http://preview-abc123.localhost:8080/**", (route) =>
-    route.fulfill({
-      contentType: "text/html",
-      body: "<h1>Preview application</h1>",
-    }),
+  await context.route(
+    "http://preview-0123456789abcdef0123456789abcdef.localhost:4173/**",
+    (route) =>
+      route.fulfill({
+        contentType: "text/html",
+        body: "<h1>Preview application</h1>",
+      }),
   );
   await page.goto("/app/projects/A/work?work=work_one");
   const preview = page.getByRole("complementary", {
@@ -471,8 +519,10 @@ test("starts and stops a workspace application from the conversation", async ({
     .getByRole("dialog")
     .getByRole("button", { name: "Close", exact: true })
     .click();
-  await page.getByRole("button", { name: "Show preview" }).click();
-  await expect(preview.getByText("Previous session: revoked")).toBeVisible();
+  await conversationTool(page, "Preview");
+  await expect(
+    preview.getByRole("button", { name: "Restart preview" }),
+  ).toBeVisible();
   expect(
     f.posts.find((p) => p.path.endsWith("/applications"))?.body.application,
   ).toEqual({
@@ -483,25 +533,21 @@ test("starts and stops a workspace application from the conversation", async ({
   expect(f.errors).toEqual([]);
 });
 
-test("visual pane supports charts, desktop launch, mobile switching and keyboard resizing", async ({
+test("workspace supports charts, desktop launch and mobile switching with a shared composer", async ({
   page,
   context,
 }) => {
   const f = await conversationFixture(page);
   f.state.exists = true;
-  await context.route("http://preview-abc123.localhost:8080/**", (route) =>
-    route.fulfill({
-      contentType: "text/html",
-      body: "<h1>Desktop connected</h1>",
-    }),
+  await context.route(
+    "http://preview-0123456789abcdef0123456789abcdef.localhost:4173/**",
+    (route) =>
+      route.fulfill({
+        contentType: "text/html",
+        body: "<h1>Desktop connected</h1>",
+      }),
   );
   await page.goto("/app/projects/A/work?work=work_one");
-  const divider = page.getByRole("separator", {
-    name: "Resize conversation and preview",
-  });
-  await divider.focus();
-  await page.keyboard.press("ArrowRight");
-  await expect(divider).toHaveAttribute("aria-valuenow", "49");
   await conversationTool(page, "Visualize data");
   await page
     .getByLabel("Chart data")
@@ -513,6 +559,7 @@ test("visual pane supports charts, desktop launch, mobile switching and keyboard
   await page.getByRole("button", { name: "Explore", exact: true }).click();
   await page.getByLabel("Chart type").selectOption("line");
   await expect(page.locator(".browser-chart svg")).toHaveCount(1);
+  await conversationTool(page, "Preview");
   await page.getByRole("tab", { name: "Desktop", exact: true }).click();
   await page.getByRole("button", { name: "Start worker desktop" }).click();
   await expect(
@@ -530,12 +577,14 @@ test("visual pane supports charts, desktop launch, mobile switching and keyboard
   await expect(
     page.getByRole("img", { name: "score by experiment" }),
   ).toBeVisible();
+  await conversationTool(page, "Preview");
   await page.getByRole("tab", { name: "Desktop", exact: true }).click();
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "Conversation", exact: true }).click();
   await expect(
     page.getByRole("complementary", { name: "Preview workspace" }),
   ).toBeHidden();
-  await page.getByRole("button", { name: "Preview", exact: true }).click();
+  await conversationTool(page, "Preview");
   await expect(
     page.frameLocator('iframe[title="Workspace desktop"]').getByRole("heading"),
   ).toBeVisible();
@@ -553,18 +602,19 @@ test("preview selection adds a draft only from the selected frame and returns af
 }) => {
   const f = await conversationFixture(page);
   f.state.exists = true;
-  await context.route("http://preview-abc123.localhost:8080/**", (route) =>
-    route.fulfill({
-      contentType: "text/html",
-      body: `<button id="hero">Build something</button><script>let nonce='';addEventListener('message',e=>{if(e.data.type==='workbench-select')nonce=e.data.nonce});document.querySelector('button').onclick=()=>parent.postMessage({type:'workbench-selection',nonce,selector:'#hero',text:'Build something',path:'/'},'http://127.0.0.1:4173')</script>`,
-    }),
+  await context.route(
+    "http://preview-0123456789abcdef0123456789abcdef.localhost:4173/**",
+    (route) =>
+      route.fulfill({
+        contentType: "text/html",
+        body: `<button id="hero">Build something</button><script>let nonce='';addEventListener('message',e=>{if(e.data.type==='workbench-select')nonce=e.data.nonce});document.querySelector('button').onclick=()=>parent.postMessage({type:'workbench-selection',nonce,selector:'#hero',text:'Build something',path:'/'},'http://127.0.0.1:4173')</script>`,
+      }),
   );
   await page.goto("/app/projects/A/work?work=work_one");
   await page.getByRole("button", { name: "Start task", exact: true }).click();
   f.finish();
-  await expect(
-    page.getByRole("button", { name: "Accept result" }),
-  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Review output" })).toBeVisible();
+  await page.getByRole("button", { name: "Workspace", exact: true }).click();
   await previewTool(page, "Preview settings and logs");
   await page
     .getByRole("button", { name: "Start preview", exact: true })
@@ -619,7 +669,7 @@ test("application logs have room to debug, pause updates, filter and draft an ag
   await expect(
     page.getByRole("button", { name: "Accept result" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Show preview" }).click();
+  await conversationTool(page, "Preview");
   await previewTool(page, "Application logs");
   const dialog = page.getByRole("dialog", {
     name: "Application logs",
@@ -674,11 +724,13 @@ test("detects an agent-started web app and keeps it connected when preview is co
   const f = await conversationFixture(page);
   f.state.exists = true;
   f.ports.push({ port: 3000, listener: "listener_live" });
-  await context.route("http://preview-abc123.localhost:8080/**", (route) =>
-    route.fulfill({
-      contentType: "text/html",
-      body: "<h1>Agent app on 3000</h1>",
-    }),
+  await context.route(
+    "http://preview-0123456789abcdef0123456789abcdef.localhost:4173/**",
+    (route) =>
+      route.fulfill({
+        contentType: "text/html",
+        body: "<h1>Agent app on 3000</h1>",
+      }),
   );
   await page.goto("/app/projects/A/work?work=work_one");
   const frame = page.frameLocator('iframe[title="Application preview"]');
@@ -696,13 +748,13 @@ test("detects an agent-started web app and keeps it connected when preview is co
   await expect(
     page.getByRole("region", { name: "Conversation visualization" }),
   ).toHaveCount(0);
-  await page.getByRole("button", { name: "Show preview" }).click();
+  await conversationTool(page, "Preview");
   await expect(frame.getByRole("heading")).toBeVisible();
   expect(f.posts.filter((p) => p.path.endsWith("/applications"))).toHaveLength(
     1,
   );
   f.apps[0].state = "revoked";
-  await page.getByRole("button", { name: "Show preview" }).click();
+  await conversationTool(page, "Preview");
   await expect(
     page.getByRole("button", { name: "Open detected app" }),
   ).toBeVisible();
@@ -812,13 +864,16 @@ test("refreshes web preview when a run completes, preserves it during work, and 
   });
   let version = "Before change";
   let loads = 0;
-  await context.route("http://preview-abc123.localhost:8080/**", (route) => {
-    loads++;
-    return route.fulfill({
-      contentType: "text/html",
-      body: `<h1>${version}</h1>`,
-    });
-  });
+  await context.route(
+    "http://preview-0123456789abcdef0123456789abcdef.localhost:4173/**",
+    (route) => {
+      loads++;
+      return route.fulfill({
+        contentType: "text/html",
+        body: `<h1>${version}</h1>`,
+      });
+    },
+  );
   await page.goto("/app/projects/A/work?work=work_one");
   const frame = page.frameLocator('iframe[title="Application preview"]');
   await expect(frame.getByRole("heading")).toHaveText("Before change");
@@ -839,9 +894,7 @@ test("refreshes web preview when a run completes, preserves it during work, and 
   await expect(page.locator('iframe[title="Application preview"]')).toHaveCount(
     0,
   );
-  await expect(
-    page.getByRole("button", { name: "Show preview" }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Workspace" })).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Reconnect preview" }),
   ).toHaveCount(0);
@@ -1477,26 +1530,15 @@ test("work navigation keeps controls local and presents a readable conversation"
       .boundingBox())!;
     const threads = (await rail.boundingBox())!;
     const session = (await page.locator(".visual-session").boundingBox())!;
-    const railHeading = (await page
-      .locator(".conversation-rail-heading")
-      .boundingBox())!;
-    const threadHeading = (await page
-      .locator(".conversation-thread-heading")
-      .boundingBox())!;
+    await expect(
+      rail.getByRole("heading", { name: "Threads", exact: true }),
+    ).toHaveCount(0);
     expect(header.height).toBe(54);
     expect(tabs.x).toBeGreaterThanOrEqual(shell.x);
     expect(tabs.x + tabs.width).toBeLessThanOrEqual(shell.x + shell.width);
     expect(Math.abs(shell.x + shell.width - threads.x)).toBeLessThan(1);
     expect(Math.abs(header.y + header.height - threads.y)).toBeLessThan(1);
     expect(Math.abs(threads.x + threads.width - session.x)).toBeLessThan(1);
-    expect(
-      Math.abs(
-        railHeading.y +
-          railHeading.height -
-          threadHeading.y -
-          threadHeading.height,
-      ),
-    ).toBeLessThan(1);
     expect(session.y).toBe(threads.y);
     await expect(page.locator(".visual-session")).toHaveCSS(
       "border-radius",
@@ -1536,7 +1578,15 @@ test("work navigation keeps controls local and presents a readable conversation"
     .locator(".conversation-composer form")
     .boundingBox())!;
   expect(message.width).toBeLessThanOrEqual(704);
-  expect(Math.abs(message.x - composer.x)).toBeLessThan(2);
+  expect(composer.width).toBeGreaterThan(message.width);
+  expect(composer.width).toBeLessThanOrEqual(960);
+  expect(
+    Math.abs(message.x + message.width / 2 - composer.x - composer.width / 2),
+  ).toBeLessThan(2);
+  await expect(page.locator(".conversation-composer textarea")).toHaveCSS(
+    "min-height",
+    "56px",
+  );
   expect(
     Math.abs(
       (await page.locator(".conversation-activity").boundingBox())!.x -
@@ -1618,35 +1668,16 @@ test("new work explains byte and output-file limits without submitting or losing
   expect(fixture.posts).toEqual([]);
 });
 
-test("advanced work draft explains invalid input and keeps cancellation read-only", async ({
+test("thread creation has one composer and no separate work-item form", async ({
   page,
 }) => {
-  const fixture = await conversationFixture(page);
+  await conversationFixture(page);
   await page.goto("/app/projects/A/work");
-  await page
-    .getByRole("button", { name: "Create work item", exact: true })
-    .click();
-  const dialog = page.getByRole("dialog", {
-    name: "Create work item",
-    exact: true,
-  });
-  const instruction = dialog.getByLabel(/^Instruction/);
-  const create = dialog.getByRole("button", {
-    name: "Create draft",
-    exact: true,
-  });
-  await instruction.fill("   ");
-  await expect(create).toBeDisabled();
-  await instruction.fill("x".repeat(65537));
-  await expect(instruction).toHaveAttribute("aria-invalid", "true");
-  await expect(dialog.getByRole("alert")).toContainText("exceeds 64 KiB");
-  await expect(create).toBeDisabled();
-  await instruction.fill("Investigate the issue and save your findings.");
-  await expect(dialog.getByRole("alert")).toHaveCount(0);
-  await expect(create).toBeEnabled();
-  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
-  await expect(dialog).toHaveCount(0);
-  expect(fixture.posts).toEqual([]);
+  await expect(page.getByLabel("Message to your agent")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Create work item", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByLabel("Model ID", { exact: true })).toHaveCount(0);
 });
 
 test("retrying the worker list never submits the work form or clears its draft", async ({
@@ -1676,4 +1707,444 @@ test("retrying the worker list never submits the work form or clears its draft",
     "Keep this draft while refreshing workers.",
   );
   expect(fixture.posts).toEqual([]);
+});
+
+test("worker catalog supplies models and restores the worker default", async ({
+  page,
+}) => {
+  const f = await conversationFixture(page);
+  await page.goto("/app/projects/A/work");
+  const model = page.getByLabel("Model", { exact: true });
+  await expect(model).toBeEnabled();
+  await expect(model.locator("option")).toHaveText([
+    "worker-model (worker default)",
+    "worker-model · Codex",
+    "chosen-model · Claude",
+  ]);
+  await model.selectOption(JSON.stringify(["claude", "chosen-model"]));
+  await model.selectOption("");
+  await page
+    .getByLabel("Message to your agent")
+    .fill("Use the worker configuration.");
+  await page.getByRole("button", { name: "Start work", exact: true }).click();
+  await expect(page).toHaveURL(/work=work_one/);
+  expect(
+    f.posts.find((p) => p.path === "/ui-api/work-items")?.body,
+  ).toMatchObject({
+    workspace_id: "ws_one",
+    provider: "codex",
+    model: "worker-model",
+  });
+});
+
+test("a follow-up switches model on the same thread and worker", async ({
+  page,
+}) => {
+  const f = await conversationFixture(page);
+  f.state.exists = true;
+  await page.goto("/app/projects/A/work?work=work_one");
+  await page.getByRole("button", { name: "Start task", exact: true }).click();
+  f.finish();
+  await expect(
+    page.getByRole("button", { name: /^Choose model:/ }),
+  ).toBeEnabled({ timeout: 10000 });
+  await page.getByRole("button", { name: /^Choose model:/ }).click();
+  const model = page.getByLabel("Model", { exact: true });
+  await expect(model).toBeEnabled({ timeout: 10000 });
+  await model.selectOption(JSON.stringify(["claude", "chosen-model"]));
+  await page
+    .getByLabel("Message to your agent", { exact: true })
+    .fill("Continue from the report using this model.");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect
+    .poll(() => f.posts.filter((p) => p.path.endsWith("/continue")).length)
+    .toBe(1);
+  expect(f.posts.find((p) => p.path.endsWith("/continue"))?.body).toMatchObject(
+    {
+      project_id: "A",
+      expected_attempt_id: "attempt_1",
+      instruction: "Continue from the report using this model.",
+      selection: { provider: "claude", model: "chosen-model" },
+    },
+  );
+  expect(f.posts.filter((p) => p.path === "/ui-api/work-items")).toHaveLength(
+    0,
+  );
+  await expect(page).toHaveURL(/work=work_one/);
+  expect(f.errors).toEqual([]);
+});
+
+test("catalog failure keeps the message draft and offers a catalog retry", async ({
+  page,
+}) => {
+  const f = await conversationFixture(page);
+  let unavailable = true;
+  await page.route("**/ui-api/workspaces/ws_one/models", (route) =>
+    route.fulfill(
+      unavailable
+        ? { status: 503, json: { code: "MODEL_CATALOG_UNAVAILABLE" } }
+        : {
+            json: {
+              workspace_id: "ws_one",
+              items: [{ provider: "codex", model: "fresh-model" }],
+            },
+          },
+    ),
+  );
+  await page.goto("/app/projects/A/work");
+  await page.getByLabel("Message to your agent").fill("Keep my draft.");
+  await expect(page.getByLabel("Model", { exact: true })).toBeDisabled();
+  unavailable = false;
+  await page.getByRole("button", { name: "Retry loading models" }).click();
+  await expect(page.getByLabel("Model", { exact: true })).toBeEnabled();
+  await expect(page.getByLabel("Message to your agent")).toHaveValue(
+    "Keep my draft.",
+  );
+  expect(f.posts).toEqual([]);
+});
+
+test("retry is inside the task error and send has a visible label", async ({
+  page,
+}) => {
+  const f = await conversationFixture(page);
+  f.state.exists = true;
+  await page.goto("/app/projects/A/work?work=work_one");
+  await page.getByRole("button", { name: "Start task", exact: true }).click();
+  f.item.state = "failed";
+  f.attempts[0].state = "failed";
+  f.attempts[0].error_code = "TASK_FAILED";
+  await page.reload();
+  const retry = page
+    .getByRole("alert")
+    .getByRole("button", { name: "Retry task", exact: true });
+  await expect(retry).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Retry task", exact: true }),
+  ).toHaveCount(1);
+  await expect(
+    page.getByRole("button", { name: "Send", exact: true }),
+  ).toHaveText("Send");
+  await expect(retry).toHaveAttribute("data-variant", "outline");
+  await expect(retry).toHaveCSS("border-top-width", "1px");
+  for (const width of [1600, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    const collapse = page.getByRole("button", {
+      name: "Collapse preview",
+      exact: true,
+    });
+    if (await collapse.isVisible()) await collapse.click();
+    if (width === 1600) {
+      const rail = (await page
+        .locator(".conversation-thread-rail")
+        .boundingBox())!;
+      const newThread = (await page
+        .getByRole("button", { name: "New thread", exact: true })
+        .boundingBox())!;
+      expect(newThread.y - rail.y).toBeGreaterThanOrEqual(16);
+      expect(newThread.x - rail.x).toBeGreaterThanOrEqual(12);
+    }
+    const input = page.getByLabel("Message to your agent");
+    for (const draft of [
+      "",
+      "First line\nSecond line\nThird line\nFourth line",
+    ]) {
+      await input.fill(draft);
+      const field = (await input.boundingBox())!;
+      const send = (await page
+        .getByRole("button", { name: "Send", exact: true })
+        .boundingBox())!;
+      const box = (await page
+        .locator(".conversation-compose-input")
+        .boundingBox())!;
+      expect(send.y).toBeGreaterThanOrEqual(field.y + field.height);
+      expect(send.x).toBeGreaterThanOrEqual(box.x);
+      expect(send.x + send.width).toBeLessThanOrEqual(box.x + box.width);
+      expect(send.y + send.height).toBeLessThanOrEqual(box.y + box.height);
+    }
+    await input.fill("");
+    await page.screenshot({
+      path: `artifacts/thread-failure-polish-${width}.png`,
+    });
+  }
+  await retry.click();
+  await expect(
+    page.getByRole("button", { name: "Stop task", exact: true }),
+  ).toBeVisible();
+});
+
+test("workspace actions use reply data and link to the assigned worker", async ({
+  page,
+}) => {
+  const f = await conversationFixture(page);
+  f.state.exists = true;
+  f.state.reply = "Saved [measurements](outputs/measurements.csv).";
+  await page.route("**/ui-api/work-items/work_one/data", (route) =>
+    route.fulfill({
+      json: {
+        path: "outputs/measurements.csv",
+        content: Buffer.from(
+          "experiment,score\nbaseline,72\nrevision,86",
+        ).toString("base64"),
+      },
+    }),
+  );
+  await page.goto("/app/projects/A/work?work=work_one");
+  await page.getByRole("button", { name: "Start task", exact: true }).click();
+  f.finish();
+  f.attempts[0].artifacts = [];
+  await page.reload();
+  await expect(page.getByText("measurements", { exact: true })).toBeVisible();
+  await conversationTool(page, "Files");
+  await page
+    .getByRole("button", { name: "outputs/measurements.csv", exact: true })
+    .click();
+  await expect(
+    page.getByRole("region", { name: "Linked file preview" }).locator("pre"),
+  ).toContainText("baseline,72");
+  await expect(
+    page.getByRole("link", { name: "Download", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Close", exact: true })
+    .click();
+  await conversationTool(page, "Visualize data");
+  await expect(
+    page.getByRole("img", { name: "score by experiment" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("dialog", { name: "Visualize data" }),
+  ).toHaveCount(0);
+  await conversationTool(page, "Visualize data");
+  await expect(
+    page.getByRole("img", { name: "score by experiment" }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Task settings", exact: true })
+    .click();
+  await page
+    .getByRole("link", { name: "Worker: Research worker", exact: true })
+    .click();
+  await expect(page).toHaveURL(/workspaces\?worker=ws_one/);
+  await expect(page.getByRole("table", { name: "Workers" })).toContainText(
+    "Research worker",
+  );
+});
+
+test("expired previews can restart their saved application directly", async ({
+  page,
+}) => {
+  const f = await conversationFixture(page);
+  f.state.exists = true;
+  f.apps.push({
+    id: "previous",
+    state: "expired",
+    ready: false,
+    application: { directory: "site", command: "npm run dev", port: 3000 },
+  });
+  await page.goto("/app/projects/A/work?work=work_one");
+  await conversationTool(page, "Preview");
+  await page
+    .getByRole("button", { name: "Restart preview", exact: true })
+    .click();
+  expect(
+    f.posts.find((p) => p.path.endsWith("/applications"))?.body.application,
+  ).toEqual({ directory: "site", command: "npm run dev", port: 3000 });
+});
+
+test("thread direction stays clear while settings and model controls preserve the draft", async ({
+  page,
+}) => {
+  const f = await conversationFixture(page);
+  f.state.exists = true;
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/app/projects/A/work?work=work_one");
+  const heading = page.locator(".conversation-thread-heading");
+  await expect(heading).not.toContainText("Owner:");
+  await expect(heading).not.toContainText("Worker:");
+  await expect(page.getByLabel("Model", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Start task", exact: true }).click();
+  const stop = page.getByRole("button", { name: "Stop task", exact: true });
+  await expect(stop).toHaveText("Stop");
+  const composer = page.getByLabel("Message to your agent", { exact: true });
+  await composer.fill("Keep this direction while I inspect settings.");
+  await page
+    .getByRole("button", { name: "Task settings", exact: true })
+    .click();
+  const settings = page.getByRole("dialog", {
+    name: "Task settings",
+    exact: true,
+  });
+  await expect(
+    settings.getByLabel("Agent controller", { exact: true }),
+  ).toBeDisabled();
+  await expect(
+    settings.getByText(
+      "Stop the current run before changing control or the reviewer.",
+    ),
+  ).toBeVisible();
+  expect(
+    (await new AxeBuilder({ page }).include(".thread-settings-sheet").analyze())
+      .violations,
+  ).toEqual([]);
+  await page.screenshot({
+    path: "artifacts/thread-settings.png",
+    animations: "disabled",
+  });
+  await page.keyboard.press("Escape");
+  await expect(settings).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Task settings", exact: true }),
+  ).toBeFocused();
+  await expect(composer).toHaveValue(
+    "Keep this direction while I inspect settings.",
+  );
+  await page.screenshot({
+    path: "artifacts/thread-direction-running.png",
+    fullPage: true,
+    animations: "disabled",
+  });
+  await page.getByRole("button", { name: "Workspace", exact: true }).click();
+  await expect(composer).toHaveValue(
+    "Keep this direction while I inspect settings.",
+  );
+  const titleBox = (await heading.locator("h2").boundingBox())!;
+  const actionsBox = (await heading
+    .locator(".conversation-heading-actions")
+    .boundingBox())!;
+  expect(
+    titleBox.x + titleBox.width <= actionsBox.x ||
+      titleBox.y + titleBox.height <= actionsBox.y,
+  ).toBe(true);
+  await page.screenshot({
+    path: "artifacts/thread-direction-split.png",
+    animations: "disabled",
+  });
+  await page.getByRole("button", { name: "Conversation", exact: true }).click();
+  expect(
+    (await new AxeBuilder({ page }).include(".conversation-session").analyze())
+      .violations,
+  ).toEqual([]);
+  await stop.click();
+  await expect(
+    page.getByRole("button", { name: "Send", exact: true }),
+  ).toBeVisible();
+  await expect(composer).toHaveValue(
+    "Keep this direction while I inspect settings.",
+  );
+  await page.getByRole("button", { name: /^Choose model:/ }).click();
+  await expect(page.getByLabel("Model", { exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(composer).toHaveValue(
+    "Keep this direction while I inspect settings.",
+  );
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: 1000 });
+    const send = await page
+      .getByRole("button", { name: "Send", exact: true })
+      .boundingBox();
+    expect(send).not.toBeNull();
+    expect(send!.x).toBeGreaterThanOrEqual(0);
+    expect(send!.x + send!.width).toBeLessThanOrEqual(width);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+  }
+  await page.screenshot({
+    path: "artifacts/thread-direction-mobile.png",
+    fullPage: true,
+    animations: "disabled",
+  });
+  expect(f.posts.filter((p) => p.path.endsWith("/cancel"))).toHaveLength(1);
+});
+
+test("workspace keeps the composer visible and alerts on new replies without interrupting direction", async ({
+  page,
+}) => {
+  const f = await conversationFixture(page);
+  f.state.exists = true;
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/app/projects/A/work?work=work_one");
+  await page.getByRole("button", { name: "Start task", exact: true }).click();
+  await expect(page.getByText("1 tool action", { exact: true })).toBeVisible();
+  const composer = page.getByLabel("Message to your agent", { exact: true });
+  await composer.fill("Make the welcome page easier to scan.");
+  await page.getByRole("button", { name: "Workspace", exact: true }).click();
+  const workspace = page.getByRole("region", {
+    name: "Task workspace",
+    exact: true,
+  });
+  await expect(workspace).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Conversation and agent activity" }),
+  ).toBeHidden();
+  await expect(composer).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Stop task", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Open preview", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "View message", exact: true }),
+  ).toHaveCount(0);
+  await composer.focus();
+  f.finish();
+  const alert = page.locator(".thread-message-notice");
+  await expect(alert).toContainText("New agent message", { timeout: 10000 });
+  await expect(composer).toBeFocused();
+  await expect(composer).toHaveValue("Make the welcome page easier to scan.");
+  await expect(workspace).toBeVisible();
+  expect(f.posts.filter((p) => p.path.endsWith("/continue"))).toHaveLength(0);
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(composer).toBeVisible();
+    const composeBox = (await page
+      .locator(".conversation-composer")
+      .boundingBox())!;
+    const outputBox = (await workspace.boundingBox())!;
+    expect(outputBox.y + outputBox.height).toBeLessThanOrEqual(composeBox.y);
+    expect(composeBox.y + composeBox.height).toBeLessThanOrEqual(901);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: `artifacts/unified-workspace-${width}.png`,
+      animations: "disabled",
+    });
+  }
+  await expect(
+    page.getByRole("button", { name: "Send", exact: true }),
+  ).toBeEnabled();
+  expect(
+    (await new AxeBuilder({ page }).include(".conversation-session").analyze())
+      .violations,
+  ).toEqual([]);
+  await page.getByRole("button", { name: "View message", exact: true }).click();
+  await expect(page.getByText(f.state.reply, { exact: true })).toBeVisible();
+  await expect(alert).toHaveCount(0);
+  await expect(composer).toHaveValue("Make the welcome page easier to scan.");
+  await page.getByRole("button", { name: "Workspace", exact: true }).click();
+  await expect(alert).toHaveCount(0);
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Stop task", exact: true }),
+  ).toBeVisible();
+  await expect(workspace).toBeVisible();
+  expect(f.posts.filter((p) => p.path.endsWith("/continue"))).toHaveLength(1);
+  await page.getByRole("button", { name: "Stop task", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Retry task", exact: true }),
+  ).toBeVisible();
+  await expect(workspace).toBeVisible();
+  await page.reload();
+  await expect(workspace).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "View message", exact: true }),
+  ).toHaveCount(0);
+  expect(f.errors).toEqual([]);
 });

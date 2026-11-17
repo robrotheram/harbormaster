@@ -186,7 +186,7 @@ func TestStandaloneBoardIssueCreateAndRetry(t *testing.T) {
 		if got.Code != 201 && got.Code != 200 {
 			t.Fatal(got.Code, got.Body.String())
 		}
-		if json.Unmarshal(got.Body.Bytes(), &card) != nil || card.Title != "Improve search" || card.Stage != "planned" || card.Source != nil || card.Work.State != "draft" || card.Work.LatestAttemptID != "" || card.Description == nil || *card.Description != "Support partial matches" {
+		if json.Unmarshal(got.Body.Bytes(), &card) != nil || card.Title != "Improve search" || card.Stage != "planned" || card.Source != nil || card.Work.State != "planned" || card.Work.LatestAttemptID != "" || card.Description == nil || *card.Description != "Support partial matches" {
 			t.Fatal(got.Body.String())
 		}
 	}
@@ -195,10 +195,11 @@ func TestStandaloneBoardIssueCreateAndRetry(t *testing.T) {
 	if err != nil || len(items) != 1 {
 		t.Fatal(items, err)
 	}
-	got := request(t, s, "GET", "/v1/work-items/"+card.ID+"/instruction?project_id="+project.ID, "")
-	if got.Code != 200 || !strings.Contains(got.Body.String(), "Support partial matches") {
-		t.Fatal(got.Code, got.Body.String())
+	workspaces, err := s.Store.Workspaces(context.Background())
+	if err != nil || len(workspaces) != 0 {
+		t.Fatal("planning allocated compute", workspaces, err)
 	}
+
 	moved := request(t, s, "POST", "/v1/board/"+card.ID, fmt.Sprintf(`{"project_id":%q,"revision":%d,"stage":"archived","title":"New title"}`, project.ID, card.Revision))
 	if moved.Code != 200 {
 		t.Fatal(moved.Code, moved.Body.String())

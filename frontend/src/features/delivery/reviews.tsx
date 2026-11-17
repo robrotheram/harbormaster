@@ -1,5 +1,11 @@
+import "./review-feedback.css";
+import { ReviewScreenshots } from "./review-screenshots";
+import { AgentReview } from "./agent-review";
+import { memberOptions } from "@/features/work/responsibility";
+import { useUserSession } from "@/features/auth/session";
+import { usePersonalWork } from "@/features/work/personal-work";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useSearch, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Monitor,
@@ -52,11 +58,25 @@ export function Reviews({ project }: { project: Project }) {
 }
 
 function ProjectReviews({ project }: { project: Project }) {
+  const route = useSearch({ strict: false });
+  const navigate = useNavigate();
+  const openReview = (work: string, attempt?: string) =>
+    navigate({
+      to: "/projects/$projectId/$section",
+      params: { projectId: project.id, section: "reviews" },
+      search: { work, attempt },
+      replace: true,
+    });
   const items = useQuery(workOptions(project.id));
   // Private comments and their delivery keys survive task switches only within
   // this mounted project view. They are never written to browser storage.
-  const [drafts, setDrafts] = useState<Record<string, ReviewDraft>>({});
-  const [selected, setSelected] = useState("");
+  const { reviewDrafts: drafts, setReviewDrafts: setDrafts } =
+    usePersonalWork();
+  const selected = route.work || "";
+  const setSelected = (id: string) => {
+    const item = items.data?.find((i) => i.id === id);
+    void openReview(id, item?.latest_attempt_id);
+  };
   const [search, setSearch] = useState("");
   const [history, setHistory] = useState(false);
   const [visibleLimit, setVisibleLimit] = useState(20);
@@ -65,15 +85,23 @@ function ProjectReviews({ project }: { project: Project }) {
   const term = search.trim().toLowerCase();
   const candidates = (items.data || []).filter((i) =>
     history
-      ? ["completed", "closed", "failed", "cancelled"].includes(i.state)
+      ? [
+          "completed",
+          "closed",
+          "changes_requested",
+          "failed",
+          "cancelled",
+        ].includes(i.state)
       : i.state === "awaiting_review",
   );
   // Search changes the queue, never the review or comment being edited.
   const active =
-    candidates.find((item) => item.id === selected) || candidates[0];
+    (items.data || []).find((item) => item.id === selected) ||
+    (!selected ? candidates[0] : undefined);
   const activeId = active?.id || "";
   useEffect(() => {
-    if (selected !== activeId) setSelected(activeId);
+    if (activeId && (!selected || !route.attempt))
+      void openReview(activeId, active?.latest_attempt_id);
   }, [selected, activeId]);
   const titleItems = [
     ...(active ? [active] : []),
@@ -205,6 +233,7 @@ function ProjectReviews({ project }: { project: Project }) {
               onClick={() => setSelected(item.id)}
             >
               <strong>{title}</strong>
+              {title === "Untitled conversation" && <small>{item.id}</small>}
               <span>
                 {history && <State value={workStatus(item.state)} />}
                 <small>{item.kind}</small>
@@ -277,18 +306,31 @@ function ProjectReviews({ project }: { project: Project }) {
         </aside>
         {current ? (
           <ReviewDetail
-            key={current.item.id + current.item.latest_attempt_id}
+            key={
+              current.item.id +
+              (route.attempt || current.item.latest_attempt_id)
+            }
+            revision={route.attempt || current.item.latest_attempt_id}
             project={project.id}
             item={current.item}
             title={current.title}
+            owner={titles.owners.get(current.item.id)}
             statusUnavailable={items.isError}
-            draft={drafts[draftKey(current.item)] || emptyDraft}
+            draft={
+              drafts[
+                `${current.item.id}:${route.attempt || current.item.latest_attempt_id}`
+              ] || emptyDraft
+            }
             onDraft={(text) =>
               setDrafts((old) => ({
                 ...old,
-                [draftKey(current.item)]:
-                  old[draftKey(current.item)]?.text === text
-                    ? old[draftKey(current.item)]
+                [`${current.item.id}:${route.attempt || current.item.latest_attempt_id}`]:
+                  old[
+                    `${current.item.id}:${route.attempt || current.item.latest_attempt_id}`
+                  ]?.text === text
+                    ? old[
+                        `${current.item.id}:${route.attempt || current.item.latest_attempt_id}`
+                      ]
                     : { text, key: crypto.randomUUID() },
               }))
             }
@@ -337,6 +379,8 @@ function ReviewDetail({
   draft,
   onDraft,
   statusUnavailable,
+  revision,
+  owner,
 }: {
   project: string;
   item: WorkItem;
@@ -344,11 +388,27 @@ function ReviewDetail({
   draft: ReviewDraft;
   onDraft: (text: string) => void;
   statusUnavailable: boolean;
+  revision?: string;
+  owner?: string;
 }) {
   const client = useQueryClient();
+  const session = useUserSession();
+  const roster = useQuery(memberOptions(project));
+  const canDecide =
+    session.status === "local" ||
+    (!!roster.data?.user_id &&
+      (!item.reviewer_id || item.reviewer_id === roster.data.user_id));
+  const controlsAgent =
+    session.status === "local" ||
+    (!!roster.data?.user_id && roster.data.user_id === item.controller_id);
   const [mode, setMode] = useState<ReviewMode>(
     item.kind === "software" ? "preview" : "reports",
   );
+  const { reviewScreenshots, setReviewScreenshots } = usePersonalWork();
+  const screenshotID = `${project}:${item.id}:${revision}`;
+  const [capturing, setCapturing] = useState(false);
+  const screenshotDraft = reviewScreenshots[screenshotID];
+  const shots = screenshotDraft?.shots || [];
   const feedback = draft.text;
   const setFeedback = onDraft;
   const feedbackTooLong =
@@ -360,14 +420,20 @@ function ReviewDetail({
     refetchInterval: 5000,
   });
   const instruction = useQuery(instructionOptions(project, item));
-  const attempt = attempts.data?.find((a) => a.id === item.latest_attempt_id);
+  const attempt = attempts.data?.find((a) => a.id === revision);
   const canReview =
-    !!attempt && item.state === "awaiting_review" && !attempt.review_state;
-  const statusKnown = !statusUnavailable && !attempts.isError;
-  const selectElement = useCallback((text: string) => {
-    setFeedback(text);
-    setCommenting(true);
-  }, []);
+    !!attempt &&
+    attempt.id === item.latest_attempt_id &&
+    item.state === "awaiting_review" &&
+    !attempt.review_state;
+  const statusKnown = !statusUnavailable && !attempts.isError && canDecide;
+  const selectElement = useCallback(
+    (text: string) => {
+      setFeedback(feedback ? feedback + "\n\n" + text : text);
+      setCommenting(true);
+    },
+    [feedback, setFeedback],
+  );
   const decision = useMutation({
     mutationFn: (accepted: boolean | "closed") =>
       accepted === "closed"
@@ -387,10 +453,17 @@ function ReviewDetail({
         item.id,
         feedback.trim(),
         attempt!.id,
-        draft.key,
+        draft.key + (screenshotDraft?.key || ""),
+        undefined,
+        shots.map(({ content, note }) => ({ content, note })),
       ),
     onSuccess: async () => {
       setFeedback("");
+      setReviewScreenshots((old) => {
+        const next = { ...old };
+        delete next[screenshotID];
+        return next;
+      });
       await Promise.all([
         client.invalidateQueries({ queryKey: workKeys.list(project) }),
         client.invalidateQueries({ queryKey: boardKey(project) }),
@@ -405,6 +478,36 @@ function ReviewDetail({
           <div className="review-task-meta">
             <State value={workStatus(item.state)} />
             <span>{item.kind}</span>
+            <span>Owner: {owner || "Unassigned"}</span>
+            {attempt?.reviewed_by && (
+              <span>
+                Reviewed by:{" "}
+                {roster.data?.items.find(
+                  (m) => m.user_id === attempt.reviewed_by,
+                )?.email || "Former project member"}
+              </span>
+            )}
+            {item.reviewer_id && revision === item.latest_attempt_id && (
+              <span>
+                Reviewer:{" "}
+                {roster.data?.items.find((m) => m.user_id === item.reviewer_id)
+                  ?.email || "Assigned member"}
+              </span>
+            )}
+            <span>
+              Revision{" "}
+              {attempt
+                ? (attempts.data || [])
+                    .slice()
+                    .sort((a, b) => a.created_at.localeCompare(b.created_at))
+                    .findIndex((a) => a.id === attempt.id) + 1
+                : "…"}
+            </span>
+            {revision !== item.latest_attempt_id && (
+              <span>
+                Earlier output · Current work: {workStatus(item.state)}
+              </span>
+            )}
             <details className="review-request">
               <summary>Task description</summary>
               {instruction.isError ? (
@@ -429,7 +532,7 @@ function ReviewDetail({
           className="review-conversation-link"
           to="/projects/$projectId/$section"
           params={{ projectId: project, section: "work" }}
-          search={{ work: item.id }}
+          search={{ work: item.id, attempt: revision }}
         >
           Open conversation <ArrowUpRight size={14} />
         </Link>
@@ -486,6 +589,12 @@ function ReviewDetail({
           aria-labelledby={`review-tab-${mode}`}
           className="review-content"
         >
+          {mode === "preview" && (
+            <p className="review-context">
+              Live application preview. It may include changes after this
+              output; use retained files for revision-specific evidence.
+            </p>
+          )}
           {mode === "preview" ? (
             <WorkPreview
               project={project}
@@ -514,11 +623,27 @@ function ReviewDetail({
         </div>
       )}
       {attempt && (
+        <AgentReview
+          project={project}
+          item={item}
+          attempt={attempt}
+          disabled={
+            !controlsAgent ||
+            !canReview ||
+            !statusKnown ||
+            followup.isPending ||
+            decision.isPending
+          }
+          onFindings={selectElement}
+        />
+      )}
+      {attempt && (
         <footer className="review-decision">
           {!statusKnown && (
             <p className="review-context" role="status">
-              Review status is unavailable. Your draft is kept here. Retry the
-              failed status check before sending a decision.
+              {!canDecide
+                ? "Only the assigned reviewer can decide this revision."
+                : "Review status is unavailable. Your draft is kept here. Retry the failed status check before sending a decision."}
             </p>
           )}
           {canReview ? (
@@ -539,6 +664,17 @@ function ReviewDetail({
                     onChange={(e) => setFeedback(e.target.value)}
                     disabled={decision.isPending || followup.isPending}
                   />
+                  <ReviewScreenshots
+                    shots={shots}
+                    onBusy={setCapturing}
+                    disabled={decision.isPending || followup.isPending}
+                    onChange={(shots) =>
+                      setReviewScreenshots((old) => ({
+                        ...old,
+                        [screenshotID]: { shots, key: crypto.randomUUID() },
+                      }))
+                    }
+                  />
                   <p>Your comment goes to the agent to make the changes.</p>
                   {feedbackTooLong && (
                     <p
@@ -552,14 +688,26 @@ function ReviewDetail({
                   )}
                 </div>
               )}
+              <p className="review-context">
+                Approval accepts this output and completes the work item. It
+                does not merge or deploy.
+              </p>
+              {!controlsAgent && (
+                <p className="review-context">
+                  Request changes records a review decision for the controller.
+                  It does not dispatch an agent.
+                </p>
+              )}
               <div className="review-decision-actions">
                 {commenting ? (
                   <>
                     <Button
                       disabled={
+                        capturing ||
                         !feedback.trim() ||
                         feedbackTooLong ||
                         !statusKnown ||
+                        !controlsAgent ||
                         decision.isPending ||
                         followup.isPending
                       }
@@ -584,14 +732,18 @@ function ReviewDetail({
                       }
                       onClick={() => decision.mutate(true)}
                     >
-                      <Check size={16} /> Approve
+                      <Check size={16} /> Approve this revision
                     </Button>
                     <Button
                       variant="outline"
                       disabled={
                         !statusKnown || decision.isPending || followup.isPending
                       }
-                      onClick={() => setCommenting(true)}
+                      onClick={() =>
+                        controlsAgent
+                          ? setCommenting(true)
+                          : decision.mutate(false)
+                      }
                     >
                       <MessageSquare size={15} /> Request changes
                     </Button>
@@ -612,11 +764,13 @@ function ReviewDetail({
             </>
           ) : (
             <p className="review-outcome">
-              {item.state === "completed" || attempt.review_state === "accepted"
-                ? "Approved. This task is done."
-                : item.state === "closed" || attempt.review_state === "closed"
+              {attempt.review_state === "accepted"
+                ? "This revision was approved."
+                : attempt.review_state === "closed"
                   ? "Closed without approval. No more work needed."
-                  : "This task is not waiting for review."}
+                  : attempt.review_state === "changes_requested"
+                    ? "Changes requested. The controller can prepare the next revision."
+                    : "This task is not waiting for review."}
             </p>
           )}
           {followup.isError && <ErrorNotice error={followup.error} />}

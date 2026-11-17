@@ -1,11 +1,10 @@
+import { PersonalWorkProvider } from "@/features/work/personal-work";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
   Boxes,
   Plus,
-  RefreshCw,
-  Network,
   Server,
   HeartPulse,
   BookOpen,
@@ -17,14 +16,12 @@ import {
   Check,
   Sun,
   Moon,
-  Bot,
   FolderGit2,
   Factory as FactoryIcon,
   Settings2,
   Layers3,
   ClipboardCheck,
   ListChecks,
-  Fingerprint,
   X,
 } from "lucide-react";
 import {
@@ -63,11 +60,6 @@ const ProjectSettings = lazy(() =>
     default: m.ProjectSettings,
   })),
 );
-const HermesSettings = lazy(() =>
-  import("@/features/project-assistant/hermes").then((m) => ({
-    default: m.HermesSettings,
-  })),
-);
 const Workspaces = lazy(() =>
   import("@/features/workspaces/workspaces").then((m) => ({
     default: m.Workspaces,
@@ -96,14 +88,6 @@ const GettingStarted = lazy(() =>
     default: m.GettingStarted,
   })),
 );
-const AgentHomes = lazy(() =>
-  import("@/features/workspaces/agent-homes").then((m) => ({
-    default: m.AgentHomes,
-  })),
-);
-const Factory = lazy(() =>
-  import("@/features/factory/factory").then((m) => ({ default: m.Factory })),
-);
 const Work = lazy(() =>
   import("@/features/work/work").then((m) => ({ default: m.Work })),
 );
@@ -116,13 +100,10 @@ const Connections = lazy(() =>
   })),
 );
 const sections = [
-  { id: "board", label: "Issue board", icon: Layers3 },
+  { id: "team", label: "Overview", icon: Layers3 },
+  { id: "work", label: "Workspace", icon: ListChecks },
   { id: "reviews", label: "Reviews", icon: ClipboardCheck },
-  { id: "work", label: "Work", icon: ListChecks },
   { id: "workspaces", label: "Workers", icon: Boxes },
-  { id: "factory", label: "Outputs & previews", icon: Layers3 },
-  { id: "homes", label: "Agent homes", icon: Fingerprint },
-  { id: "hermes", label: "Hermes setup", icon: Bot },
   { id: "settings", label: "Settings", icon: Settings2 },
 ] as const;
 
@@ -150,7 +131,7 @@ export function ProjectShell({
   const healthQuery = useQuery({ ...snapshotOptions(), enabled: systemOpen });
   const observedServices = healthQuery.data?.services?.items;
   const healthStatus = healthQuery.isError
-    ? "unknown"
+    ? "unavailable"
     : healthQuery.isPending
       ? "checking"
       : observedServices?.some((service) =>
@@ -167,7 +148,7 @@ export function ProjectShell({
           : "unknown";
   const [collapsed, setCollapsed] = useState(() => {
     try {
-      return localStorage.getItem("workbench.sidebar-collapsed") === "true";
+      return localStorage.getItem("workbench.sidebar-collapsed") !== "false";
     } catch {
       return false;
     }
@@ -207,7 +188,17 @@ export function ProjectShell({
     repositories ||
     help ||
     !projectID;
-  const selected = sections.find((s) => s.id === section);
+  const selected = sections.find(
+    (s) =>
+      s.id ===
+      (section === "homes"
+        ? "workspaces"
+        : section === "factory"
+          ? "reviews"
+          : section === "board"
+            ? "team"
+            : section),
+  );
   const heading = globalSettings
     ? "Network profiles"
     : repositories
@@ -215,7 +206,7 @@ export function ProjectShell({
       : services
         ? "Platform services"
         : infrastructure
-          ? "Infrastructure"
+          ? "Workers"
           : help
             ? "Docs"
             : !projectID
@@ -225,13 +216,6 @@ export function ProjectShell({
   const projectsBlocked =
     projects.isError && (!projects.data || (!isGlobal && !project));
   const independentPage = globalSettings || services || help || repositories;
-  const projectPickerLabel = projects.isPending
-    ? "Loading projects"
-    : projects.isError
-      ? projects.isFetching
-        ? "Retrying project list"
-        : "Retry project list"
-      : "New project";
   const [lastProjectID, setLastProjectID] = useState(() => {
     try {
       return localStorage.getItem("workbench.last-project") || "";
@@ -273,82 +257,90 @@ export function ProjectShell({
         <FolderGit2 />
         <span className="rail-label">Projects</span>
       </Link>
-      <DropdownMenu open={systemOpen} onOpenChange={setSystemOpen}>
-        <DropdownMenuTrigger asChild>
-          <button
-            type="button"
-            className={cn(
-              "factory-nav system-menu-trigger",
-              (infrastructure || globalSettings || services || repositories) &&
-                "is-active",
-            )}
-            aria-label="Platform"
-            title="Platform"
+      {navigationProject && (
+        <>
+          <Link
+            to="/workers"
+            aria-label="Workers"
+            title="Workers"
+            aria-current={infrastructure ? "page" : undefined}
+            className={cn("factory-nav", infrastructure && "is-active")}
+            onClick={() => setMobile(false)}
           >
-            <Server />
-            <span className="rail-label">Platform</span>
-            <ChevronDown className="rail-label ml-auto" />
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          side="top"
-          align="start"
-          className="system-menu w-60"
-        >
-          <DropdownMenuLabel>Platform</DropdownMenuLabel>
-          {(
-            [
-              {
-                to: "/infrastructure",
-                label: "Infrastructure",
-                icon: Network,
-                active: infrastructure,
-              },
-              {
-                to: "/connections",
-                label: "Connections",
-                icon: FolderGit2,
-                active: repositories,
-              },
-              {
-                to: "/connection-profiles",
-                label: "Network profiles",
-                icon: Settings2,
-                active: globalSettings,
-              },
-              {
-                to: "/platform-services",
-                label: "Health",
-                icon: HeartPulse,
-                active: services,
-              },
-            ] as const
-          ).map((item) => (
-            <DropdownMenuItem key={item.to} asChild>
-              <Link
-                to={item.to}
-                aria-label={item.label}
-                aria-description={
-                  item.to === "/platform-services"
-                    ? `Service health: ${healthStatus}`
-                    : undefined
-                }
-                aria-current={item.active ? "page" : undefined}
-                onClick={() => setMobile(false)}
-              >
-                <item.icon size={16} />
-                <span className="flex-1">{item.label}</span>
-                {item.to === "/platform-services" && (
-                  <span className="system-health-badge">
-                    <State value={healthStatus} />
-                  </span>
+            <Boxes />
+            <span className="rail-label">Workers</span>
+          </Link>
+          <DropdownMenu open={systemOpen} onOpenChange={setSystemOpen}>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className={cn(
+                  "factory-nav system-menu-trigger",
+                  (globalSettings || services || repositories) && "is-active",
                 )}
-                {item.active && <Check size={14} />}
-              </Link>
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
+                aria-label="Platform"
+                title="Platform"
+              >
+                <Server />
+                <span className="rail-label">Platform</span>
+                <ChevronDown className="rail-label ml-auto" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              side="top"
+              align="start"
+              className="system-menu w-60"
+            >
+              <DropdownMenuLabel>Platform</DropdownMenuLabel>
+              {(
+                [
+                  {
+                    to: "/connections",
+                    label: "Connections",
+                    icon: FolderGit2,
+                    active: repositories,
+                  },
+                  {
+                    to: "/connection-profiles",
+                    label: "Network profiles",
+                    icon: Settings2,
+                    active: globalSettings,
+                  },
+                  {
+                    to: "/platform-services",
+                    label: "Health",
+                    icon: HeartPulse,
+                    active: services,
+                  },
+                ] as const
+              ).map((item) => (
+                <DropdownMenuItem key={item.to} asChild>
+                  <Link
+                    to={item.to}
+                    aria-label={item.label}
+                    aria-description={
+                      item.to === "/platform-services"
+                        ? `Service health: ${healthStatus}`
+                        : undefined
+                    }
+                    aria-current={item.active ? "page" : undefined}
+                    onClick={() => setMobile(false)}
+                  >
+                    <item.icon size={16} />
+                    <span className="flex-1">{item.label}</span>
+                    {item.to === "/platform-services" && (
+                      <span className="system-health-badge">
+                        <State value={healthStatus} />
+                      </span>
+                    )}
+                    {item.active && <Check size={14} />}
+                  </Link>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </>
+      )}
     </nav>
   );
   const navigation = (
@@ -455,51 +447,7 @@ export function ProjectShell({
             ))}
           </nav>
         </>
-      ) : (
-        <>
-          <div className="project-switcher">
-            <Button
-              variant="ghost"
-              className="project-switcher-button"
-              aria-label={projectPickerLabel}
-              title={projectPickerLabel}
-              disabled={
-                projects.isPending || (projects.isError && projects.isFetching)
-              }
-              onClick={() => {
-                if (projects.isError) {
-                  void projects.refetch();
-                  return;
-                }
-                setCreate(true);
-                setMobile(false);
-              }}
-            >
-              {projects.isError ? <RefreshCw size={16} /> : <Plus size={16} />}
-              <span className="rail-label">{projectPickerLabel}</span>
-            </Button>
-          </div>
-          <nav aria-label="Project navigation" className="project-section-list">
-            {sections.map((item) => (
-              <span
-                key={item.id}
-                className="factory-nav project-section-nav is-unavailable"
-                aria-disabled="true"
-                title={
-                  projects.isError
-                    ? "Retry the project list to restore navigation"
-                    : projects.isPending
-                      ? "Loading projects"
-                      : "Create a project to use this section"
-                }
-              >
-                <item.icon size={16} />
-                <span className="rail-label">{item.label}</span>
-              </span>
-            ))}
-          </nav>
-        </>
-      )}
+      ) : null}
       <div className="rail-bottom">
         <div className="project-global-links">{factoryNavigation}</div>
         <UserProfileMenu />
@@ -688,11 +636,13 @@ export function ProjectShell({
                 </Empty>
               </section>
             ) : selected ? (
-              <ProjectView
-                key={project.id}
-                project={project}
-                section={selected.id}
-              />
+              <PersonalWorkProvider key={project.id}>
+                <ProjectView
+                  key={project.id}
+                  project={project}
+                  section={selected.id}
+                />
+              </PersonalWorkProvider>
             ) : (
               <section aria-labelledby="unavailable-page">
                 <div className="page-title">
@@ -706,7 +656,7 @@ export function ProjectShell({
                         to="/projects/$projectId/$section"
                         params={{ projectId: project.id, section: "work" }}
                       >
-                        Open Work
+                        Open Workspace
                       </Link>
                     </Button>
                   }
@@ -741,13 +691,10 @@ function ProjectView({
   project: Project;
   section: Section;
 }) {
-  if (section === "board" || section === "reviews")
+  if (section === "team" || section === "reviews")
     return <Delivery project={project} review={section === "reviews"} />;
   if (section === "settings") return <ProjectSettings project={project} />;
-  if (section === "factory") return <Factory project={project} />;
   if (section === "work") return <Work project={project} />;
-  if (section === "homes") return <AgentHomes project={project} />;
-  if (section === "hermes") return <HermesSettings project={project} />;
   return <Workspaces project={project} />;
 }
 

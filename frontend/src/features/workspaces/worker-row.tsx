@@ -1,4 +1,6 @@
-import { SubscriptionButton } from "./subscription";
+import { useState } from "react";
+import { WorkerCheckbox } from "@/features/platform/worker-actions";
+import { SubscriptionDialog } from "./subscription";
 import {
   GitBranch,
   Globe,
@@ -31,6 +33,7 @@ export type WorkerOperation =
   "start" | "stop" | "pair" | "enable-t3" | "delete";
 export function WorkerRow({
   workspace,
+  selection,
   profiles,
   busy,
   operate,
@@ -44,6 +47,7 @@ export function WorkerRow({
   setActionError,
 }: {
   workspace: Workspace;
+  selection?: { checked: boolean; toggle: () => void };
   profiles: GlobalConnectionProfile[];
   busy: string;
   operate: (
@@ -60,6 +64,7 @@ export function WorkerRow({
   setMessage: (message: string) => void;
   setActionError: (error: unknown) => void;
 }) {
+  const [subscription, setSubscription] = useState(false);
   const console = workspace.console_enabled || workspace.agent_kind === "t3";
   const kind = workspace.agent_kind || "codex";
   const stopped = ["STOPPED", "ERROR", "UNKNOWN"].includes(workspace.state);
@@ -74,6 +79,15 @@ export function WorkerRow({
       data-workspace={workspace.id}
       className="max-md:grid max-md:grid-cols-[minmax(0,1fr)_auto] max-md:gap-x-2 max-md:p-4"
     >
+      {selection && (
+        <TableCell>
+          <WorkerCheckbox
+            label={"Select worker " + (workspace.name || workspace.id)}
+            checked={selection.checked}
+            onChange={selection.toggle}
+          />
+        </TableCell>
+      )}
       <TableCell className="py-3 pl-5 max-md:min-w-0 max-md:p-0">
         <div className="min-w-0">
           <div
@@ -158,7 +172,6 @@ export function WorkerRow({
       </TableCell>
       <TableCell className="pr-5 max-md:col-span-2 max-md:px-0 max-md:pt-3 max-md:pb-0">
         <div className="flex flex-wrap items-center justify-end gap-1.5 max-md:justify-start">
-          {kind !== "hermes" && <SubscriptionButton workspace={workspace} />}
           {(stopped || transitioning || console) && (
             <Button
               size="sm"
@@ -190,28 +203,6 @@ export function WorkerRow({
                     : "Open T3"}
             </Button>
           )}
-          {workspace.ready && (
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={!!busy || transitioning}
-              onClick={() => setTerminal(workspace)}
-            >
-              <TerminalSquare className="size-3.5" /> Open terminal
-            </Button>
-          )}
-          {console && workspace.ready ? (
-            <Button
-              variant="outline"
-              size="icon-sm"
-              title="Connect T3 desktop"
-              aria-label="Connect T3 desktop"
-              disabled={!!busy}
-              onClick={() => operate(workspace, "pair")}
-            >
-              <Monitor className="size-3.5" />
-            </Button>
-          ) : null}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -225,6 +216,24 @@ export function WorkerRow({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
               <DropdownMenuLabel>Worker actions</DropdownMenuLabel>
+              {workspace.ready && (
+                <DropdownMenuItem onSelect={() => setTerminal(workspace)}>
+                  <TerminalSquare />
+                  Open terminal
+                </DropdownMenuItem>
+              )}
+              {console && workspace.ready && (
+                <DropdownMenuItem onSelect={() => operate(workspace, "pair")}>
+                  <Monitor />
+                  Connect T3 desktop
+                </DropdownMenuItem>
+              )}
+              {kind !== "hermes" && (
+                <DropdownMenuItem onSelect={() => setSubscription(true)}>
+                  Subscriptions
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={() => setLogs(workspace)}>
                 <TerminalSquare />
                 Activity logs
@@ -290,6 +299,12 @@ export function WorkerRow({
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
+        {subscription && (
+          <SubscriptionDialog
+            workspace={workspace}
+            onClose={() => setSubscription(false)}
+          />
+        )}
         {workspace.ready && (
           <div className="mt-1.5 truncate text-right text-[10px] text-muted-foreground max-md:text-left">
             {workspace.idle_timeout_minutes === 0

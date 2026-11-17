@@ -83,7 +83,7 @@ async function expectWorkspaceWidth(page: Page) {
       .querySelector(".hermes-setup")!
       .getBoundingClientRect();
     const panel = document
-      .querySelector('[role="tabpanel"][data-state="active"]')!
+      .querySelector('.hermes-setup [role="tabpanel"][data-state="active"]')!
       .getBoundingClientRect();
     return {
       expectedGutter: Math.max(0, (header.width - 1800) / 2) + 24,
@@ -106,7 +106,7 @@ test("Hermes settings use standard page gutters on both tabs and wide screens", 
 }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   const { posts } = await fixture(page, true);
-  const panel = page.getByRole("tabpanel");
+  const panel = page.locator(".hermes-setup").getByRole("tabpanel");
   await expectWorkspaceWidth(page);
   await expect(
     panel.getByRole("heading", { name: "Workspace agent", exact: true }),

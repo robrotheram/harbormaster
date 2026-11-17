@@ -1,3 +1,10 @@
+import { accessBlocked } from "@/shared/query-policy";
+import { useSearch } from "@tanstack/react-router";
+import {
+  BulkWorkerAction,
+  WorkerSelection,
+  type WorkerBatch,
+} from "@/features/platform/worker-actions";
 import { lazy, Suspense } from "react";
 import { DeleteWorker } from "./delete-worker";
 import { StartWorker } from "./start-worker";
@@ -52,8 +59,15 @@ const WorkerTerminal = lazy(() =>
 export function Workspaces({ project }: { project: Project }) {
   const client = useQueryClient();
   const query = useQuery(workspaceOptions(project.id));
-  const globalProfiles = useConnectionProfiles();
-  const [search, setSearch] = useState("");
+  const blocked = accessBlocked(query.error);
+  const globalProfiles = useConnectionProfiles(
+    !blocked && !!query.data?.length,
+  );
+  const [bulk, setBulk] = useState(false);
+  const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [batch, setBatch] = useState<WorkerBatch>();
+  const routeSearch = useSearch({ strict: false });
+  const [search, setSearch] = useState(routeSearch.worker || "");
   const [view, setView] = useState<"all" | "running" | "stopped">("all");
   const [create, setCreate] = useState(false);
   const [parent, setParent] = useState<Workspace>();
@@ -71,7 +85,7 @@ export function Workspaces({ project }: { project: Project }) {
   const [message, setMessage] = useState("");
   const [actionError, setActionError] = useState<unknown>();
   const [busy, setBusy] = useState("");
-  const workspaces = query.data || [];
+  const workspaces = blocked ? [] : query.data || [];
   const sharedWorkspace = workspaces.some((workspace) => workspace.shared);
   const visible = workspaces.filter(
     (w) =>
@@ -178,6 +192,7 @@ export function Workspaces({ project }: { project: Project }) {
               <Button
                 variant="outline"
                 aria-label="Project actions"
+                disabled={blocked}
                 className="max-sm:size-8 max-sm:p-0"
               >
                 <MoreHorizontal />
@@ -202,7 +217,7 @@ export function Workspaces({ project }: { project: Project }) {
             </DropdownMenuContent>
           </DropdownMenu>
           {!sharedWorkspace && (
-            <Button onClick={() => setCreate(true)}>
+            <Button disabled={blocked} onClick={() => setCreate(true)}>
               <Plus className="size-4" />
               Create worker
             </Button>
@@ -242,7 +257,10 @@ export function Workspaces({ project }: { project: Project }) {
               variant={view === value ? "secondary" : "ghost"}
               size="sm"
               className="h-6 gap-2 px-3 text-xs"
-              onClick={() => setView(value)}
+              onClick={() => {
+                setView(value);
+                setChecked(new Set());
+              }}
               aria-pressed={view === value}
             >
               {text}
@@ -263,6 +281,16 @@ export function Workspaces({ project }: { project: Project }) {
           ))}
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            aria-expanded={bulk}
+            onClick={() => {
+              setBulk(!bulk);
+              setChecked(new Set());
+            }}
+          >
+            {bulk ? "Done" : "Bulk operations"}
+          </Button>
           <div className="compact-search">
             <Search size={14} />
             <Input
@@ -270,7 +298,10 @@ export function Workspaces({ project }: { project: Project }) {
               placeholder="Find a worker…"
               className="h-8 pl-8 text-xs md:text-xs shadow-none"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setChecked(new Set());
+              }}
             />
           </div>
           <Button
@@ -290,7 +321,29 @@ export function Workspaces({ project }: { project: Project }) {
           </Button>
         </div>
       </div>
-      {query.isPending ? (
+      {bulk && (
+        <WorkerSelection
+          visible={visible}
+          checked={checked}
+          onChange={setChecked}
+          onAction={setBatch}
+        />
+      )}
+      {batch && (
+        <BulkWorkerAction
+          batch={batch}
+          projects={[project]}
+          onClose={() => setBatch(undefined)}
+          onSucceeded={(id) =>
+            setChecked((current) => {
+              const next = new Set(current);
+              next.delete(id);
+              return next;
+            })
+          }
+        />
+      )}
+      {blocked ? null : query.isPending ? (
         <div className="space-y-3 rounded-md border bg-card p-4">
           {[1, 2, 3, 4].map((i) => (
             <Skeleton key={i} className="h-16 w-full" />
@@ -320,6 +373,11 @@ export function Workspaces({ project }: { project: Project }) {
             </caption>
             <TableHeader className="max-md:hidden">
               <TableRow className="bg-muted/15 hover:bg-muted/15">
+                {bulk && (
+                  <TableHead className="w-12">
+                    <span className="sr-only">Select worker</span>
+                  </TableHead>
+                )}
                 <TableHead className="w-[28%] pl-5">Worker</TableHead>
                 <TableHead className="w-[14%]">Status</TableHead>
                 <TableHead className="w-[18%]">Allocation</TableHead>
@@ -334,6 +392,21 @@ export function Workspaces({ project }: { project: Project }) {
                 <WorkerRow
                   key={workspace.id}
                   workspace={workspace}
+                  selection={
+                    bulk
+                      ? {
+                          checked: checked.has(workspace.id),
+                          toggle: () =>
+                            setChecked((current) => {
+                              const next = new Set(current);
+                              if (next.has(workspace.id))
+                                next.delete(workspace.id);
+                              else next.add(workspace.id);
+                              return next;
+                            }),
+                        }
+                      : undefined
+                  }
                   profiles={globalProfiles.data || []}
                   busy={busy}
                   operate={operate}
@@ -350,7 +423,7 @@ export function Workspaces({ project }: { project: Project }) {
               {!visible.length && (
                 <TableRow>
                   <TableCell
-                    colSpan={5}
+                    colSpan={bulk ? 6 : 5}
                     className="h-32 text-center text-muted-foreground"
                   >
                     No workers match this filter.{" "}

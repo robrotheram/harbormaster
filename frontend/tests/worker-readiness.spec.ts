@@ -242,7 +242,11 @@ test("worker terminal sends interactive keys, resizes, and closes its session", 
     },
   );
   await page
-    .getByRole("button", { name: "Open terminal", exact: true })
+    .getByRole("button", { name: /^Actions for / })
+    .first()
+    .click();
+  await page
+    .getByRole("menuitem", { name: "Open terminal", exact: true })
     .click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("status")).toHaveText("Connected");

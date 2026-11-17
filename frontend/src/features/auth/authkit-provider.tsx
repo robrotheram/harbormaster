@@ -6,8 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Factory, LoaderCircle, LogIn } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { PublicEntry } from "./public-entry";
 import { SessionProvider, type UserProfile, type UserSession } from "./session";
 
 type ServerSession =
@@ -181,53 +180,14 @@ export function AuthKitProvider({ children }: { children: ReactNode }) {
 
   if (session.status === "loading" || session.status === "anonymous") {
     return (
-      <main className="flex min-h-dvh items-center justify-center bg-background px-6 text-foreground">
-        <div className="w-full max-w-sm space-y-5">
-          <div className="flex items-center gap-3 text-lg font-semibold">
-            <Factory className="size-6 text-primary" /> Workbench
-          </div>
-          <h1 className="text-xl font-semibold">
-            {session.status === "anonymous"
-              ? "Sign in to your workbench"
-              : "Checking your session"}
-          </h1>
-          {error ? (
-            <p role="alert" className="text-sm text-destructive">
-              {error}
-            </p>
-          ) : session.status === "anonymous" ? (
-            <p className="text-sm text-muted-foreground">
-              Use your operator account to access projects and workers.
-            </p>
-          ) : (
-            <LoaderCircle
-              aria-label="Loading session"
-              className="size-5 motion-safe:animate-spin"
-            />
-          )}
-          {session.status === "anonymous" && callbackError && (
-            <p role="alert" className="text-sm text-destructive">
-              {callbackError}
-            </p>
-          )}
-          {error ? (
-            <Button
-              onClick={() =>
-                window.dispatchEvent(new Event("workbench:auth-retry"))
-              }
-            >
-              Try again
-            </Button>
-          ) : (
-            session.status === "anonymous" && (
-              <Button onClick={() => void signIn()}>
-                <LogIn /> Sign in with AuthKit
-              </Button>
-            )
-          )}
-        </div>
-      </main>
+      <PublicEntry
+        loading={session.status === "loading"}
+        error={error}
+        callbackError={callbackError}
+        signIn={signIn}
+      />
     );
   }
+
   return <SessionProvider session={session}>{children}</SessionProvider>;
 }

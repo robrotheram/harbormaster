@@ -4,22 +4,37 @@ import "time"
 
 // WorkItem contains operational references only. Specifications remain private
 // in the owning workspace; Digest identifies the immutable specification bytes.
+type ControlHandoff struct {
+	From  string    `json:"from"`
+	To    string    `json:"to"`
+	Actor string    `json:"actor"`
+	At    time.Time `json:"at"`
+}
 type WorkItem struct {
-	ArtifactPaths       []string  `json:"artifact_paths,omitempty"`
-	LatestAttemptID     string    `json:"latest_attempt_id,omitempty"`
-	ID                  string    `json:"id"`
-	ProjectID           string    `json:"project_id"`
-	WorkspaceID         string    `json:"workspace_id"`
-	SpecificationPath   string    `json:"specification_path"`
-	SpecificationDigest string    `json:"specification_digest"`
-	Kind                string    `json:"kind"`
-	State               string    `json:"state"`
-	CreatedAt           time.Time `json:"created_at"`
-	UpdatedAt           time.Time `json:"updated_at"`
+	ControllerID        string           `json:"controller_id,omitempty"`
+	ReviewerID          string           `json:"reviewer_id,omitempty"`
+	ControlHistory      []ControlHandoff `json:"control_history,omitempty"`
+	Provider            string           `json:"provider,omitempty"`
+	Model               string           `json:"model,omitempty"`
+	ArtifactPaths       []string         `json:"artifact_paths,omitempty"`
+	LatestAttemptID     string           `json:"latest_attempt_id,omitempty"`
+	ID                  string           `json:"id"`
+	ProjectID           string           `json:"project_id"`
+	WorkspaceID         string           `json:"workspace_id"`
+	SpecificationPath   string           `json:"specification_path"`
+	SpecificationDigest string           `json:"specification_digest"`
+	Kind                string           `json:"kind"`
+	State               string           `json:"state"`
+	CreatedAt           time.Time        `json:"created_at"`
+	UpdatedAt           time.Time        `json:"updated_at"`
 }
 
 // WorkAttempt stores references only; artifact bytes remain in the workspace.
 type WorkAttempt struct {
+	ReviewedBy          string         `json:"reviewed_by,omitempty"`
+	Provider            string         `json:"provider,omitempty"`
+	Model               string         `json:"model,omitempty"`
+	SelectionRecorded   bool           `json:"selection_recorded,omitempty"`
 	SpecificationPath   string         `json:"specification_path,omitempty"`
 	SpecificationDigest string         `json:"specification_digest,omitempty"`
 	ParentAttemptID     string         `json:"parent_attempt_id,omitempty"`

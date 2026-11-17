@@ -53,14 +53,8 @@ func TestSharedWorkspaceReusedAcrossProjectsAndRetries(t *testing.T) {
 			t.Fatalf("new project cannot select shared workspace: %d %s", response.Code, response.Body)
 		}
 	}
-	for _, project := range projects {
-		response := request(t, s, "GET", "/v1/agent-homes?project_id="+project, "")
-		var homes struct {
-			Items []shared.AgentHome `json:"items"`
-		}
-		if response.Code != 200 || json.Unmarshal(response.Body.Bytes(), &homes) != nil || len(homes.Items) != 1 || !homes.Items[0].Shared || homes.Items[0].WorkspaceID != "ws_shared" {
-			t.Fatal("shared home unavailable", response.Code, response.Body)
-		}
+	if response := request(t, s, "GET", "/v1/agent-homes", ""); response.Code != 404 {
+		t.Fatal("retired home catalog remains available", response.Code)
 	}
 	for _, body := range []string{`{"idempotency_key":"branch","parent_id":"ws_shared","branch":"feature"}`, `{"idempotency_key":"other","agent_kind":"codex"}`} {
 		if response := request(t, s, "POST", "/v1/workspaces", body); response.Code != 409 {

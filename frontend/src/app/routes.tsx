@@ -1,5 +1,6 @@
 import {
   Outlet,
+  redirect,
   createRootRoute,
   createRoute,
   createRouter,
@@ -25,9 +26,28 @@ const indexRoute = createRoute({
 const projectRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/projects/$projectId/$section",
-  validateSearch: (search: Record<string, unknown>): { work?: string } => ({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): {
+    work?: string;
+    attempt?: string;
+    worker?: string;
+    tab?: "general" | "hermes";
+  } => ({
+    tab: search.tab === "hermes" ? "hermes" : undefined,
+    attempt: typeof search.attempt === "string" ? search.attempt : undefined,
     work: typeof search.work === "string" ? search.work : undefined,
+    worker: typeof search.worker === "string" ? search.worker : undefined,
   }),
+  beforeLoad: ({ params }) => {
+    if (params.section === "hermes")
+      throw redirect({
+        to: "/projects/$projectId/$section",
+        params: { projectId: params.projectId, section: "settings" },
+        search: { tab: "hermes" },
+        replace: true,
+      });
+  },
   component: () => {
     const { projectId, section } = projectRoute.useParams();
     return <ProjectShell projectID={projectId} section={section} />;
@@ -58,6 +78,11 @@ const infrastructureRoute = createRoute({
   path: "/infrastructure",
   component: () => <ProjectShell globalPage="infrastructure" />,
 });
+const workersRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/workers",
+  component: () => <ProjectShell globalPage="infrastructure" />,
+});
 const servicesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/platform-services",
@@ -76,6 +101,7 @@ export const router = createRouter({
     repositoriesRoute,
     managementRoute,
     infrastructureRoute,
+    workersRoute,
     servicesRoute,
     helpRoute,
   ]),

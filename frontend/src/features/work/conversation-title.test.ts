@@ -16,9 +16,9 @@ it("uses the original request, excluding generated presentation instructions", (
     "Fix the login form",
   );
 });
-it("bounds long titles and keeps unavailable conversations distinguishable", () => {
+it("bounds long titles and uses an explicit unavailable-title fallback", () => {
   expect(conversationTitle(item, "x".repeat(200))).toHaveLength(118);
-  expect(conversationTitle(item)).toBe("Conversation 12345678");
+  expect(conversationTitle(item)).toBe("Untitled conversation");
   expect(
     conversationTitle({
       ...item,

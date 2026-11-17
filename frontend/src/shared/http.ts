@@ -1,4 +1,18 @@
 const messages: Record<string, string> = {
+  PROJECT_ISOLATED_WORKERS_REQUIRED:
+    "This deployment uses a shared worker across projects. Ask the operator to configure project-isolated workers before running or opening private output with project membership.",
+  PROJECT_ADMIN_REQUIRED: "A project administrator must make this change.",
+  MEMBERSHIP_CONFLICT:
+    "Membership changed, or this would remove the last active administrator. Refresh the member list before trying again.",
+  AGENT_CONTROLLER_REQUIRED:
+    "Only the current controller can instruct or stop this agent. Open Details to claim unassigned control or ask the controller to transfer it.",
+  ASSIGNED_REVIEWER_REQUIRED:
+    "Only the assigned reviewer can decide this output revision.",
+  ACTIVE_MEMBER_REQUIRED: "Choose an active member of this project.",
+  STOP_RUN_BEFORE_HANDOFF:
+    "Stop the current run before transferring control or changing its reviewer.",
+  CONTROLLER_OR_ADMIN_REQUIRED:
+    "The controller or a project administrator must make this change.",
   HISTORY_EXPORT_INCOMPLETE:
     "The history export did not finish correctly. No file was downloaded. Check that the worker is running, then try exporting again.",
   EVIDENCE_UNAVAILABLE:
@@ -29,6 +43,8 @@ const messages: Record<string, string> = {
     "The instructions could not be saved to the worker. Check its status before trying again.",
   PRIVATE_PUBLICATION_UNCONFIRMED:
     "Workbench could not confirm that the instructions were saved. Check the conversation's current state before submitting again.",
+  SPECIFICATION_ACCEPTANCE_FAILED:
+    "The worker could not accept these instructions. Check that its runtime version matches the server, then retry this task.",
   SPECIFICATION_DIGEST_MISMATCH:
     "The instruction file changed after this work was created. Review the current file and submit a new work request with the intended instructions.",
   NETWORK_UNAVAILABLE:
@@ -41,7 +57,7 @@ const messages: Record<string, string> = {
     "The service is temporarily unavailable. Try again shortly. If this continues, ask your administrator to check Platform → Platform services.",
   RATE_LIMITED: "Too many requests were sent. Wait a moment, then try again.",
   BOARD_REVISION_CONFLICT:
-    "This issue changed in another session. The board has refreshed; retry your change.",
+    "This task changed in another session. Overview has refreshed; review the latest details before retrying your change.",
   BOARD_SYNC_CONFLICT:
     "The repository issue changed since the last sync. Your edits have been kept. Open issue details to resolve the conflict.",
   BOARD_SYNC_LOCAL_CHANGES:

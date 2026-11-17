@@ -13,6 +13,11 @@ var ErrBoardConflict = errors.New("board revision conflict")
 // BoardItem stores user-visible planning metadata separately from execution.
 // Mutable ticket descriptions are separate from immutable execution instructions.
 type BoardItem struct {
+	Number         int          `json:"number,omitempty"`
+	OwnerID        string       `json:"owner_id,omitempty"`
+	Owner          string       `json:"owner,omitempty"`
+	Priority       string       `json:"priority,omitempty"`
+	Dependencies   []string     `json:"dependencies,omitempty"`
 	Description    *string      `json:"description,omitempty"`
 	ArchivedFrom   string       `json:"archived_from,omitempty"`
 	ID             string       `json:"id"`
@@ -91,12 +96,16 @@ func (s *Store) BoardItem(ctx context.Context, project, id string) (BoardItem, e
 	var item BoardItem
 	err := s.DB.QueryRowContext(ctx, s.query(`SELECT metadata FROM board_items WHERE project_id=? AND id=?`), project, id).Scan(&b)
 	if errors.Is(err, sql.ErrNoRows) {
-		return BoardItem{ID: id, ProjectID: project}, nil
+		number, e := s.workReference(ctx, project, id)
+		return BoardItem{ID: id, ProjectID: project, Number: number}, e
 	}
 	if err != nil {
 		return item, err
 	}
 	err = json.Unmarshal([]byte(b), &item)
+	if err == nil {
+		item.Number, err = s.workReference(ctx, project, id)
+	}
 	return item, err
 }
 

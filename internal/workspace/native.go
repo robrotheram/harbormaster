@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func (m *Manager) runNativeTask(ctx context.Context, provider, instruction, taskID string) (result string, code string) {
+func (m *Manager) runNativeTask(ctx context.Context, provider, instruction, taskID string, models ...string) (result string, code string) {
 	m.event(provider, "agent.started", taskID, "", "")
 	defer func() {
 		kind := "agent.completed"
@@ -16,6 +16,14 @@ func (m *Manager) runNativeTask(ctx context.Context, provider, instruction, task
 		m.event(provider, kind, taskID, "", "")
 	}()
 	cfg := nativeagent.Config{HermesMCPTransport: m.cfg.HermesMCPTransport, TaskID: taskID, ProjectID: m.cfg.ProjectID, WorkspaceID: m.cfg.ID, DataDir: m.cfg.DataDir, HomeDir: m.homePath(), AgentKind: m.cfg.AgentKind, Token: m.cfg.Token, InferenceURL: m.cfg.InferenceURL, CodexModel: m.cfg.CodexModel, ClaudeModel: m.cfg.ClaudeModel, HermesModel: m.cfg.HermesModel, EgressURL: m.cfg.EgressURL, ConnectionMode: m.cfg.ConnectionMode}
+	if len(models) > 0 && models[0] != "" {
+		if provider == "codex" {
+			cfg.CodexModel = models[0]
+		}
+		if provider == "claude" {
+			cfg.ClaudeModel = models[0]
+		}
+	}
 	var desktops int
 	m.db.QueryRow(`SELECT count(*) FROM workspace_applications a JOIN retained_services s ON s.id=a.service_id WHERE s.state='active' AND s.expires_at>? AND json_extract(a.configuration,'$.kind')='desktop'`, time.Now().Unix()).Scan(&desktops)
 	if desktops > 0 {

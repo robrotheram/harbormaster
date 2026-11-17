@@ -19,6 +19,7 @@ func (workLifecycle) Refresh(context.Context, *shared.Workspace) error { return 
 func (workLifecycle) Start(context.Context, *shared.Workspace) error   { return nil }
 
 type workAgent struct {
+	selections    []string
 	lost          bool
 	keys          []string
 	failArtifacts bool
@@ -29,10 +30,14 @@ func (a *workAgent) Agent(_ context.Context, ws, method, path string, b []byte) 
 	if path == "/v1/tasks/from-file" {
 		var in map[string]string
 		json.Unmarshal(b, &in)
+		if model, present := in["model"]; present && model == "" {
+			return 400, []byte(`{"code":"INVALID_REQUEST"}`), nil
+		}
 		if in["specification_digest"] != strings.Repeat("a", 64) {
 			return 400, nil, nil
 		}
 		a.keys = append(a.keys, in["idempotency_key"])
+		a.selections = append(a.selections, in["provider"]+":"+in["model"])
 		if !a.lost {
 			a.lost = true
 			return 0, nil, errors.New("lost acknowledgement")
@@ -78,7 +83,7 @@ func TestWorkExecutionRecoveryReviewAndRetry(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	item, _, err := repo.CreateWork(ctx, shared.WorkItem{ProjectID: "project_a", WorkspaceID: "ws_a", ArtifactPaths: []string{"result.md"}, SpecificationPath: "work.json", SpecificationDigest: strings.Repeat("a", 64), Kind: "research", CreatedAt: time.Now()}, "create")
+	item, _, err := repo.CreateWork(ctx, shared.WorkItem{Provider: "claude", Model: "chosen-model", ProjectID: "project_a", WorkspaceID: "ws_a", ArtifactPaths: []string{"result.md"}, SpecificationPath: "work.json", SpecificationDigest: strings.Repeat("a", 64), Kind: "research", CreatedAt: time.Now()}, "create")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,6 +118,11 @@ func TestWorkExecutionRecoveryReviewAndRetry(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		if err = scheduler.Tick(ctx); err != nil {
 			t.Fatal(err)
+		}
+	}
+	for _, selection := range agent.selections {
+		if selection != "claude:chosen-model" {
+			t.Fatal("selection lost during dispatch", selection)
 		}
 	}
 	if len(agent.keys) != 2 || agent.keys[0] != agent.keys[1] {
@@ -171,6 +181,29 @@ func TestWorkExecutionRecoveryReviewAndRetry(t *testing.T) {
 			t.Fatal(a)
 		}
 	}
+	// A continuation dispatches its own immutable model choice while earlier
+	// attempts retain the model used for their original execution.
+	changed, err := repo.ContinueWork(ctx, item.ProjectID, item.ID, "switch-model", WorkRevision{ExpectedAttemptID: third.ID, Path: "followup.md", Digest: strings.Repeat("a", 64), Selection: &shared.AgentModel{Provider: "codex", Model: "next-model"}}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent.cancelled = false
+	if err = scheduler.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := agent.selections[len(agent.selections)-1]; got != "codex:next-model" {
+		t.Fatal("followup model not dispatched", got)
+	}
+	attempts, err = repo.Attempts(ctx, item.ProjectID, item.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range attempts {
+		if a.ID != changed.ID && (a.Provider != "claude" || a.Model != "chosen-model") {
+			t.Fatal("prior model history rewritten", a)
+		}
+	}
+
 }
 
 func TestAttemptStorageFailureIsNotReportedAsStateConflict(t *testing.T) {
@@ -282,5 +315,42 @@ func TestUncertainDispatchCancellationSurvivesRetryableRejection(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestDefaultModelDispatchRemainsCompatibleWithInstalledWorkers(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "default-model.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	repo := Repository{DB: db}
+	for _, init := range []func(context.Context) error{repo.Init, repo.InitWork, repo.InitWorkAttempts} {
+		if err = init(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	item, _, err := repo.CreateWork(ctx, shared.WorkItem{ProjectID: "project_a", WorkspaceID: "ws_a", SpecificationPath: "work.md", SpecificationDigest: strings.Repeat("a", 64), Kind: "software", CreatedAt: time.Now()}, "create")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = repo.RunWork(ctx, item.ProjectID, item.ID, "start", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	// This agent rejects an empty model field, like the installed guest version.
+	agent := &workAgent{lost: true}
+	scheduler := Scheduler{Repository: repo, Cursor: &Cursor{}, Workspaces: &recoveringWorkspaces{workspace: shared.Workspace{ID: item.WorkspaceID, ProjectID: item.ProjectID}}, Lifecycle: workLifecycle{}, Agent: agent, Now: time.Now, Lock: func(...string) func() { return func() {} }}
+	for i := 0; i < 2; i++ {
+		if err = scheduler.Tick(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := repo.Work(ctx, item.ProjectID, item.ID)
+	if err != nil || got.State != "awaiting_review" {
+		t.Fatal("default worker execution failed", got, err)
+	}
+	if len(agent.selections) != 1 || agent.selections[0] != ":" {
+		t.Fatal("default model changed", agent.selections)
 	}
 }

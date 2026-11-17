@@ -1,5 +1,11 @@
+import {
+  retryTransient,
+  pollUnlessBlocked,
+  refocusUnlessBlocked,
+} from "@/shared/query-policy";
 import { APIError } from "@/shared/http";
 interface Snapshot {
+  scope?: "services";
   generated_at: string;
   services?: {
     items: {
@@ -33,12 +39,23 @@ export const snapshotOptions = () => ({
         0,
       );
     }
-    if (!r.ok) throw new APIError("UNAVAILABLE", r.status);
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}));
+      throw new APIError(
+        typeof body.code === "string" ? body.code : "UNAVAILABLE",
+        r.status,
+      );
+    }
     try {
       return (await r.json()) as Snapshot;
     } catch {
       throw new APIError("UNAVAILABLE", r.status);
     }
   },
-  refetchInterval: 5000,
+  refetchInterval: pollUnlessBlocked(5000),
+  retry: retryTransient,
+  retryOnMount: false,
+  refetchOnWindowFocus: refocusUnlessBlocked,
+  refetchOnReconnect: refocusUnlessBlocked,
+  refetchOnMount: refocusUnlessBlocked,
 });

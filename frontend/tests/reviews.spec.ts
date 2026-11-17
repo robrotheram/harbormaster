@@ -278,8 +278,10 @@ test("review shows only the current task result and guards stale decisions", asy
   await expect(
     page.getByRole("heading", { name: "Previous delivery" }),
   ).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Approve" })).toBeEnabled();
-  await page.getByRole("button", { name: "Approve" }).click();
+  await expect(
+    page.getByRole("button", { name: "Approve this revision" }),
+  ).toBeEnabled();
+  await page.getByRole("button", { name: "Approve this revision" }).click();
   await expect
     .poll(() => writes[0]?.body)
     .toEqual({
@@ -327,7 +329,7 @@ test("preview setup starts only the server and keeps the review unchanged", asyn
     page.getByRole("heading", { name: "Make checkout clearer" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Approve", exact: true }),
+    page.getByRole("button", { name: "Approve this revision", exact: true }),
   ).toBeEnabled();
   await page.reload();
   await expect(
@@ -402,7 +404,7 @@ test("Close finishes work without approving or starting another attempt", async 
   ).toBeVisible();
   await expect(page.locator(".review-outcome")).toContainText("Closed");
   await expect(
-    page.getByRole("button", { name: "Approve", exact: true }),
+    page.getByRole("button", { name: "Approve this revision", exact: true }),
   ).toHaveCount(0);
   await page
     .getByRole("link", { name: "Open conversation", exact: true })
@@ -502,7 +504,7 @@ test("preview gets a fresh single-use link after reopening or a readiness change
   await expect(frame).toBeVisible();
   await expect(frame).not.toHaveAttribute("src", third!);
   await expect(
-    page.getByRole("button", { name: "Approve", exact: true }),
+    page.getByRole("button", { name: "Approve this revision", exact: true }),
   ).toBeEnabled();
 });
 
@@ -554,7 +556,7 @@ test("dragging finished work back reopens the task consistently without dispatch
   await page.getByRole("menuitem", { name: "Review", exact: true }).click();
   await page.getByRole("link", { name: "Reviews", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "Approve", exact: true }),
+    page.getByRole("button", { name: "Approve this revision", exact: true }),
   ).toBeEnabled();
   expect(writes.map((w) => w.path)).toEqual([
     "/ui-api/work-items/work_review/review",
@@ -724,7 +726,7 @@ test("review status outages keep the comment while disabling decisions until a r
       page.getByRole("button", { name: "Send changes", exact: true }),
     ).toBeDisabled();
     await page.getByRole("button", { name: "Cancel", exact: true }).click();
-    for (const name of ["Approve", "Request changes", "Close"])
+    for (const name of ["Approve this revision", "Request changes", "Close"])
       await expect(
         page.getByRole("button", { name, exact: true }),
       ).toBeDisabled();
@@ -1002,4 +1004,96 @@ test("large review queues load titles in batches and keep the open review stable
     queue.getByRole("button", { name: /Make checkout clearer/ }),
   ).toHaveAttribute("aria-pressed", "true");
   expect(fixture.writes).toEqual([]);
+});
+
+test("screenshot notes are sent with feedback and a failed send keeps the image", async ({
+  page,
+}) => {
+  const { writes } = await setup(page);
+  await page.route("**/ui-api/work-items/work_review/continue", (route) => {
+    writes.push({
+      path: "/ui-api/work-items/work_review/continue",
+      body: route.request().postDataJSON(),
+    });
+    return route.fulfill({
+      status: 503,
+      json: { code: "WORKSPACE_UNAVAILABLE" },
+    });
+  });
+  await page
+    .getByRole("button", { name: "Request changes", exact: true })
+    .click();
+  await page
+    .getByLabel("Changes needed", { exact: true })
+    .fill("Fix the highlighted layout.");
+  await page.getByLabel("Attach screenshot").setInputFiles({
+    name: "capture.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(
+      await page.evaluate(() => {
+        const canvas = document.createElement("canvas");
+        canvas.width = 20;
+        canvas.height = 20;
+        return canvas.toDataURL("image/png").split(",")[1];
+      }),
+      "base64",
+    ),
+  });
+  await expect(page.getByAltText("Review screenshot 1")).toBeVisible();
+  await page
+    .getByLabel("Screenshot 1 notes")
+    .fill("The button overlaps the title.");
+  await page.getByRole("button", { name: "Send changes", exact: true }).click();
+  await expect.poll(() => writes.length).toBe(1);
+  expect(writes[0].body.screenshots).toEqual([
+    { content: expect.any(String), note: "The button overlaps the title." },
+  ]);
+  await expect(page.getByAltText("Review screenshot 1")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Send changes", exact: true }),
+  ).toBeEnabled();
+  await page.getByRole("button", { name: "Send changes", exact: true }).click();
+  await expect.poll(() => writes.length).toBe(2);
+  expect(writes[1].body).toEqual(writes[0].body);
+});
+
+test("agent review starts separate work without deciding or revising the source", async ({
+  page,
+}) => {
+  await setup(page);
+  const requests: { path: string; body: any }[] = [];
+  await page.route("**/ui-api/work-items", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    requests.push({
+      path: "/work-items",
+      body: route.request().postDataJSON(),
+    });
+    return route.fulfill({
+      status: 201,
+      json: {
+        id: "work_agent_review",
+        project_id: "prj_review",
+        workspace_id: "ws_review",
+        kind: "research",
+        state: "draft",
+      },
+    });
+  });
+  await page.route("**/ui-api/work-items/work_agent_review/run", (route) => {
+    requests.push({ path: "/run", body: route.request().postDataJSON() });
+    return route.fulfill({ status: 202, json: {} });
+  });
+  await page.getByText("Agent review", { exact: true }).click();
+  await page.getByLabel("Agent review focus").fill("Check accessibility");
+  await page.getByRole("button", { name: "Start agent review" }).click();
+  await expect(
+    page.getByRole("link", { name: "Open agent review conversation" }),
+  ).toBeVisible();
+  expect(requests.map((r) => r.path)).toEqual(["/work-items", "/run"]);
+  expect(requests[0].body.instruction).toContain("attempt_new");
+  expect(requests[0].body.instruction).toContain("Check accessibility");
+  expect(requests[0].body.kind).toBe("research");
+  await expect(
+    page.getByRole("button", { name: "Approve this revision", exact: true }),
+  ).toBeVisible();
 });

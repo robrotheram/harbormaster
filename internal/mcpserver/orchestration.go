@@ -12,9 +12,6 @@ import (
 type ProjectList struct {
 	Items []shared.Project `json:"items"`
 }
-type HomeList struct {
-	Items []shared.AgentHome `json:"items"`
-}
 type ScheduleList struct {
 	Items []shared.Schedule `json:"items"`
 }
@@ -42,10 +39,6 @@ type ScheduleAction struct {
 func registerOrchestrationTools(s *mcp.Server, c *controlClient) {
 	add(s, "project_list", "List only projects authorized by this connection's project credential.", func(ctx context.Context, _ Empty) (out ProjectList, err error) {
 		err = c.do(ctx, "GET", "/v1/projects", nil, &out)
-		return
-	})
-	add(s, "agent_home_list", "List private agent-home metadata within the authorized project.", func(ctx context.Context, in ProjectFilter) (out HomeList, err error) {
-		err = c.do(ctx, "GET", "/v1/agent-homes?project_id="+url.QueryEscape(in.ProjectID), nil, &out)
 		return
 	})
 	add(s, "schedule_list", "List schedules in the authorized project.", func(ctx context.Context, in ProjectFilter) (out ScheduleList, err error) {

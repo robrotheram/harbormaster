@@ -8,6 +8,11 @@ export const columns = [
 ] as const;
 export type BoardStage = (typeof columns)[number]["id"] | "archived";
 export type BoardCard = {
+  number?: number;
+  owner_id?: string;
+  owner?: string;
+  priority?: string;
+  dependencies?: string[];
   id: string;
   project_id: string;
   revision: number;
@@ -46,11 +51,18 @@ export const boardApi = {
     stage: BoardStage,
     title?: string,
     description?: string,
+    coordination?: {
+      owner?: string;
+      owner_id?: string;
+      priority?: string;
+      dependencies?: string[];
+    },
   ) =>
     request<BoardCard>(`/board/${card.id}`, {
       project_id: card.project_id,
       revision: card.revision,
       stage,
+      ...coordination,
       ...(title !== undefined ? { title } : {}),
       ...(description !== undefined ? { description } : {}),
     }),

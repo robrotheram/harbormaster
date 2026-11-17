@@ -1,17 +1,28 @@
+import {
+  retryTransient,
+  pollUnlessBlocked,
+  refocusUnlessBlocked,
+} from "@/shared/query-policy";
 import { useQuery } from "@tanstack/react-query";
 import { request } from "@/shared/http";
 import type { GlobalConnectionProfile, ConnectionPolicy } from "@/shared/types";
 export const connectionProfilesKey = ["global", "connection-profiles"] as const;
-export function useConnectionProfiles() {
+export function useConnectionProfiles(enabled = true) {
   return useQuery({
     queryKey: connectionProfilesKey,
+    enabled,
+    retry: retryTransient,
+    retryOnMount: false,
+    refetchOnWindowFocus: refocusUnlessBlocked,
+    refetchOnReconnect: refocusUnlessBlocked,
+    refetchOnMount: refocusUnlessBlocked,
     queryFn: ({ signal }) =>
       request<{ items: GlobalConnectionProfile[] }>(
         "/connection-profiles",
         undefined,
         signal,
       ).then((r) => r.items),
-    refetchInterval: 15000,
+    refetchInterval: pollUnlessBlocked(15000),
   });
 }
 

@@ -119,3 +119,22 @@ Required neutral-contract extensions: project endpoint routing for multiple gate
 sets; independently measured isolation/network evidence; explicit admission/pending
 failure observations; CSI branch provenance; and authenticated human project
 identity propagation. No change to the neutral runtime protocol is made here.
+
+## Web preview origins
+
+Hosted Web previews use a separate HTTPS origin per workspace service:
+`https://preview-<service-hash>.<dashboard-host>`. The dashboard derives this
+address from its configured authenticated public origin, not forwarded headers.
+Local development continues to use `http://preview-<service-hash>.localhost:<port>`.
+
+Route `*.<dashboard-host>` to the dashboard Service and provision wildcard DNS
+and TLS for it. The reference overlay includes the wildcard ingress and a separate
+`harbormaster-previews-tls` Certificate. Its cluster-owned `letsencrypt-prod`
+issuer must support DNS-01 for this domain; an HTTP-01-only issuer cannot issue
+the wildcard certificate. Add `*.harbormaster.exceptionerror.io` DNS pointing to
+Traefik before using previews. Existing dashboard and worker certificates remain
+separate.
+
+Do not attach operator OAuth middleware to preview ingress: each preview uses a
+short-lived, single-use ticket and a host-bound session. Keep the dashboard's
+operator authentication enabled. Unrecognized wildcard host labels are rejected.

@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type RefObject,
+  type ReactNode,
+} from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Globe,
@@ -37,6 +43,7 @@ export function WorkPreview({
   onSelection,
   collapsible = true,
   reviewMode = false,
+  headerActions,
 }: {
   project: string;
   workspace: string;
@@ -46,6 +53,7 @@ export function WorkPreview({
   onSelection: (text: string) => void;
   collapsible?: boolean;
   reviewMode?: boolean;
+  headerActions?: ReactNode;
 }) {
   const client = useQueryClient();
   const key = useRequestKey();
@@ -92,12 +100,6 @@ export function WorkPreview({
   const restartable = apps.find(
     (a) => a.application.kind !== "forward" && !!a.application.command,
   );
-  const stopped =
-    !!query.data?.items.length &&
-    !query.data.items.some((a) => a.state === "active");
-  useEffect(() => {
-    if (stopped) onCollapse();
-  }, [stopped, onCollapse]);
   useEffect(() => {
     if (selected?.ready) onReady();
   }, [selected?.id, selected?.ready, onReady]);
@@ -166,9 +168,19 @@ export function WorkPreview({
       signal,
     );
     const url = new URL(result.preview_url);
+    const suffix =
+      window.location.protocol === "https:"
+        ? "." + window.location.hostname
+        : ".localhost";
+    const label = url.hostname.endsWith(suffix)
+      ? url.hostname.slice(0, -suffix.length)
+      : "";
     if (
-      url.protocol !== "http:" ||
-      !/^preview-[a-f0-9]+\.localhost$/.test(url.hostname)
+      url.protocol !== window.location.protocol ||
+      url.port !== window.location.port ||
+      !/^preview-[a-f0-9]{32}$/.test(label) ||
+      url.username ||
+      url.password
     )
       throw new Error("Invalid preview address");
     return result.preview_url;
@@ -275,17 +287,20 @@ export function WorkPreview({
               </button>
             ))}
           </div>
-          {collapsible && (
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              aria-label="Collapse preview"
-              title="Collapse preview"
-              onClick={onCollapse}
-            >
-              <PanelRightClose size={14} />
-            </Button>
-          )}
+          <div className="preview-layout-actions">
+            {headerActions}
+            {collapsible && (
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                aria-label="Collapse preview"
+                title="Collapse preview"
+                onClick={onCollapse}
+              >
+                <PanelRightClose size={14} />
+              </Button>
+            )}
+          </div>
         </div>
       )}
       <>
@@ -502,14 +517,18 @@ export function WorkPreview({
             <h3>
               {mode === "desktop"
                 ? "A desktop for this workspace"
-                : "See what you’re building"}
+                : restartable
+                  ? "Preview is stopped"
+                  : "See what you’re building"}
             </h3>
             <p>
               {mode === "desktop"
                 ? "Run and interact with Linux desktop apps alongside your agent."
-                : reviewMode
-                  ? "Start the app to review it here. This keeps your review unchanged."
-                  : "Ask the agent to start your app in the workspace. Its running HTTP port will appear here automatically."}
+                : restartable
+                  ? `${restartable.application.directory} · Port ${restartable.application.port}`
+                  : reviewMode
+                    ? "Start the app to review it here. This keeps your review unchanged."
+                    : "Ask the agent to start your app in the workspace. Its running HTTP port will appear here automatically."}
             </p>
             <Button
               disabled={
@@ -523,16 +542,16 @@ export function WorkPreview({
                         ...detected.data.items[0],
                         manual: true,
                       })
-                    : reviewMode
-                      ? restartable
-                        ? mutation.mutate("restart")
-                        : (() => {
+                    : restartable
+                      ? mutation.mutate("restart")
+                      : reviewMode
+                        ? (() => {
                             setCommand("");
                             setSettings(true);
                           })()
-                      : onSelection(
-                          "Start this project’s web application inside the workspace using workbench-preview. Inspect the project to choose its launch command, verify it is ready, and keep it running for the Web preview.\n",
-                        )
+                        : onSelection(
+                            "Start this project’s web application inside the workspace using workbench-preview. Inspect the project to choose its launch command, verify it is ready, and keep it running for the Web preview.\n",
+                          )
               }
             >
               <Play size={14} />
@@ -540,13 +559,17 @@ export function WorkPreview({
                 ? "Start worker desktop"
                 : detected.data?.items.length
                   ? "Open detected app"
-                  : reviewMode
-                    ? restartable
+                  : restartable
+                    ? reviewMode
                       ? "Start preview"
-                      : "Set up preview"
-                    : "Ask agent to run app"}
+                      : "Restart preview"
+                    : reviewMode
+                      ? "Set up preview"
+                      : "Ask agent to run app"}
             </Button>
-            {apps[0] && <small>Previous session: {apps[0].state}</small>}
+            {apps[0] && !restartable && (
+              <small>Previous session: {apps[0].state}</small>
+            )}
           </div>
         )}
       </>

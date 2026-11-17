@@ -32,6 +32,9 @@ func (s *Server) registerWorkExecution(mux *http.ServeMux, repo orchestration.Re
 		}
 		unlock := s.operations.Lock("work:" + r.PathValue("id"))
 		defer unlock()
+		if !s.authorizeWorkController(w, r, in.ProjectID, r.PathValue("id"), repo) {
+			return
+		}
 		a, err := repo.RunWork(r.Context(), in.ProjectID, r.PathValue("id"), in.Key, s.now())
 		if err != nil {
 			workError(w, err)
@@ -76,16 +79,26 @@ func (s *Server) registerWorkExecution(mux *http.ServeMux, repo orchestration.Re
 			workError(w, err)
 			return
 		}
+		if current.State != "awaiting_review" && in.ExpectedAttemptID == "" {
+			shared.Error(w, 409, "WORK_STATE_CONFLICT")
+			return
+		}
 		if (current.State == "awaiting_review" || in.ExpectedAttemptID != "") && (in.ExpectedAttemptID == "" || current.LatestAttemptID != in.ExpectedAttemptID) {
 			shared.Error(w, 409, "WORK_STATE_CONFLICT")
 			return
 		}
-		var item shared.WorkItem
-		if in.Decision == "closed" {
-			item, err = repo.CloseWork(r.Context(), in.ProjectID, r.PathValue("id"), s.now())
-		} else {
-			item, err = repo.ReviewWork(r.Context(), in.ProjectID, r.PathValue("id"), *in.Accepted, s.now())
+		actor, _ := r.Context().Value(principalKey{}).(principal)
+		if current.ReviewerID != "" && !actor.admin && actor.human.ID != current.ReviewerID {
+			shared.Error(w, 403, "ASSIGNED_REVIEWER_REQUIRED")
+			return
 		}
+		decision := "changes_requested"
+		if in.Decision == "closed" {
+			decision = "closed"
+		} else if *in.Accepted {
+			decision = "accepted"
+		}
+		item, err := repo.ReviewRevisionBy(r.Context(), in.ProjectID, r.PathValue("id"), decision, in.ExpectedAttemptID, actor.human.ID, s.now())
 		if err != nil {
 			workError(w, err)
 			return

@@ -178,7 +178,17 @@ func (r Repository) TickWork(ctx context.Context, s *Scheduler) error {
 			if path == "" { // Existing attempts use their parent's original reference.
 				path, digest = item.SpecificationPath, item.SpecificationDigest
 			}
-			b, _ := json.Marshal(map[string]string{"instruction_path": path, "specification_digest": digest, "provider": "", "idempotency_key": "work:" + a.ID})
+			provider, model := item.Provider, item.Model
+			if a.SelectionRecorded {
+				provider, model = a.Provider, a.Model
+			}
+			payload := map[string]string{"instruction_path": path, "specification_digest": digest, "provider": provider, "idempotency_key": "work:" + a.ID}
+			// Older workers reject unknown fields. Omit an unset model so the
+			// existing worker-default execution contract remains compatible.
+			if model != "" {
+				payload["model"] = model
+			}
+			b, _ := json.Marshal(payload)
 			status, reply, e := s.Agent.Agent(ctx, ws.ID, "POST", "/v1/tasks/from-file", b)
 			if e != nil {
 				return

@@ -70,6 +70,16 @@ func TestWorkConversationFollowupPreservesHistoryAndDeduplicates(t *testing.T) {
 	if err != nil || !strings.Contains(string(content), original.SpecificationPath) || !strings.Contains(string(content), "Add a private comparison experiment") {
 		t.Fatal("private followup missing", err)
 	}
+	// The new request references a private snapshot containing both sides of
+	// the earlier turn, not just the original specification.
+	contextFiles, err := filepath.Glob(filepath.Join(rt.base, item.WorkspaceID, "files", "work-requests", "context-*.md"))
+	if err != nil || len(contextFiles) != 1 {
+		t.Fatal("missing private conversation context", contextFiles, err)
+	}
+	contextBody, err := os.ReadFile(contextFiles[0])
+	if err != nil || !strings.Contains(string(contextBody), "Original private research request") || !strings.Contains(string(contextBody), "# Agent reply\n\nsensitive-result-marker") || !strings.Contains(string(content), filepath.Base(contextFiles[0])) {
+		t.Fatal("followup omitted prior conversation", err)
+	}
 	if got := request(t, s, "POST", root+"/continue", strings.Replace(body, "private comparison", "different comparison", 1)); got.Code != 409 {
 		t.Fatal("changed retry accepted", got.Code)
 	}
