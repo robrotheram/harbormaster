@@ -133,8 +133,8 @@ export function Projects({
           }
         >
           Create your own project, or add a sample project with three planned
-          tasks in Overview to explore ownership, priorities and dependencies. No
-          agents run automatically.
+          tasks in Overview to explore ownership, priorities and dependencies.
+          No agents run automatically.
         </Empty>
       ) : !visible.length ? (
         <Empty

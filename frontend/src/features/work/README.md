@@ -183,7 +183,6 @@ legacy board URLs and planning/import/archive operations remain available.
 See `docs/workbench-consolidation.md` for verified gaps and remaining multiplayer
 work. Owner labels are planning metadata, not authorization or agent control.
 
-
 Explicit project membership is now required for authenticated humans. Project
 settings supplies invitations and revocation; Projects supplies acceptance.
 Work Details assigns a controller and one optional required reviewer using active

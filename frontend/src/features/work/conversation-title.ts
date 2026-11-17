@@ -38,10 +38,7 @@ export function conversationTitle(
     return chars.length > 120 ? chars.slice(0, 117).join("") + "…" : text;
   }
   if (!item.specification_path.startsWith("work-requests/")) {
-    return (
-      item.specification_path.split("/").at(-1) ||
-      "Untitled conversation"
-    );
+    return item.specification_path.split("/").at(-1) || "Untitled conversation";
   }
   return "Untitled conversation";
 }

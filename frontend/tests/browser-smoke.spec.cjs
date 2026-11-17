@@ -279,7 +279,10 @@ test("project workflows preserve boundaries and UI behavior", async ({
     .fill("incoming/finding.md");
   await page.getByRole("button", { name: "Copy file", exact: true }).click();
   await page.getByText(/File copied \(42 B\)/).waitFor();
-  assert.equal(await page.getByRole("link", { name: "Agent homes", exact: true }).count(), 0);
+  assert.equal(
+    await page.getByRole("link", { name: "Agent homes", exact: true }).count(),
+    0,
+  );
   assert.equal(
     await page.getByRole("link", { name: "Schedules", exact: true }).count(),
     0,
