@@ -29,7 +29,7 @@ images:
 - name: ghcr.io/robrotheram/harbormaster/controlplane
   digest: sha256:fcbc33537f5178724cf1a3cb61b2c5e1d81a6a9fa653773ebc6cb74cdf085ce2
 - name: ghcr.io/robrotheram/harbormaster/runtime-controller
-  digest: sha256:7b973bdcddd003622f677e39d27f1749309f4cc9cf2a70f601c3fc40de6dcbac
+  digest: sha256:8b755d303d68ad5a2e02a5db57380df84da9cbd728ab0ffab065676b8116bb46
 - name: ghcr.io/robrotheram/harbormaster/dashboard
   digest: sha256:d136063603aa77c2cbf1eb7ccc743aa23b482aa3c26d1d1cc142f8ca17b726a5
 - name: ghcr.io/robrotheram/harbormaster/mcp

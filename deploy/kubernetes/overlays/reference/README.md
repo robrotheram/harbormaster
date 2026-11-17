@@ -172,12 +172,15 @@ application Secret values and restart controlplane after CNPG credential/CA rota
 ## Images and updates
 
 The reference image overrides are pinned in this overlay's `kustomization.yaml`;
-the matching workspace digest is in `runtime-controller-patch.yaml`. All platform
+the matching workspace digest is in `runtime-controller-patch.yaml`. Platform
 services and the shared workspace use source
 `284b3370f574f28d21c893228f4f3c9e91dfcc3c`. This release consolidates the workbench
 navigation, project membership, task coordination, review evidence and hosted
 preview origins. It also fixes task-list error messaging, narrow worker controls,
 and focus when drafting a debugging request from application logs.
+The runtime-controller additionally uses source
+`fc8d141bcee139d7a2ac16911205b0849de88f87`, which allows the read-only model
+catalog through the runtime proxy.
 The Codex policy and worker default continue to select `gpt-6.1-sol`.
 The base retains its independently pinned default release.
 
