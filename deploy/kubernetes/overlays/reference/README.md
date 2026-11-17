@@ -172,15 +172,14 @@ application Secret values and restart controlplane after CNPG credential/CA rota
 ## Images and updates
 
 The reference image overrides are pinned in this overlay's `kustomization.yaml`;
-the matching workspace digest is in `runtime-controller-patch.yaml`. The inference
-gateway and dashboard use source `b8537d7cd39bd233d3bb42e51d2b62dde342eecf`;
-the workspace uses `bc1237f9a5e5d2add107d766d8d9cf3df12fb061`. These fix mixed
-IPv4/IPv6 gateway resolution, enlarged-text worker filters, and proxy bypass for
-runtime-configured platform endpoints. The Codex policy and worker default select
-`gpt-6.1-sol`, verified against the connected ChatGPT account's model catalog.
-Other service images retain the Connections release from
-`be98305c3bc64328b6e99992c1cdabc31c0e4c21`. The base retains its independently
-pinned default release.
+the matching workspace digest is in `runtime-controller-patch.yaml`. All platform
+services and the shared workspace use source
+`284b3370f574f28d21c893228f4f3c9e91dfcc3c`. This release consolidates the workbench
+navigation, project membership, task coordination, review evidence and hosted
+preview origins. It also fixes task-list error messaging, narrow worker controls,
+and focus when drafting a debugging request from application logs.
+The Codex policy and worker default continue to select `gpt-6.1-sol`.
+The base retains its independently pinned default release.
 
 After a successful GitHub build, obtain the immutable digest from its build output
 or authenticated registry inspection. Add an `images` override to this overlay
