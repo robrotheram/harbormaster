@@ -1640,7 +1640,7 @@ test("work navigation keeps controls local and presents a readable conversation"
   });
   await page.keyboard.press("Escape");
   await expect(switcher).toBeFocused();
-  await page.getByRole("button", { name: "Preview", exact: true }).click();
+  await conversationTool(page, "Preview");
   await expect(switcher).toBeVisible();
   await switcher.click();
   await expect(page.getByRole("dialog", { name: "Threads" })).toBeVisible();
