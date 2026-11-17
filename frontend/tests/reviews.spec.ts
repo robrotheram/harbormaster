@@ -418,22 +418,16 @@ test("Close finishes work without approving or starting another attempt", async 
   await expect(page.locator(".conversation-thread-heading")).not.toContainText(
     "Accepted",
   );
-  await page.getByRole("link", { name: "Issue board", exact: true }).click();
-  const done = page.getByRole("region", { name: "Done column" });
-  await expect(done.locator(".issue-card")).toHaveCount(1);
-  await expect(done.locator(".issue-card-footer")).toHaveText("Closed");
-  await expect(done.locator(".issue-card")).toHaveAttribute(
-    "draggable",
-    "true",
-  );
+  await page.getByRole("link", { name: "Overview", exact: true }).click();
+  await page.getByRole("button", { name: /^Completed/ }).click();
   await page
-    .getByRole("button", { name: "Actions for Make checkout clearer" })
+    .getByRole("button", { name: "Make checkout clearer", exact: true })
     .click();
+  await expect(page.getByLabel("Task status")).toBeDisabled();
   await expect(
-    page.getByRole("menuitem", { name: "In progress", exact: true }),
-  ).toBeEnabled();
-  await expect(
-    page.getByRole("menuitem", { name: "Archive issue", exact: true }),
+    page
+      .getByRole("dialog")
+      .getByRole("button", { name: "Archive", exact: true }),
   ).toBeEnabled();
   expect(writes).toHaveLength(1);
 });
@@ -469,16 +463,18 @@ test("preview gets a fresh single-use link after reopening or a readiness change
       connections++;
       return route.fulfill({
         json: {
-          preview_url: `http://preview-abc.localhost:4173/connect#ticket=${connections}`,
+          preview_url: `http://preview-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.localhost:4173/connect#ticket=${connections}`,
         },
       });
     },
   );
-  await page.route("http://preview-abc.localhost:4173/**", (route) =>
-    route.fulfill({
-      contentType: "text/html",
-      body: "<p>Checkout preview</p>",
-    }),
+  await page.route(
+    "http://preview-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.localhost:4173/**",
+    (route) =>
+      route.fulfill({
+        contentType: "text/html",
+        body: "<p>Checkout preview</p>",
+      }),
   );
   const frame = page.getByTitle("Application preview", { exact: true });
   await expect(frame).toHaveAttribute("src", /ticket=\d+$/);
@@ -508,60 +504,27 @@ test("preview gets a fresh single-use link after reopening or a readiness change
   ).toBeEnabled();
 });
 
-test("dragging finished work back reopens the task consistently without dispatch", async ({
+test("finished work status stays bound to its run and cannot be changed from Overview", async ({
   page,
 }) => {
   const { writes } = await setup(page);
   await page.getByRole("button", { name: "Close", exact: true }).click();
   await expect(page.getByText("Nothing waiting for review.")).toBeVisible();
-  await page.getByRole("link", { name: "Issue board", exact: true }).click();
-  const card = page
-    .getByRole("region", { name: "Done column" })
-    .locator(".issue-card");
-  await card.dragTo(page.getByRole("region", { name: "In progress column" }));
-  await expect(
-    page
-      .getByRole("region", { name: "In progress column" })
-      .locator(".issue-card"),
-  ).toHaveCount(1);
+  await page.getByRole("link", { name: "Overview", exact: true }).click();
+  await page.getByRole("button", { name: /^Completed/ }).click();
   await page
     .getByRole("button", { name: "Make checkout clearer", exact: true })
     .click();
+  await expect(page.getByLabel("Task status")).toBeDisabled();
   await expect(
-    page.getByText("Work status: In progress", { exact: true }),
+    page.getByText("Status follows the run and review."),
   ).toBeVisible();
-  await page
-    .getByRole("link", { name: "Open work thread", exact: true })
-    .click();
-  await expect(
-    page.locator(".conversation-work-item .thread-state"),
-  ).toHaveText("In progress");
+  await page.getByRole("link", { name: "Open thread", exact: true }).click();
   await expect(page.locator(".conversation-thread-heading")).toContainText(
-    "In progress",
+    "Closed",
   );
-  await expect(
-    page.getByRole("button", { name: "Start task", exact: true }),
-  ).toBeEnabled();
-  await expect(
-    page.getByRole("button", { name: "Stop task", exact: true }),
-  ).toHaveCount(0);
-  await page.reload();
-  await expect(page.locator(".conversation-thread-heading")).toContainText(
-    "In progress",
-  );
-  await page.getByRole("link", { name: "Issue board", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Actions for Make checkout clearer" })
-    .click();
-  await page.getByRole("menuitem", { name: "Review", exact: true }).click();
-  await page.getByRole("link", { name: "Reviews", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: "Approve this revision", exact: true }),
-  ).toBeEnabled();
   expect(writes.map((w) => w.path)).toEqual([
     "/ui-api/work-items/work_review/review",
-    "/ui-api/board/work_review",
-    "/ui-api/board/work_review",
   ]);
 });
 

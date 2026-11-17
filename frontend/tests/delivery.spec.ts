@@ -74,7 +74,7 @@ test("board and review use real work and bind decisions to the inspected attempt
   });
   await page.goto(`/app/projects/${project.id}/board`);
   await expect(
-    page.getByRole("heading", { name: "Issue board", exact: true }),
+    page.getByRole("heading", { name: "Overview", exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Fix checkout validation", exact: true }),
@@ -82,9 +82,7 @@ test("board and review use real work and bind decisions to the inspected attempt
   await page
     .getByRole("button", { name: "Fix checkout validation", exact: true })
     .click();
-  await page
-    .getByRole("link", { name: "Review delivery", exact: true })
-    .click();
+  await page.getByRole("link", { name: "Review output", exact: true }).click();
   await page.getByRole("button", { name: /Fix checkout validation/ }).click();
   const accept = page.getByRole("button", { name: "Approve" });
   await expect(accept).toBeEnabled();

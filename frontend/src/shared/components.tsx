@@ -143,6 +143,7 @@ export function Modal({
   className,
   closeOnEscape = true,
   closeDisabled = false,
+  onCloseAutoFocus,
 }: {
   title: string;
   onClose: () => void;
@@ -151,6 +152,7 @@ export function Modal({
   className?: string;
   closeOnEscape?: boolean;
   closeDisabled?: boolean;
+  onCloseAutoFocus?: (event: Event) => void;
 }) {
   const [returnFocus] = useState(() => {
     const active = document.activeElement as HTMLElement | null;
@@ -171,6 +173,8 @@ export function Modal({
           if (!closeOnEscape || closeDisabled) event.preventDefault();
         }}
         onCloseAutoFocus={(event) => {
+          onCloseAutoFocus?.(event);
+          if (event.defaultPrevented) return;
           if (returnFocus?.isConnected) {
             event.preventDefault();
             requestAnimationFrame(() => returnFocus.focus());

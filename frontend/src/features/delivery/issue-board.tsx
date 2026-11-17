@@ -481,7 +481,7 @@ function Board({ project }: { project: Project }) {
                 })}
               </tbody>
             </table>
-            {!visible.length && (
+            {!board.isError && !visible.length && (
               <div className="overview-empty">
                 <h2>
                   {archived ? "No archived tasks" : "No tasks in this view"}

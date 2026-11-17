@@ -39,6 +39,7 @@ export function ApplicationLogs({
   onClose: () => void;
   onDebug: (message: string) => void;
 }) {
+  const debugDraft = useRef("");
   const [id, setID] = useState(initialID);
   const [filter, setFilter] = useState("");
   const [frozen, setFrozen] = useState<string | null>(null);
@@ -72,6 +73,12 @@ export function ApplicationLogs({
   }
   return (
     <Modal
+      onCloseAutoFocus={(event) => {
+        if (debugDraft.current) {
+          event.preventDefault();
+          onDebug(debugDraft.current);
+        }
+      }}
       title="Application logs"
       onClose={onClose}
       className="application-log-dialog"
@@ -207,9 +214,8 @@ export function ApplicationLogs({
             size="sm"
             disabled={!app || !shown}
             onClick={() => {
-              onDebug(
-                `Help debug this application.\nDirectory: ${app!.application.directory}\nCommand: ${app!.application.command}\nPort: ${app!.application.port}\nSession state: ${app!.state}\n\nRecent${filter ? " filtered" : ""} application logs${shown.length > 6000 ? " (last 6,000 characters)" : ""}:\n${shown.slice(-6000)}\n\nIdentify the cause and propose a fix.\n`,
-              );
+              debugDraft.current = `Help debug this application.\nDirectory: ${app!.application.directory}\nCommand: ${app!.application.command}\nPort: ${app!.application.port}\nSession state: ${app!.state}\n\nRecent${filter ? " filtered" : ""} application logs${shown.length > 6000 ? " (last 6,000 characters)" : ""}:\n${shown.slice(-6000)}\n\nIdentify the cause and propose a fix.\n`;
+              onClose();
             }}
           >
             <MessageSquare size={14} />

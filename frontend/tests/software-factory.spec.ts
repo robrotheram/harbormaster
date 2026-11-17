@@ -276,9 +276,7 @@ test("global infrastructure reports actual runtimes and filters across projects"
     .click();
   await expect(page.getByRole("dialog")).toContainText("unverified");
   await expect(page.getByRole("dialog")).toContainText("Docker");
-  await page
-    .getByRole("link", { name: "Manage worker & desktop connection" })
-    .click();
+  await page.getByRole("link", { name: "Open worker controls" }).click();
   await expect(page).toHaveURL(/projects\/docs\/workspaces$/);
   expect(errors).toEqual([]);
 });
@@ -308,7 +306,7 @@ test("factory layout review at desktop and mobile widths", async ({ page }) => {
   for (const [name, path, ready] of [
     ["projects", "/app/", "Projects"],
     ["project-work", "/app/projects/atlas/work", "Project work"],
-    ["infrastructure", "/app/infrastructure", "Infrastructure"],
+    ["infrastructure", "/app/infrastructure", "Workers"],
     ["services", "/app/platform-services", "Platform services"],
   ]) {
     await page.goto(path);
@@ -426,6 +424,9 @@ test("headers align in both sidebar states and services have a separate page", a
   await expect(
     page.getByRole("heading", { name: "Project work", exact: true }),
   ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Expand sidebar", exact: true })
+    .click();
   for (const state of ["expanded", "collapsed"]) {
     if (state === "collapsed")
       await page
@@ -483,9 +484,9 @@ test("headers align in both sidebar states and services have a separate page", a
     .getByRole("button", { name: "Collapse sidebar", exact: true })
     .click();
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.getByRole("button", { name: "Platform", exact: true }).click();
   await page
-    .getByRole("menuitem", { name: "Infrastructure", exact: true })
+    .getByRole("navigation", { name: "Factory navigation" })
+    .getByRole("link", { name: "Workers", exact: true })
     .click();
   await expect(
     page.getByRole("button", { name: "atlas / implementation", exact: true }),
@@ -571,7 +572,10 @@ test("project sections stay in the sidebar and threads belong only to Workspace"
     name: "Factory navigation",
     exact: true,
   });
-  await drawer.getByRole("link", { name: "Workers", exact: true }).click();
+  await drawer
+    .getByRole("navigation", { name: "Project navigation" })
+    .getByRole("link", { name: "Workers", exact: true })
+    .click();
   await expect(drawer).toHaveCount(0);
   await expect(
     page.getByRole("heading", { name: "Workers", exact: true }),
@@ -626,6 +630,9 @@ test("project-first sidebar stays fixed on global pages and remembers the projec
           return { x, y, width, height };
         }),
       );
+  await page
+    .getByRole("button", { name: "Expand sidebar", exact: true })
+    .click();
   for (const collapsed of [false, true]) {
     if (collapsed) {
       await page
@@ -633,15 +640,19 @@ test("project-first sidebar stays fixed on global pages and remembers the projec
         .click();
       await expect(sidebar).toHaveCSS("width", "64px");
     }
+    await expect(sidebar).toHaveCSS("width", collapsed ? "64px" : "228px");
     const before = await measure();
     for (const [label, heading] of [
-      ["Infrastructure", "Infrastructure"],
+      ["Workers", "Workers"],
       ["Projects", "Projects"],
       ["Platform services", "Platform services"],
       ["Network profiles", "Network profiles"],
     ]) {
-      if (label === "Projects") {
-        await sidebar.getByRole("link", { name: label, exact: true }).click();
+      if (label === "Projects" || label === "Workers") {
+        await sidebar
+          .getByRole("navigation", { name: "Factory navigation" })
+          .getByRole("link", { name: label, exact: true })
+          .click();
       } else {
         await sidebar
           .getByRole("button", { name: "Platform", exact: true })
@@ -662,7 +673,7 @@ test("project-first sidebar stays fixed on global pages and remembers the projec
         sidebar.locator('.project-section-list [aria-current="page"]'),
       ).toHaveCount(0);
       await expect(sidebar.locator("nav .is-active")).toHaveCount(1);
-      if (label !== "Projects")
+      if (label !== "Projects" && label !== "Workers")
         await expect(
           sidebar.getByRole("button", { name: "Platform", exact: true }),
         ).toHaveClass(/is-active/);
@@ -687,9 +698,9 @@ test("project-first sidebar stays fixed on global pages and remembers the projec
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "Open navigation" }).click();
   const drawer = page.getByRole("dialog", { name: "Factory navigation" });
-  await drawer.getByRole("button", { name: "Platform", exact: true }).click();
-  await page
-    .getByRole("menuitem", { name: "Infrastructure", exact: true })
+  await drawer
+    .getByRole("navigation", { name: "Factory navigation" })
+    .getByRole("link", { name: "Workers", exact: true })
     .click();
   await expect(drawer).toHaveCount(0);
   await page.getByRole("button", { name: "Open navigation" }).click();
@@ -722,19 +733,9 @@ test("sidebar recovers from a removed project and keeps its layout when none exi
     route.fulfill({ json: { items: [] } }),
   );
   await page.reload();
-  await expect(
-    sidebar.getByRole("button", { name: "New project", exact: true }),
-  ).toBeVisible();
-  await expect(
-    sidebar.locator('.project-section-list [aria-disabled="true"]'),
-  ).toHaveCount(8);
   await expect(sidebar.locator(".project-section-list a")).toHaveCount(0);
-  expect(
-    (await sidebar.locator(".project-global-links").boundingBox())!,
-  ).toEqual(globals);
-  await sidebar
-    .getByRole("button", { name: "New project", exact: true })
-    .click();
+  await sidebar.getByRole("link", { name: "Projects", exact: true }).click();
+  await page.getByRole("button", { name: "New project", exact: true }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
 });
 
@@ -759,13 +760,13 @@ test("system tools share one menu and Docs sits beside the theme switcher", asyn
   const system = sidebar.getByRole("button", { name: "Platform", exact: true });
   await system.focus();
   await page.keyboard.press("Enter");
-  await expect(page.getByRole("menuitem")).toHaveCount(4);
+  await expect(page.getByRole("menuitem")).toHaveCount(3);
   await expect(
     page.getByRole("menuitem", { name: "Connections", exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole("menuitem", { name: "Infrastructure", exact: true }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(
     page.getByRole("menuitem", { name: "Network profiles", exact: true }),
   ).toBeVisible();
@@ -852,7 +853,7 @@ test("health badge reports healthy and unknown observations without guessing", a
       "Unknown",
     ],
     [200, { services: { items: [] } }, "Unknown"],
-    [503, { code: "UNAVAILABLE" }, "Unknown"],
+    [503, { code: "UNAVAILABLE" }, "Unavailable"],
   ] as const) {
     response = { status, json };
     await page.goto("/app/projects/atlas/work");

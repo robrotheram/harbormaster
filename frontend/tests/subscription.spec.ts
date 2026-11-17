@@ -179,7 +179,12 @@ test("manage multiple personal accounts and independently select worker provider
   await expect(page).toHaveURL(/tab=repositories/);
 
   await page.goto("/app/projects/default/workspaces");
-  await page.getByRole("button", { name: "Subscription", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Actions for Shared workspace", exact: true })
+    .click();
+  await page
+    .getByRole("menuitem", { name: "Subscriptions", exact: true })
+    .click();
   const dialog = page.getByRole("dialog", { name: "Worker subscriptions" });
   const chatgpt = dialog.getByRole("region", { name: "ChatGPT / Codex" });
   const anthropic = dialog.getByRole("region", { name: "Claude", exact: true });

@@ -280,7 +280,7 @@ export function Workspaces({ project }: { project: Project }) {
             </Button>
           ))}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
           <Button
             variant="outline"
             aria-expanded={bulk}

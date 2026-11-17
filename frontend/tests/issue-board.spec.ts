@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-test("dragging, archive, flags and explicit repository sync", async ({
+test("task status, archive, flags and explicit repository sync", async ({
   page,
 }) => {
   const project = { id: "board_project", name: "Factory" };
@@ -38,6 +38,8 @@ test("dragging, archive, flags and explicit repository sync", async ({
   await page.route("**/ui-api/**", async (route) => {
     const req = route.request(),
       path = new URL(req.url()).pathname;
+    if (path.endsWith("/capabilities"))
+      return route.fulfill({ json: { can_import: true, can_start: true } });
     if (path === "/ui-api/projects")
       return route.fulfill({ json: { items: [project] } });
     if (path === "/ui-api/board")
@@ -71,31 +73,17 @@ test("dragging, archive, flags and explicit repository sync", async ({
     return route.fulfill({ json: { items: [] } });
   });
   await page.goto(`/app/projects/${project.id}/board`);
-  await expect(page.getByRole("region", { name: "Done column" })).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Needs attention" }),
-  ).toHaveCount(0);
-  await expect(page.getByText("Worker failed", { exact: true })).toBeVisible();
-  const article = page
-    .locator(".issue-card")
-    .filter({ hasText: "Repair checkout validation" });
-  await article.dragTo(page.getByRole("region", { name: "Done column" }));
-  await expect(
-    page
-      .getByRole("region", { name: "Done column" })
-      .getByRole("button", { name: "Repair checkout validation", exact: true }),
+    page.getByRole("heading", { name: "Overview", exact: true }),
   ).toBeVisible();
-  await expect.poll(() => writes.length).toBe(1);
-  expect(writes[0].body.stage).toBe("done");
-  await page.reload();
-  await expect(
-    page.getByRole("region", { name: "Done column" }).locator(".issue-card"),
-  ).toHaveCount(1);
-  await page
-    .getByRole("button", { name: "Repair checkout validation", exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "Sync to repository", exact: true })
+  const openTask = async () =>
+    page.getByRole("button", { name: card.title, exact: true }).click();
+  await openTask();
+  const detail = page.getByRole("dialog");
+  await detail.getByLabel("Task status").selectOption("done");
+  await expect.poll(() => writes[0]?.body.stage).toBe("done");
+  await detail
+    .getByRole("button", { name: "Push changes", exact: true })
     .click();
   await expect
     .poll(() =>
@@ -104,44 +92,37 @@ test("dragging, archive, flags and explicit repository sync", async ({
       ),
     )
     .toBe(true);
-  await page.keyboard.press("Escape");
-  await page
-    .getByRole("button", { name: "Actions for Repair checkout validation" })
-    .click();
-  await page
-    .getByRole("menuitem", { name: "Archive issue", exact: true })
-    .click();
-  await expect(page.locator(".board-lanes .issue-card")).toHaveCount(0);
-  await page.getByRole("button", { name: "Archive (1)", exact: true }).click();
-  await expect(page.locator(".board-archive .issue-card")).toHaveCount(1);
-  await page
-    .getByRole("button", { name: "Actions for Repair checkout validation" })
-    .click();
-  await page
-    .getByRole("menuitem", { name: "Restore issue", exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "Back to board", exact: true })
-    .click();
+  await detail.getByRole("button", { name: "Archive", exact: true }).click();
+  await expect.poll(() => card.stage).toBe("archived");
   await expect(
-    page.getByRole("region", { name: "Done column" }).locator(".issue-card"),
-  ).toHaveCount(1);
-  // Keyboard/touch alternative to dragging.
-  await page
-    .getByRole("button", { name: "Actions for Repair checkout validation" })
+    detail.getByRole("button", { name: /^(Archive|Restore task)$/ }),
+  ).toBeEnabled();
+  await detail.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(detail).toHaveCount(0);
+  await page.getByRole("button", { name: "Archive", exact: true }).click();
+  await openTask();
+  await detail
+    .getByRole("button", { name: "Restore task", exact: true })
     .click();
-  await page
-    .getByRole("menuitem", { name: "In progress", exact: true })
-    .click();
+  await expect.poll(() => card.stage).toBe("done");
   await expect(
-    page
-      .getByRole("region", { name: "In progress column" })
-      .locator(".issue-card"),
-  ).toHaveCount(1);
+    detail.getByRole("button", { name: /^(Archive|Restore task)$/ }),
+  ).toBeEnabled();
+  await detail.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(detail).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Back to overview", exact: true })
+    .click();
+  await page.getByRole("button", { name: /^Active/ }).click();
+  await openTask();
+  await detail.getByLabel("Task status").selectOption("running");
+  await expect.poll(() => card.stage).toBe("running");
+  await expect(
+    detail.getByRole("button", { name: /^(Archive|Restore task)$/ }),
+  ).toBeEnabled();
+  await detail.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(detail).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(
-    page.getByRole("heading", { name: "Issue board", exact: true }),
-  ).toBeVisible();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,
@@ -153,6 +134,8 @@ test("import only selected repository issues", async ({ page }) => {
   const imported: number[] = [];
   await page.route("**/ui-api/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/capabilities"))
+      return route.fulfill({ json: { can_import: true, can_start: true } });
     if (path === "/ui-api/projects")
       return route.fulfill({
         json: { items: [{ id: "board_project", name: "Factory" }] },
@@ -181,9 +164,7 @@ test("import only selected repository issues", async ({ page }) => {
     return route.fulfill({ json: { items: [] } });
   });
   await page.goto("/app/projects/board_project/board");
-  await page
-    .getByRole("button", { name: "Import issues", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Import", exact: true }).click();
   await page.getByLabel("Repository to import from").selectOption("forge_one");
   await page.getByRole("checkbox", { name: /First issue/ }).check();
   await page
@@ -199,6 +180,8 @@ test("create a standalone issue without a repository", async ({ page }) => {
   let payload: Record<string, unknown> | undefined;
   await page.route("**/ui-api/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/capabilities"))
+      return route.fulfill({ json: { can_import: true, can_start: true } });
     if (path === "/ui-api/projects")
       return route.fulfill({ json: { items: [project] } });
     if (path === "/ui-api/board") {
@@ -249,12 +232,18 @@ test("create a standalone issue without a repository", async ({ page }) => {
     return route.fulfill({ json: { items: [] } });
   });
   await page.goto(`/app/projects/${project.id}/board`);
-  await page.getByRole("button", { name: "New issue", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Create task", exact: true })
+    .first()
+    .click();
   await page.getByLabel("Title", { exact: true }).fill("Improve search");
   await page
     .getByLabel("Description", { exact: true })
     .fill("Support partial matches");
-  await page.getByRole("button", { name: "Create task", exact: true }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Create task", exact: true })
+    .click();
   await expect(
     page.getByRole("heading", { name: "Improve search", exact: true }),
   ).toBeVisible();
@@ -269,13 +258,11 @@ test("create a standalone issue without a repository", async ({ page }) => {
   await expect(
     page.getByText("Support partial matches", { exact: true }),
   ).toBeVisible();
-  await page
-    .getByRole("button", { name: "Edit description", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
   const markdown =
     "## Acceptance criteria\n- [ ] Works on mobile\n\n<script>window.ticketInjected = true</script>";
   await page
-    .getByRole("textbox", { name: "Issue description", exact: true })
+    .getByRole("textbox", { name: "Task description", exact: true })
     .fill(markdown);
   await page.getByRole("button", { name: "Preview", exact: true }).click();
   await expect(
@@ -286,32 +273,25 @@ test("create a standalone issue without a repository", async ({ page }) => {
       () => (window as unknown as Record<string, unknown>).ticketInjected,
     ),
   ).toBeUndefined();
-  await page
-    .getByRole("button", { name: "Save description", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "Edit description", exact: true }),
+    page.getByRole("button", { name: "Edit", exact: true }),
   ).toBeVisible();
   await page.reload();
-  await page
-    .getByRole("button", { name: "Improve search", exact: true })
-    .click();
   await expect(
     page.getByRole("heading", { name: "Acceptance criteria", exact: true }),
   ).toBeVisible();
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
   await page
-    .getByRole("button", { name: "Edit description", exact: true })
-    .click();
-  await page
-    .getByRole("textbox", { name: "Issue description", exact: true })
+    .getByRole("textbox", { name: "Task description", exact: true })
     .fill("");
-  await page
-    .getByRole("button", { name: "Save description", exact: true })
-    .click();
-  await expect(page.getByText("No description provided.")).toBeVisible();
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(
+    page.getByText("No description yet. Select Edit to add one."),
+  ).toBeVisible();
 });
 
-test("mobile column navigation supports keyboard and never changes issues", async ({
+test("mobile task filters support keyboard and never change tasks", async ({
   page,
 }) => {
   const writes: string[] = [];
@@ -331,20 +311,18 @@ test("mobile column navigation supports keyboard and never changes issues", asyn
   });
   await page.setViewportSize({ width: 320, height: 844 });
   await page.goto("/app/projects/mobile/board");
-  const navigation = page.getByRole("navigation", { name: "Board columns" });
+  const navigation = page.getByRole("navigation", { name: "Work scope" });
   await expect(navigation).toBeVisible();
   for (const width of [320, 390]) {
     await page.setViewportSize({ width, height: 844 });
-    for (const name of ["Review", "Done", "Planned", "In progress"]) {
+    for (const name of ["Active", "Completed", "Planned", "Open"]) {
       const button = navigation.getByRole("button", {
         name: `${name} 0`,
         exact: true,
       });
       await button.focus();
       await page.keyboard.press("Enter");
-      await expect(
-        page.getByRole("region", { name: `${name} column`, exact: true }),
-      ).toBeInViewport({ ratio: 0.95 });
+      await expect(button).toHaveAttribute("aria-pressed", "true");
       expect(
         await page.evaluate(
           () => document.documentElement.scrollWidth <= innerWidth,
@@ -352,7 +330,7 @@ test("mobile column navigation supports keyboard and never changes issues", asyn
       ).toBe(true);
     }
   }
-  await page.getByRole("button", { name: "Archive (0)", exact: true }).click();
+  await page.getByRole("button", { name: "Archive", exact: true }).click();
   await expect(navigation).toHaveCount(0);
   expect(writes).toEqual([]);
 });
@@ -363,6 +341,8 @@ test("board load failure offers retry without claiming there are no issues", asy
   let unavailable = true;
   await page.route("**/ui-api/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/capabilities"))
+      return route.fulfill({ json: { can_import: true, can_start: true } });
     if (path === "/ui-api/projects")
       return route.fulfill({
         json: { items: [{ id: "recover", name: "Recovery" }] },
@@ -372,16 +352,14 @@ test("board load failure offers retry without claiming there are no issues", asy
     await route.fulfill({ json: { items: [] } });
   });
   await page.goto("/app/projects/recover/board");
+  await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Retry loading board" }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Use New issue to plan your next task."),
+    page.getByText("Create a task to plan your next piece of work."),
   ).toHaveCount(0);
   unavailable = false;
-  await page.getByRole("button", { name: "Retry loading board" }).click();
+  await page.getByRole("button", { name: "Try again" }).click();
   await expect(
-    page.getByText("Use New issue to plan your next task."),
+    page.getByText("Create a task to plan your next piece of work."),
   ).toBeVisible();
   await expect(page.getByRole("alert")).toHaveCount(0);
 });

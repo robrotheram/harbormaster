@@ -387,7 +387,10 @@ test("failed clipboard access explains how to copy a pairing link manually", asy
   });
   await page.goto("/app/projects/audit/workspaces");
   await page
-    .getByRole("button", { name: "Connect T3 desktop", exact: true })
+    .getByRole("button", { name: "Actions for Desktop worker", exact: true })
+    .click();
+  await page
+    .getByRole("menuitem", { name: "Connect T3 desktop", exact: true })
     .click();
   const dialog = page.getByRole("dialog", {
     name: "Connect T3 desktop",

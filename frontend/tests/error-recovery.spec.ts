@@ -278,9 +278,7 @@ test("help remains available and can retry failed project navigation", async ({
     page.getByRole("button", { name: "New project", exact: true }),
   ).toHaveCount(0);
   unavailable = false;
-  await page
-    .getByRole("button", { name: "Retry project list", exact: true })
-    .click();
+  await status.getByRole("button", { name: "Try again", exact: true }).click();
   await expect(status).toHaveCount(0);
   await expect(
     page.getByRole("heading", { name: "Getting started", level: 1 }),

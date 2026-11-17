@@ -423,7 +423,7 @@ test("conversation is scoped to the selected task and project and fits narrow sc
   ).toBeVisible({ timeout: 10000 });
   for (const width of [1440, 1024, 390, 320]) {
     await expect(
-      page.getByRole("button", { name: "Accept result" }),
+      page.getByRole("link", { name: "Review output", exact: true }),
     ).toBeVisible({ timeout: 10000 });
     await page.setViewportSize({ width, height: 900 });
     if (width >= 1024) {
@@ -489,6 +489,12 @@ test("starts and stops a workspace application from the conversation", async ({
   const preview = page.getByRole("complementary", {
     name: "Preview workspace",
   });
+  if (
+    !(await page
+      .getByRole("button", { name: "Preview options", exact: true })
+      .isVisible())
+  )
+    await conversationTool(page, "Preview");
   await previewTool(page, "Preview settings and logs");
   await page.getByLabel("Application directory").fill("my-app");
   await page.getByRole("button", { name: "Start preview" }).click();
@@ -513,6 +519,12 @@ test("starts and stops a workspace application from the conversation", async ({
     .getByRole("dialog")
     .getByRole("button", { name: "Close", exact: true })
     .click();
+  if (
+    !(await page
+      .getByRole("button", { name: "Preview options", exact: true })
+      .isVisible())
+  )
+    await conversationTool(page, "Preview");
   await previewTool(page, "Preview settings and logs");
   await page.getByRole("button", { name: "Stop app" }).click();
   await page
@@ -615,6 +627,12 @@ test("preview selection adds a draft only from the selected frame and returns af
   f.finish();
   await expect(page.getByRole("link", { name: "Review output" })).toBeVisible();
   await page.getByRole("button", { name: "Workspace", exact: true }).click();
+  if (
+    !(await page
+      .getByRole("button", { name: "Preview options", exact: true })
+      .isVisible())
+  )
+    await conversationTool(page, "Preview");
   await previewTool(page, "Preview settings and logs");
   await page
     .getByRole("button", { name: "Start preview", exact: true })
@@ -667,7 +685,7 @@ test("application logs have room to debug, pause updates, filter and draft an ag
   await page.getByRole("button", { name: "Start task", exact: true }).click();
   f.finish();
   await expect(
-    page.getByRole("button", { name: "Accept result" }),
+    page.getByRole("link", { name: "Review output", exact: true }),
   ).toBeVisible();
   await conversationTool(page, "Preview");
   await previewTool(page, "Application logs");
@@ -733,12 +751,13 @@ test("detects an agent-started web app and keeps it connected when preview is co
       }),
   );
   await page.goto("/app/projects/A/work?work=work_one");
+  await conversationTool(page, "Preview");
   const frame = page.frameLocator('iframe[title="Application preview"]');
   await expect(frame.getByRole("heading")).toHaveText("Agent app on 3000");
   expect(
     f.posts.find((p) => p.path.endsWith("/applications"))?.body.application,
   ).toMatchObject({ kind: "forward", port: 3000, listener: "listener_live" });
-  await page.getByRole("button", { name: "Collapse preview" }).click();
+  await page.getByRole("button", { name: "Conversation", exact: true }).click();
   await expect(
     page.getByRole("complementary", { name: "Preview workspace" }),
   ).toBeHidden();
@@ -777,6 +796,7 @@ test("preview asks the agent to launch inside the workspace", async ({
   await page.goto("/app/projects/A/work?work=work_one");
   await page.getByRole("button", { name: "Start task", exact: true }).click();
   f.finish();
+  await conversationTool(page, "Preview");
   await page
     .getByRole("button", { name: "Ask agent to run app", exact: true })
     .click();
@@ -875,6 +895,7 @@ test("refreshes web preview when a run completes, preserves it during work, and 
     },
   );
   await page.goto("/app/projects/A/work?work=work_one");
+  await conversationTool(page, "Preview");
   const frame = page.frameLocator('iframe[title="Application preview"]');
   await expect(frame.getByRole("heading")).toHaveText("Before change");
   await page.getByRole("button", { name: "Start task", exact: true }).click();
@@ -1501,8 +1522,11 @@ test("work navigation keeps controls local and presents a readable conversation"
   );
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto("/app/projects/A/work?work=work_one");
+  await expect(
+    page.getByRole("button", { name: "Collapse preview", exact: true }),
+  ).toHaveCount(0);
   await page
-    .getByRole("button", { name: "Collapse preview", exact: true })
+    .getByRole("button", { name: "Expand sidebar", exact: true })
     .click();
   const rail = page.locator(".conversation-thread-rail");
   await expect(
@@ -1585,7 +1609,7 @@ test("work navigation keeps controls local and presents a readable conversation"
   ).toBeLessThan(2);
   await expect(page.locator(".conversation-composer textarea")).toHaveCSS(
     "min-height",
-    "56px",
+    "78px",
   );
   expect(
     Math.abs(

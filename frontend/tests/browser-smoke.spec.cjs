@@ -249,8 +249,10 @@ test("project workflows preserve boundaries and UI behavior", async ({
   await page.getByText("Research worker A branch", { exact: true }).waitFor();
 
   await page
-    .locator(`tr[data-workspace="${workspaces.p_a[0].id}"]`)
-    .getByRole("button", { name: "Connect T3 desktop", exact: true })
+    .getByRole("button", { name: "Actions for Research worker A", exact: true })
+    .click();
+  await page
+    .getByRole("menuitem", { name: "Connect T3 desktop", exact: true })
     .click();
   await page.getByLabel("Private pairing URL").waitFor();
   assert(
@@ -288,7 +290,10 @@ test("project workflows preserve boundaries and UI behavior", async ({
     0,
     "Removed scheduling pages must not remain in navigation",
   );
-  await page.getByRole("link", { name: "Workers", exact: true }).click();
+  await page
+    .getByRole("navigation", { name: "Project navigation" })
+    .getByRole("link", { name: "Workers", exact: true })
+    .click();
   await page.getByText("Research worker A", { exact: true }).waitFor();
   await page
     .getByRole("button", { name: "Actions for Research worker A", exact: true })
@@ -341,7 +346,10 @@ test("project workflows preserve boundaries and UI behavior", async ({
   await page.getByRole("dialog").waitFor({ state: "detached" });
   await page.getByRole("button", { name: /^Switch project:/ }).click();
   await page.getByRole("menuitem", { name: "Research", exact: true }).click();
-  await page.getByRole("link", { name: "Workers", exact: true }).click();
+  await page
+    .getByRole("navigation", { name: "Project navigation" })
+    .getByRole("link", { name: "Workers", exact: true })
+    .click();
   await page.getByText("Research worker A", { exact: true }).waitFor();
   fs.mkdirSync(path.join(root, "artifacts"), { recursive: true });
   assert(

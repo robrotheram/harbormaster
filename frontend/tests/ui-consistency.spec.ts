@@ -128,7 +128,7 @@ async function fixture(page: Page) {
     ["help", "/app/help", "Getting started"],
     ["repositories", "/app/repositories", "Connections"],
     ...[
-      ["board", "Issue board"],
+      ["board", "Overview"],
       ["reviews", "Reviews"],
       ["work", "Project work"],
       ["workspaces", "Workers"],
@@ -274,7 +274,10 @@ test("keyboard navigation moves to new content and skip links focus main", async
         page.getByRole("dialog", { name: "Factory navigation" }),
       ).toBeVisible();
     }
-    await page.getByRole("link", { name: "Workers", exact: true }).focus();
+    await page
+      .getByRole("navigation", { name: "Project navigation" })
+      .getByRole("link", { name: "Workers", exact: true })
+      .focus();
     await page.keyboard.press("Enter");
     await expect(
       page.getByRole("heading", { name: "Workers", exact: true }),

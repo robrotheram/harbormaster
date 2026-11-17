@@ -20,7 +20,7 @@ test("local profile remains accessible in expanded, collapsed, and mobile naviga
   await page.keyboard.press("Escape");
   await expect(profile).toBeFocused();
 
-  await page.getByRole("button", { name: "Collapse sidebar" }).click();
+  await page.getByRole("button", { name: "Expand sidebar" }).click();
   await profile.click();
   await expect(page.getByRole("menu", { name: "User profile" })).toBeVisible();
   await page.keyboard.press("Escape");
