@@ -28,6 +28,8 @@ func TestFactoryAgentPathsAndResponseBounds(t *testing.T) {
 		method, path string
 		valid        bool
 	}{
+		{"GET", "/v1/models", true}, {"POST", "/v1/models", false},
+		{"GET", "/v1/models/anything", false},
 		{"POST", "/v1/artifacts", true}, {"GET", "/v1/artifacts", true},
 		{"GET", "/v1/artifacts/artifact_one/content", true}, {"POST", "/v1/artifacts/artifact_one/content", false},
 		{"GET", "/v1/artifacts/../content", false}, {"GET", "/v1/artifacts/artifact_one/content/more", false},
