@@ -56,7 +56,15 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 			projectMetadata := path == "/v1/projects" || (len(parts) == 4 && parts[1] == "projects" && (parts[3] == "members" || parts[3] == "accept-invitation" || parts[3] == "rename" || parts[3] == "delete" || parts[3] == "capabilities"))
 			boardMetadata := (path == "/v1/board" || (len(parts) == 3 && parts[1] == "board")) && r.Method == "POST"
 			metadata := boardMetadata || projectMetadata || path == "/v1/project-invitations" || path == "/v1/templates" || (r.Method == "GET" && (path == "/v1/board" || path == "/v1/work-items" || (strings.HasPrefix(path, "/v1/work-items/") && (len(parts) == 3 || strings.HasSuffix(path, "/attempts")))))
-			if !metadata {
+			// Personal account storage is owner-scoped and does not grant access to
+			// shared worker execution or output. Worker load/unload remains gated.
+			personalSubscriptions := (path == "/v1/subscriptions" || path == "/v1/subscription") && (r.Method == "GET" || r.Method == "POST")
+			if r.Method == "POST" {
+				personalSubscriptions = personalSubscriptions || path == "/v1/subscription/delete" ||
+					(len(parts) == 3 && parts[1] == "subscriptions" && shared.ValidID(parts[2])) ||
+					(len(parts) == 4 && parts[1] == "subscriptions" && shared.ValidID(parts[2]) && parts[3] == "delete")
+			}
+			if !metadata && !personalSubscriptions {
 				shared.Error(w, 409, "PROJECT_ISOLATED_WORKERS_REQUIRED")
 				return
 			}

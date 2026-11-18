@@ -168,3 +168,46 @@ func TestControllerHandoffAndAssignedReviewerAreEnforced(t *testing.T) {
 		t.Fatal("missing review attribution", got.Body)
 	}
 }
+
+func TestSharedWorkerMembersManageOnlyTheirOwnSubscriptions(t *testing.T) {
+	s, _ := setup(t)
+	s.cfg.SharedWorkspaceID = "ws_shared"
+	body := fmt.Sprintf(`{"name":"Personal Claude","provider":"claude","auth":{"claudeAiOauth":{"accessToken":"sk-ant-oat-test-secret","expiresAt":%d,"scopes":["user:inference"]}}}`, s.now().Add(time.Hour).UnixMilli())
+	created := humanRequest(t, s, "alice@example.com", "POST", "/v1/subscriptions", body)
+	if created.Code != 200 {
+		t.Fatal(created.Code, created.Body)
+	}
+	var saved struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(created.Body.Bytes(), &saved); err != nil || saved.ID == "" {
+		t.Fatal(created.Body)
+	}
+	for _, email := range []string{"alice@example.com", "bob@example.com"} {
+		got := humanRequest(t, s, email, "GET", "/v1/subscriptions", "")
+		if got.Code != 200 || strings.Contains(got.Body.String(), "test-secret") {
+			t.Fatal(got.Code, got.Body)
+		}
+		if strings.Contains(got.Body.String(), saved.ID) != (email == "alice@example.com") {
+			t.Fatal("cross-user subscription listing", got.Body)
+		}
+	}
+	for _, suffix := range []string{"", "/delete"} {
+		got := humanRequest(t, s, "bob@example.com", "POST", "/v1/subscriptions/"+saved.ID+suffix, `{"name":"Stolen"}`)
+		if got.Code != 404 {
+			t.Fatal("cross-user mutation", got.Code, got.Body)
+		}
+	}
+	for _, action := range []string{"load", "unload"} {
+		got := humanRequest(t, s, "alice@example.com", "POST", "/v1/workspaces/ws_shared/subscription/"+action, `{}`)
+		if got.Code != 409 || !strings.Contains(got.Body.String(), "PROJECT_ISOLATED_WORKERS_REQUIRED") {
+			t.Fatal("shared worker access", got.Code, got.Body)
+		}
+	}
+	for _, suffix := range []string{"", "/delete"} {
+		got := humanRequest(t, s, "alice@example.com", "POST", "/v1/subscriptions/"+saved.ID+suffix, `{"name":"Renamed"}`)
+		if got.Code != 200 {
+			t.Fatal(got.Code, got.Body)
+		}
+	}
+}
