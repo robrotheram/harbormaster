@@ -11,7 +11,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
-
+	"slices"
 	"strings"
 	"time"
 )
@@ -132,13 +132,7 @@ func ParseProvider(provider string, data []byte, now time.Time) (Credential, err
 	if !strings.HasPrefix(c.AccessToken, "sk-ant-oat") || strings.ContainsAny(c.AccessToken, " \t\r\n\x00") || len(c.AccessToken) > 16384 || c.ExpiresAt <= now.Add(time.Minute).Unix() {
 		return Credential{}, ErrInvalid
 	}
-	inference := false
-	for _, scope := range file.OAuth.Scopes {
-		if scope == "user:inference" {
-			inference = true
-		}
-	}
-	if !inference {
+	if !slices.Contains(file.OAuth.Scopes, "user:inference") {
 		return Credential{}, ErrInvalid
 	}
 	return c, nil

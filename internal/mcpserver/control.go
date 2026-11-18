@@ -7,12 +7,9 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"regexp"
 	"time"
 )
 
-var identifier = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$`)
-var keyPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$`)
 var invalid = shared.CodedError{Status: http.StatusBadRequest, Code: "INVALID_REQUEST"}
 
 type controlClient struct {

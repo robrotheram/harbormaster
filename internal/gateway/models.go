@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -19,7 +20,7 @@ func registerModels(mux *http.ServeMux, c Config) {
 	mux.HandleFunc("GET /v1/models", func(w http.ResponseWriter, r *http.Request) {
 		id, err := Authenticate(r, c.Verify, "inference")
 		if err != nil {
-			Error(w, 401, "UNAUTHORIZED")
+			shared.Error(w, 401, "UNAUTHORIZED")
 			return
 		}
 		out := shared.AgentModels{Items: []shared.AgentModel{}}
@@ -32,11 +33,7 @@ func registerModels(mux *http.ServeMux, c Config) {
 					cancel()
 					allowed = err == nil && cred.AccessToken != "" && !strings.ContainsAny(cred.AccessToken, " \r\n\t") && cred.ExpiresAt > time.Now().Add(30*time.Second).Unix()
 				} else {
-					for _, configured := range c.Subscriptions.Principals[id.PrincipalID] {
-						if configured == provider {
-							allowed = true
-						}
-					}
+					allowed = slices.Contains(c.Subscriptions.Principals[id.PrincipalID], provider)
 				}
 				if allowed && !c.Subscriptions.UserAccounts {
 					allowed = catalogCredentialAvailable(r.Context(), vault, c, id.PrincipalID, provider)

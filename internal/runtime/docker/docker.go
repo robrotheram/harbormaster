@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -680,21 +681,13 @@ func (c *Controller) verify(w http.ResponseWriter, r *http.Request) {
 }
 
 func hasGitProxy(info containerInfo) bool {
-	for _, v := range info.Config.Env {
-		if v == "EGRESS_URL=http://egress-gateway:8080" {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(info.Config.Env, "EGRESS_URL=http://egress-gateway:8080")
 }
 
 // Presence marks a stopped container built with the retired selectable-tool
 // configuration. Running containers are preserved; replacement keeps its volume.
 func legacyToolSelection(info containerInfo) bool {
-	for _, value := range info.Config.Env {
-		if strings.HasPrefix(value, "WORKSPACE_MCPS=") {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(info.Config.Env, func(value string) bool {
+		return strings.HasPrefix(value, "WORKSPACE_MCPS=")
+	})
 }

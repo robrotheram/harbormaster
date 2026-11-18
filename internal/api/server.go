@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"maps"
 	"net/http"
 	"net/url"
 	"strings"
@@ -68,9 +69,7 @@ func New(s *store.Store, rt protocol.Runtime, c Config) *Server {
 		c.WorkspaceMemory = 512 << 20
 	}
 	tokens := map[string]string{}
-	for token, project := range c.ProjectTokens {
-		tokens[token] = project
-	}
+	maps.Copy(tokens, c.ProjectTokens)
 	c.ProjectTokens = tokens
 	server := &Server{Store: s, Runtime: rt, cfg: c, now: func() time.Time { return time.Now().UTC() }, health: map[string]map[string]any{}}
 	server.coordination = &coordination.Service{DB: s.DB, Blobs: server.projectBlobStore}
@@ -138,6 +137,26 @@ func mutationKey(w http.ResponseWriter, r *http.Request) bool {
 	}
 	return true
 }
+
+func workspaceProxy[T any](s *Server, forward func(T, http.ResponseWriter, *http.Request, string, string)) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ws, ok := s.workspace(w, r)
+		if !ok {
+			return
+		}
+		if ws.AgentKind != "t3" && !ws.ConsoleEnabled {
+			shared.Error(w, 409, "CONSOLE_UPGRADE_REQUIRED")
+			return
+		}
+		proxy, ok := s.Runtime.(T)
+		if !ok {
+			shared.Error(w, 503, "CONSOLE_UNAVAILABLE")
+			return
+		}
+		forward(proxy, w, r, ws.ID, r.PathValue("path"))
+	}
+}
+
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -170,38 +189,8 @@ func (s *Server) Handler() http.Handler {
 	s.registerDeletion(secured)
 	s.registerTerminals(secured)
 	secured.HandleFunc("POST /v1/file-handoffs", s.shareFile)
-	secured.HandleFunc("/v1/workspaces/{id}/desktop/{path...}", func(w http.ResponseWriter, r *http.Request) {
-		ws, ok := s.workspace(w, r)
-		if !ok {
-			return
-		}
-		if ws.AgentKind != "t3" && !ws.ConsoleEnabled {
-			shared.Error(w, 409, "CONSOLE_UPGRADE_REQUIRED")
-			return
-		}
-		proxy, ok := s.Runtime.(desktopRuntime)
-		if !ok {
-			shared.Error(w, 503, "CONSOLE_UNAVAILABLE")
-			return
-		}
-		proxy.Desktop(w, r, ws.ID, r.PathValue("path"))
-	})
-	secured.HandleFunc("/v1/workspaces/{id}/console/{path...}", func(w http.ResponseWriter, r *http.Request) {
-		ws, ok := s.workspace(w, r)
-		if !ok {
-			return
-		}
-		if ws.AgentKind != "t3" && !ws.ConsoleEnabled {
-			shared.Error(w, 409, "CONSOLE_UPGRADE_REQUIRED")
-			return
-		}
-		proxy, ok := s.Runtime.(consoleRuntime)
-		if !ok {
-			shared.Error(w, 503, "CONSOLE_UNAVAILABLE")
-			return
-		}
-		proxy.Console(w, r, ws.ID, r.PathValue("path"))
-	})
+	secured.HandleFunc("/v1/workspaces/{id}/desktop/{path...}", workspaceProxy(s, desktopRuntime.Desktop))
+	secured.HandleFunc("/v1/workspaces/{id}/console/{path...}", workspaceProxy(s, consoleRuntime.Console))
 	secured.HandleFunc("POST /v1/workspaces", func(w http.ResponseWriter, r *http.Request) {
 		var req workspaceCreate
 		if !decodeRouteBody(w, r, &req) {

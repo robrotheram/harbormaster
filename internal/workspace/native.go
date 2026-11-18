@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func (m *Manager) runNativeTask(ctx context.Context, provider, instruction, taskID string, models ...string) (result string, code string) {
+func (m *Manager) runNativeTask(ctx context.Context, provider, instruction, taskID, model string) (result string, code string) {
 	m.event(provider, "agent.started", taskID, "", "")
 	defer func() {
 		kind := "agent.completed"
@@ -16,12 +16,12 @@ func (m *Manager) runNativeTask(ctx context.Context, provider, instruction, task
 		m.event(provider, kind, taskID, "", "")
 	}()
 	cfg := nativeagent.Config{HermesMCPTransport: m.cfg.HermesMCPTransport, TaskID: taskID, ProjectID: m.cfg.ProjectID, WorkspaceID: m.cfg.ID, DataDir: m.cfg.DataDir, HomeDir: m.homePath(), AgentKind: m.cfg.AgentKind, Token: m.cfg.Token, InferenceURL: m.cfg.InferenceURL, CodexModel: m.cfg.CodexModel, ClaudeModel: m.cfg.ClaudeModel, HermesModel: m.cfg.HermesModel, EgressURL: m.cfg.EgressURL, ConnectionMode: m.cfg.ConnectionMode}
-	if len(models) > 0 && models[0] != "" {
+	if model != "" {
 		if provider == "codex" {
-			cfg.CodexModel = models[0]
+			cfg.CodexModel = model
 		}
 		if provider == "claude" {
-			cfg.ClaudeModel = models[0]
+			cfg.ClaudeModel = model
 		}
 	}
 	var desktops int
@@ -32,5 +32,3 @@ func (m *Manager) runNativeTask(ctx context.Context, provider, instruction, task
 	instruction = "Workspace application preview: when asked to run or preview an app, use the terminal command workbench-preview start --directory <workspace-relative-directory> --port <port> --command <server-command>. Use $PORT in the server command where supported. This starts a supervised process that survives completion of this agent run. Ordinary background shell processes may be cleaned up when your run ends. Check workbench-preview status before claiming that a preview is running; the workbench forwards the app to its Web preview. Do not tell the user to run a local command or open the container's localhost URL on their computer.\n\n" + instruction
 	return nativeagent.Run(ctx, cfg, provider, instruction, &nativeEvents{m: m, source: provider, task: taskID}, &nativeEvents{m: m, source: provider, task: taskID})
 }
-
-type nativeOutput = nativeagent.Output

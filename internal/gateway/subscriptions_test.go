@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"agent-workbench/internal/shared"
 	"context"
 	"encoding/json"
 	"encoding/pem"
@@ -31,7 +32,7 @@ func TestSubscriptionCredentialBoundary(t *testing.T) {
 			return
 		}
 		if r.URL.Path == "/v1/auth/token/renew-self" {
-			JSON(w, 200, map[string]any{})
+			shared.JSON(w, 200, map[string]any{})
 			return
 		}
 		if r.URL.Path != "/v1/subscription-auth/data/alice/codex" && r.URL.Path != "/v1/subscription-auth/data/alice/claude" {
@@ -40,7 +41,7 @@ func TestSubscriptionCredentialBoundary(t *testing.T) {
 			return
 		}
 		reads.Add(1)
-		JSON(w, 200, map[string]any{"data": map[string]any{"data": subscriptionCredential{AccessToken: "upstream-secret-marker", AccountID: "real-account", ExpiresAt: expiry.Load()}}})
+		shared.JSON(w, 200, map[string]any{"data": map[string]any{"data": subscriptionCredential{AccessToken: "upstream-secret-marker", AccountID: "real-account", ExpiresAt: expiry.Load()}}})
 	}))
 	defer vault.Close()
 	ca := filepath.Join(t.TempDir(), "ca.pem")

@@ -14,6 +14,7 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"time"
 )
@@ -123,15 +124,6 @@ func Decode(b []byte, dst any) error {
 	}
 	return nil
 }
-func JSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "no-store")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
-}
-func Error(w http.ResponseWriter, status int, code string) {
-	JSON(w, status, map[string]any{"code": code, "message": strings.ToLower(strings.ReplaceAll(code, "_", " ")), "retryable": status == 503})
-}
 
 // NetworkPolicy is operator controlled. Explicit CIDRs are required, including for
 // private addresses. DNS is checked at dial time and only a checked IP is dialed.
@@ -190,12 +182,9 @@ func (p NetworkPolicy) transport(cert *tls.Certificate, lookup func(context.Cont
 		if !p.AllowPrivate && (ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast()) {
 			return false
 		}
-		for _, prefix := range prefixes {
-			if prefix.Contains(ip) {
-				return true
-			}
-		}
-		return false
+		return slices.ContainsFunc(prefixes, func(prefix netip.Prefix) bool {
+			return prefix.Contains(ip)
+		})
 	}
 	dial := func(ctx context.Context, network, address string) (net.Conn, error) {
 		host, port, err := net.SplitHostPort(address)

@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	"agent-workbench/internal/shared"
 	"context"
 	"encoding/base64"
 	"fmt"
@@ -37,7 +38,7 @@ func registerFactoryTools(s *mcp.Server, c *controlClient) {
 			}
 			endpoint := base + "/" + op.resource
 			if op.suffix != "" {
-				if !identifier.MatchString(in.ID) {
+				if !shared.ValidID(in.ID) {
 					return out, invalid
 				}
 				endpoint += "/" + url.PathEscape(in.ID)
@@ -50,7 +51,7 @@ func registerFactoryTools(s *mcp.Server, c *controlClient) {
 				body = map[string]any{"template": in.Template, "idempotency_key": in.IdempotencyKey}
 			}
 			if op.name == "factory_preview_retain" {
-				if !keyPattern.MatchString(in.IdempotencyKey) {
+				if !shared.ValidKey(in.IdempotencyKey) {
 					return out, invalid
 				}
 				body = map[string]any{"retained_workspace_id": in.RetainedWorkspaceID, "artifact_id": in.ArtifactID, "ttl_seconds": in.TTL, "idempotency_key": in.IdempotencyKey}

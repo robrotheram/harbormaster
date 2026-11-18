@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"agent-workbench/internal/shared"
+	"agent-workbench/internal/workspace/nativeagent"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -18,7 +19,7 @@ func (m *Manager) runtimeCapabilities(w http.ResponseWriter, r *http.Request) {
 	_ = os.MkdirAll(home, 0700)
 	c := exec.CommandContext(ctx, "/usr/local/bin/hermes-runner", "--version")
 	c.Env = []string{"PATH=/opt/hermes/.venv/bin:/usr/local/bin:/usr/bin:/bin", "HOME=" + home, "HERMES_HOME=" + home, "PYTHONPATH=/opt/hermes"}
-	out := &nativeOutput{}
+	out := shared.NewCappedOutput(nativeagent.OutputLimit)
 	c.Stdout = out
 	err := c.Run()
 	var identity struct {

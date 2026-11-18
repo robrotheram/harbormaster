@@ -46,7 +46,7 @@ func TestFileAcceptanceFailureRollsBackTaskReservation(t *testing.T) {
 	if err != nil || !accepted.Created {
 		t.Fatal("retry after storage repair failed", err)
 	}
-	if _, err := r.FileAcceptance(ctx, s.Key, "other.md", s.Provider); !errors.Is(err, ErrConflict) {
+	if _, err := r.FileAcceptance(ctx, s.Key, "other.md", s.Provider, "", ""); !errors.Is(err, ErrConflict) {
 		t.Fatal("changed file identity accepted", err)
 	}
 }
@@ -70,7 +70,7 @@ func TestRestartPreservesAcceptanceAndInterruptsWithoutReplay(t *testing.T) {
 	if err != nil || replay.Created || replay.Task.ID != first.Task.ID || replay.Task.State != "failed" || replay.Task.ErrorCode != "INTERRUPTED" {
 		t.Fatal("restart replayed execution or lost acceptance", replay, err)
 	}
-	byFile, err := restarted.FileAcceptance(ctx, s.Key, s.SourcePath, s.Provider)
+	byFile, err := restarted.FileAcceptance(ctx, s.Key, s.SourcePath, s.Provider, "", "")
 	if err != nil || byFile.ID != first.Task.ID {
 		t.Fatal("restart lost file acceptance", byFile, err)
 	}
@@ -84,14 +84,14 @@ func TestDigestReceiptAndLegacyMigration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	receipt, err := r.FileAcceptance(ctx, s.Key, s.SourcePath, s.Provider, "abc")
+	receipt, err := r.FileAcceptance(ctx, s.Key, s.SourcePath, s.Provider, "abc", "")
 	if err != nil || receipt.ID != a.Task.ID {
 		t.Fatalf("%+v %v", receipt, err)
 	}
-	if _, err = r.FileAcceptance(ctx, s.Key, s.SourcePath, s.Provider, "def"); !errors.Is(err, ErrConflict) {
+	if _, err = r.FileAcceptance(ctx, s.Key, s.SourcePath, s.Provider, "def", ""); !errors.Is(err, ErrConflict) {
 		t.Fatal(err)
 	}
-	if _, err = r.FileAcceptance(ctx, s.Key, s.SourcePath, s.Provider); !errors.Is(err, ErrConflict) {
+	if _, err = r.FileAcceptance(ctx, s.Key, s.SourcePath, s.Provider, "", ""); !errors.Is(err, ErrConflict) {
 		t.Fatal(err)
 	}
 	if _, err = db.Exec(`ALTER TABLE file_acceptances DROP COLUMN specification_digest`); err != nil {
@@ -100,7 +100,7 @@ func TestDigestReceiptAndLegacyMigration(t *testing.T) {
 	if err = r.Init(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = r.FileAcceptance(ctx, s.Key, s.SourcePath, s.Provider); err != nil {
+	if _, err = r.FileAcceptance(ctx, s.Key, s.SourcePath, s.Provider, "", ""); err != nil {
 		t.Fatal(err)
 	}
 }

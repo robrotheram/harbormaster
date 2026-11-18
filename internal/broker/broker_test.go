@@ -2,6 +2,7 @@ package broker
 
 import (
 	"agent-workbench/internal/gateway"
+	"agent-workbench/internal/shared"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -194,7 +195,7 @@ func TestVaultMTLSIdentityIsolation(t *testing.T) {
 		if body["principal_id"] != peer || body["workspace_id"] != "ws-"+peer {
 			t.Error("certificate/verified identity mismatch")
 		}
-		gateway.JSON(w, 200, map[string]string{"identity": peer})
+		shared.JSON(w, 200, map[string]string{"identity": peer})
 	}))
 	upstream.TLS = &tls.Config{Certificates: []tls.Certificate{serverCert}, ClientAuth: tls.RequireAndVerifyClientCert, ClientCAs: pool, MinVersion: tls.VersionTLS12}
 	upstream.StartTLS()
@@ -216,7 +217,7 @@ func TestVaultMTLSIdentityIsolation(t *testing.T) {
 			w.WriteHeader(404)
 			return
 		}
-		gateway.JSON(w, 200, map[string]any{"data": map[string]any{"data": map[string]string{"certificate": cert, "private_key": key}}})
+		shared.JSON(w, 200, map[string]any{"data": map[string]any{"data": map[string]string{"certificate": cert, "private_key": key}}})
 	}))
 	defer vault.Close()
 	c := fixtureConfig()

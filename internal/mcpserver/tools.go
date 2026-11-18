@@ -17,20 +17,20 @@ func add[I, O any](s *mcp.Server, name, description string, fn func(context.Cont
 	})
 }
 func workspacePath(id string) (string, error) {
-	if !identifier.MatchString(id) {
+	if !shared.ValidID(id) {
 		return "", invalid
 	}
 	return "/v1/workspaces/" + id, nil
 }
 func taskPath(w, t string) (string, error) {
 	p, e := workspacePath(w)
-	if e != nil || !identifier.MatchString(t) {
+	if e != nil || !shared.ValidID(t) {
 		return "", invalid
 	}
 	return p + "/tasks/" + t, nil
 }
 func keyBody(key string) (map[string]string, error) {
-	if !keyPattern.MatchString(key) {
+	if !shared.ValidKey(key) {
 		return nil, invalid
 	}
 	return map[string]string{"idempotency_key": key}, nil

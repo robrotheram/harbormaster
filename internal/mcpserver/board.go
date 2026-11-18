@@ -35,7 +35,7 @@ func registerBoardTools(s *mcp.Server, c *controlClient) {
 		return
 	})
 	add(s, "board_update", "Edit a ticket title or Markdown description, or move an issue using its current revision from board_list. Stages: planned, running, review, done, archived. Archive hides an issue; restore by setting its archived_from stage. Moving finished work to planned, running or review explicitly reopens the task, preserving its prior decision. Moving never starts the agent or approves a review. On BOARD_REVISION_CONFLICT, reread before applying the user's intended change. Does not sync changes to a repository.", func(ctx context.Context, in BoardUpdate) (out BoardCard, err error) {
-		if !identifier.MatchString(in.ID) {
+		if !shared.ValidID(in.ID) {
 			return out, invalid
 		}
 		err = c.do(ctx, "POST", "/v1/board/"+in.ID, map[string]any{"project_id": in.ProjectID, "revision": in.Revision, "stage": in.Stage, "title": in.Title, "description": in.Description}, &out)

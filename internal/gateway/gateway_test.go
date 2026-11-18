@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"agent-workbench/internal/shared"
 	"context"
 	"encoding/json"
 	"encoding/pem"
@@ -168,7 +169,7 @@ func TestControllerVerifier(t *testing.T) {
 			w.WriteHeader(403)
 			return
 		}
-		JSON(w, 200, Identity{WorkspaceID: "w1", ProjectID: "default", PrincipalID: "alice"})
+		shared.JSON(w, 200, Identity{WorkspaceID: "w1", ProjectID: "default", PrincipalID: "alice"})
 	}))
 	defer controller.Close()
 	verify, err := NewVerifier(controller.URL, "service-token")

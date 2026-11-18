@@ -3,6 +3,7 @@
 package nativeagent
 
 import (
+	"agent-workbench/internal/shared"
 	"context"
 	"encoding/json"
 	"io"
@@ -18,6 +19,9 @@ type MCPTransport string
 
 const KubernetesGeneration MCPTransport = "kubernetes-generation"
 const KubernetesMCPURL = "http://hermes-mcp.harbormaster.svc:8080/hermes-mcp"
+
+// OutputLimit is the byte cap for native command responses.
+const OutputLimit = 1 << 20
 
 type Config struct {
 	HermesMCPTransport MCPTransport
@@ -61,7 +65,7 @@ func Run(ctx context.Context, cfg Config, provider, instruction string, stdoutEv
 		}
 		return nil
 	}
-	stdout := &Output{}
+	stdout := shared.NewCappedOutput(OutputLimit)
 	cmd.Stdout = io.MultiWriter(stdout, stdoutEvents)
 	cmd.Stderr = stderrEvents
 	if err := cmd.Start(); err != nil {

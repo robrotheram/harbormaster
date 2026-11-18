@@ -17,6 +17,7 @@ import (
 
 	"agent-workbench/internal/egress"
 	"agent-workbench/internal/shared"
+	"agent-workbench/internal/workspace/nativeagent"
 	"agent-workbench/internal/workspace/toolconfig"
 )
 
@@ -160,7 +161,7 @@ func (c *console) session(ctx context.Context) (string, error) {
 	}
 	cmd := exec.CommandContext(ctx, "/opt/t3/t3", "auth", "session", "issue", "--base-dir", c.home, "--ttl", "1h", "--token-only")
 	cmd.Env = c.env
-	out := &nativeOutput{}
+	out := shared.NewCappedOutput(nativeagent.OutputLimit)
 	cmd.Stdout = out
 	cmd.Stderr = io.Discard
 	if err := cmd.Run(); err != nil {

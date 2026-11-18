@@ -10,19 +10,20 @@ import (
 	"time"
 
 	"agent-workbench/internal/shared"
-	"agent-workbench/internal/workspace"
+	"agent-workbench/internal/workspace/filetools"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func main() {
 	mode := flag.String("mode", "files", "files or git")
 	flag.Parse()
-	data := shared.Env("DATA_DIR", "/data")
-	call, closer, err := workspace.NewToolset(data)
+	filesDir := filepath.Join(shared.Env("DATA_DIR", "/data"), "files")
+	root, err := os.OpenRoot(filesDir)
 	if err != nil {
 		os.Exit(1)
 	}
-	defer closer.Close()
+	defer root.Close()
+	tools := filetools.New(root)
 	server := mcp.NewServer(&mcp.Implementation{Name: "workspace-" + *mode, Version: "1.0.0"}, nil)
 	type fileInput struct {
 		Path    string `json:"path"`
@@ -33,7 +34,7 @@ func main() {
 			mcp.AddTool(server, &mcp.Tool{Name: name, Description: "Confined workspace file operation, maximum 64 KiB."}, func(ctx context.Context, _ *mcp.CallToolRequest, in fileInput) (*mcp.CallToolResult, map[string]any, error) {
 				raw, _ := json.Marshal(in)
 				result := map[string]any{}
-				_ = json.Unmarshal([]byte(call(ctx, name, raw)), &result)
+				_ = json.Unmarshal([]byte(tools.Call(ctx, name, raw)), &result)
 				return nil, result, nil
 			})
 		}
@@ -44,13 +45,13 @@ func main() {
 				ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 				defer cancel()
 				cmd := exec.CommandContext(ctx, "git", args...)
-				cmd.Dir = filepath.Join(data, "files")
+				cmd.Dir = filesDir
 				cmd.Env = []string{"PATH=/usr/local/bin:/usr/bin:/bin", "HOME=" + cmd.Dir, "GIT_TERMINAL_PROMPT=0"}
-				out := &bounded{}
+				out := shared.NewCappedOutput(64 << 10)
 				cmd.Stdout = out
 				cmd.Stderr = out
 				err := cmd.Run()
-				return nil, map[string]any{"output": string(out.b), "succeeded": err == nil}, nil
+				return nil, map[string]any{"output": string(out.Data), "succeeded": err == nil}, nil
 			})
 		}
 	} else {
@@ -59,14 +60,4 @@ func main() {
 	if server.Run(context.Background(), &mcp.StdioTransport{}) != nil {
 		os.Exit(1)
 	}
-}
-
-type bounded struct{ b []byte }
-
-func (b *bounded) Write(p []byte) (int, error) {
-	n := len(p)
-	if rem := 65536 - len(b.b); rem > 0 {
-		b.b = append(b.b, p[:min(rem, n)]...)
-	}
-	return n, nil
 }
