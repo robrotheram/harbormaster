@@ -90,31 +90,35 @@ func (s *Server) stop(ctx context.Context, w *shared.Workspace) error {
 	return s.lifecycle().Stop(ctx, w)
 }
 func apiError(w http.ResponseWriter, e error) {
+	err := runtimeRequestError(e)
+	shared.Error(w, err.status, err.code)
+}
+func runtimeRequestError(e error) requestError {
 	switch e.Error() {
 	case "INVALID_CONNECTION_PROFILE":
-		shared.Error(w, 400, "INVALID_CONNECTION_PROFILE")
+		return requestError{400, "INVALID_CONNECTION_PROFILE"}
 	case "QUOTA_EXCEEDED":
-		shared.Error(w, 429, "QUOTA_EXCEEDED")
+		return requestError{429, "QUOTA_EXCEEDED"}
 	case "ASSISTANT_WORKSPACE_AMBIGUOUS":
-		shared.Error(w, 409, "ASSISTANT_WORKSPACE_AMBIGUOUS")
+		return requestError{409, "ASSISTANT_WORKSPACE_AMBIGUOUS"}
 	case "SHARED_WORKSPACE_ONLY":
-		shared.Error(w, 409, "SHARED_WORKSPACE_ONLY")
+		return requestError{409, "SHARED_WORKSPACE_ONLY"}
 	case "WORKSPACE_BUSY":
-		shared.Error(w, 409, "WORKSPACE_BUSY")
+		return requestError{409, "WORKSPACE_BUSY"}
 	case "STOP_WORKSPACE_FIRST", "OPEN_NETWORK_FORBIDDEN_IN_SANDBOX":
-		shared.Error(w, 409, e.Error())
+		return requestError{409, e.Error()}
 	case "NOT_READY":
-		shared.Error(w, 503, "NOT_READY")
+		return requestError{503, "NOT_READY"}
 	case "RESOURCE_LIMIT_UNAVAILABLE":
-		shared.Error(w, 503, "RESOURCE_LIMIT_UNAVAILABLE")
+		return requestError{503, "RESOURCE_LIMIT_UNAVAILABLE"}
 	case "NETWORK_POLICY_UNAVAILABLE", "RUNTIME_CAPABILITIES_INCOMPATIBLE":
-		shared.Error(w, 503, e.Error())
+		return requestError{503, e.Error()}
 	case "CONSOLE_UNAVAILABLE", "CONSOLE_NOT_READY":
-		shared.Error(w, 503, e.Error())
+		return requestError{503, e.Error()}
 	case "HERMES_SETUP_REQUIRED":
-		shared.Error(w, 409, e.Error())
+		return requestError{409, e.Error()}
 	default:
-		shared.Error(w, 503, "RUNTIME_UNAVAILABLE")
+		return requestError{503, "RUNTIME_UNAVAILABLE"}
 	}
 }
 func (s *Server) workspace(w http.ResponseWriter, r *http.Request) (shared.Workspace, bool) {
@@ -224,7 +228,13 @@ func (s *Server) Handler() http.Handler {
 		if !shared.Decode(w, r, &req, 1024) {
 			return
 		}
-		s.createProjectWorkspace(w, r, req)
+		actor, _ := r.Context().Value(principalKey{}).(principal)
+		ws, created, err := s.createWorkspace(r.Context(), actor, req)
+		if err != nil {
+			writeRequestError(w, err)
+			return
+		}
+		shared.JSON(w, createStatus(created), ws)
 	})
 	secured.HandleFunc("GET /v1/workspaces", func(w http.ResponseWriter, r *http.Request) {
 		items, e := s.Store.Workspaces(r.Context())
@@ -650,130 +660,109 @@ type workspaceCreate struct {
 	TemplateID          string `json:"template_id,omitempty"`
 }
 
-func (s *Server) createProjectWorkspace(w http.ResponseWriter, r *http.Request, req workspaceCreate) {
+func (s *Server) createWorkspace(ctx context.Context, actor principal, req workspaceCreate) (shared.Workspace, bool, error) {
 	if req.Project == "" {
-		if p, ok := r.Context().Value(principalKey{}).(principal); ok && p.projectID != "" {
-			req.Project = p.projectID
+		if actor.projectID != "" {
+			req.Project = actor.projectID
 		} else {
 			req.Project = "default"
 		}
 	}
-	if !s.AuthorizeProject(w, r, req.Project) {
-		return
+	if err := s.authorizeProject(ctx, actor, req.Project); err != nil {
+		return shared.Workspace{}, false, err
 	}
 	if s.cfg.SharedWorkspaceID != "" {
 		if !shared.ValidKey(req.Key) {
-			shared.Error(w, 400, "INVALID_REQUEST")
-			return
+			return shared.Workspace{}, false, requestError{400, "INVALID_REQUEST"}
 		}
 		if req.ParentID != "" || req.Branch != "" || (req.AgentKind != "" && req.AgentKind != "t3") || (req.TemplateID != "" && req.TemplateID != "development-v1") {
-			shared.Error(w, 409, "SHARED_WORKSPACE_ONLY")
-			return
+			return shared.Workspace{}, false, requestError{409, "SHARED_WORKSPACE_ONLY"}
 		}
 		s.createMu.Lock()
 		defer s.createMu.Unlock()
-		ws, err := s.EnsureSharedWorkspace(r.Context())
+		ws, err := s.EnsureSharedWorkspace(ctx)
 		if err != nil {
-			shared.Error(w, 503, "STORAGE_UNAVAILABLE")
-			return
+			return shared.Workspace{}, false, requestError{503, "STORAGE_UNAVAILABLE"}
 		}
 		if req.ConnectionProfileID != "" && req.ConnectionProfileID != ws.ConnectionProfileID {
-			shared.Error(w, 409, "SHARED_WORKSPACE_ONLY")
-			return
+			return shared.Workspace{}, false, requestError{409, "SHARED_WORKSPACE_ONLY"}
 		}
-		shared.JSON(w, 200, ws)
-		return
+		return ws, false, nil
 	}
 	if req.AgentKind == "" {
 		req.AgentKind = "t3"
 	}
 	if !shared.ValidAgentKind(req.AgentKind) || (req.TemplateID != "" && req.TemplateID != "development-v1") {
-		shared.Error(w, 400, "INVALID_REQUEST")
-		return
+		return shared.Workspace{}, false, requestError{400, "INVALID_REQUEST"}
 	}
 	if req.AgentKind == "hermes" {
-		c, err := s.Store.HermesSetup(r.Context(), req.Project)
-		if err != nil || !s.hermesAvailable(r.Context()) {
-			shared.Error(w, 409, "HERMES_SETUP_REQUIRED")
-			return
+		c, err := s.Store.HermesSetup(ctx, req.Project)
+		if err != nil || !s.hermesAvailable(ctx) {
+			return shared.Workspace{}, false, requestError{409, "HERMES_SETUP_REQUIRED"}
 		}
 		if req.ConnectionProfileID == "" {
 			req.ConnectionProfileID = c.ConnectionProfileID
 		}
 	}
 	if !shared.ValidKey(req.Key) {
-		shared.Error(w, 400, "INVALID_REQUEST")
-		return
+		return shared.Workspace{}, false, requestError{400, "INVALID_REQUEST"}
 	}
 	if len(req.Name) > 80 || strings.ContainsAny(req.Name, "\r\n\x00") || (req.ParentID != "" && !shared.ValidID(req.ParentID)) || (req.Branch != "" && !shared.ValidBranch(req.Branch)) {
-		shared.Error(w, 400, "INVALID_REQUEST")
-		return
+		return shared.Workspace{}, false, requestError{400, "INVALID_REQUEST"}
 	}
 	s.createMu.Lock()
 	defer s.createMu.Unlock()
-	if !s.AuthorizeProject(w, r, req.Project) {
-		return
+	if err := s.authorizeProject(ctx, actor, req.Project); err != nil {
+		return shared.Workspace{}, false, err
 	}
-	old, e := s.Store.ByProjectKey(r.Context(), req.Project, req.Key)
+	old, e := s.Store.ByProjectKey(ctx, req.Project, req.Key)
 	if e == nil {
 		if old.ProjectID != req.Project {
-			shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
-			return
+			return shared.Workspace{}, false, requestError{404, "NOT_FOUND_OR_FORBIDDEN"}
 		}
 		// Legacy identities predate private home IDs and the modern create fingerprint.
 		if old.HomeID != "" && (old.Name != req.Name || old.ParentID != req.ParentID || old.Branch != req.Branch || old.AgentKind != req.AgentKind || old.TemplateID != req.TemplateID || old.ConnectionProfileID != req.ConnectionProfileID) {
-			shared.Error(w, 409, "IDEMPOTENCY_CONFLICT")
-			return
+			return shared.Workspace{}, false, requestError{409, "IDEMPOTENCY_CONFLICT"}
 		}
-		shared.JSON(w, 200, old)
-		return
+		return old, false, nil
 	}
 	if e != sql.ErrNoRows {
-		shared.Error(w, 503, "STORAGE_UNAVAILABLE")
-		return
+		return shared.Workspace{}, false, requestError{503, "STORAGE_UNAVAILABLE"}
 	}
 	if req.ParentID != "" {
 		unlock := s.operations.Lock(req.ParentID)
 		defer unlock()
-		parent, err := s.Store.Workspace(r.Context(), req.ParentID)
+		parent, err := s.Store.Workspace(ctx, req.ParentID)
 		if err != nil || parent.ProjectID != req.Project {
-			shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
-			return
+			return shared.Workspace{}, false, requestError{404, "NOT_FOUND_OR_FORBIDDEN"}
 		}
 		if req.Branch == "" {
-			shared.Error(w, 400, "BRANCH_REQUIRED")
-			return
+			return shared.Workspace{}, false, requestError{400, "BRANCH_REQUIRED"}
 		}
-		if err = s.start(r.Context(), &parent); err != nil {
-			apiError(w, err)
-			return
+		if err = s.start(ctx, &parent); err != nil {
+			return shared.Workspace{}, false, runtimeRequestError(err)
 		}
 		if parent.State != "READY" || parent.ActiveRuns > 0 || parent.BackgroundJobs > 0 {
-			shared.Error(w, 409, "WORKSPACE_BUSY")
-			return
+			return shared.Workspace{}, false, requestError{409, "WORKSPACE_BUSY"}
 		}
 	}
-	all, e := s.Store.Workspaces(r.Context())
+	all, e := s.Store.Workspaces(ctx)
 	if e != nil {
-		shared.Error(w, 503, "STORAGE_UNAVAILABLE")
-		return
+		return shared.Workspace{}, false, requestError{503, "STORAGE_UNAVAILABLE"}
 	}
 	if len(all) >= 100 {
-		shared.Error(w, 429, "QUOTA_EXCEEDED")
-		return
+		return shared.Workspace{}, false, requestError{429, "QUOTA_EXCEEDED"}
 	}
 	now := s.now()
 	ws := shared.Workspace{ID: shared.NewID("ws_"), ProjectID: req.Project, HomeID: shared.NewID("home_"), AgentKind: req.AgentKind, TemplateID: req.TemplateID, State: "STOPPED", CreatedAt: now, UpdatedAt: now, RuntimeType: "docker", IsolationStatus: "unverified", NetworkStatus: "unverified", CPULimit: 1, MemoryLimitBytes: 512 << 20}
 	ws.MemoryLimitBytes = s.cfg.WorkspaceMemory
 	ws.ConnectionProfileID = req.ConnectionProfileID
-	if err := s.resolveConnectionProfile(r.Context(), &ws); err != nil {
-		shared.Error(w, 400, "INVALID_CONNECTION_PROFILE")
-		return
+	if err := s.resolveConnectionProfile(ctx, &ws); err != nil {
+		return shared.Workspace{}, false, requestError{400, "INVALID_CONNECTION_PROFILE"}
 	}
 	ws.Name, ws.ParentID, ws.Branch = req.Name, req.ParentID, req.Branch
-	if s.Store.Create(r.Context(), ws, req.Key) != nil {
-		shared.Error(w, 503, "STORAGE_UNAVAILABLE")
-		return
+	if s.Store.Create(ctx, ws, req.Key) != nil {
+		return shared.Workspace{}, false, requestError{503, "STORAGE_UNAVAILABLE"}
 	}
-	shared.JSON(w, 201, ws)
+	return ws, true, nil
 }

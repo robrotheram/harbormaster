@@ -5,14 +5,11 @@ import (
 	"agent-workbench/internal/orchestration"
 	"agent-workbench/internal/shared"
 	"agent-workbench/internal/store"
-	"bytes"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -196,28 +193,16 @@ func (s *Server) registerForges(mux *http.ServeMux) {
 			}
 			status := 200
 			if errors.Is(lookupErr, sql.ErrNoRows) {
-				payload, _ := json.Marshal(map[string]any{"project_id": project, "kind": "software", "instruction": fmt.Sprintf("# %s\n\nSource: %s\nRepository: %s\n\n%s", issue.Title, issue.URL, c.Repository, issue.Body), "idempotency_key": key})
-				req := r.Clone(r.Context())
-				req.Method = "POST"
-				u := *r.URL
-				u.Path = "/v1/work-items"
-				u.RawQuery = ""
-				req.URL = &u
-				req.Body = io.NopCloser(bytes.NewReader(payload))
-				req.ContentLength = int64(len(payload))
-				response := &coordinationResponse{headers: make(http.Header)}
-				mux.ServeHTTP(response, req)
-				if response.Code >= 300 {
+				instruction := fmt.Sprintf("# %s\n\nSource: %s\nRepository: %s\n\n%s", issue.Title, issue.URL, c.Repository, issue.Body)
+				actor, _ := r.Context().Value(principalKey{}).(principal)
+				var created bool
+				item, created, e = s.createWorkItem(r.Context(), actor, workItemCreate{ProjectID: project, Kind: "software", Instruction: &instruction, Key: key})
+				if e != nil {
 					w.Header().Set("Content-Type", "application/json")
-					w.WriteHeader(response.Code)
-					_, _ = w.Write(response.Body.Bytes())
+					writeRequestErrorBody(w, e)
 					return
 				}
-				if json.Unmarshal(response.Body.Bytes(), &item) != nil {
-					shared.Error(w, 503, "STORAGE_UNAVAILABLE")
-					return
-				}
-				status = response.Code
+				status = createStatus(created)
 			}
 			board = board.Effective(item)
 			board.Title = issue.Title

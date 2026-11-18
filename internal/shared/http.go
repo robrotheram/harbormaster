@@ -31,7 +31,10 @@ func JSON(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 func Error(w http.ResponseWriter, status int, code string) {
-	JSON(w, status, APIError{Code: code, Message: strings.ReplaceAll(strings.ToLower(code), "_", " "), Retryable: status == 503})
+	JSON(w, status, NewAPIError(status, code))
+}
+func NewAPIError(status int, code string) APIError {
+	return APIError{Code: code, Message: strings.ReplaceAll(strings.ToLower(code), "_", " "), Retryable: status == 503}
 }
 func Decode(w http.ResponseWriter, r *http.Request, v any, limit int64) bool {
 	r.Body = http.MaxBytesReader(w, r.Body, limit)
