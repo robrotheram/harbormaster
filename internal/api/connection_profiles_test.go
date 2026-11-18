@@ -17,7 +17,6 @@ type globalProfileRuntime struct {
 
 func (r *globalProfileRuntime) Inspect(ctx context.Context, id string) (shared.Observation, error) {
 	o, e := r.embeddedRuntime.Inspect(ctx, id)
-	o.ConnectionProxyVersion = 2
 	o.ConnectionMode = r.mode
 	return o, e
 }

@@ -122,4 +122,7 @@ func TestPostgresMetadataContract(t *testing.T) {
 	if got, err := s.Workspace(ctx, w.ID); err != nil || got.HomeID != w.HomeID || got.ProjectID != project.ID {
 		t.Fatal("workspace ownership did not survive reopen", err)
 	}
+	t.Run("workspace connection migration", func(t *testing.T) {
+		checkWorkspaceConnectionMigration(t, ctx, s)
+	})
 }

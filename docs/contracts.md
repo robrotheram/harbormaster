@@ -66,15 +66,19 @@ An idempotent start of an already-ready workspace also reconciles platform netwo
 
 ## Workspace settings
 
-`POST /v1/workspaces/{id}/settings` accepts exactly
-`{idle_timeout_minutes: 0 | integer(5..1440), github_access: boolean}`. Project
+`POST /v1/workspaces/{id}/settings` accepts `idle_timeout_minutes` (0 or an
+integer from 5 to 1440) and either `connection_profile_id` or an inline
+`connections` policy. Inline policies use mode `blocked`, `allowlist`, or `open`.
+Only allowlist mode accepts destinations, up to 64 exact lowercase `host:port`
+entries. Changing into or out of open mode on a running workspace returns
+`STOP_WORKSPACE_FIRST` before saving. Project
 authorization applies before observation or mutation. Zero disables automatic
 shutdown; omitted metadata uses the 60-minute deployment default. An explicit
 open/start renews `last_opened_at`; polling does not. Transition from BUSY to READY
 begins a full idle interval. Unknown activity always blocks shutdown.
 
 The trusted controller accepts `POST /v1/workspaces/{id}/network-policy` with
-`{connections:{mode,destinations}}` (legacy `{github_access:boolean}` remains supported) using its management credential only. Its policy is
+`{connections:{mode,destinations}}` using its management credential only. Its policy is
 bound to the observed container generation and defaults to deny after restart.
 An `egress` grant is issued/verified only for an enabled, running generation.
 The dedicated egress service accepts HTTP and CONNECT only to destinations in the workspace policy;
@@ -83,19 +87,6 @@ a credential-free loopback proxy to native tools and injects its workspace grant
 on the internal hop. It never gives Git a provider/Vault credential. Active
 tunnels revalidate authority every five seconds with a five-second verifier
 timeout. Destination approval covers the encrypted host, not HTTP paths.
-
-`git_proxy_ready` reports whether the container includes this proxy setup; it
-is separate from VM/network isolation evidence. Existing running containers stay
-intact. On their next stop/start, old stopped containers are recreated with the
-same validated volume, project and private home, without volume deletion.
-
-Workspace settings also accept `connections:{mode:"blocked"|"allowlist"|"open",
-destinations:string[]}` instead of the legacy GitHub field. Up to 64 exact,
-lowercase `host:port` destinations are accepted in allowlist mode only. Changing
-direct networking on a running workspace returns `STOP_WORKSPACE_FIRST` without
-saving the change. Mode/proxy-version observations distinguish actual runtime
-configuration from desired settings. Proxy capability version 2 supports custom
-HTTP/HTTPS destinations. Open mode enables direct egress/DNS and skips proxy env.
 
 ## Global connection profiles
 

@@ -19,17 +19,16 @@ func TestUnknownAndBusyActivityCannotProduceIdleDeadline(t *testing.T) {
 func TestConnectionTransitionsShareOnePolicy(t *testing.T) {
 	tests := []struct {
 		runtime, state, observed, desired string
-		version                           int
 		want                              string
 	}{
-		{"firecracker", "STOPPED", "", "open", 2, "OPEN_NETWORK_FORBIDDEN_IN_SANDBOX"},
-		{"docker", "READY", "blocked", "open", 2, "STOP_WORKSPACE_FIRST"},
-		{"docker", "STOPPED", "blocked", "open", 2, ""},
-		{"docker", "READY", "allowlist", "allowlist", 1, "STOP_WORKSPACE_FIRST"},
-		{"docker", "READY", "allowlist", "allowlist", 2, ""},
+		{"firecracker", "STOPPED", "", "open", "OPEN_NETWORK_FORBIDDEN_IN_SANDBOX"},
+		{"docker", "READY", "blocked", "open", "STOP_WORKSPACE_FIRST"},
+		{"docker", "STOPPED", "blocked", "open", ""},
+		{"docker", "READY", "open", "allowlist", "STOP_WORKSPACE_FIRST"},
+		{"docker", "READY", "allowlist", "allowlist", ""},
 	}
 	for _, tt := range tests {
-		w := shared.Workspace{RuntimeType: tt.runtime, State: tt.state, ConnectionMode: tt.observed, ConnectionProxyVersion: tt.version, Connections: &shared.ConnectionPolicy{Mode: tt.desired, Destinations: []string{"registry.npmjs.org:443"}}}
+		w := shared.Workspace{RuntimeType: tt.runtime, State: tt.state, ConnectionMode: tt.observed, Connections: &shared.ConnectionPolicy{Mode: tt.desired, Destinations: []string{"registry.npmjs.org:443"}}}
 		err := CheckConnections(w)
 		got := ""
 		if err != nil {

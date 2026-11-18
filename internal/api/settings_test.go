@@ -54,8 +54,8 @@ func TestFirecrackerRefusesOpenSettingsBeforePersistingAndCanRecoverLegacyPolicy
 	}
 }
 
-func (r *policyRuntime) ConfigureNetwork(_ context.Context, _ string, enabled bool) error {
-	r.enabled = enabled
+func (r *policyRuntime) ConfigureConnections(_ context.Context, _ string, policy shared.ConnectionPolicy) error {
+	r.enabled = policy.Allows("registry.npmjs.org:443")
 	r.applications++
 	return nil
 }
@@ -70,16 +70,16 @@ func TestSettingsAndReopenControlIdleShutdown(t *testing.T) {
 	path := "/v1/workspaces/" + ws.ID
 	now := time.Now().UTC()
 	s.now = func() time.Time { return now }
-	save := func(minutes int, github bool) {
+	save := func(minutes int, policy shared.ConnectionPolicy) {
 		t.Helper()
-		payload, _ := json.Marshal(map[string]any{"idle_timeout_minutes": minutes, "github_access": github})
+		payload, _ := json.Marshal(map[string]any{"idle_timeout_minutes": minutes, "connections": policy})
 		body := string(payload)
 		w := request(t, s, "POST", path+"/settings", body)
 		if w.Code != 200 {
 			t.Fatal(w.Code, w.Body)
 		}
 	}
-	save(30, true)
+	save(30, shared.ConnectionPolicy{Mode: "allowlist", Destinations: []string{"registry.npmjs.org:443"}})
 	if policy.applications != 0 || rt.starts != 0 {
 		t.Fatal("settings woke stopped workspace")
 	}
@@ -106,7 +106,7 @@ func TestSettingsAndReopenControlIdleShutdown(t *testing.T) {
 	if rt.managers[ws.ID] == nil {
 		t.Fatal("old deadline still used")
 	}
-	save(0, false)
+	save(0, shared.ConnectionPolicy{Mode: "blocked"})
 	if policy.enabled {
 		t.Fatal("revocation not applied")
 	}
@@ -115,7 +115,7 @@ func TestSettingsAndReopenControlIdleShutdown(t *testing.T) {
 	if rt.managers[ws.ID] == nil {
 		t.Fatal("never setting ignored")
 	}
-	save(15, false)
+	save(15, shared.ConnectionPolicy{Mode: "blocked"})
 	now = now.Add(16 * time.Minute)
 	s.Reconcile(context.Background())
 	if rt.managers[ws.ID] != nil {
@@ -125,7 +125,7 @@ func TestSettingsAndReopenControlIdleShutdown(t *testing.T) {
 func TestInvalidSettingsDoNotMutateWorkspace(t *testing.T) {
 	s, _ := setup(t)
 	ws := create(t, s, "invalid-settings")
-	for _, body := range []string{`{}`, `{"idle_timeout_minutes":-1,"github_access":true}`, `{"idle_timeout_minutes":1,"github_access":true}`, `{"idle_timeout_minutes":1441,"github_access":true}`, `{"idle_timeout_minutes":60,"github_access":true,"domains":["evil.test"]}`} {
+	for _, body := range []string{`{}`, `{"idle_timeout_minutes":-1,"connections":{"mode":"blocked","destinations":[]}}`, `{"idle_timeout_minutes":1,"connections":{"mode":"blocked","destinations":[]}}`, `{"idle_timeout_minutes":1441,"connections":{"mode":"blocked","destinations":[]}}`, `{"idle_timeout_minutes":60,"connections":{"mode":"blocked","destinations":[]},"domains":["evil.test"]}`} {
 		w := request(t, s, "POST", "/v1/workspaces/"+ws.ID+"/settings", body)
 		if w.Code != 400 {
 			t.Fatalf("accepted invalid settings: %d", w.Code)

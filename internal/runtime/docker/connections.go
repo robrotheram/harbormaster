@@ -14,14 +14,6 @@ func connectionMode(info containerInfo) string {
 	}
 	return "restricted"
 }
-func hasConnectionProxy(info containerInfo) bool {
-	for _, v := range info.Config.Env {
-		if v == "CONNECTION_PROXY_VERSION=2" {
-			return true
-		}
-	}
-	return false
-}
 func (c *Controller) ensureInternetNetwork(ctx context.Context, id string, spec protocol.WorkspaceSpec) (string, error) {
 	name := c.name(id) + "-internet"
 	var info struct {

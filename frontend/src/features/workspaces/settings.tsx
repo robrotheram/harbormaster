@@ -1,6 +1,7 @@
 import { workspacesApi } from "./api";
 import {
   parseDestinations,
+  isGitHubOnly,
   connectionChangeNeedsStop,
 } from "@/features/connection-profiles/policy";
 import { useState } from "react";
@@ -32,15 +33,10 @@ export function WorkspaceSettings({
     original?.mode === "open"
       ? "open"
       : original?.mode === "allowlist"
-        ? original.destinations.length === 1 &&
-          original.destinations[0] === "github.com:443"
+        ? isGitHubOnly(original)
           ? "github"
           : "custom"
-        : original?.mode === "blocked"
-          ? "blocked"
-          : workspace.github_access
-            ? "github"
-            : "blocked",
+        : "blocked",
   );
   const [destinations, setDestinations] = useState(
     original?.destinations.join("\n") ||

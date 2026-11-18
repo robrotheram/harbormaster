@@ -12,7 +12,6 @@ describe("connection policy editing", () => {
     const running = {
       state: "READY",
       connection_mode: "blocked",
-      connection_proxy_version: 2,
     };
     expect(
       connectionChangeNeedsStop(running, { mode: "open", destinations: [] }),
@@ -22,18 +21,6 @@ describe("connection policy editing", () => {
         mode: "allowlist",
         destinations: ["registry.npmjs.org:443"],
       }),
-    ).toBe(false);
-    expect(
-      connectionChangeNeedsStop(
-        { ...running, connection_proxy_version: 1 },
-        { mode: "allowlist", destinations: ["registry.npmjs.org:443"] },
-      ),
-    ).toBe(true);
-    expect(
-      connectionChangeNeedsStop(
-        { ...running, connection_proxy_version: 1 },
-        { mode: "allowlist", destinations: ["github.com:443"] },
-      ),
     ).toBe(false);
     expect(
       connectionChangeNeedsStop(

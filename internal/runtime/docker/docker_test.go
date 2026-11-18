@@ -211,65 +211,6 @@ func TestAgentProxyCannotTargetManagement(t *testing.T) {
 	}
 }
 
-func TestGitHubPolicyGrantAndStoppedContainerMigration(t *testing.T) {
-	c, engine := controller(t, false)
-	start := func() {
-		t.Helper()
-		r := controllerRequest(c, "POST", "/v1/workspaces/ws_test/start", c.cfg.Token, `{}`)
-		if r.Code != 200 {
-			t.Fatal("start", r.Code, r.Body)
-		}
-	}
-	start()
-	oldVolume := engine.spec["HostConfig"].(map[string]any)["Mounts"]
-	c.cfg.EgressContainer = "egress"
-	grant := func() int {
-		labels := engine.spec["Labels"].(map[string]any)
-		token := c.token("ws_test", labels["workbench.generation"].(string))
-		return controllerRequest(c, "POST", "/v1/grants/verify", c.cfg.GatewayServiceToken, `{"token":"`+token+`","audience":"egress"}`).Code
-	}
-	set := func(enabled string) {
-		t.Helper()
-		r := controllerRequest(c, "POST", "/v1/workspaces/ws_test/network-policy", c.cfg.Token, `{"github_access":`+enabled+`}`)
-		if r.Code != 200 {
-			t.Fatal("policy", r.Code, r.Body)
-		}
-	}
-	if grant() != 403 {
-		t.Fatal("GitHub enabled by default")
-	}
-	set("true")
-	if grant() != 200 {
-		t.Fatal("enabled policy rejected")
-	}
-	set("false")
-	if grant() != 403 {
-		t.Fatal("revocation ignored")
-	}
-	// A running old container is preserved; only a stopped one is upgraded.
-	start()
-	if engine.removed != 0 {
-		t.Fatal("replaced running container")
-	}
-	if r := controllerRequest(c, "POST", "/v1/workspaces/ws_test/stop", c.cfg.Token, ""); r.Code != 200 {
-		t.Fatal(r.Body)
-	}
-	start()
-	if engine.removed != 1 || engine.createCount != 2 {
-		t.Fatal("stopped old container was not upgraded")
-	}
-	if !bytes.Equal(mustJSON(oldVolume), mustJSON(engine.spec["HostConfig"].(map[string]any)["Mounts"])) {
-		t.Fatal("upgrade changed persistent volume")
-	}
-	if grant() != 403 {
-		t.Fatal("new generation inherited grant")
-	}
-	set("true")
-	if grant() != 200 {
-		t.Fatal("new generation rejected")
-	}
-}
-
 func TestOpenNetworkIsExplicitAndRestrictiveTransitionNeedsStop(t *testing.T) {
 	c, engine := controller(t, false)
 	c.cfg.EgressContainer = "egress"

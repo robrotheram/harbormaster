@@ -27,10 +27,7 @@ type Workspace struct {
 	ConnectionProfileRevision int               `json:"connection_profile_revision,omitempty"`
 	Connections               *ConnectionPolicy `json:"connections,omitempty"`
 	ConnectionMode            string            `json:"connection_mode,omitempty"`
-	ConnectionProxyVersion    int               `json:"connection_proxy_version,omitempty"`
-	GitProxyReady             bool              `json:"git_proxy_ready"`
 	IdleTimeoutMinutes        *int              `json:"idle_timeout_minutes,omitempty"`
-	GitHubAccess              bool              `json:"github_access"`
 	LastOpenedAt              *time.Time        `json:"last_opened_at,omitempty"`
 	ConsoleEnabled            bool              `json:"console_enabled,omitempty"`
 	HomeID                    string            `json:"home_id,omitempty"`
@@ -79,15 +76,13 @@ type Activity struct {
 	LastActivity   time.Time `json:"last_activity"`
 }
 type Observation struct {
-	ConnectionMode         string   `json:"connection_mode,omitempty"`
-	ConnectionProxyVersion int      `json:"connection_proxy_version,omitempty"`
-	GitProxyReady          bool     `json:"git_proxy_ready"`
-	Running                bool     `json:"running"`
-	Ready                  bool     `json:"ready"`
-	RuntimeType            string   `json:"runtime_type"`
-	IsolationStatus        string   `json:"isolation_status"`
-	NetworkStatus          string   `json:"network_status"`
-	MemoryBytes            *int64   `json:"memory_bytes"`
-	CPUCores               *float64 `json:"cpu_cores"`
-	Activity               Activity `json:"activity"`
+	ConnectionMode  string   `json:"connection_mode,omitempty"`
+	Running         bool     `json:"running"`
+	Ready           bool     `json:"ready"`
+	RuntimeType     string   `json:"runtime_type"`
+	IsolationStatus string   `json:"isolation_status"`
+	NetworkStatus   string   `json:"network_status"`
+	MemoryBytes     *int64   `json:"memory_bytes"`
+	CPUCores        *float64 `json:"cpu_cores"`
+	Activity        Activity `json:"activity"`
 }

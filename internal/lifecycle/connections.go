@@ -10,7 +10,7 @@ func CheckConnections(w shared.Workspace) error {
 	if w.RuntimeType == "firecracker" && p.Mode == "open" {
 		return errors.New("OPEN_NETWORK_FORBIDDEN_IN_SANDBOX")
 	}
-	if w.State != "STOPPED" && (((p.Mode == "open") != (w.ConnectionMode == "open")) || (w.ConnectionProxyVersion < 2 && p.Mode == "allowlist" && !(len(p.Destinations) == 1 && p.Allows("github.com:443")))) {
+	if w.State != "STOPPED" && (p.Mode == "open") != (w.ConnectionMode == "open") {
 		return errors.New("STOP_WORKSPACE_FIRST")
 	}
 	return nil

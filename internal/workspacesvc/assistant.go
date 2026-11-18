@@ -78,7 +78,6 @@ func (s *Service) EnsureAssistant(ctx context.Context, repo AssistantRepository,
 		if config.ConnectionProfileID == "" {
 			ws.ConnectionProfileRevision = 0
 			ws.Connections = &shared.ConnectionPolicy{Mode: "blocked", Destinations: []string{}}
-			ws.GitHubAccess = false
 		} else if err = s.ResolveConnectionProfile(ctx, &ws); err != nil {
 			return ws, created, err
 		}
@@ -86,13 +85,13 @@ func (s *Service) EnsureAssistant(ctx context.Context, repo AssistantRepository,
 			return ws, created, err
 		}
 		if ws.State != "STOPPED" {
-			if err = s.ConfigureNetwork(ctx, ws); err != nil {
+			if err = s.ConfigureConnections(ctx, ws); err != nil {
 				return ws, created, err
 			}
 		}
 		if err = repo.Save(ctx, ws); err != nil {
 			if ws.State != "STOPPED" {
-				s.report("assistant_policy_rollback", previous, s.ConfigureNetwork(ctx, previous))
+				s.report("assistant_policy_rollback", previous, s.ConfigureConnections(ctx, previous))
 			}
 			return ws, created, err
 		}

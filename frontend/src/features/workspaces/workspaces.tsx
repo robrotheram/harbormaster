@@ -519,16 +519,10 @@ export function Workspaces({ project }: { project: Project }) {
         <WorkspaceSettings
           workspace={settings}
           onClose={() => setSettings(undefined)}
-          onSaved={(updated) => {
+          onSaved={() => {
             setSettings(undefined);
             refresh();
-            setMessage(
-              updated.github_access &&
-                !updated.git_proxy_ready &&
-                updated.state !== "STOPPED"
-                ? "Settings saved. Finish work, close terminals, then stop/start to apply the proxy update."
-                : "Worker settings saved.",
-            );
+            setMessage("Worker settings saved.");
           }}
         />
       )}

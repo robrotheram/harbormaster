@@ -29,10 +29,7 @@ export interface Workspace {
   connection_profile_revision?: number;
   connections?: ConnectionPolicy;
   connection_mode?: string;
-  connection_proxy_version?: number;
   idle_timeout_minutes?: number;
-  github_access?: boolean;
-  git_proxy_ready?: boolean;
   console_enabled?: boolean;
   id: string;
   project_id: string;
