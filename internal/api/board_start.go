@@ -18,7 +18,7 @@ func (s *Server) registerBoardStart(mux *http.ServeMux) {
 			ProjectID string `json:"project_id"`
 			Revision  int    `json:"revision"`
 		}
-		if !shared.Decode(w, r, &in, 2048) || !s.AuthorizeProject(w, r, in.ProjectID) {
+		if !decodeRouteBody(w, r, &in) || !s.AuthorizeProject(w, r, in.ProjectID) {
 			return
 		}
 		id := r.PathValue("id")

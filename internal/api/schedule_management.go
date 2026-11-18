@@ -32,7 +32,7 @@ func (i *scheduleInput) valid() bool {
 func (s *Server) registerScheduleManagement(mux *http.ServeMux, repo orchestration.Repository) {
 	mux.HandleFunc("POST /v1/schedules/{id}/update", func(w http.ResponseWriter, r *http.Request) {
 		var input scheduleInput
-		if !shared.Decode(w, r, &input, 4096) {
+		if !decodeRouteBody(w, r, &input) {
 			return
 		}
 		if !shared.ValidID(r.PathValue("id")) || !input.valid() {
@@ -99,7 +99,7 @@ func (s *Server) registerScheduleManagement(mux *http.ServeMux, repo orchestrati
 			Revision int    `json:"revision"`
 			Key      string `json:"idempotency_key"`
 		}
-		if !shared.Decode(w, r, &input, 1024) {
+		if !decodeRouteBody(w, r, &input) {
 			return
 		}
 		if !shared.ValidID(r.PathValue("id")) || !shared.ValidKey(input.Key) || input.Revision < 0 {

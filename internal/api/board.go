@@ -54,7 +54,7 @@ func (s *Server) registerBoard(mux *http.ServeMux) {
 	repo := orchestration.Repository{DB: s.Store.DB}
 	mux.HandleFunc("POST /v1/board", func(w http.ResponseWriter, r *http.Request) {
 		var in shared.BoardCreate
-		if !shared.Decode(w, r, &in, 100000) || !s.AuthorizeProject(w, r, in.ProjectID) {
+		if !decodeRouteBody(w, r, &in) || !s.AuthorizeProject(w, r, in.ProjectID) {
 			return
 		}
 		in.Title = strings.TrimSpace(in.Title)
@@ -135,7 +135,7 @@ func (s *Server) registerBoard(mux *http.ServeMux) {
 			Description  *string   `json:"description"`
 			Direction    string    `json:"direction"`
 		}
-		if !shared.Decode(w, r, &in, 100000) || !s.AuthorizeProject(w, r, in.ProjectID) {
+		if !decodeRouteBody(w, r, &in) || !s.AuthorizeProject(w, r, in.ProjectID) {
 			return
 		}
 		if in.ProjectID == "" || !shared.ValidID(r.PathValue("id")) || in.Revision < 0 {

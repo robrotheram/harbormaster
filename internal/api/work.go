@@ -57,7 +57,7 @@ func (s *Server) registerWork(mux *http.ServeMux) {
 		var input struct {
 			ProjectID string `json:"project_id"`
 		}
-		if !shared.Decode(w, r, &input, 1024) || !s.AuthorizeProject(w, r, input.ProjectID) {
+		if !decodeRouteBody(w, r, &input) || !s.AuthorizeProject(w, r, input.ProjectID) {
 			return
 		}
 		if !shared.ValidID(r.PathValue("id")) {
@@ -99,7 +99,7 @@ func (s *Server) registerWork(mux *http.ServeMux) {
 			Kind          string   `json:"kind"`
 			Key           string   `json:"idempotency_key"`
 		}
-		if !shared.Decode(w, r, &input, 400000) || !s.AuthorizeProject(w, r, input.ProjectID) {
+		if !decodeRouteBody(w, r, &input) || !s.AuthorizeProject(w, r, input.ProjectID) {
 			return
 		}
 		if !shared.ValidWorkSelection(input.Provider, input.Model) || !shared.ValidKey(input.Key) || !shared.ValidID(input.ProjectID) || (input.Presentation != "" && input.Presentation != "interactive-v1") {

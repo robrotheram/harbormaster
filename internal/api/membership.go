@@ -73,7 +73,7 @@ func (s *Server) registerMembership(mux *http.ServeMux) {
 		var in struct {
 			Revision int `json:"revision"`
 		}
-		if !shared.Decode(w, r, &in, 1024) {
+		if !decodeRouteBody(w, r, &in) {
 			return
 		}
 		err := s.Store.AcceptInvitation(r.Context(), r.PathValue("id"), p.human.Email, p.human.ID, in.Revision)
@@ -108,7 +108,7 @@ func (s *Server) registerMembership(mux *http.ServeMux) {
 			Revision int    `json:"revision"`
 			Action   string `json:"action"`
 		}
-		if !shared.Decode(w, r, &in, 2048) {
+		if !decodeRouteBody(w, r, &in) {
 			return
 		}
 		in.Email = strings.ToLower(strings.TrimSpace(in.Email))

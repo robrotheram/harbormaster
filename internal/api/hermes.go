@@ -145,7 +145,7 @@ func (s *Server) registerHermes(mux *http.ServeMux) {
 		var input struct {
 			Key string `json:"idempotency_key"`
 		}
-		if !shared.Decode(w, r, &input, 1024) {
+		if !decodeRouteBody(w, r, &input) {
 			return
 		}
 		if !shared.ValidKey(input.Key) {
@@ -173,7 +173,7 @@ func (s *Server) registerHermes(mux *http.ServeMux) {
 		var body struct {
 			Homeserver string `json:"homeserver"`
 		}
-		if !shared.Decode(w, r, &body, 2048) {
+		if !decodeRouteBody(w, r, &body) {
 			return
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 12*time.Second)
@@ -195,7 +195,7 @@ func (s *Server) registerHermes(mux *http.ServeMux) {
 			Revision          int    `json:"revision"`
 			AcceptInvitations bool   `json:"accept_invitations"`
 		}
-		if !shared.Decode(w, r, &body, 12288) {
+		if !decodeRouteBody(w, r, &body) {
 			return
 		}
 		c, err := s.Store.HermesSetup(r.Context(), id)
@@ -339,7 +339,7 @@ func (s *Server) registerHermes(mux *http.ServeMux) {
 			return
 		}
 		var c shared.HermesSetup
-		if !shared.Decode(w, r, &c, 16384) {
+		if !decodeRouteBody(w, r, &c) {
 			return
 		}
 		if c.ProjectID != id {

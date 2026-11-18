@@ -39,7 +39,7 @@ func (s *Server) registerOrchestration(mux *http.ServeMux) {
 	})
 	mux.HandleFunc("POST /v1/schedules", func(w http.ResponseWriter, r *http.Request) {
 		var input scheduleInput
-		if !shared.Decode(w, r, &input, 4096) {
+		if !decodeRouteBody(w, r, &input) {
 			return
 		}
 		if !s.AuthorizeProject(w, r, input.ProjectID) {
@@ -82,7 +82,7 @@ func (s *Server) registerOrchestration(mux *http.ServeMux) {
 			var input struct {
 				Key string `json:"idempotency_key"`
 			}
-			if !shared.Decode(w, r, &input, 1024) {
+			if !decodeRouteBody(w, r, &input) {
 				return
 			}
 			if !shared.ValidID(r.PathValue("id")) || !shared.ValidKey(input.Key) {

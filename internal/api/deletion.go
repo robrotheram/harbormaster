@@ -18,7 +18,7 @@ func (s *Server) registerDeletion(mux *http.ServeMux) {
 			var in struct {
 				Confirm string `json:"confirm_id"`
 			}
-			if !shared.Decode(w, r, &in, 1024) {
+			if !decodeRouteBody(w, r, &in) {
 				return
 			}
 			id := r.PathValue("id")

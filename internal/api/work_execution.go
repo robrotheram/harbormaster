@@ -27,7 +27,7 @@ func (s *Server) registerWorkExecution(mux *http.ServeMux, repo orchestration.Re
 			ProjectID string `json:"project_id"`
 			Key       string `json:"idempotency_key"`
 		}
-		if !shared.Decode(w, r, &in, 2048) || !s.AuthorizeProject(w, r, in.ProjectID) {
+		if !decodeRouteBody(w, r, &in) || !s.AuthorizeProject(w, r, in.ProjectID) {
 			return
 		}
 		unlock := s.operations.Lock("work:" + r.PathValue("id"))
@@ -65,7 +65,7 @@ func (s *Server) registerWorkExecution(mux *http.ServeMux, repo orchestration.Re
 			Decision          string `json:"decision,omitempty"`
 			ExpectedAttemptID string `json:"expected_attempt_id"`
 		}
-		if !shared.Decode(w, r, &in, 1024) || !s.AuthorizeProject(w, r, in.ProjectID) {
+		if !decodeRouteBody(w, r, &in) || !s.AuthorizeProject(w, r, in.ProjectID) {
 			return
 		}
 		if (in.Decision != "" && in.Decision != "closed") || (in.Decision == "closed" && in.Accepted != nil) || (in.Decision == "" && in.Accepted == nil) {

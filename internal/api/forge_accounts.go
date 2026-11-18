@@ -62,7 +62,7 @@ func (s *Server) registerForgeAccounts(mux *http.ServeMux) {
 			forge.Host
 			Revision int `json:"revision"`
 		}
-		if !shared.Decode(w, r, &input, 16384) {
+		if !decodeRouteBody(w, r, &input) {
 			return
 		}
 		host, err := forge.NormalizeHost(input.Host)

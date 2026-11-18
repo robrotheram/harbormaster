@@ -146,7 +146,7 @@ func mutationKey(w http.ResponseWriter, r *http.Request) bool {
 	var b struct {
 		Key string `json:"idempotency_key"`
 	}
-	if !shared.Decode(w, r, &b, 1024) {
+	if !decodeRouteBody(w, r, &b) {
 		return false
 	}
 	if !shared.ValidKey(b.Key) {
@@ -221,7 +221,7 @@ func (s *Server) Handler() http.Handler {
 	})
 	secured.HandleFunc("POST /v1/workspaces", func(w http.ResponseWriter, r *http.Request) {
 		var req workspaceCreate
-		if !shared.Decode(w, r, &req, 1024) {
+		if !decodeRouteBody(w, r, &req) {
 			return
 		}
 		s.createProjectWorkspace(w, r, req)
@@ -324,7 +324,7 @@ func (s *Server) Handler() http.Handler {
 			Key         string `json:"idempotency_key"`
 			Provider    string `json:"provider,omitempty"`
 		}
-		if !shared.Decode(w, r, &req, 70<<10) {
+		if !decodeRouteBody(w, r, &req) {
 			return
 		}
 		if !shared.ValidKey(req.Key) || req.Instruction == "" || len(req.Instruction) > 64<<10 || (req.Provider != "" && req.Provider != "codex" && req.Provider != "claude" && req.Provider != "hermes") {
@@ -385,7 +385,7 @@ func (s *Server) taskRoute(w http.ResponseWriter, r *http.Request, suffix string
 		var req struct {
 			Key string `json:"idempotency_key"`
 		}
-		if !shared.Decode(w, r, &req, 1024) {
+		if !decodeRouteBody(w, r, &req) {
 			return
 		}
 		if !shared.ValidKey(req.Key) {

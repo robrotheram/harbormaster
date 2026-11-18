@@ -14,7 +14,7 @@ func (s *Server) shareFile(w http.ResponseWriter, r *http.Request) {
 		DestinationID   string `json:"destination_id"`
 		DestinationPath string `json:"destination_path"`
 	}
-	if !shared.Decode(w, r, &input, 4096) {
+	if !decodeRouteBody(w, r, &input) {
 		return
 	}
 	if !shared.ValidID(input.SourceID) || !shared.ValidID(input.DestinationID) || input.SourceID == input.DestinationID || !shared.ValidProjectFile(input.SourcePath) || !shared.ValidProjectFile(input.DestinationPath) {

@@ -52,7 +52,7 @@ func (s *Server) registerAgentSubscriptions(mux *http.ServeMux) {
 			Provider string          `json:"provider"`
 			Auth     json.RawMessage `json:"auth"`
 		}
-		if !shared.Decode(w, r, &input, 70<<10) {
+		if !decodeRouteBody(w, r, &input) {
 			return
 		}
 		input.Name = strings.TrimSpace(input.Name)
