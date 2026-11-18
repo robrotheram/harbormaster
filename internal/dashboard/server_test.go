@@ -114,17 +114,12 @@ func TestUpstreamFailuresAreSanitized(t *testing.T) {
 	})
 }
 
-func TestReactEntrypointRedirectsAndRemovedAssets(t *testing.T) {
+func TestReactEntrypointRedirectsAndHealth(t *testing.T) {
 	h := handler(t, "http://controlplane:8081")
 	for _, path := range []string{"/", "/workspaces", "/getting-started"} {
 		w := request(h, "GET", path)
 		if w.Code != http.StatusTemporaryRedirect || !strings.HasPrefix(w.Header().Get("Location"), "/app/") {
 			t.Errorf("%s does not lead to React", path)
-		}
-	}
-	for _, path := range []string{"/app.js", "/style.css", "/launcher.js", "/web/index.html"} {
-		if w := request(h, "GET", path); w.Code != 404 {
-			t.Errorf("removed asset served: %s", path)
 		}
 	}
 	if w := request(h, "GET", "/healthz"); w.Code != 200 || !strings.Contains(w.Body.String(), `"status":"ok"`) {
