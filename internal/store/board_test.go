@@ -7,21 +7,10 @@ import (
 	"testing"
 )
 
-func TestBoardUpgradePersistenceAndArchive(t *testing.T) {
+func TestBoardPersistenceAndArchive(t *testing.T) {
 	ctx := context.Background()
 	dsn := filepath.Join(t.TempDir(), "board.db")
 	s, err := Open(ctx, dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = s.DB.Exec(`DROP TABLE board_items`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = s.DB.Exec(`DELETE FROM schema_migrations WHERE version=11`); err != nil {
-		t.Fatal(err)
-	}
-	s.DB.Close()
-	s, err = Open(ctx, dsn)
 	if err != nil {
 		t.Fatal(err)
 	}

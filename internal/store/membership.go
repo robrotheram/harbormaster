@@ -17,10 +17,6 @@ type ProjectMember struct {
 
 var ErrMembershipConflict = errors.New("membership changed or last admin")
 
-func (s *Store) initMembership(ctx context.Context) error {
-	_, err := s.DB.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS project_members(project_id TEXT NOT NULL,email TEXT NOT NULL,user_id TEXT NOT NULL,role TEXT NOT NULL,status TEXT NOT NULL,revision INTEGER NOT NULL,PRIMARY KEY(project_id,email))`)
-	return err
-}
 func (s *Store) ProjectMembers(ctx context.Context, project string) ([]ProjectMember, error) {
 	rows, err := s.DB.QueryContext(ctx, `SELECT project_id,email,user_id,role,status,revision FROM project_members WHERE project_id=$1 ORDER BY email`, project)
 	if err != nil {

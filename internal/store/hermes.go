@@ -11,10 +11,6 @@ import (
 
 var ErrHermesRevision = errors.New("Hermes configuration revision conflict")
 
-func (s *Store) initHermes(ctx context.Context) error {
-	_, err := s.DB.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS hermes_setups(project_id TEXT PRIMARY KEY REFERENCES projects(id),revision INTEGER NOT NULL,metadata TEXT NOT NULL)`)
-	return err
-}
 func (s *Store) HermesSetup(ctx context.Context, project string) (shared.HermesSetup, error) {
 	return jsonmetadata.Get[shared.HermesSetup](ctx, s.DB, `SELECT metadata FROM hermes_setups WHERE project_id=$1`, project)
 }

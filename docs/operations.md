@@ -73,6 +73,29 @@ Restoring state does not undo external side effects such as commits or provider
 requests; reconcile them before resuming work. Never use
 `docker compose down --volumes` as an upgrade or troubleshooting step.
 
+### Pre-release database recreation
+
+Issue #46 starts a new schema version 1 for control-plane metadata and guest
+SQLite. Existing development, staging and reference deployments from before this
+change require fresh databases. Startup rejects the old schemas with a recreation
+error. Leave the old databases and their migration records intact for recovery.
+
+1. Stop the deployment and take the matching backups described above. Retain the
+   previous images and deployment configuration so you can restore that checkpoint.
+2. Provision an empty metadata database and point the control plane's
+   `DATABASE_URL` or `DATABASE_URL_FILE` at it. For a SQLite deployment, use a new
+   file path. For Compose or Kubernetes PostgreSQL, provision a fresh database
+   and update the deployment's database URL secret.
+3. Start the new deployment and recreate workspaces using fresh guest storage.
+   The supervisor creates `workspace.db` at the root of the workspace data
+   directory or under `homes/<home-id>/` when the workspace has a home ID. Export project files you
+   need to retain and import them into the new workspaces. The old guest database
+   holds task receipts, history, artifacts and retained-service records. Keep it
+   with its original backup and images.
+4. Verify workspace creation and recreate the remaining platform metadata the
+   deployment needs, including schedules and integration bindings. Preserve
+   Vault and unrelated volumes.
+
 ## Health, shutdown and diagnostics
 
 Start with `docker compose ps` and `docker compose logs --since=15m --tail=200`.

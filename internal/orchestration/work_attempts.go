@@ -11,11 +11,6 @@ import (
 	"agent-workbench/internal/shared"
 )
 
-// InitWorkAttempts is additive and safe to invoke from the startup migration owner.
-func (r Repository) InitWorkAttempts(ctx context.Context) error {
-	_, err := r.DB.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS work_attempts(id TEXT PRIMARY KEY, work_item_id TEXT NOT NULL, project_id TEXT NOT NULL, workspace_id TEXT NOT NULL, delivery_key TEXT NOT NULL, active_workspace TEXT UNIQUE, metadata TEXT NOT NULL, UNIQUE(work_item_id,delivery_key))`)
-	return err
-}
 func (r Repository) Attempts(ctx context.Context, project, id string) ([]shared.WorkAttempt, error) {
 	if _, err := r.Work(ctx, project, id); err != nil {
 		return nil, err

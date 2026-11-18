@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 )
@@ -13,12 +15,12 @@ func TestStartupMigrationsAreVersionedAndRepeatable(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		var count int
-		if err = s.DB.QueryRow(`SELECT count(*) FROM schema_migrations`).Scan(&count); err != nil {
+		var count, version int
+		if err = s.DB.QueryRow(`SELECT count(*), max(version) FROM schema_migrations`).Scan(&count, &version); err != nil {
 			t.Fatal(err)
 		}
-		if count != 18 {
-			t.Fatalf("migration versions: %d", count)
+		if count != 1 || version != 1 {
+			t.Fatalf("migration versions: count %d, latest %d", count, version)
 		}
 		for _, table := range []string{"project_members", "agent_subscriptions", "worker_agent_subscriptions", "work_review_history", "forge_accounts", "work_items", "work_attempts", "schedules", "orchestration_runs", "workspaces"} {
 			if _, err = s.DB.Exec(`SELECT 1 FROM ` + table + ` LIMIT 1`); err != nil {
@@ -31,206 +33,39 @@ func TestStartupMigrationsAreVersionedAndRepeatable(t *testing.T) {
 	}
 }
 
-func TestWorkspaceConnectionMigrationPreservesEffectivePolicy(t *testing.T) {
-	ctx := context.Background()
-	s, err := Open(ctx, filepath.Join(t.TempDir(), "workspace-connections.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.DB.Close()
-	checkWorkspaceConnectionMigration(t, ctx, s)
-}
-
-func checkWorkspaceConnectionMigration(t *testing.T, ctx context.Context, s *Store) {
-	t.Helper()
-	if _, err := s.DB.ExecContext(ctx, `DELETE FROM schema_migrations WHERE version=17`); err != nil {
-		t.Fatal(err)
-	}
-	tests := []struct {
-		id, metadata, mode string
-	}{
-		{"legacy-enabled", `{"github_access":true}`, "allowlist"},
-		{"legacy-disabled", `{"github_access":false}`, "blocked"},
-		{"explicit-blocked", `{"github_access":true,"connections":{"mode":"blocked","destinations":[]}}`, "blocked"},
-	}
-	for _, tt := range tests {
-		if _, err := s.DB.ExecContext(ctx, `INSERT INTO workspaces(id,create_key,metadata) VALUES($1,$1,$2)`, tt.id, tt.metadata); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := s.migrate(ctx); err != nil {
-		t.Fatal(err)
-	}
-	for _, tt := range tests {
-		w, err := s.Workspace(ctx, tt.id)
-		if err != nil {
-			t.Fatal(err)
-		}
-		p := w.EffectiveConnections()
-		if p.Mode != tt.mode || p.Allows("github.com:443") != (tt.mode == "allowlist") || p.Allows("registry.npmjs.org:443") {
-			t.Errorf("%s: unexpected policy %+v", tt.id, p)
-		}
-	}
-}
-
-func TestWorkMigrationUpgradesVersionTwoDatabase(t *testing.T) {
-	ctx := context.Background()
-	path := filepath.Join(t.TempDir(), "upgrade.db")
-	original, err := Open(ctx, path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, table := range []string{"work_create_requests", "work_attempts", "work_items", "project_coordination", "exchange_exports", "project_exchanges"} {
-		if _, err = original.DB.Exec(`DROP TABLE ` + table); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if _, err = original.DB.Exec(`DELETE FROM schema_migrations WHERE version>=3`); err != nil {
-		t.Fatal(err)
-	}
-	if err = original.DB.Close(); err != nil {
-		t.Fatal(err)
-	}
-	upgraded, err := Open(ctx, path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer upgraded.DB.Close()
-	if _, err = upgraded.DB.Exec(`SELECT metadata FROM work_items LIMIT 1`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = upgraded.Project(ctx, "default"); err != nil {
-		t.Fatal("existing project lost", err)
-	}
-}
-
-func TestInlineWorkRequestMigrationUpgradesVersionSix(t *testing.T) {
-	ctx := context.Background()
-	path := filepath.Join(t.TempDir(), "version-six.db")
-	database, err := Open(ctx, path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	metadata := `{"id":"work_legacy","project_id":"default","workspace_id":"ws_legacy","state":"draft"}`
-	if _, err = database.DB.Exec(`INSERT INTO work_items(id,project_id,create_key,metadata) VALUES('work_legacy','default','legacy',$1)`, metadata); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = database.DB.Exec(`DROP TABLE work_create_requests`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = database.DB.Exec(`DELETE FROM schema_migrations WHERE version=7`); err != nil {
-		t.Fatal(err)
-	}
-	if err = database.DB.Close(); err != nil {
-		t.Fatal(err)
-	}
-	reopened, err := Open(ctx, path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer reopened.DB.Close()
-	if _, err = reopened.DB.Exec(`INSERT INTO work_create_requests(project_id,create_key,fingerprint) VALUES('default','request','fingerprint')`); err != nil {
-		t.Fatal("request journal missing after upgrade", err)
-	}
-	var saved string
-	if err = reopened.DB.QueryRow(`SELECT metadata FROM work_items WHERE id='work_legacy'`).Scan(&saved); err != nil || saved != metadata {
-		t.Fatal("legacy work changed during upgrade", saved, err)
-	}
-}
-
-func TestSubscriptionMigrationRetainsDefaultLoginAndBinding(t *testing.T) {
-	ctx := context.Background()
-	path := filepath.Join(t.TempDir(), "subscriptions.db")
-	s, err := Open(ctx, path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = s.initSubscriptions(ctx); err != nil {
-		t.Fatal(err)
-	}
-	for _, q := range []string{
-		`INSERT INTO user_subscriptions(owner,credential) VALUES('user_old','original-encrypted-login')`,
-		`INSERT INTO worker_subscriptions(workspace_id,owner) VALUES('ws_old','user_old')`,
-		`DROP TABLE worker_agent_subscriptions`, `DROP TABLE agent_subscriptions`,
-		`DELETE FROM schema_migrations WHERE version=14`,
+func TestPreReleaseMetadataRequiresFreshDatabase(t *testing.T) {
+	for name, statements := range map[string][]string{
+		"old version one": {
+			`CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY)`,
+			`INSERT INTO schema_migrations VALUES(1)`,
+		},
+		"unversioned": {
+			`CREATE TABLE workspaces(id TEXT PRIMARY KEY)`,
+		},
 	} {
-		if _, err = s.DB.Exec(q); err != nil {
-			t.Fatal(err)
-		}
-	}
-	s.DB.Close()
-	for i := 0; i < 2; i++ {
-		s, err = Open(ctx, path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		v, err := s.AgentSubscription(ctx, "user_old", "default")
-		if err != nil || v.Credential != "original-encrypted-login" || v.Provider != "codex" {
-			t.Fatal("lost migrated login", v, err)
-		}
-		owner, id, err := s.WorkerAgentSubscription(ctx, "ws_old", "codex")
-		if err != nil || owner != "user_old" || id != "default" {
-			t.Fatal("lost migrated binding", err)
-		}
-		s.DB.Close()
-	}
-}
-
-func TestToolProfileCleanupUpgradesVersionSixteen(t *testing.T) {
-	ctx := context.Background()
-	path := filepath.Join(t.TempDir(), "upgrade.db")
-	checkToolProfileCleanupUpgrade(t, ctx, path)
-}
-
-func checkToolProfileCleanupUpgrade(t *testing.T, ctx context.Context, dsn string) {
-	t.Helper()
-	s, err := Open(ctx, dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.DB.Close()
-	// Recreate the version 16 catalogs using the historical schema.
-	if err := s.initMetadata(ctx); err != nil {
-		t.Fatal(err)
-	}
-	for _, query := range []string{
-		`DELETE FROM schema_migrations WHERE version=18`,
-		`INSERT INTO tool_profiles(id, revision, metadata) VALUES ('old-custom', 1, '{}')`,
-		`INSERT INTO agent_homes(id, project_id, workspace_id, metadata) VALUES ('home_old', 'default', 'ws_explicit', '{}')`,
-		`INSERT INTO workspaces(id, create_key, metadata) VALUES
-		('ws_implicit', 'implicit', '{"id":"ws_implicit","profile_id":"old-custom"}'),
-		('ws_explicit', 'explicit', '{"id":"ws_explicit","home_id":"home_old","profile_id":"old-custom","agent_kind":"codex"}'),
-		('ws_unmarked', 'unmarked', '{"id":"ws_unmarked"}')`,
-	} {
-		if _, err := s.DB.ExecContext(ctx, query); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := s.DB.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	s, err = Open(ctx, dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.DB.Close()
-	for _, table := range []string{"tool_profiles", "agent_homes"} {
-		if _, err := s.DB.ExecContext(ctx, `SELECT 1 FROM `+table+` LIMIT 1`); err == nil {
-			t.Errorf("obsolete table %s still exists", table)
-		}
-	}
-	for _, want := range []struct{ id, kind, home string }{
-		{"ws_implicit", "t3", ""},
-		{"ws_explicit", "codex", "home_old"},
-		{"ws_unmarked", "codex", ""},
-	} {
-		ws, err := s.Workspace(ctx, want.id)
-		if err != nil || ws.AgentKind != want.kind || ws.HomeID != want.home || ws.ProjectID != "default" {
-			t.Fatalf("workspace %s lost runtime identity: %+v, %v", want.id, ws, err)
-		}
-		if err := s.Save(ctx, ws); err != nil {
-			t.Fatalf("save upgraded workspace %s: %v", want.id, err)
-		}
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			path := filepath.Join(t.TempDir(), "legacy.db")
+			db, err := sql.Open("sqlite", path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+			for _, q := range statements {
+				if _, err := db.Exec(q); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if s, err := Open(ctx, path); err == nil {
+				s.DB.Close()
+				t.Fatal("opened pre-release metadata")
+			} else if !errors.Is(err, ErrPreReleaseSchema) {
+				t.Fatal(err)
+			}
+			var count int
+			if err := db.QueryRow(`SELECT count(*) FROM sqlite_schema WHERE type='table'`).Scan(&count); err != nil || count != 1 {
+				t.Fatal("startup changed the pre-release schema", count, err)
+			}
+		})
 	}
 }

@@ -12,21 +12,6 @@ import (
 var ErrProfileConflict = errors.New("profile revision conflict")
 var ErrProfileInUse = errors.New("connection profile is in use")
 
-func (s *Store) initConnectionProfiles(ctx context.Context) error {
-	if _, err := s.DB.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS connection_profiles(id TEXT PRIMARY KEY, revision INTEGER NOT NULL, metadata TEXT NOT NULL)`); err != nil {
-		return err
-	}
-	if _, err := s.DB.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS deleted_connection_profiles(id TEXT PRIMARY KEY)`); err != nil {
-		return err
-	}
-	for _, p := range shared.DefaultConnectionProfiles() {
-		b, _ := json.Marshal(p)
-		if _, err := s.DB.ExecContext(ctx, `INSERT INTO connection_profiles(id,revision,metadata) SELECT $1,$2,$3 WHERE NOT EXISTS (SELECT 1 FROM deleted_connection_profiles WHERE id=$4) ON CONFLICT(id) DO NOTHING`, p.ID, p.Revision, string(b), p.ID); err != nil {
-			return err
-		}
-	}
-	return nil
-}
 func (s *Store) ConnectionProfile(ctx context.Context, id string) (shared.ConnectionProfile, error) {
 	return jsonmetadata.Get[shared.ConnectionProfile](ctx, s.DB, `SELECT metadata FROM connection_profiles WHERE id=$1`, id)
 }

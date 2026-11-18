@@ -20,10 +20,25 @@ func repository(t *testing.T) (*Repository, *sql.DB) {
 	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { db.Close() })
 	r := New(db, "workspace_one")
-	if err := r.Init(context.Background()); err != nil {
+	if _, err := db.Exec(Schema); err != nil {
 		t.Fatal(err)
 	}
 	return r, db
+}
+
+func recoverTasks(t *testing.T, ctx context.Context, db *sql.DB) {
+	t.Helper()
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	if err := RecoverInterrupted(ctx, tx); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestFileAcceptanceFailureRollsBackTaskReservation(t *testing.T) {
@@ -63,9 +78,7 @@ func TestRestartPreservesAcceptanceAndInterruptsWithoutReplay(t *testing.T) {
 		t.Fatal(err)
 	}
 	restarted := New(db, "workspace_one")
-	if err := restarted.Init(ctx); err != nil {
-		t.Fatal(err)
-	}
+	recoverTasks(t, ctx, db)
 	replay, err := restarted.Accept(ctx, s, time.Now().UTC())
 	if err != nil || replay.Created || replay.Task.ID != first.Task.ID || replay.Task.State != "failed" || replay.Task.ErrorCode != "INTERRUPTED" {
 		t.Fatal("restart replayed execution or lost acceptance", replay, err)
@@ -76,8 +89,8 @@ func TestRestartPreservesAcceptanceAndInterruptsWithoutReplay(t *testing.T) {
 	}
 }
 
-func TestDigestReceiptAndLegacyMigration(t *testing.T) {
-	r, db := repository(t)
+func TestDigestReceipt(t *testing.T) {
+	r, _ := repository(t)
 	ctx := context.Background()
 	s := Submission{Key: "digest-one", Instruction: "original", Provider: "codex", SourcePath: "instructions.md", SpecificationDigest: "abc"}
 	a, err := r.Accept(ctx, s, time.Now().UTC())
@@ -94,15 +107,6 @@ func TestDigestReceiptAndLegacyMigration(t *testing.T) {
 	if _, err = r.FileAcceptance(ctx, s.Key, s.SourcePath, s.Provider, "", ""); !errors.Is(err, ErrConflict) {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(`ALTER TABLE file_acceptances DROP COLUMN specification_digest`); err != nil {
-		t.Fatal(err)
-	}
-	if err = r.Init(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = r.FileAcceptance(ctx, s.Key, s.SourcePath, s.Provider, "", ""); err != nil {
-		t.Fatal(err)
-	}
 }
 
 func TestSelectedModelSurvivesRestartAndConflictsOnReplay(t *testing.T) {
@@ -114,9 +118,7 @@ func TestSelectedModelSurvivesRestartAndConflictsOnReplay(t *testing.T) {
 		t.Fatal(err)
 	}
 	restarted := New(db, "workspace_one")
-	if err := restarted.Init(ctx); err != nil {
-		t.Fatal(err)
-	}
+	recoverTasks(t, ctx, db)
 	receipt, err := restarted.FileAcceptance(ctx, s.Key, s.SourcePath, s.Provider, s.SpecificationDigest, s.Model)
 	if err != nil || receipt.ID != first.Task.ID {
 		t.Fatal(receipt, err)

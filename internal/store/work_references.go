@@ -6,11 +6,6 @@ import (
 	"errors"
 )
 
-func (s *Store) initWorkReferences(ctx context.Context) error {
-	_, err := s.DB.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS work_references(project_id TEXT NOT NULL,work_id TEXT NOT NULL,number INTEGER NOT NULL,PRIMARY KEY(project_id,work_id),UNIQUE(project_id,number))`)
-	return err
-}
-
 // References are permanent within a project and never derived from list order.
 func (s *Store) workReference(ctx context.Context, project, id string) (int, error) {
 	var number int

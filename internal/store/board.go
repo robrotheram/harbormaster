@@ -89,10 +89,6 @@ func (b BoardItem) RemoteState() string {
 func (b BoardItem) Dirty() bool {
 	return b.Source != nil && (b.Title != b.Source.Title || b.RemoteState() != b.Source.State || (b.Description != nil && (b.Source.Description == nil || *b.Description != *b.Source.Description)))
 }
-func (s *Store) initBoard(ctx context.Context) error {
-	_, err := s.DB.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS board_items(id TEXT PRIMARY KEY,project_id TEXT NOT NULL,revision INTEGER NOT NULL,metadata TEXT NOT NULL)`)
-	return err
-}
 func (s *Store) BoardItem(ctx context.Context, project, id string) (BoardItem, error) {
 	item, err := jsonmetadata.Get[BoardItem](ctx, s.DB, `SELECT metadata FROM board_items WHERE project_id=$1 AND id=$2`, project, id)
 	if errors.Is(err, sql.ErrNoRows) {

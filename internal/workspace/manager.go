@@ -124,34 +124,25 @@ func New(cfg Config) (*Manager, error) {
 		return nil, e
 	}
 	db.SetMaxOpenConns(1)
-	for _, q := range []string{`PRAGMA journal_mode=WAL`, `PRAGMA busy_timeout=5000`,
-		`CREATE TABLE IF NOT EXISTS agent_history(seq INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT UNIQUE NOT NULL,episode_id TEXT NOT NULL,body TEXT NOT NULL)`,
-		`CREATE INDEX IF NOT EXISTS agent_history_episode ON agent_history(episode_id)`,
-		`CREATE TABLE IF NOT EXISTS history_state(id INTEGER PRIMARY KEY,bytes_used INTEGER NOT NULL DEFAULT 0,limited INTEGER NOT NULL DEFAULT 0)`,
-		`INSERT INTO history_state(id) VALUES(1) ON CONFLICT(id) DO NOTHING`,
-		`CREATE TABLE IF NOT EXISTS activity_events(id TEXT PRIMARY KEY,at TEXT NOT NULL,body TEXT NOT NULL)`,
-	} {
-		if _, e = db.Exec(q); e != nil {
-			db.Close()
-			return nil, e
-		}
+	if _, e = db.Exec(`PRAGMA busy_timeout=5000`); e != nil {
+		db.Close()
+		return nil, e
 	}
-	tasks := taskstore.New(db, cfg.ID)
-	if err := tasks.Init(context.Background()); err != nil {
+	if err := initWorkspaceDB(context.Background(), db); err != nil {
 		db.Close()
 		return nil, err
 	}
+	if _, e = db.Exec(`PRAGMA journal_mode=WAL`); e != nil {
+		db.Close()
+		return nil, e
+	}
+	tasks := taskstore.New(db, cfg.ID)
 	root, e := os.OpenRoot(filepath.Join(cfg.DataDir, "files"))
 	if e != nil {
 		db.Close()
 		return nil, e
 	}
 	m := &Manager{historyStop: make(chan struct{}), cfg: cfg, db: db, tasks: tasks, root: root, ownerLock: lock, cancels: map[string]context.CancelFunc{}, lastActivity: time.Now().UTC()}
-	if err := m.initFactory(); err != nil {
-		root.Close()
-		db.Close()
-		return nil, err
-	}
 	if cfg.EgressURL != "" {
 		listener, err := net.Listen("tcp", "127.0.0.1:8099")
 		if err != nil {

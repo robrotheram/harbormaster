@@ -28,7 +28,7 @@ const Schema = `CREATE TABLE IF NOT EXISTS project_exchanges (
  digest TEXT NOT NULL, actor TEXT NOT NULL, occurrence TEXT NOT NULL,
  UNIQUE(exchange_id, occurrence));`
 
-// ConsumptionSchema is installed by migration 6, never by runtime startup.
+// ConsumptionSchema adds durable exchange consumption receipts to Schema.
 const ConsumptionSchema = `CREATE TABLE IF NOT EXISTS exchange_consumptions (
  export_id TEXT PRIMARY KEY, destination TEXT NOT NULL, work_id TEXT NOT NULL);
  CREATE INDEX IF NOT EXISTS exchange_inbox_destination ON exchange_exports(destination,id);`

@@ -14,10 +14,6 @@ type HistoryFeedback struct {
 	Reviewer  string    `json:"reviewer"`
 }
 
-func (s *Store) initHistoryFeedback(ctx context.Context) error {
-	_, e := s.DB.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS history_feedback(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL REFERENCES workspaces(id),episode_id TEXT NOT NULL,rating INTEGER NOT NULL,at TEXT NOT NULL)`)
-	return e
-}
 func (s *Store) SaveHistoryFeedback(ctx context.Context, workspace, episode string, rating int) (HistoryFeedback, error) {
 	v := HistoryFeedback{ID: shared.NewID("review_"), EpisodeID: episode, Rating: rating, At: time.Now().UTC(), Reviewer: "local-operator"}
 	_, e := s.DB.ExecContext(ctx, `INSERT INTO history_feedback(id,workspace_id,episode_id,rating,at) VALUES($1,$2,$3,$4,$5)`, v.ID, workspace, episode, rating, v.At.Format(time.RFC3339Nano))

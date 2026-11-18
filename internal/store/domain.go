@@ -42,19 +42,6 @@ func (s *Store) CreateProject(ctx context.Context, p shared.Project, key string)
 	}
 	return tx.Commit()
 }
-func (s *Store) initDomains(ctx context.Context) error {
-	for _, q := range []string{
-		`CREATE TABLE IF NOT EXISTS projects(id TEXT PRIMARY KEY,create_key TEXT UNIQUE NOT NULL,metadata TEXT NOT NULL)`,
-		// Historical catalog retained for upgrades; no active readers or writers.
-		`CREATE TABLE IF NOT EXISTS agent_homes(id TEXT PRIMARY KEY,project_id TEXT NOT NULL,workspace_id TEXT UNIQUE NOT NULL,metadata TEXT NOT NULL)`,
-	} {
-		if _, err := s.DB.ExecContext(ctx, q); err != nil {
-			return err
-		}
-	}
-	return s.reconcileLegacyProjects(ctx)
-}
-
 func (s *Store) reconcileLegacyProjects(ctx context.Context) error {
 	legacy := shared.Project{ID: "default", Name: "Legacy workspaces", Legacy: true, CreatedAt: time.Now().UTC()}
 	b, _ := json.Marshal(legacy)

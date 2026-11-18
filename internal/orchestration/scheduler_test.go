@@ -41,10 +41,7 @@ func TestTransientWorkspaceReadDoesNotAbandonAcceptedRun(t *testing.T) {
 	}
 	defer db.Close()
 	repo := Repository{DB: db}
-	if err := repo.Init(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if err := repo.InitWorkAttempts(ctx); err != nil {
+	if _, err := repo.DB.ExecContext(ctx, Schema); err != nil {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC()
@@ -129,10 +126,7 @@ func TestDeletingScheduleAfterBatchReadDoesNotDispatchStaleQueuedRun(t *testing.
 	}
 	defer db.Close()
 	repo := Repository{DB: db}
-	if err := repo.Init(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if err := repo.InitWorkAttempts(ctx); err != nil {
+	if _, err := repo.DB.ExecContext(ctx, Schema); err != nil {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC()

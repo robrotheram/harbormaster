@@ -7,18 +7,13 @@ import (
 	"agent-workbench/internal/jsonmetadata"
 )
 
-// Connections are platform resources. The legacy project_id column is retained
-// for database compatibility; existing connections become visible platform-wide.
+// ForgeConnection is a platform resource.
 type ForgeConnection struct {
 	ID         string `json:"id"`
 	Host       string `json:"host"`
 	Repository string `json:"repository"`
 }
 
-func (s *Store) initForges(ctx context.Context) error {
-	_, err := s.DB.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS forge_connections(id TEXT PRIMARY KEY, project_id TEXT NOT NULL, metadata TEXT NOT NULL)`)
-	return err
-}
 func (s *Store) ForgeConnections(ctx context.Context) ([]ForgeConnection, error) {
 	return jsonmetadata.Query[ForgeConnection](ctx, s.DB, `SELECT metadata FROM forge_connections ORDER BY id`)
 }
@@ -27,7 +22,7 @@ func (s *Store) SaveForge(ctx context.Context, c ForgeConnection) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.DB.ExecContext(ctx, `INSERT INTO forge_connections(id,project_id,metadata) VALUES($1,$2,$3)`, c.ID, "", string(b))
+	_, err = s.DB.ExecContext(ctx, `INSERT INTO forge_connections(id,metadata) VALUES($1,$2)`, c.ID, string(b))
 	return err
 }
 func (s *Store) DeleteForge(ctx context.Context, id string) error {

@@ -22,7 +22,7 @@ func TestWorkReopenAndProjectScopedKeys(t *testing.T) {
 			t.Fatal(err)
 		}
 		repo := Repository{DB: db}
-		if err = repo.InitWork(ctx); err != nil {
+		if _, err = repo.DB.ExecContext(ctx, Schema); err != nil {
 			t.Fatal(err)
 		}
 		input := shared.WorkItem{ProjectID: "project_a", WorkspaceID: "workspace_a", SpecificationPath: "task.json", SpecificationDigest: strings.Repeat("a", 64), Kind: "research", CreatedAt: time.Now()}
