@@ -74,40 +74,58 @@ func (s *Server) ProjectForRequest(w http.ResponseWriter, r *http.Request, reque
 		shared.Error(w, 401, "UNAUTHORIZED")
 		return "", false
 	}
+	project, err := s.projectForPrincipal(r.Context(), p, requested)
+	if err != nil {
+		writeRequestError(w, err)
+		return "", false
+	}
+	return project, true
+}
+
+func (s *Server) projectForPrincipal(ctx context.Context, p principal, requested string) (string, error) {
 	if requested == "" {
 		requested = p.projectID
 	}
 	if requested == "" && p.admin {
-		return "", true
+		return "", nil
 	}
 	if p.human.ID != "" {
 		if !shared.ValidID(requested) {
-			shared.Error(w, 400, "PROJECT_REQUIRED")
-			return "", false
+			return "", requestError{400, "PROJECT_REQUIRED"}
 		}
-		if _, err := s.Store.MemberRole(r.Context(), requested, p.human.ID); err != nil {
-			shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
-			return "", false
+		if _, err := s.Store.MemberRole(ctx, requested, p.human.ID); err != nil {
+			return "", requestError{404, "NOT_FOUND_OR_FORBIDDEN"}
 		}
 	}
 	if !shared.ValidID(requested) || (!p.admin && p.human.ID == "" && p.projectID != requested) {
-		shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
-		return "", false
+		return "", requestError{404, "NOT_FOUND_OR_FORBIDDEN"}
 	}
-	if _, err := s.Store.Project(r.Context(), requested); err != nil {
-		shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
-		return "", false
+	if _, err := s.Store.Project(ctx, requested); err != nil {
+		return "", requestError{404, "NOT_FOUND_OR_FORBIDDEN"}
 	}
-	return requested, true
+	return requested, nil
 }
-func (s *Server) AuthorizeProject(w http.ResponseWriter, r *http.Request, id string) bool {
+
+func (s *Server) authorizeProject(ctx context.Context, p principal, id string) error {
 	if id == "" {
-		shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
+		return requestError{404, "NOT_FOUND_OR_FORBIDDEN"}
+	}
+	if !p.admin && p.human.ID == "" && p.projectID == "" {
+		return requestError{401, "UNAUTHORIZED"}
+	}
+	_, err := s.projectForPrincipal(ctx, p, id)
+	return err
+}
+
+func (s *Server) AuthorizeProject(w http.ResponseWriter, r *http.Request, id string) bool {
+	p, _ := r.Context().Value(principalKey{}).(principal)
+	if err := s.authorizeProject(r.Context(), p, id); err != nil {
+		writeRequestError(w, err)
 		return false
 	}
-	_, ok := s.ProjectForRequest(w, r, id)
-	return ok
+	return true
 }
+
 func (s *Server) admin(w http.ResponseWriter, r *http.Request) bool {
 	p, ok := r.Context().Value(principalKey{}).(principal)
 	if !ok || !p.admin {

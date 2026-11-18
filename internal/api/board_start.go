@@ -68,21 +68,14 @@ func (s *Server) registerBoardStart(mux *http.ServeMux) {
 		}
 		old, _ := json.Marshal(item)
 		if item.WorkspaceID == "" {
-			response := &coordinationResponse{headers: make(http.Header)}
 			agentKind := "codex"
 			if s.cfg.SharedWorkspaceID != "" {
 				agentKind = "t3"
 			}
-			s.createProjectWorkspace(response, r, workspaceCreate{Project: in.ProjectID, Key: key, AgentKind: agentKind, TemplateID: "development-v1"})
-			if response.Code >= 300 {
+			ws, _, err := s.createWorkspace(r.Context(), p, workspaceCreate{Project: in.ProjectID, Key: key, AgentKind: agentKind, TemplateID: "development-v1"})
+			if err != nil {
 				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(response.Code)
-				_, _ = w.Write(response.Body.Bytes())
-				return
-			}
-			var ws shared.Workspace
-			if json.Unmarshal(response.Body.Bytes(), &ws) != nil {
-				shared.Error(w, 503, "STORAGE_UNAVAILABLE")
+				writeRequestErrorBody(w, err)
 				return
 			}
 			item.WorkspaceID = ws.ID

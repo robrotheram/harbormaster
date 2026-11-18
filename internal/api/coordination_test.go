@@ -37,16 +37,6 @@ func testExchangeWorkRequest(t *testing.T, inline bool) {
 		return coordination.Files{Root: root}, nil
 	}}
 	mux := http.NewServeMux()
-	factory := http.NewServeMux()
-	s.registerWork(factory)
-	failCreation := true
-	mux.Handle("/v1/work-items", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if failCreation {
-			w.WriteHeader(503)
-			return
-		}
-		factory.ServeHTTP(w, r)
-	}))
 	s.RegisterCoordination(mux, service, func(string, string) (coordination.NotePublisher, error) { return nil, coordination.ErrDenied })
 	handler := s.authenticate(mux)
 	call := func(token, path, body string) *httptest.ResponseRecorder {
@@ -74,7 +64,14 @@ func testExchangeWorkRequest(t *testing.T, inline bool) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if w := call("dest-token", "/v1/exchange-exports/"+x.ID+"/submit", `{"project_id":"`+dest.ID+`"}`); w.Code != 503 {
+	if w := call("source-token", "/v1/exchange-exports/"+x.ID+"/submit", `{"project_id":"`+dest.ID+`"}`); w.Code != 404 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	// Fail the first work-create write while leaving exchange storage available.
+	if _, e = s.Store.DB.Exec("ALTER TABLE work_create_requests RENAME TO unavailable_work_create_requests"); e != nil {
+		t.Fatal(e)
+	}
+	if w := call("dest-token", "/v1/exchange-exports/"+x.ID+"/submit", `{"project_id":"`+dest.ID+`"}`); w.Code != 503 || !strings.Contains(w.Body.String(), "STORAGE_UNAVAILABLE") {
 		t.Fatal(w.Code, w.Body.String())
 	}
 	for _, tc := range []struct {
@@ -94,13 +91,15 @@ func testExchangeWorkRequest(t *testing.T, inline bool) {
 	if e = s.Store.DB.QueryRow("SELECT count(*) FROM exchange_consumptions").Scan(&count); e != nil || count != 0 {
 		t.Fatal(count, e)
 	}
-	failCreation = false
+	if _, e = s.Store.DB.Exec("ALTER TABLE unavailable_work_create_requests RENAME TO work_create_requests"); e != nil {
+		t.Fatal(e)
+	}
 	// The factory commits but receipt persistence fails. Retry must recover the
 	// same item rather than creating another after this lost acknowledgement.
 	if _, e = s.Store.DB.Exec("DROP TABLE exchange_consumptions"); e != nil {
 		t.Fatal(e)
 	}
-	if w := call("dest-token", "/v1/exchange-exports/"+x.ID+"/submit", `{"project_id":"`+dest.ID+`"}`); w.Code != 503 {
+	if w := call("dest-token", "/v1/exchange-exports/"+x.ID+"/submit", `{"project_id":"`+dest.ID+`"}`); w.Code != 503 || !strings.Contains(w.Body.String(), "COORDINATION_UNAVAILABLE") {
 		t.Fatal(w.Code, w.Body.String())
 	}
 	if _, e = s.Store.DB.Exec(coordination.ConsumptionSchema); e != nil {
@@ -123,6 +122,13 @@ func testExchangeWorkRequest(t *testing.T, inline bool) {
 		} else if stable != item.ID {
 			t.Fatal("work changed")
 		}
+	}
+	fresh, e := service.Publish(c, source.ID, "g", "next-day", []byte(body))
+	if e != nil {
+		t.Fatal(e)
+	}
+	if w := call("dest-token", "/v1/exchange-exports/"+fresh.ID+"/submit", `{"project_id":"`+dest.ID+`"}`); w.Code != 201 || w.Header().Get("Cache-Control") != "no-store" {
+		t.Fatal(w.Code, w.Header(), w.Body.String())
 	}
 	if e = service.Revoke(c, source.ID, "g"); e != nil {
 		t.Fatal(e)
