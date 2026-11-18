@@ -2,13 +2,8 @@ package api
 
 import (
 	"agent-workbench/internal/shared"
-	"context"
 	"net/http"
 )
-
-type projectNamespaceRuntime interface {
-	EnsureProjectNamespace(context.Context, string) (string, error)
-}
 
 // Project metadata is committed first, preserving the creation key across an
 // unavailable cluster or partially provisioned namespace. Retrying completes it.
@@ -16,13 +11,12 @@ func (s *Server) provisionProjectNamespace(w http.ResponseWriter, r *http.Reques
 	if !s.cfg.ProvisionProjectNamespaces {
 		return true
 	}
-	provider, ok := s.Runtime.(projectNamespaceRuntime)
 	expected := shared.ProjectNamespace(project.ID)
-	if !ok || expected == "" {
+	if expected == "" {
 		shared.Error(w, 503, "PROJECT_NAMESPACE_UNAVAILABLE")
 		return false
 	}
-	namespace, err := provider.EnsureProjectNamespace(r.Context(), project.ID)
+	namespace, err := s.Runtime.EnsureProjectNamespace(r.Context(), project.ID)
 	if err != nil || namespace != expected {
 		shared.Error(w, 503, "PROJECT_NAMESPACE_UNAVAILABLE")
 		return false

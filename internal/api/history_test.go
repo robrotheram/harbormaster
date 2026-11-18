@@ -1,7 +1,6 @@
 package api
 
 import (
-	runtime "agent-workbench/internal/runtime/protocol"
 	"agent-workbench/internal/shared"
 	"bytes"
 	"context"
@@ -17,7 +16,7 @@ import (
 
 // A snapshot source that gains a record after the first page.
 type historyFixtureRuntime struct {
-	runtime.Runtime
+	*embeddedRuntime
 	reads    int
 	failPage bool
 }
@@ -25,7 +24,7 @@ type historyFixtureRuntime struct {
 func (rt *historyFixtureRuntime) Agent(ctx context.Context, id, method, path string, b []byte) (int, []byte, error) {
 	u, _ := url.Parse(path)
 	if method != "GET" || u.Query().Get("history") != "1" {
-		return rt.Runtime.Agent(ctx, id, method, path, b)
+		return rt.embeddedRuntime.Agent(ctx, id, method, path, b)
 	}
 	rt.reads++
 	after, _ := strconv.Atoi(u.Query().Get("after"))
@@ -59,7 +58,7 @@ func TestHistorySnapshotExportFeedbackAndScope(t *testing.T) {
 	if w := request(t, s, "POST", "/v1/workspaces/"+ws.ID+"/start", `{"idempotency_key":"start-history"}`); w.Code != 200 {
 		t.Fatal(w.Body)
 	}
-	fixture := &historyFixtureRuntime{Runtime: rt}
+	fixture := &historyFixtureRuntime{embeddedRuntime: rt}
 	s.Runtime = fixture
 	s.cfg.ProjectTokens = map[string]string{"project-token": "default", "foreign-token": "foreign"}
 	for _, path := range []string{"/history", "/history/export"} {
@@ -138,7 +137,7 @@ func TestHistoryPurposeUsesOperatorMetadataAndSurvivesRestart(t *testing.T) {
 	if w := request(t, s, "POST", "/v1/workspaces/"+ws.ID+"/start", `{"idempotency_key":"start-purpose"}`); w.Code != 200 {
 		t.Fatal(w.Body)
 	}
-	fixture := &historyFixtureRuntime{Runtime: rt}
+	fixture := &historyFixtureRuntime{embeddedRuntime: rt}
 	s.Runtime = fixture
 	path := "/v1/workspaces/" + ws.ID + "/history"
 	s.cfg.ProjectTokens = map[string]string{"project-token": "default"}

@@ -7,13 +7,15 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"agent-workbench/internal/runtime/protocol"
 )
 
 func TestFileHandoffIsBoundedAuthorizedAndDoesNotOverwrite(t *testing.T) {
 	s, rt := setup(t)
 	source, destination := create(t, s, "source"), create(t, s, "destination")
 	for _, id := range []string{source.ID, destination.ID} {
-		if _, err := rt.Start(context.Background(), id); err != nil {
+		if _, err := rt.StartConfigured(context.Background(), id, protocol.WorkspaceSpec{}); err != nil {
 			t.Fatal(err)
 		}
 	}

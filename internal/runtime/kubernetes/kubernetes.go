@@ -273,9 +273,6 @@ func (k *Kubernetes) observe(ctx context.Context, r kubeResource) (shared.Observ
 	}
 	return o, nil
 }
-func (k *Kubernetes) Start(ctx context.Context, id string) (shared.Observation, error) {
-	return k.StartConfigured(ctx, id, protocol.WorkspaceSpec{})
-}
 func (k *Kubernetes) StartConfigured(ctx context.Context, id string, spec protocol.WorkspaceSpec) (shared.Observation, error) {
 	if err := protocol.CheckResources(spec.Resources, protocol.ResourceLimits{CPUCores: 1, MemoryBytes: k.cfg.MemoryLimit}); err != nil {
 		return shared.Observation{}, err

@@ -24,9 +24,9 @@ type resourceRuntime struct {
 func (rt *resourceRuntime) Capabilities(context.Context) (protocol.RuntimeCapability, error) {
 	return protocol.RuntimeCapability{SchemaVersion: 1, ID: protocol.DevelopmentTemplate, Version: "test", AgentKinds: []string{"t3", "codex"}, NetworkModes: []string{"blocked", "allowlist", "open"}, Resources: protocol.ResourceLimits{CPUCores: 1, MemoryBytes: rt.memory}}, nil
 }
-func (rt *resourceRuntime) Start(ctx context.Context, id string) (shared.Observation, error) {
+func (rt *resourceRuntime) StartConfigured(ctx context.Context, id string, spec protocol.WorkspaceSpec) (shared.Observation, error) {
 	rt.starts++
-	return rt.embeddedRuntime.Start(ctx, id)
+	return rt.embeddedRuntime.StartConfigured(ctx, id, spec)
 }
 func TestResourceMismatchFailsBeforeQuotaReservationOrCompute(t *testing.T) {
 	s, base := setup(t)
@@ -214,7 +214,7 @@ type blockedStartRuntime struct {
 	entered, release chan struct{}
 }
 
-func (rt *blockedStartRuntime) Start(ctx context.Context, id string) (shared.Observation, error) {
+func (rt *blockedStartRuntime) StartConfigured(ctx context.Context, id string, spec protocol.WorkspaceSpec) (shared.Observation, error) {
 	if id == rt.blocked {
 		close(rt.entered)
 		select {
@@ -223,7 +223,7 @@ func (rt *blockedStartRuntime) Start(ctx context.Context, id string) (shared.Obs
 			return shared.Observation{}, ctx.Err()
 		}
 	}
-	return rt.embeddedRuntime.Start(ctx, id)
+	return rt.embeddedRuntime.StartConfigured(ctx, id, spec)
 }
 func TestStartingWorkspaceReservesQuotaBeforeRuntimeCall(t *testing.T) {
 	s, base := setup(t)

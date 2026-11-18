@@ -18,6 +18,8 @@ type Client struct {
 	HTTP       *http.Client
 }
 
+var _ protocol.Runtime = (*Client)(nil)
+
 func NewClient(url, token string) *Client {
 	return &Client{strings.TrimRight(url, "/"), token, &http.Client{Timeout: 35 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 }
@@ -113,9 +115,6 @@ func (c *Client) do(ctx context.Context, method, path string, body []byte) (int,
 		return 0, nil, fmt.Errorf("response too large")
 	}
 	return resp.StatusCode, b, e
-}
-func (c *Client) Start(ctx context.Context, id string) (shared.Observation, error) {
-	return c.StartConfigured(ctx, id, protocol.WorkspaceSpec{})
 }
 func (c *Client) StartConfigured(ctx context.Context, id string, spec protocol.WorkspaceSpec) (shared.Observation, error) {
 	var o shared.Observation

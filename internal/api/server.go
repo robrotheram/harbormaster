@@ -196,12 +196,7 @@ func (s *Server) Handler() http.Handler {
 			shared.Error(w, 409, "CONSOLE_UPGRADE_REQUIRED")
 			return
 		}
-		proxy, ok := s.Runtime.(desktopRuntime)
-		if !ok {
-			shared.Error(w, 503, "CONSOLE_UNAVAILABLE")
-			return
-		}
-		proxy.Desktop(w, r, ws.ID, r.PathValue("path"))
+		s.Runtime.Desktop(w, r, ws.ID, r.PathValue("path"))
 	})
 	secured.HandleFunc("/v1/workspaces/{id}/console/{path...}", func(w http.ResponseWriter, r *http.Request) {
 		ws, ok := s.workspace(w, r)
@@ -212,12 +207,7 @@ func (s *Server) Handler() http.Handler {
 			shared.Error(w, 409, "CONSOLE_UPGRADE_REQUIRED")
 			return
 		}
-		proxy, ok := s.Runtime.(consoleRuntime)
-		if !ok {
-			shared.Error(w, 503, "CONSOLE_UNAVAILABLE")
-			return
-		}
-		proxy.Console(w, r, ws.ID, r.PathValue("path"))
+		s.Runtime.Console(w, r, ws.ID, r.PathValue("path"))
 	})
 	secured.HandleFunc("POST /v1/workspaces", func(w http.ResponseWriter, r *http.Request) {
 		var req workspaceCreate
