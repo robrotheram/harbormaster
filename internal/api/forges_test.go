@@ -86,8 +86,17 @@ func TestForgeImportIsPrivateDraftAndDeduplicated(t *testing.T) {
 
 func TestPlatformConnectionsRequireAdministrator(t *testing.T) {
 	s, _ := setup(t)
+	t.Setenv("WORKBENCH_FORGE_CONFIG", "")
 	project := domainProject(t, s, "repo-reader")
 	s.cfg.ProjectTokens = map[string]string{"project-reader": project.ID}
+	members := "/v1/projects/" + project.ID
+	email := "repo-admin@example.com"
+	if got := request(t, s, "POST", members+"/members", `{"email":"repo-admin@example.com","role":"admin","revision":0,"action":"invite"}`); got.Code != 200 {
+		t.Fatal(got.Code, got.Body)
+	}
+	if got := humanRequest(t, s, email, "POST", members+"/accept-invitation", `{"revision":1}`); got.Code != 200 {
+		t.Fatal(got.Code, got.Body)
+	}
 	for _, test := range []struct{ method, path, body string }{
 		{"GET", "/v1/forge-hosts", ""},
 		{"POST", "/v1/forge-hosts", `{}`},
@@ -100,5 +109,15 @@ func TestPlatformConnectionsRequireAdministrator(t *testing.T) {
 		if result.Code != 403 {
 			t.Fatal(test.path, result.Code, result.Body)
 		}
+		result = humanRequest(t, s, email, test.method, test.path, test.body)
+		if result.Code != 403 || !strings.Contains(result.Body.String(), `"code":"FORBIDDEN"`) {
+			t.Fatal(test.path, result.Code, result.Body)
+		}
+		s.cfg.SharedWorkspaceID = "shared"
+		result = humanRequest(t, s, email, test.method, test.path, test.body)
+		if result.Code != 409 || !strings.Contains(result.Body.String(), `"code":"PROJECT_ISOLATED_WORKERS_REQUIRED"`) {
+			t.Fatal(test.path, result.Code, result.Body)
+		}
+		s.cfg.SharedWorkspaceID = ""
 	}
 }

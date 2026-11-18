@@ -440,7 +440,10 @@ function Board({ project }: { project: Project }) {
                             >
                               {start.isPending &&
                               start.variables?.id === card.id ? (
-                                <Loader2 size={14} className="animate-spin" />
+                                <Loader2
+                                  size={14}
+                                  className="loading-spinner"
+                                />
                               ) : (
                                 <Play size={14} />
                               )}

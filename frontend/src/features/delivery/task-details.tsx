@@ -149,7 +149,7 @@ export function TaskDetails({
         {firstRun ? (
           <Button disabled={busy || editing || !canStart} onClick={onStart}>
             {starting ? (
-              <Loader2 size={14} className="animate-spin" />
+              <Loader2 size={14} className="loading-spinner" />
             ) : (
               <Play size={14} />
             )}

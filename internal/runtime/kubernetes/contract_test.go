@@ -1,6 +1,7 @@
 package kubernetes
 
 import (
+	"agent-workbench/internal/lifecycle"
 	"agent-workbench/internal/runtime/controllerclient"
 	"agent-workbench/internal/runtime/internal/contracttest"
 	"agent-workbench/internal/runtime/protocol"
@@ -8,8 +9,10 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -64,6 +67,58 @@ func TestNetworkPolicyThroughRealClient(t *testing.T) {
 	}
 	if err := client.Stop(ctx, "ws_test"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRunningKubernetesWorkspaceCustomAllowlist(t *testing.T) {
+	k, _ := kubeProvider(t)
+	const id = "ws_test"
+	const allowed = "registry.example.test:443"
+	const denied = "outside.example.test:443"
+	k.cfg.ProjectAllowlists = map[string][]string{"proj_one": {allowed}}
+	server := httptest.NewServer(k.Handler())
+	defer server.Close()
+	client := controllerclient.NewClient(server.URL, k.cfg.Token)
+	ctx := context.Background()
+	if _, err := client.StartConfigured(ctx, id, protocol.WorkspaceSpec{
+		ProjectID: "proj_one", HomeID: "home_one", AgentKind: "codex", ConnectionMode: "blocked",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	o, err := client.Inspect(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ws := shared.Workspace{ID: id}
+	lifecycle.ApplyObservation(&ws, o, time.Now(), time.Hour)
+	if ws.State != "READY" || ws.RuntimeType != "kata" || ws.ConnectionMode == "open" {
+		t.Fatalf("expected a running, restricted Kubernetes workspace: %+v", ws)
+	}
+	policy := shared.ConnectionPolicy{Mode: "allowlist", Destinations: []string{allowed}}
+	ws.Connections = &policy
+	if err := lifecycle.CheckConnections(ws); err != nil {
+		t.Fatalf("custom allowlist requires stopping the workspace: %v", err)
+	}
+	if err := client.ConfigureConnections(ctx, id, policy); err != nil {
+		t.Fatalf("apply custom allowlist live: %v", err)
+	}
+	outsideProject := shared.ConnectionPolicy{Mode: "allowlist", Destinations: []string{allowed, denied}}
+	if err := client.ConfigureConnections(ctx, id, outsideProject); err == nil || err.Error() != "NETWORK_POLICY_UNAVAILABLE" {
+		t.Fatalf("expected controller to reject destination outside project allowlist, got %v", err)
+	}
+
+	resource, err := k.find(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	applied, err := k.readPolicy(ctx, resource)
+	if err != nil || applied.Mode != policy.Mode || !slices.Equal(applied.Destinations, policy.Destinations) {
+		t.Fatalf("applied policy = %+v, %v, want %+v", applied, err, policy)
+	}
+	o, err = client.Inspect(ctx, id)
+	if err != nil || !o.Running || !o.Ready {
+		t.Fatalf("workspace after policy update = %+v, %v", o, err)
 	}
 }
 

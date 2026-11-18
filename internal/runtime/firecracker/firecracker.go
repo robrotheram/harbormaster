@@ -418,36 +418,51 @@ func (f *Firecracker) launch(ctx context.Context, id string, spec protocol.Works
 	f.vms[id] = v
 	f.mu.Unlock()
 	go func() { _ = cmd.Wait(); logFile.Close() }()
+	err = waitForFirecrackerResume(ctx, func() error {
+		return f.verifyVM(v)
+	}, func() (int, error) {
+		status, _, err := f.agent(ctx, v, "POST", "/v1/resume", nil)
+		return status, err
+	})
+	if err != nil {
+		return nil, err
+	}
+	if isHermes {
+		status, b, probeErr := f.agent(ctx, v, "GET", "/v1/runtime-capabilities", nil)
+		var c struct {
+			Hermes bool `json:"hermes"`
+		}
+		if probeErr != nil || status != http.StatusOK || json.Unmarshal(b, &c) != nil || !c.Hermes {
+			return nil, errors.New("Hermes guest runtime validation failed")
+		}
+	}
+	return v, nil
+}
+
+func waitForFirecrackerResume(ctx context.Context, verify func() error, resume func() (int, error)) error {
 	deadline := time.Now().Add(25 * time.Second)
 	var lastCheck error
 	for time.Now().Before(deadline) {
-		if e = f.verifyVM(v); e == nil {
-			status, _, e := f.agent(ctx, v, "POST", "/v1/resume", nil)
-			if e == nil && status == 200 {
-				if isHermes {
-					status, b, probeErr := f.agent(ctx, v, "GET", "/v1/runtime-capabilities", nil)
-					var c struct {
-						Hermes bool `json:"hermes"`
-					}
-					if probeErr != nil || status != 200 || json.Unmarshal(b, &c) != nil || !c.Hermes {
-						return nil, errors.New("Hermes guest runtime validation failed")
-					}
+		lastCheck = verify()
+		if lastCheck == nil {
+			var status int
+			status, lastCheck = resume()
+			if lastCheck == nil {
+				if status == http.StatusOK {
+					return nil
 				}
-				return v, nil
-			}
-			if e == nil {
-				e = fmt.Errorf("guest resume returned %d", status)
+				lastCheck = fmt.Errorf("guest resume returned %d", status)
 			}
 		}
-		lastCheck = e
 		select {
 		case <-ctx.Done():
-			return nil, fmt.Errorf("%w; last readiness check: %v", ctx.Err(), lastCheck)
+			return fmt.Errorf("%w; last readiness check: %v", ctx.Err(), lastCheck)
 		case <-time.After(200 * time.Millisecond):
 		}
 	}
-	return nil, fmt.Errorf("sandbox did not become ready: %w", lastCheck)
+	return fmt.Errorf("sandbox did not become ready: %w", lastCheck)
 }
+
 func checkFCSpec(a, b protocol.WorkspaceSpec) error {
 	if a.ProjectID != b.ProjectID || a.HomeID != b.HomeID || a.AgentKind != b.AgentKind || a.TemplateID != b.TemplateID {
 		return errors.New("workspace ownership mismatch")

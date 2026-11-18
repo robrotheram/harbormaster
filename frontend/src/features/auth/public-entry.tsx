@@ -95,7 +95,7 @@ export function PublicEntry({
             ) : (
               <p role="status" className="entry-loading">
                 <LoaderCircle
-                  className="motion-safe:animate-spin"
+                  className="loading-spinner"
                   size={18}
                   aria-hidden="true"
                 />{" "}
@@ -146,8 +146,7 @@ export function PublicEntry({
             >
               {redirecting ? (
                 <>
-                  <LoaderCircle className="motion-safe:animate-spin" /> Opening
-                  sign-in…
+                  <LoaderCircle className="loading-spinner" /> Opening sign-in…
                 </>
               ) : (
                 <>

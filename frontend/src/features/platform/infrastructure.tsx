@@ -79,7 +79,7 @@ export function Infrastructure({ projects }: { projects: Project[] }) {
           onClick={refresh}
           disabled={refreshing}
         >
-          <RefreshCw className={refreshing ? "animate-spin" : ""} />
+          <RefreshCw className={refreshing ? "loading-refresh" : ""} />
           Refresh
         </Button>
       </div>

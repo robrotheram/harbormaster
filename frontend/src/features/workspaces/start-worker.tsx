@@ -76,7 +76,7 @@ export function StartWorker({
         className="flex items-center gap-2 border-y py-3 text-sm font-medium"
       >
         {query.isFetching || starting ? (
-          <Loader2 className="size-4 animate-spin" />
+          <Loader2 className="size-4 loading-spinner" />
         ) : ready ? (
           <Check className="size-4 text-teal-600 dark:text-teal-400" />
         ) : (
