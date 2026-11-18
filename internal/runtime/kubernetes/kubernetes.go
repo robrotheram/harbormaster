@@ -285,16 +285,16 @@ func (k *Kubernetes) StartConfigured(ctx context.Context, id string, spec protoc
 		return shared.Observation{}, err
 	}
 	if spec.AgentKind == "hermes" && (!k.hermesEnabled() || spec.HermesMatrix != nil) {
-		return shared.Observation{}, errors.New("HERMES_RUNTIME_NOT_APPROVED_OR_MATRIX_UNSUPPORTED")
+		return shared.Observation{}, shared.CodedError{Code: "HERMES_RUNTIME_NOT_APPROVED_OR_MATRIX_UNSUPPORTED"}
 	}
 	if k.cfg.RequireVerified {
-		return shared.Observation{}, errors.New("VERIFIED_ISOLATION_UNAVAILABLE")
+		return shared.Observation{}, shared.CodedError{Code: "VERIFIED_ISOLATION_UNAVAILABLE"}
 	}
 	if spec.ConnectionMode != "" && spec.ConnectionMode != "blocked" && spec.ConnectionMode != "allowlist" {
-		return shared.Observation{}, errors.New("NETWORK_POLICY_UNAVAILABLE")
+		return shared.Observation{}, shared.CodedError{Status: http.StatusServiceUnavailable, Code: "NETWORK_POLICY_UNAVAILABLE"}
 	}
 	if spec.ParentID != "" {
-		return shared.Observation{}, errors.New("KUBERNETES_BRANCH_SEED_UNAVAILABLE")
+		return shared.Observation{}, shared.CodedError{Code: "KUBERNETES_BRANCH_SEED_UNAVAILABLE"}
 	}
 	namespace := k.workspaceNamespace(spec.ProjectID)
 	if namespace == "" || spec.HomeID == "" || !shared.ValidID(id) || !dnsLabel.MatchString(k.name(id)) {
@@ -368,7 +368,7 @@ func (k *Kubernetes) StartConfigured(ctx context.Context, id string, spec protoc
 		}
 		select {
 		case <-wait.Done():
-			return shared.Observation{}, errors.New("NOT_READY")
+			return shared.Observation{}, shared.CodedError{Status: http.StatusServiceUnavailable, Code: "NOT_READY"}
 		case <-time.After(200 * time.Millisecond):
 		}
 	}
@@ -412,7 +412,7 @@ func (k *Kubernetes) Stop(ctx context.Context, id string) error {
 	}
 	status, _, err := k.agent(ctx, r, "POST", "/v1/quiesce", nil)
 	if err != nil || status != 200 {
-		return errors.New("WORKSPACE_BUSY")
+		return shared.CodedError{Status: http.StatusConflict, Code: "WORKSPACE_BUSY"}
 	}
 	if err = k.call(ctx, "PATCH", k.collection(r.Metadata.Namespace)+"/"+r.Metadata.Name, map[string]any{"spec": map[string]string{"operatingMode": "Suspended"}}, nil); err != nil {
 		resume, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -433,7 +433,7 @@ func (k *Kubernetes) Stop(ctx context.Context, id string) error {
 		}
 		select {
 		case <-wait.Done():
-			return errors.New("STOP_UNCONFIRMED")
+			return shared.CodedError{Code: "STOP_UNCONFIRMED"}
 		case <-time.After(200 * time.Millisecond):
 		}
 	}
@@ -447,7 +447,7 @@ func (k *Kubernetes) Reconcile(ctx context.Context, id string) error {
 }
 func (k *Kubernetes) Agent(ctx context.Context, id, method, path string, b []byte) (int, []byte, error) {
 	if k.cfg.RequireVerified {
-		return 0, nil, errors.New("VERIFIED_ISOLATION_UNAVAILABLE")
+		return 0, nil, shared.CodedError{Code: "VERIFIED_ISOLATION_UNAVAILABLE"}
 	}
 	clean := strings.SplitN(path, "?", 2)[0]
 	if !protocol.AllowedAgentPath(method, clean) {
@@ -458,7 +458,7 @@ func (k *Kubernetes) Agent(ctx context.Context, id, method, path string, b []byt
 		return 0, nil, err
 	}
 	if !sandboxReady(r) {
-		return 0, nil, errors.New("NOT_READY")
+		return 0, nil, shared.CodedError{Status: http.StatusServiceUnavailable, Code: "NOT_READY"}
 	}
 	return k.agent(ctx, r, method, path, b)
 }

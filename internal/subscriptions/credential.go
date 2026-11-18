@@ -3,18 +3,20 @@
 package subscriptions
 
 import (
+	"agent-workbench/internal/shared"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
+	"net/http"
+
 	"strings"
 	"time"
 )
 
-var ErrInvalid = errors.New("SUBSCRIPTION_INVALID")
+var ErrInvalid = &shared.CodedError{Status: http.StatusBadRequest, Code: "SUBSCRIPTION_INVALID"}
 
 type Credential struct {
 	AccessToken string `json:"access_token"`

@@ -23,11 +23,11 @@ func (s *Server) projectAdmin(w http.ResponseWriter, r *http.Request, project st
 	return false
 }
 func membershipError(w http.ResponseWriter, err error) {
+	var response error
 	if errors.Is(err, store.ErrMembershipConflict) {
-		shared.Error(w, 409, "MEMBERSHIP_CONFLICT")
-	} else {
-		shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
+		response = shared.CodedError{Status: http.StatusConflict, Code: "MEMBERSHIP_CONFLICT"}
 	}
+	shared.WriteHTTPError(w, response, shared.CodedError{Status: http.StatusNotFound, Code: "NOT_FOUND_OR_FORBIDDEN"})
 }
 func (s *Server) ensureCreator(w http.ResponseWriter, r *http.Request, project string) bool {
 	p, _ := r.Context().Value(principalKey{}).(principal)

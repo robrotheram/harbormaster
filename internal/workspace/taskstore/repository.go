@@ -7,14 +7,14 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
-	"errors"
+
 	"time"
 
 	"agent-workbench/internal/shared"
 )
 
-var ErrConflict = errors.New("IDEMPOTENCY_CONFLICT")
-var ErrQueueFull = errors.New("QUEUE_FULL")
+var ErrConflict = &shared.CodedError{Status: shared.StatusConflict, Code: "IDEMPOTENCY_CONFLICT"}
+var ErrQueueFull = &shared.CodedError{Status: shared.StatusTooManyRequests, Code: "QUEUE_FULL"}
 
 // Repository borrows a workspace-owned SQLite database. The supervisor holds
 // the persistent-home writer lock for this database's entire lifetime.

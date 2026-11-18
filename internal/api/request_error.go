@@ -2,37 +2,22 @@ package api
 
 import (
 	"encoding/json"
-	"errors"
 	"net/http"
 
 	"agent-workbench/internal/shared"
 )
 
-type requestError struct {
-	status int
-	code   string
-}
-
-func (e requestError) Error() string { return e.code }
-
-func requestErrorDetails(err error) requestError {
-	var response requestError
-	if errors.As(err, &response) {
-		return response
-	}
-	return requestError{http.StatusServiceUnavailable, "STORAGE_UNAVAILABLE"}
-}
+var storageUnavailable = shared.CodedError{Status: http.StatusServiceUnavailable, Code: "STORAGE_UNAVAILABLE"}
 
 func writeRequestError(w http.ResponseWriter, err error) {
-	response := requestErrorDetails(err)
-	shared.Error(w, response.status, response.code)
+	shared.WriteHTTPError(w, err, storageUnavailable)
 }
 
 // Some create routes historically forwarded only the status and error body.
 func writeRequestErrorBody(w http.ResponseWriter, err error) {
-	response := requestErrorDetails(err)
-	w.WriteHeader(response.status)
-	_ = json.NewEncoder(w).Encode(shared.NewAPIError(response.status, response.code))
+	response := shared.ResolveHTTPError(err, storageUnavailable)
+	w.WriteHeader(response.Status)
+	_ = json.NewEncoder(w).Encode(shared.NewAPIError(response.Status, response.Code))
 }
 
 func createStatus(created bool) int {

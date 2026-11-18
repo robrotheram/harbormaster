@@ -16,7 +16,7 @@ func (s *Server) forgeAccountSummaries(ctx context.Context) ([]store.ForgeAccoun
 	}
 	accounts, err := s.Store.ForgeAccounts(ctx)
 	if err != nil {
-		return nil, errors.New("STORAGE_UNAVAILABLE")
+		return nil, shared.CodedError{Status: http.StatusServiceUnavailable, Code: "STORAGE_UNAVAILABLE"}
 	}
 	seen := map[string]bool{}
 	for _, a := range accounts {
@@ -24,7 +24,7 @@ func (s *Server) forgeAccountSummaries(ctx context.Context) ([]store.ForgeAccoun
 	}
 	for _, h := range external {
 		if seen[h.Name] {
-			return nil, errors.New("FORGE_ACCOUNT_CONFLICT")
+			return nil, shared.CodedError{Status: http.StatusServiceUnavailable, Code: "FORGE_ACCOUNT_CONFLICT"}
 		}
 		h.Token = ""
 		accounts = append(accounts, store.ForgeAccount{Host: h})
@@ -38,12 +38,12 @@ func (s *Server) forgeHosts(ctx context.Context) ([]forge.Host, error) {
 	}
 	accounts, err := s.Store.ForgeAccounts(ctx)
 	if err != nil {
-		return nil, errors.New("STORAGE_UNAVAILABLE")
+		return nil, shared.CodedError{Status: http.StatusServiceUnavailable, Code: "STORAGE_UNAVAILABLE"}
 	}
 	for _, a := range accounts {
 		sealed, e := s.Store.ForgeAccountCredential(ctx, a.Name)
 		if e != nil {
-			return nil, errors.New("STORAGE_UNAVAILABLE")
+			return nil, shared.CodedError{Status: http.StatusServiceUnavailable, Code: "STORAGE_UNAVAILABLE"}
 		}
 		a.Token, e = forge.OpenToken(a.Host, s.cfg.Token, sealed)
 		if e != nil {
@@ -74,7 +74,7 @@ func (s *Server) registerForgeAccounts(mux *http.ServeMux) {
 		defer unlock()
 		summaries, err := s.forgeAccountSummaries(r.Context())
 		if err != nil {
-			shared.Error(w, 503, err.Error())
+			writeForgeError(w, http.StatusServiceUnavailable, err)
 			return
 		}
 		exists := false
@@ -93,7 +93,7 @@ func (s *Server) registerForgeAccounts(mux *http.ServeMux) {
 			return
 		}
 		if err = (forge.Client{Host: host}).Verify(r.Context()); err != nil {
-			shared.Error(w, 502, err.Error())
+			writeForgeError(w, http.StatusBadGateway, err)
 			return
 		}
 		sealed, err := forge.SealToken(host, s.cfg.Token)

@@ -106,27 +106,27 @@ func (s *Server) projectForPrincipal(ctx context.Context, p principal, requested
 	}
 	if p.human.ID != "" {
 		if !shared.ValidID(requested) {
-			return "", requestError{400, "PROJECT_REQUIRED"}
+			return "", shared.CodedError{Status: http.StatusBadRequest, Code: "PROJECT_REQUIRED"}
 		}
 		if _, err := s.Store.MemberRole(ctx, requested, p.human.ID); err != nil {
-			return "", requestError{404, "NOT_FOUND_OR_FORBIDDEN"}
+			return "", shared.CodedError{Status: http.StatusNotFound, Code: "NOT_FOUND_OR_FORBIDDEN"}
 		}
 	}
 	if !shared.ValidID(requested) || (!p.admin && p.human.ID == "" && p.projectID != requested) {
-		return "", requestError{404, "NOT_FOUND_OR_FORBIDDEN"}
+		return "", shared.CodedError{Status: http.StatusNotFound, Code: "NOT_FOUND_OR_FORBIDDEN"}
 	}
 	if _, err := s.Store.Project(ctx, requested); err != nil {
-		return "", requestError{404, "NOT_FOUND_OR_FORBIDDEN"}
+		return "", shared.CodedError{Status: http.StatusNotFound, Code: "NOT_FOUND_OR_FORBIDDEN"}
 	}
 	return requested, nil
 }
 
 func (s *Server) authorizeProject(ctx context.Context, p principal, id string) error {
 	if id == "" {
-		return requestError{404, "NOT_FOUND_OR_FORBIDDEN"}
+		return shared.CodedError{Status: http.StatusNotFound, Code: "NOT_FOUND_OR_FORBIDDEN"}
 	}
 	if !p.admin && p.human.ID == "" && p.projectID == "" {
-		return requestError{401, "UNAUTHORIZED"}
+		return shared.CodedError{Status: http.StatusUnauthorized, Code: "UNAUTHORIZED"}
 	}
 	_, err := s.projectForPrincipal(ctx, p, id)
 	return err

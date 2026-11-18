@@ -7,11 +7,12 @@ import (
 	"agent-workbench/internal/shared"
 	"context"
 	"encoding/json"
-	"errors"
+	"net/http"
+
 	"fmt"
 )
 
-var ErrConflict = errors.New("IDEMPOTENCY_CONFLICT")
+var ErrConflict = &shared.CodedError{Status: http.StatusConflict, Code: "IDEMPOTENCY_CONFLICT"}
 
 type Runtime interface {
 	Agent(context.Context, string, string, string, []byte) (int, []byte, error)
@@ -113,5 +114,5 @@ func (s Service) Promote(ctx context.Context, coding, retained shared.Workspace,
 // Attachment fails closed until the caller implements an isolated preview host
 // and session. Fetch is a byte transport and must never be copied onto UI origin.
 func (s Service) Attach(context.Context, string) error {
-	return fmt.Errorf("ISOLATED_PREVIEW_ATTACHMENT_UNSUPPORTED")
+	return shared.CodedError{Code: "ISOLATED_PREVIEW_ATTACHMENT_UNSUPPORTED"}
 }

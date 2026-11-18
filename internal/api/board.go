@@ -31,7 +31,7 @@ func newBoardCard(b store.BoardItem, work shared.WorkItem) boardCard {
 func (s *Server) boardForge(ctx context.Context, id string) (forge.Client, string, error) {
 	connections, err := s.Store.ForgeConnections(ctx)
 	if err != nil {
-		return forge.Client{}, "", errors.New("STORAGE_UNAVAILABLE")
+		return forge.Client{}, "", shared.CodedError{Status: http.StatusBadGateway, Code: "STORAGE_UNAVAILABLE"}
 	}
 	for _, c := range connections {
 		if c.ID == id {
@@ -44,10 +44,10 @@ func (s *Server) boardForge(ctx context.Context, id string) (forge.Client, strin
 					return forge.Client{Host: h}, c.Repository, nil
 				}
 			}
-			return forge.Client{}, "", errors.New("FORGE_HOST_REQUIRED")
+			return forge.Client{}, "", shared.CodedError{Status: http.StatusBadGateway, Code: "FORGE_HOST_REQUIRED"}
 		}
 	}
-	return forge.Client{}, "", errors.New("FORGE_CONNECTION_REMOVED")
+	return forge.Client{}, "", shared.CodedError{Status: http.StatusBadGateway, Code: "FORGE_CONNECTION_REMOVED"}
 }
 func (s *Server) registerBoard(mux *http.ServeMux) {
 	s.registerBoardStart(mux)

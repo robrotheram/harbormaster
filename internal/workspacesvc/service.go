@@ -7,7 +7,7 @@ import (
 	"agent-workbench/internal/runtime/protocol"
 	"agent-workbench/internal/shared"
 	"context"
-	"errors"
+
 	"log/slog"
 	"sort"
 	"sync"
@@ -140,14 +140,14 @@ func (s *Service) report(stage string, w shared.Workspace, err error) {
 func (s *Service) Start(ctx context.Context, w *shared.Workspace) error { return s.start(ctx, w, true) }
 func (s *Service) start(ctx context.Context, w *shared.Workspace, opened bool) error {
 	if s.Config.SharedWorkspaceID != "" && w.ID != s.Config.SharedWorkspaceID {
-		return errors.New("SHARED_WORKSPACE_ONLY")
+		return shared.CodedError{Status: shared.StatusConflict, Code: "SHARED_WORKSPACE_ONLY"}
 	}
 	var hermesModel string
 	var hermesMatrix *shared.HermesMatrix
 	if w.AgentKind == "hermes" {
 		c, err := s.Store.HermesSetup(ctx, w.ProjectID)
 		if err != nil || !s.HermesAvailable(ctx) {
-			return errors.New("HERMES_SETUP_REQUIRED")
+			return shared.CodedError{Status: shared.StatusConflict, Code: "HERMES_SETUP_REQUIRED"}
 		}
 		hermesModel = c.Model
 		hermesMatrix = c.Matrix
@@ -225,7 +225,7 @@ func (s *Service) checkQuota(ctx context.Context, w *shared.Workspace) error {
 		}
 	}
 	if count >= s.Config.MaxRunning || cpu+w.CPULimit > s.Config.CPUQuota || mem+w.MemoryLimitBytes > s.Config.MemoryQuota {
-		return errors.New("QUOTA_EXCEEDED")
+		return shared.ErrQuotaExceeded
 	}
 	return nil
 }
@@ -269,7 +269,7 @@ func (s *Service) Stop(ctx context.Context, w *shared.Workspace) error {
 		return s.Store.Save(ctx, *w)
 	}
 	if w.State != "READY" || w.ActiveRuns > 0 || w.BackgroundJobs > 0 {
-		return errors.New("WORKSPACE_BUSY")
+		return shared.CodedError{Status: shared.StatusConflict, Code: "WORKSPACE_BUSY"}
 	}
 	w.State = "STOPPING"
 	w.Ready = false
@@ -291,11 +291,11 @@ func (s *Service) ResolveConnectionProfile(ctx context.Context, w *shared.Worksp
 		return nil
 	}
 	if !shared.ValidID(w.ConnectionProfileID) {
-		return errors.New("INVALID_CONNECTION_PROFILE")
+		return shared.CodedError{Status: shared.StatusBadRequest, Code: "INVALID_CONNECTION_PROFILE"}
 	}
 	p, err := s.Store.ConnectionProfile(ctx, w.ConnectionProfileID)
 	if err != nil {
-		return errors.New("INVALID_CONNECTION_PROFILE")
+		return shared.CodedError{Status: shared.StatusBadRequest, Code: "INVALID_CONNECTION_PROFILE"}
 	}
 	w.Connections = &p.Policy
 	w.ConnectionProfileRevision = p.Revision
@@ -307,14 +307,14 @@ func (s *Service) ConfigureNetwork(ctx context.Context, w shared.Workspace) erro
 		return rt.ConfigureConnections(ctx, w.ID, w.EffectiveConnections())
 	}
 	if w.Connections != nil && (w.Connections.Mode == "open" || len(w.Connections.Destinations) > 0 && (len(w.Connections.Destinations) != 1 || !w.Connections.Allows("github.com:443"))) {
-		return errors.New("NETWORK_POLICY_UNAVAILABLE")
+		return shared.CodedError{Status: shared.StatusServiceUnavailable, Code: "NETWORK_POLICY_UNAVAILABLE"}
 	}
 
 	if rt, ok := s.Runtime.(LegacyNetworkRuntime); ok {
 		return rt.ConfigureNetwork(ctx, w.ID, w.GitHubAccess)
 	}
 	if w.GitHubAccess {
-		return errors.New("NETWORK_POLICY_UNAVAILABLE")
+		return shared.CodedError{Status: shared.StatusServiceUnavailable, Code: "NETWORK_POLICY_UNAVAILABLE"}
 	}
 	return nil
 }

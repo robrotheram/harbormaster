@@ -292,7 +292,7 @@ func (r *matrixRestartRuntime) MatrixAction(_ context.Context, _ string, action 
 	if action == "enable" {
 		r.enables++
 		if r.enables == 1 {
-			return errors.New("MATRIX_RESTART_REQUIRED")
+			return shared.CodedError{Status: http.StatusConflict, Code: "MATRIX_RESTART_REQUIRED"}
 		}
 	}
 	return nil

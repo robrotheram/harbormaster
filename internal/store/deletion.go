@@ -3,7 +3,7 @@ package store
 import (
 	"agent-workbench/internal/shared"
 	"context"
-	"fmt"
+	"net/http"
 )
 
 // Tombstones preserve ownership and delivery keys. Physical private disks are
@@ -16,7 +16,7 @@ func (s *Store) DeleteStopped(ctx context.Context, workspaces []shared.Workspace
 	defer tx.Rollback()
 	for _, ws := range workspaces {
 		if ws.State != "STOPPED" {
-			return fmt.Errorf("STOP_WORKSPACE_FIRST")
+			return shared.CodedError{Status: http.StatusConflict, Code: "STOP_WORKSPACE_FIRST"}
 		}
 		if _, err = tx.ExecContext(ctx, s.query(`INSERT INTO deleted_resources(kind,id) VALUES('workspace',?) ON CONFLICT(kind,id) DO NOTHING`), ws.ID); err != nil {
 			return err

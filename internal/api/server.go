@@ -89,38 +89,17 @@ func (s *Server) start(ctx context.Context, w *shared.Workspace) error {
 func (s *Server) stop(ctx context.Context, w *shared.Workspace) error {
 	return s.lifecycle().Stop(ctx, w)
 }
-func apiError(w http.ResponseWriter, e error) {
-	err := runtimeRequestError(e)
-	shared.Error(w, err.status, err.code)
+
+var runtimeUnavailable = shared.CodedError{Status: http.StatusServiceUnavailable, Code: "RUNTIME_UNAVAILABLE"}
+
+func apiError(w http.ResponseWriter, err error) {
+	shared.WriteHTTPError(w, err, runtimeUnavailable)
 }
-func runtimeRequestError(e error) requestError {
-	switch e.Error() {
-	case "INVALID_CONNECTION_PROFILE":
-		return requestError{400, "INVALID_CONNECTION_PROFILE"}
-	case "QUOTA_EXCEEDED":
-		return requestError{429, "QUOTA_EXCEEDED"}
-	case "ASSISTANT_WORKSPACE_AMBIGUOUS":
-		return requestError{409, "ASSISTANT_WORKSPACE_AMBIGUOUS"}
-	case "SHARED_WORKSPACE_ONLY":
-		return requestError{409, "SHARED_WORKSPACE_ONLY"}
-	case "WORKSPACE_BUSY":
-		return requestError{409, "WORKSPACE_BUSY"}
-	case "STOP_WORKSPACE_FIRST", "OPEN_NETWORK_FORBIDDEN_IN_SANDBOX":
-		return requestError{409, e.Error()}
-	case "NOT_READY":
-		return requestError{503, "NOT_READY"}
-	case "RESOURCE_LIMIT_UNAVAILABLE":
-		return requestError{503, "RESOURCE_LIMIT_UNAVAILABLE"}
-	case "NETWORK_POLICY_UNAVAILABLE", "RUNTIME_CAPABILITIES_INCOMPATIBLE":
-		return requestError{503, e.Error()}
-	case "CONSOLE_UNAVAILABLE", "CONSOLE_NOT_READY":
-		return requestError{503, e.Error()}
-	case "HERMES_SETUP_REQUIRED":
-		return requestError{409, e.Error()}
-	default:
-		return requestError{503, "RUNTIME_UNAVAILABLE"}
-	}
+
+func runtimeRequestError(err error) shared.CodedError {
+	return shared.ResolveHTTPError(err, runtimeUnavailable)
 }
+
 func (s *Server) workspace(w http.ResponseWriter, r *http.Request) (shared.Workspace, bool) {
 	id := r.PathValue("id")
 	if !shared.ValidID(id) {
@@ -673,19 +652,19 @@ func (s *Server) createWorkspace(ctx context.Context, actor principal, req works
 	}
 	if s.cfg.SharedWorkspaceID != "" {
 		if !shared.ValidKey(req.Key) {
-			return shared.Workspace{}, false, requestError{400, "INVALID_REQUEST"}
+			return shared.Workspace{}, false, shared.CodedError{Status: http.StatusBadRequest, Code: "INVALID_REQUEST"}
 		}
 		if req.ParentID != "" || req.Branch != "" || (req.AgentKind != "" && req.AgentKind != "t3") || (req.TemplateID != "" && req.TemplateID != "development-v1") {
-			return shared.Workspace{}, false, requestError{409, "SHARED_WORKSPACE_ONLY"}
+			return shared.Workspace{}, false, shared.CodedError{Status: http.StatusConflict, Code: "SHARED_WORKSPACE_ONLY"}
 		}
 		s.createMu.Lock()
 		defer s.createMu.Unlock()
 		ws, err := s.EnsureSharedWorkspace(ctx)
 		if err != nil {
-			return shared.Workspace{}, false, requestError{503, "STORAGE_UNAVAILABLE"}
+			return shared.Workspace{}, false, shared.CodedError{Status: http.StatusServiceUnavailable, Code: "STORAGE_UNAVAILABLE"}
 		}
 		if req.ConnectionProfileID != "" && req.ConnectionProfileID != ws.ConnectionProfileID {
-			return shared.Workspace{}, false, requestError{409, "SHARED_WORKSPACE_ONLY"}
+			return shared.Workspace{}, false, shared.CodedError{Status: http.StatusConflict, Code: "SHARED_WORKSPACE_ONLY"}
 		}
 		return ws, false, nil
 	}
@@ -693,22 +672,22 @@ func (s *Server) createWorkspace(ctx context.Context, actor principal, req works
 		req.AgentKind = "t3"
 	}
 	if !shared.ValidAgentKind(req.AgentKind) || (req.TemplateID != "" && req.TemplateID != "development-v1") {
-		return shared.Workspace{}, false, requestError{400, "INVALID_REQUEST"}
+		return shared.Workspace{}, false, shared.CodedError{Status: http.StatusBadRequest, Code: "INVALID_REQUEST"}
 	}
 	if req.AgentKind == "hermes" {
 		c, err := s.Store.HermesSetup(ctx, req.Project)
 		if err != nil || !s.hermesAvailable(ctx) {
-			return shared.Workspace{}, false, requestError{409, "HERMES_SETUP_REQUIRED"}
+			return shared.Workspace{}, false, shared.CodedError{Status: http.StatusConflict, Code: "HERMES_SETUP_REQUIRED"}
 		}
 		if req.ConnectionProfileID == "" {
 			req.ConnectionProfileID = c.ConnectionProfileID
 		}
 	}
 	if !shared.ValidKey(req.Key) {
-		return shared.Workspace{}, false, requestError{400, "INVALID_REQUEST"}
+		return shared.Workspace{}, false, shared.CodedError{Status: http.StatusBadRequest, Code: "INVALID_REQUEST"}
 	}
 	if len(req.Name) > 80 || strings.ContainsAny(req.Name, "\r\n\x00") || (req.ParentID != "" && !shared.ValidID(req.ParentID)) || (req.Branch != "" && !shared.ValidBranch(req.Branch)) {
-		return shared.Workspace{}, false, requestError{400, "INVALID_REQUEST"}
+		return shared.Workspace{}, false, shared.CodedError{Status: http.StatusBadRequest, Code: "INVALID_REQUEST"}
 	}
 	s.createMu.Lock()
 	defer s.createMu.Unlock()
@@ -718,51 +697,51 @@ func (s *Server) createWorkspace(ctx context.Context, actor principal, req works
 	old, e := s.Store.ByProjectKey(ctx, req.Project, req.Key)
 	if e == nil {
 		if old.ProjectID != req.Project {
-			return shared.Workspace{}, false, requestError{404, "NOT_FOUND_OR_FORBIDDEN"}
+			return shared.Workspace{}, false, shared.CodedError{Status: http.StatusNotFound, Code: "NOT_FOUND_OR_FORBIDDEN"}
 		}
 		// Legacy identities predate private home IDs and the modern create fingerprint.
 		if old.HomeID != "" && (old.Name != req.Name || old.ParentID != req.ParentID || old.Branch != req.Branch || old.AgentKind != req.AgentKind || old.TemplateID != req.TemplateID || old.ConnectionProfileID != req.ConnectionProfileID) {
-			return shared.Workspace{}, false, requestError{409, "IDEMPOTENCY_CONFLICT"}
+			return shared.Workspace{}, false, shared.CodedError{Status: http.StatusConflict, Code: "IDEMPOTENCY_CONFLICT"}
 		}
 		return old, false, nil
 	}
 	if e != sql.ErrNoRows {
-		return shared.Workspace{}, false, requestError{503, "STORAGE_UNAVAILABLE"}
+		return shared.Workspace{}, false, shared.CodedError{Status: http.StatusServiceUnavailable, Code: "STORAGE_UNAVAILABLE"}
 	}
 	if req.ParentID != "" {
 		unlock := s.operations.Lock(req.ParentID)
 		defer unlock()
 		parent, err := s.Store.Workspace(ctx, req.ParentID)
 		if err != nil || parent.ProjectID != req.Project {
-			return shared.Workspace{}, false, requestError{404, "NOT_FOUND_OR_FORBIDDEN"}
+			return shared.Workspace{}, false, shared.CodedError{Status: http.StatusNotFound, Code: "NOT_FOUND_OR_FORBIDDEN"}
 		}
 		if req.Branch == "" {
-			return shared.Workspace{}, false, requestError{400, "BRANCH_REQUIRED"}
+			return shared.Workspace{}, false, shared.CodedError{Status: http.StatusBadRequest, Code: "BRANCH_REQUIRED"}
 		}
 		if err = s.start(ctx, &parent); err != nil {
 			return shared.Workspace{}, false, runtimeRequestError(err)
 		}
 		if parent.State != "READY" || parent.ActiveRuns > 0 || parent.BackgroundJobs > 0 {
-			return shared.Workspace{}, false, requestError{409, "WORKSPACE_BUSY"}
+			return shared.Workspace{}, false, shared.CodedError{Status: http.StatusConflict, Code: "WORKSPACE_BUSY"}
 		}
 	}
 	all, e := s.Store.Workspaces(ctx)
 	if e != nil {
-		return shared.Workspace{}, false, requestError{503, "STORAGE_UNAVAILABLE"}
+		return shared.Workspace{}, false, shared.CodedError{Status: http.StatusServiceUnavailable, Code: "STORAGE_UNAVAILABLE"}
 	}
 	if len(all) >= 100 {
-		return shared.Workspace{}, false, requestError{429, "QUOTA_EXCEEDED"}
+		return shared.Workspace{}, false, shared.CodedError{Status: http.StatusTooManyRequests, Code: "QUOTA_EXCEEDED"}
 	}
 	now := s.now()
 	ws := shared.Workspace{ID: shared.NewID("ws_"), ProjectID: req.Project, HomeID: shared.NewID("home_"), AgentKind: req.AgentKind, TemplateID: req.TemplateID, State: "STOPPED", CreatedAt: now, UpdatedAt: now, RuntimeType: "docker", IsolationStatus: "unverified", NetworkStatus: "unverified", CPULimit: 1, MemoryLimitBytes: 512 << 20}
 	ws.MemoryLimitBytes = s.cfg.WorkspaceMemory
 	ws.ConnectionProfileID = req.ConnectionProfileID
 	if err := s.resolveConnectionProfile(ctx, &ws); err != nil {
-		return shared.Workspace{}, false, requestError{400, "INVALID_CONNECTION_PROFILE"}
+		return shared.Workspace{}, false, shared.CodedError{Status: http.StatusBadRequest, Code: "INVALID_CONNECTION_PROFILE"}
 	}
 	ws.Name, ws.ParentID, ws.Branch = req.Name, req.ParentID, req.Branch
 	if s.Store.Create(ctx, ws, req.Key) != nil {
-		return shared.Workspace{}, false, requestError{503, "STORAGE_UNAVAILABLE"}
+		return shared.Workspace{}, false, shared.CodedError{Status: http.StatusServiceUnavailable, Code: "STORAGE_UNAVAILABLE"}
 	}
 	return ws, true, nil
 }

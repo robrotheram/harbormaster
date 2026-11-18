@@ -9,16 +9,16 @@ import (
 )
 
 func coordinationError(w http.ResponseWriter, err error) {
-	status, code := 503, "COORDINATION_UNAVAILABLE"
+	var response error
 	switch {
 	case errors.Is(err, coordination.ErrConflict):
-		status, code = 409, "PUBLICATION_CONFLICT"
+		response = shared.CodedError{Status: http.StatusConflict, Code: "PUBLICATION_CONFLICT"}
 	case errors.Is(err, coordination.ErrInvalid):
-		status, code = 400, "INVALID_REQUEST"
+		response = shared.CodedError{Status: http.StatusBadRequest, Code: "INVALID_REQUEST"}
 	case errors.Is(err, coordination.ErrDenied), errors.Is(err, os.ErrNotExist):
-		status, code = 404, "NOT_FOUND_OR_FORBIDDEN"
+		response = shared.CodedError{Status: http.StatusNotFound, Code: "NOT_FOUND_OR_FORBIDDEN"}
 	}
-	shared.Error(w, status, code)
+	shared.WriteHTTPError(w, response, shared.CodedError{Status: http.StatusServiceUnavailable, Code: "COORDINATION_UNAVAILABLE"})
 }
 func (m *Manager) registerCoordination(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/coordination/blobs/{key}", func(w http.ResponseWriter, r *http.Request) {

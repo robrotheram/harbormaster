@@ -1,10 +1,10 @@
 package mcpserver
 
 import (
+	"agent-workbench/internal/shared"
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"regexp"
@@ -13,7 +13,7 @@ import (
 
 var identifier = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$`)
 var keyPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$`)
-var invalid = errors.New("INVALID_REQUEST")
+var invalid = shared.CodedError{Status: http.StatusBadRequest, Code: "INVALID_REQUEST"}
 
 type controlClient struct {
 	base, token string
@@ -41,13 +41,13 @@ func (c *controlClient) do(ctx context.Context, method, path string, input, outp
 			select {
 			case <-ctx.Done():
 				timer.Stop()
-				return errors.New("RUNTIME_UNAVAILABLE")
+				return shared.CodedError{Code: "RUNTIME_UNAVAILABLE"}
 			case <-timer.C:
 			}
 		}
 		req, err := http.NewRequestWithContext(ctx, method, c.base+path, bytes.NewReader(body))
 		if err != nil {
-			return errors.New("RUNTIME_UNAVAILABLE")
+			return shared.CodedError{Code: "RUNTIME_UNAVAILABLE"}
 		}
 		token := c.token
 		if access, ok := ctx.Value(accessContextKey{}).(projectAccess); ok {
@@ -63,7 +63,7 @@ func (c *controlClient) do(ctx context.Context, method, path string, input, outp
 			if attempt == 0 && ctx.Err() == nil {
 				continue
 			}
-			return errors.New("RUNTIME_UNAVAILABLE")
+			return shared.CodedError{Code: "RUNTIME_UNAVAILABLE"}
 		}
 		data, readErr := io.ReadAll(io.LimitReader(resp.Body, (2<<20)+1))
 		resp.Body.Close()
@@ -77,14 +77,14 @@ func (c *controlClient) do(ctx context.Context, method, path string, input, outp
 			_ = json.Unmarshal(data, &e)
 			switch e.Code {
 			case "BOARD_REVISION_CONFLICT", "EXCHANGE_DENIED", "PUBLICATION_CONFLICT", "COORDINATION_UNAVAILABLE", "INVALID_REQUEST", "UNAUTHORIZED", "NOT_FOUND_OR_FORBIDDEN", "WORKSPACE_BUSY", "IDEMPOTENCY_CONFLICT", "QUOTA_EXCEEDED", "NOT_READY", "RUNTIME_UNAVAILABLE", "AGENT_PROTOCOL_UNAVAILABLE":
-				return errors.New(e.Code)
+				return shared.CodedError{Code: e.Code}
 			}
-			return errors.New("RUNTIME_UNAVAILABLE")
+			return shared.CodedError{Code: "RUNTIME_UNAVAILABLE"}
 		}
 		if readErr != nil || len(data) > 2<<20 || json.Unmarshal(data, output) != nil {
-			return errors.New("AGENT_PROTOCOL_UNAVAILABLE")
+			return shared.CodedError{Code: "AGENT_PROTOCOL_UNAVAILABLE"}
 		}
 		return nil
 	}
-	return errors.New("RUNTIME_UNAVAILABLE")
+	return shared.CodedError{Code: "RUNTIME_UNAVAILABLE"}
 }

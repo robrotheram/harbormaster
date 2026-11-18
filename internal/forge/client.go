@@ -2,10 +2,11 @@
 package forge
 
 import (
+	"agent-workbench/internal/shared"
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
+
 	"fmt"
 	"io"
 	"net/http"
@@ -31,17 +32,17 @@ func Hosts() ([]Host, error) {
 	}
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return nil, errors.New("FORGE_CONFIG_UNAVAILABLE")
+		return nil, shared.CodedError{Status: http.StatusServiceUnavailable, Code: "FORGE_CONFIG_UNAVAILABLE"}
 	}
 	var hosts []Host
 	if json.Unmarshal(b, &hosts) != nil {
-		return nil, errors.New("FORGE_CONFIG_INVALID")
+		return nil, shared.CodedError{Status: http.StatusServiceUnavailable, Code: "FORGE_CONFIG_INVALID"}
 	}
 	seen := map[string]bool{}
 	for _, h := range hosts {
 		u, e := url.Parse(h.APIURL)
 		if e != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || h.Token == "" || strings.ContainsAny(h.Token, "\r\n") || h.Name == "" || seen[h.Name] || (h.Provider != "github" && h.Provider != "gitlab") {
-			return nil, errors.New("FORGE_CONFIG_INVALID")
+			return nil, shared.CodedError{Status: http.StatusServiceUnavailable, Code: "FORGE_CONFIG_INVALID"}
 		}
 		seen[h.Name] = true
 	}
@@ -94,7 +95,7 @@ func (c Client) call(ctx context.Context, method, path string, input, output any
 	}
 	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(c.Host.APIURL, "/")+path, body)
 	if err != nil {
-		return errors.New("FORGE_UNAVAILABLE")
+		return shared.CodedError{Status: http.StatusBadGateway, Code: "FORGE_UNAVAILABLE"}
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if c.Host.Provider == "github" {
@@ -111,18 +112,18 @@ func (c Client) call(ctx context.Context, method, path string, input, output any
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	resp, err := client.Do(req)
 	if err != nil {
-		return errors.New("FORGE_UNAVAILABLE")
+		return shared.CodedError{Status: http.StatusBadGateway, Code: "FORGE_UNAVAILABLE"}
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("FORGE_HTTP_%d", resp.StatusCode)
+		return shared.CodedError{Status: http.StatusBadGateway, Code: fmt.Sprintf("FORGE_HTTP_%d", resp.StatusCode)}
 	}
 	b, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20+1))
 	if err != nil || len(b) > 4<<20 {
-		return errors.New("FORGE_RESPONSE_TOO_LARGE")
+		return shared.CodedError{Status: http.StatusBadGateway, Code: "FORGE_RESPONSE_TOO_LARGE"}
 	}
 	if output != nil && json.Unmarshal(b, output) != nil {
-		return errors.New("FORGE_RESPONSE_INVALID")
+		return shared.CodedError{Status: http.StatusBadGateway, Code: "FORGE_RESPONSE_INVALID"}
 	}
 	return nil
 }
@@ -186,7 +187,7 @@ func (c Client) Get(ctx context.Context, repo string, number int) (Issue, error)
 	var raw rawIssue
 	err := c.call(ctx, "GET", fmt.Sprintf("%s/%d", c.path(repo), number), nil, &raw)
 	if len(raw.PR) > 0 {
-		return Issue{}, errors.New("FORGE_PULL_REQUEST_NOT_ISSUE")
+		return Issue{}, shared.CodedError{Status: http.StatusBadGateway, Code: "FORGE_PULL_REQUEST_NOT_ISSUE"}
 	}
 	return raw.issue(c.Host.Provider), err
 }
