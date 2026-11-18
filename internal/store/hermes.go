@@ -1,10 +1,12 @@
 package store
 
 import (
-	"agent-workbench/internal/shared"
 	"context"
 	"encoding/json"
 	"errors"
+
+	"agent-workbench/internal/jsonmetadata"
+	"agent-workbench/internal/shared"
 )
 
 var ErrHermesRevision = errors.New("Hermes configuration revision conflict")
@@ -14,14 +16,7 @@ func (s *Store) initHermes(ctx context.Context) error {
 	return err
 }
 func (s *Store) HermesSetup(ctx context.Context, project string) (shared.HermesSetup, error) {
-	var c shared.HermesSetup
-	var b string
-	err := s.DB.QueryRowContext(ctx, `SELECT metadata FROM hermes_setups WHERE project_id=$1`, project).Scan(&b)
-	if err != nil {
-		return c, err
-	}
-	err = json.Unmarshal([]byte(b), &c)
-	return c, err
+	return jsonmetadata.Get[shared.HermesSetup](ctx, s.DB, `SELECT metadata FROM hermes_setups WHERE project_id=$1`, project)
 }
 func (s *Store) SaveHermesSetup(ctx context.Context, c shared.HermesSetup, previous int) error {
 	b, err := json.Marshal(c)

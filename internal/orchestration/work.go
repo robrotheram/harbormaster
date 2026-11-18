@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"agent-workbench/internal/jsonmetadata"
 	"agent-workbench/internal/shared"
 )
 
@@ -67,34 +68,11 @@ func (r Repository) CreateWork(ctx context.Context, item shared.WorkItem, key st
 }
 
 func (r Repository) Work(ctx context.Context, project, id string) (shared.WorkItem, error) {
-	var body string
-	var item shared.WorkItem
-	err := r.DB.QueryRowContext(ctx, `SELECT metadata FROM work_items WHERE project_id=$1 AND id=$2`, project, id).Scan(&body)
-	if err == nil {
-		err = json.Unmarshal([]byte(body), &item)
-	}
-	return item, err
+	return jsonmetadata.Get[shared.WorkItem](ctx, r.DB, `SELECT metadata FROM work_items WHERE project_id=$1 AND id=$2`, project, id)
 }
 
 func (r Repository) WorkItems(ctx context.Context, project string) ([]shared.WorkItem, error) {
-	rows, err := r.DB.QueryContext(ctx, `SELECT metadata FROM work_items WHERE project_id=$1 ORDER BY id LIMIT 200`, project)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []shared.WorkItem{}
-	for rows.Next() {
-		var body string
-		var item shared.WorkItem
-		if err = rows.Scan(&body); err != nil {
-			return nil, err
-		}
-		if err = json.Unmarshal([]byte(body), &item); err != nil {
-			return nil, err
-		}
-		items = append(items, item)
-	}
-	return items, rows.Err()
+	return jsonmetadata.Query[shared.WorkItem](ctx, r.DB, `SELECT metadata FROM work_items WHERE project_id=$1 ORDER BY id LIMIT 200`, project)
 }
 
 // CancelDraft uses compare-and-swap so a stale cancellation cannot overwrite

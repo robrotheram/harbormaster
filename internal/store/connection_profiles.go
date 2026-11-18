@@ -1,10 +1,12 @@
 package store
 
 import (
-	"agent-workbench/internal/shared"
 	"context"
 	"encoding/json"
 	"errors"
+
+	"agent-workbench/internal/jsonmetadata"
+	"agent-workbench/internal/shared"
 )
 
 var ErrProfileConflict = errors.New("profile revision conflict")
@@ -26,34 +28,10 @@ func (s *Store) initConnectionProfiles(ctx context.Context) error {
 	return nil
 }
 func (s *Store) ConnectionProfile(ctx context.Context, id string) (shared.ConnectionProfile, error) {
-	var p shared.ConnectionProfile
-	var b string
-	err := s.DB.QueryRowContext(ctx, `SELECT metadata FROM connection_profiles WHERE id=$1`, id).Scan(&b)
-	if err != nil {
-		return p, err
-	}
-	err = json.Unmarshal([]byte(b), &p)
-	return p, err
+	return jsonmetadata.Get[shared.ConnectionProfile](ctx, s.DB, `SELECT metadata FROM connection_profiles WHERE id=$1`, id)
 }
 func (s *Store) ConnectionProfiles(ctx context.Context) ([]shared.ConnectionProfile, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT metadata FROM connection_profiles ORDER BY id`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []shared.ConnectionProfile{}
-	for rows.Next() {
-		var p shared.ConnectionProfile
-		var b string
-		if err = rows.Scan(&b); err != nil {
-			return nil, err
-		}
-		if err = json.Unmarshal([]byte(b), &p); err != nil {
-			return nil, err
-		}
-		out = append(out, p)
-	}
-	return out, rows.Err()
+	return jsonmetadata.Query[shared.ConnectionProfile](ctx, s.DB, `SELECT metadata FROM connection_profiles ORDER BY id`)
 }
 func (s *Store) SaveConnectionProfile(ctx context.Context, p shared.ConnectionProfile, expected int) error {
 	b, _ := json.Marshal(p)
@@ -92,15 +70,10 @@ func (s *Store) DeleteConnectionProfile(ctx context.Context, id string, expected
 		return err
 	}
 	for rows.Next() {
-		var metadata string
-		if err = rows.Scan(&metadata); err != nil {
-			rows.Close()
-			return err
-		}
 		var ref struct {
 			ProfileID string `json:"connection_profile_id"`
 		}
-		if err = json.Unmarshal([]byte(metadata), &ref); err != nil {
+		if err = jsonmetadata.Scan(rows, &ref); err != nil {
 			rows.Close()
 			return err
 		}

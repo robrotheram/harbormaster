@@ -9,8 +9,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"slices"
 	"time"
 
+	"agent-workbench/internal/jsonmetadata"
 	"agent-workbench/internal/shared"
 )
 
@@ -37,36 +39,12 @@ func (r Repository) Schedules(ctx context.Context, project string) ([]shared.Sch
 		args = append(args, project)
 	}
 	q += ` ORDER BY id`
-	rows, err := r.DB.QueryContext(ctx, q, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []shared.Schedule{}
-	for rows.Next() {
-		var b string
-		var s shared.Schedule
-		if err = rows.Scan(&b); err != nil {
-			return nil, err
-		}
-		if err = json.Unmarshal([]byte(b), &s); err != nil {
-			return nil, err
-		}
-		if s.DeletedAt == nil {
-			out = append(out, s)
-		}
-	}
-	return out, rows.Err()
+	schedules, err := jsonmetadata.Query[shared.Schedule](ctx, r.DB, q, args...)
+	return slices.DeleteFunc(schedules, func(s shared.Schedule) bool { return s.DeletedAt != nil }), err
 }
 
 func (r Repository) Schedule(ctx context.Context, id string) (shared.Schedule, error) {
-	var b string
-	var s shared.Schedule
-	err := r.DB.QueryRowContext(ctx, `SELECT metadata FROM schedules WHERE id=$1`, id).Scan(&b)
-	if err == nil {
-		err = json.Unmarshal([]byte(b), &s)
-	}
-	return s, err
+	return jsonmetadata.Get[shared.Schedule](ctx, r.DB, `SELECT metadata FROM schedules WHERE id=$1`, id)
 }
 
 func sameSchedule(a, b shared.Schedule) bool {
@@ -85,12 +63,7 @@ func (r Repository) CreateSchedule(ctx context.Context, s shared.Schedule, key s
 	if n > 0 {
 		return s, true, nil
 	}
-	var raw string
-	var existing shared.Schedule
-	err = r.DB.QueryRowContext(ctx, `SELECT metadata FROM schedules WHERE project_id=$1 AND create_key=$2`, s.ProjectID, key).Scan(&raw)
-	if err == nil {
-		err = json.Unmarshal([]byte(raw), &existing)
-	}
+	existing, err := jsonmetadata.Get[shared.Schedule](ctx, r.DB, `SELECT metadata FROM schedules WHERE project_id=$1 AND create_key=$2`, s.ProjectID, key)
 	if err == nil && (existing.DeletedAt != nil || !sameSchedule(existing, s)) {
 		err = ErrConflict
 	}
@@ -115,11 +88,7 @@ func (r Repository) Enqueue(ctx context.Context, s shared.Schedule, key string, 
 	if err != nil {
 		return run, err
 	}
-	var raw string
-	err = r.DB.QueryRowContext(ctx, `SELECT metadata FROM orchestration_runs WHERE id=$1`, run.ID).Scan(&raw)
-	if err == nil {
-		err = json.Unmarshal([]byte(raw), &run)
-	}
+	err = jsonmetadata.Scan(r.DB.QueryRowContext(ctx, `SELECT metadata FROM orchestration_runs WHERE id=$1`, run.ID), &run)
 	return run, err
 }
 
@@ -135,24 +104,7 @@ func (r Repository) runs(ctx context.Context, project string) ([]shared.Run, err
 		args = append(args, project)
 	}
 	q += ` ORDER BY created_at DESC LIMIT 1000`
-	rows, err := r.DB.QueryContext(ctx, q, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []shared.Run{}
-	for rows.Next() {
-		var raw string
-		var run shared.Run
-		if err = rows.Scan(&raw); err != nil {
-			return nil, err
-		}
-		if err = json.Unmarshal([]byte(raw), &run); err != nil {
-			return nil, err
-		}
-		out = append(out, run)
-	}
-	return out, rows.Err()
+	return jsonmetadata.Query[shared.Run](ctx, r.DB, q, args...)
 }
 
 func (r Repository) SaveRun(ctx context.Context, run shared.Run) error {
@@ -176,24 +128,7 @@ func updated(result sql.Result, err error) error {
 }
 
 func (r Repository) PendingRunsAfter(ctx context.Context, after string, limit int) ([]shared.Run, error) {
-	rows, err := r.DB.QueryContext(ctx, `SELECT metadata FROM orchestration_runs WHERE state IN ('queued','dispatching','running','cancel_requested') AND id>$1 ORDER BY id LIMIT $2`, after, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []shared.Run{}
-	for rows.Next() {
-		var b string
-		var run shared.Run
-		if err = rows.Scan(&b); err != nil {
-			return nil, err
-		}
-		if err = json.Unmarshal([]byte(b), &run); err != nil {
-			return nil, err
-		}
-		out = append(out, run)
-	}
-	return out, rows.Err()
+	return jsonmetadata.Query[shared.Run](ctx, r.DB, `SELECT metadata FROM orchestration_runs WHERE state IN ('queued','dispatching','running','cancel_requested') AND id>$1 ORDER BY id LIMIT $2`, after, limit)
 }
 
 // DeliverDue atomically records an occurrence and advances its trigger. Dispatch
@@ -204,12 +139,8 @@ func (r Repository) DeliverDue(ctx context.Context, id string, now time.Time) er
 		return err
 	}
 	defer tx.Rollback()
-	var raw string
-	var schedule shared.Schedule
-	if err = tx.QueryRowContext(ctx, `SELECT metadata FROM schedules WHERE id=$1`, id).Scan(&raw); err != nil {
-		return err
-	}
-	if err = json.Unmarshal([]byte(raw), &schedule); err != nil {
+	schedule, err := jsonmetadata.Get[shared.Schedule](ctx, tx, `SELECT metadata FROM schedules WHERE id=$1`, id)
+	if err != nil {
 		return err
 	}
 	next, run := AdvanceDue(schedule, now)
