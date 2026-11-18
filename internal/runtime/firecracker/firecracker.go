@@ -699,8 +699,6 @@ func (f *Firecracker) observation(ctx context.Context, v *fcVM) shared.Observati
 	// to hypervisor/kernel vulnerabilities or provider data exfiltration.
 	o.IsolationStatus = "jailed-vm"
 	o.NetworkStatus = "no-nic-vsock"
-	o.ConnectionProxyVersion = 2
-	o.GitProxyReady = true
 	status, b, err := f.agent(ctx, v, "GET", "/v1/activity", nil)
 	if err == nil && status == 200 && json.Unmarshal(b, &o.Activity) == nil {
 		o.Ready = true
@@ -849,15 +847,15 @@ func (f *Firecracker) Handler() http.Handler {
 		case action == "network-policy" && r.Method == "POST":
 			var q struct {
 				Connections *shared.ConnectionPolicy `json:"connections"`
-				GitHub      bool                     `json:"github_access"`
 			}
 			if !shared.Decode(w, r, &q, 32768) {
 				return
 			}
-			p := shared.Workspace{GitHubAccess: q.GitHub}.EffectiveConnections()
-			if q.Connections != nil {
-				p = *q.Connections
+			if q.Connections == nil {
+				shared.Error(w, 400, "INVALID_REQUEST")
+				return
 			}
+			p := *q.Connections
 			if !p.Valid() || p.Mode == "open" {
 				shared.Error(w, 403, "OPEN_NETWORK_FORBIDDEN_IN_SANDBOX")
 				return

@@ -17,7 +17,7 @@ func TestStartupMigrationsAreVersionedAndRepeatable(t *testing.T) {
 		if err = s.DB.QueryRow(`SELECT count(*) FROM schema_migrations`).Scan(&count); err != nil {
 			t.Fatal(err)
 		}
-		if count != 16 {
+		if count != 17 {
 			t.Fatalf("migration versions: %d", count)
 		}
 		for _, table := range []string{"project_members", "agent_subscriptions", "worker_agent_subscriptions", "work_review_history", "forge_accounts", "work_items", "work_attempts", "schedules", "orchestration_runs", "workspaces", "agent_homes"} {
@@ -27,6 +27,48 @@ func TestStartupMigrationsAreVersionedAndRepeatable(t *testing.T) {
 		}
 		if err = s.DB.Close(); err != nil {
 			t.Fatal(err)
+		}
+	}
+}
+
+func TestWorkspaceConnectionMigrationPreservesEffectivePolicy(t *testing.T) {
+	ctx := context.Background()
+	s, err := Open(ctx, filepath.Join(t.TempDir(), "workspace-connections.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.DB.Close()
+	checkWorkspaceConnectionMigration(t, ctx, s)
+}
+
+func checkWorkspaceConnectionMigration(t *testing.T, ctx context.Context, s *Store) {
+	t.Helper()
+	if _, err := s.DB.ExecContext(ctx, `DELETE FROM schema_migrations WHERE version=17`); err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		id, metadata, mode string
+	}{
+		{"legacy-enabled", `{"github_access":true}`, "allowlist"},
+		{"legacy-disabled", `{"github_access":false}`, "blocked"},
+		{"explicit-blocked", `{"github_access":true,"connections":{"mode":"blocked","destinations":[]}}`, "blocked"},
+	}
+	for _, tt := range tests {
+		if _, err := s.DB.ExecContext(ctx, `INSERT INTO workspaces(id,create_key,metadata) VALUES($1,$1,$2)`, tt.id, tt.metadata); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for _, tt := range tests {
+		w, err := s.Workspace(ctx, tt.id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		p := w.EffectiveConnections()
+		if p.Mode != tt.mode || p.Allows("github.com:443") != (tt.mode == "allowlist") || p.Allows("registry.npmjs.org:443") {
+			t.Errorf("%s: unexpected policy %+v", tt.id, p)
 		}
 	}
 }

@@ -39,9 +39,6 @@ type CapabilityRuntime interface {
 type ConnectionRuntime interface {
 	ConfigureConnections(context.Context, string, shared.ConnectionPolicy) error
 }
-type LegacyNetworkRuntime interface {
-	ConfigureNetwork(context.Context, string, bool) error
-}
 type Config struct {
 	SharedWorkspaceID string
 	IdleTimeout       time.Duration
@@ -178,7 +175,7 @@ func (s *Service) start(ctx context.Context, w *shared.Workspace, opened bool) e
 				return err
 			}
 		}
-		if err := s.ConfigureNetwork(ctx, *w); err != nil {
+		if err := s.ConfigureConnections(ctx, *w); err != nil {
 			return err
 		}
 		if err := s.RestoreConsole(ctx, *w); err != nil {
@@ -250,7 +247,7 @@ func (s *Service) startReserved(ctx context.Context, w *shared.Workspace, hermes
 		s.report("lifecycle", *w, s.Store.Save(ctx, *w))
 		return e
 	}
-	if e = s.ConfigureNetwork(ctx, *w); e != nil {
+	if e = s.ConfigureConnections(ctx, *w); e != nil {
 		return e
 	}
 	if e = s.Refresh(ctx, w); e != nil {
@@ -299,21 +296,13 @@ func (s *Service) ResolveConnectionProfile(ctx context.Context, w *shared.Worksp
 	}
 	w.Connections = &p.Policy
 	w.ConnectionProfileRevision = p.Revision
-	w.GitHubAccess = p.Policy.Allows("github.com:443")
 	return nil
 }
-func (s *Service) ConfigureNetwork(ctx context.Context, w shared.Workspace) error {
+func (s *Service) ConfigureConnections(ctx context.Context, w shared.Workspace) error {
 	if rt, ok := s.Runtime.(ConnectionRuntime); ok {
 		return rt.ConfigureConnections(ctx, w.ID, w.EffectiveConnections())
 	}
-	if w.Connections != nil && (w.Connections.Mode == "open" || len(w.Connections.Destinations) > 0 && (len(w.Connections.Destinations) != 1 || !w.Connections.Allows("github.com:443"))) {
-		return shared.CodedError{Status: shared.StatusServiceUnavailable, Code: "NETWORK_POLICY_UNAVAILABLE"}
-	}
-
-	if rt, ok := s.Runtime.(LegacyNetworkRuntime); ok {
-		return rt.ConfigureNetwork(ctx, w.ID, w.GitHubAccess)
-	}
-	if w.GitHubAccess {
+	if p := w.EffectiveConnections(); p.Mode == "open" || len(p.Destinations) > 0 {
 		return shared.CodedError{Status: shared.StatusServiceUnavailable, Code: "NETWORK_POLICY_UNAVAILABLE"}
 	}
 	return nil

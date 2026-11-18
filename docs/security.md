@@ -47,7 +47,7 @@ No test involving mocks or ordinary containers establishes these gates. Review [
 ## Workspace connection profiles
 
 Workspace Settings select Blocked, GitHub only, Custom allowlist or Fully open.
-Existing GitHub toggles remain backward compatible. Custom rules contain exact
+GitHub only allows `github.com:443`. Custom rules contain exact
 public hostname/IP and TCP port pairs (maximum 64); no wildcard, URL, or guest DNS
 fallback. HTTP and HTTPS use the trusted egress proxy, which resolves destinations,
 rejects private/loopback/link-local addresses and verifies a generation-bound grant.
@@ -69,5 +69,4 @@ the desired profile. Applying restricted rules while an open network remains
 attached is refused. Fully open intentionally continues direct egress if platform
 services fail; proxy modes fail closed when their grant verifier is unavailable.
 
-New allowlist rules require proxy version 2. Older containers receive it on their
-next stop/start. Fully open is never enabled by default or silently selected.
+Fully open is never enabled by default or silently selected.

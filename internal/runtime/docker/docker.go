@@ -11,7 +11,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -86,7 +85,7 @@ type ControllerConfig struct {
 	RequireVerified                                                                                                                    bool
 }
 type Controller struct {
-	github    sync.Map
+	policies  sync.Map
 	Docker    *Docker
 	cfg       ControllerConfig
 	mu        sync.Mutex
@@ -198,9 +197,9 @@ func (c *Controller) ensure(ctx context.Context, id string, spec protocol.Worksp
 			return info, e
 		}
 
-		// Upgrade stopped pre-proxy containers while keeping the same owned volume.
+		// Replace stopped containers when their configuration requires recreation.
 		// Never replace a running container or request Docker volume removal.
-		if !info.State.Running && (legacyToolSelection(info) || (c.cfg.EgressContainer != "" && !hasConnectionProxy(info)) || (connectionMode(info) == "open") != (spec.ConnectionMode == "open")) {
+		if !info.State.Running && (legacyToolSelection(info) || (connectionMode(info) == "open") != (spec.ConnectionMode == "open")) {
 			if e = c.Docker.call(ctx, "DELETE", "/containers/"+info.ID, nil, nil); e != nil {
 				return info, e
 			}
@@ -246,7 +245,7 @@ func (c *Controller) ensure(ctx context.Context, id string, spec protocol.Worksp
 		"NetworkingConfig": map[string]any{"EndpointsConfig": map[string]any{c.name(id): map[string]any{"Aliases": []string{"workspace"}}}},
 	}
 	if c.cfg.EgressContainer != "" {
-		body["Env"] = append(body["Env"].([]string), "EGRESS_URL=http://egress-gateway:8080", "CONNECTION_PROXY_VERSION=2")
+		body["Env"] = append(body["Env"].([]string), "EGRESS_URL=http://egress-gateway:8080")
 	}
 	body["Env"] = append(body["Env"].([]string), "WORKSPACE_CONNECTION_MODE="+spec.ConnectionMode)
 	if spec.ConnectionMode == "open" {
@@ -296,11 +295,7 @@ func (c *Controller) observe(ctx context.Context, id string) (shared.Observation
 		return o, e
 	}
 	o.Running = info.State.Running
-	o.GitProxyReady = hasGitProxy(info)
 	o.ConnectionMode = connectionMode(info)
-	if hasConnectionProxy(info) {
-		o.ConnectionProxyVersion = 2
-	}
 	if info.HostConfig.Runtime == "io.containerd.kata.v2" {
 		o.RuntimeType = "kata"
 	}
@@ -358,14 +353,17 @@ func (c *Controller) Handler() http.Handler {
 	management := http.NewServeMux()
 	management.HandleFunc("POST /v1/workspaces/{id}/network-policy", func(w http.ResponseWriter, r *http.Request) {
 		var input struct {
-			GitHubAccess bool                     `json:"github_access"`
-			Connections  *shared.ConnectionPolicy `json:"connections"`
+			Connections *shared.ConnectionPolicy `json:"connections"`
 		}
 		if !shared.Decode(w, r, &input, 32768) {
 			return
 		}
-		if !shared.ValidID(r.PathValue("id")) || c.cfg.RequireVerified || (input.GitHubAccess && c.cfg.EgressContainer == "") {
+		if !shared.ValidID(r.PathValue("id")) || c.cfg.RequireVerified {
 			shared.Error(w, 503, "NETWORK_POLICY_UNAVAILABLE")
+			return
+		}
+		if input.Connections == nil || !input.Connections.Valid() {
+			shared.Error(w, 400, "INVALID_REQUEST")
 			return
 		}
 		info, err := c.inspect(r.Context(), r.PathValue("id"))
@@ -373,19 +371,11 @@ func (c *Controller) Handler() http.Handler {
 			shared.Error(w, 409, "NOT_READY")
 			return
 		}
-		policy := shared.Workspace{GitHubAccess: input.GitHubAccess}.EffectiveConnections()
-		if input.Connections != nil {
-			policy = *input.Connections
-		}
-		if !policy.Valid() {
-			shared.Error(w, 400, "INVALID_REQUEST")
-			return
-		}
-		if (policy.Mode == "open") != (connectionMode(info) == "open") {
+		if (input.Connections.Mode == "open") != (connectionMode(info) == "open") {
 			shared.Error(w, 409, "STOP_WORKSPACE_FIRST")
 			return
 		}
-		c.github.Store(info.Config.Labels["workbench.generation"], policy)
+		c.policies.Store(info.Config.Labels["workbench.generation"], *input.Connections)
 		shared.JSON(w, 200, map[string]bool{"applied": true})
 	})
 	management.HandleFunc("GET /v1/capabilities", func(w http.ResponseWriter, r *http.Request) {
@@ -652,7 +642,7 @@ func (c *Controller) verify(w http.ResponseWriter, r *http.Request) {
 		if id != "" && generation != "" && subtle.ConstantTimeCompare([]byte(c.token(id, generation)), []byte(req.Token)) == 1 {
 			identity := map[string]any{"workspace_id": id, "project_id": protocol.ProjectOf(info.Labels), "principal_id": "local-operator"}
 			if req.Audience == "egress" {
-				v, _ := c.github.Load(generation)
+				v, _ := c.policies.Load(generation)
 				policy, ok := v.(shared.ConnectionPolicy)
 				if !ok || policy.Mode == "blocked" {
 					shared.Error(w, 403, "GRANT_REJECTED")
@@ -665,10 +655,6 @@ func (c *Controller) verify(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	shared.Error(w, 403, "GRANT_REJECTED")
-}
-
-func hasGitProxy(info containerInfo) bool {
-	return slices.Contains(info.Config.Env, "EGRESS_URL=http://egress-gateway:8080")
 }
 
 // Presence marks a stopped container built with the retired selectable-tool

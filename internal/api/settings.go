@@ -2,25 +2,21 @@ package api
 
 import (
 	"agent-workbench/internal/shared"
-	"context"
 	"net/http"
 )
 
-func (s *Server) configureNetwork(ctx context.Context, w shared.Workspace) error {
-	return s.lifecycle().ConfigureNetwork(ctx, w)
-}
 func (s *Server) registerWorkspaceSettings(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/workspaces/{id}/settings", func(w http.ResponseWriter, r *http.Request) {
 		var input struct {
 			IdleTimeoutMinutes  *int                     `json:"idle_timeout_minutes"`
-			GitHubAccess        *bool                    `json:"github_access"`
 			Connections         *shared.ConnectionPolicy `json:"connections"`
 			ConnectionProfileID *string                  `json:"connection_profile_id"`
 		}
 		if !decodeRouteBody(w, r, &input) {
 			return
 		}
-		if input.IdleTimeoutMinutes == nil || (input.GitHubAccess == nil && input.Connections == nil && input.ConnectionProfileID == nil) || (input.Connections != nil && !input.Connections.Valid()) || (*input.IdleTimeoutMinutes != 0 && (*input.IdleTimeoutMinutes < 5 || *input.IdleTimeoutMinutes > 1440)) {
+		hasProfile := input.ConnectionProfileID != nil && *input.ConnectionProfileID != ""
+		if input.IdleTimeoutMinutes == nil || (input.Connections == nil && !hasProfile) || (input.Connections != nil && !input.Connections.Valid()) || (*input.IdleTimeoutMinutes != 0 && (*input.IdleTimeoutMinutes < 5 || *input.IdleTimeoutMinutes > 1440)) {
 			shared.Error(w, 400, "INVALID_REQUEST")
 			return
 		}
@@ -36,26 +32,17 @@ func (s *Server) registerWorkspaceSettings(mux *http.ServeMux) {
 		}
 		previous := ws
 		ws.IdleTimeoutMinutes = input.IdleTimeoutMinutes
-		if input.ConnectionProfileID != nil && *input.ConnectionProfileID != "" {
+		if hasProfile {
 			ws.ConnectionProfileID = *input.ConnectionProfileID
 			if err := s.resolveConnectionProfile(r.Context(), &ws); err != nil {
 				shared.Error(w, 400, "INVALID_CONNECTION_PROFILE")
 				return
 			}
-		} else if input.Connections != nil {
+		} else {
 			ws.ConnectionProfileID = ""
 			ws.ConnectionProfileRevision = 0
 			ws.Connections = input.Connections
-			ws.GitHubAccess = input.Connections.Allows("github.com:443")
-		} else {
-			if input.GitHubAccess == nil {
-				shared.Error(w, 400, "INVALID_REQUEST")
-				return
-			}
-			ws.ConnectionProfileID = ""
-			ws.ConnectionProfileRevision = 0
-			ws.Connections = nil
-			ws.GitHubAccess = *input.GitHubAccess
+
 		}
 		if err := s.checkConnectionTransition(ws); err != nil {
 			apiError(w, err)
@@ -65,19 +52,19 @@ func (s *Server) registerWorkspaceSettings(mux *http.ServeMux) {
 		ws.LastOpenedAt = &now
 		ws.UpdatedAt = now
 		if ws.State != "STOPPED" {
-			if err := s.configureNetwork(r.Context(), ws); err != nil {
+			if err := s.lifecycle().ConfigureConnections(r.Context(), ws); err != nil {
 				apiError(w, err)
 				return
 			}
 		}
 		if err := s.refresh(r.Context(), &ws); err != nil {
-			_ = s.configureNetwork(r.Context(), previous)
+			_ = s.lifecycle().ConfigureConnections(r.Context(), previous)
 			apiError(w, err)
 			return
 		}
 		if err := s.Store.Save(r.Context(), ws); err != nil {
 			if ws.State != "STOPPED" {
-				_ = s.configureNetwork(r.Context(), previous)
+				_ = s.lifecycle().ConfigureConnections(r.Context(), previous)
 			}
 			shared.Error(w, 503, "STORAGE_UNAVAILABLE")
 			return

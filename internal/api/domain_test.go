@@ -62,7 +62,6 @@ func TestProjectCredentialsFenceEveryWorkspaceRoute(t *testing.T) {
 		{"GET", "/v1/workspaces/" + wb.ID, ""},
 		{"POST", "/v1/workspaces/" + wb.ID + "/start", `{"idempotency_key":"deny"}`},
 		{"POST", "/v1/workspaces/" + wb.ID + "/stop", `{"idempotency_key":"deny"}`},
-		{"POST", "/v1/workspaces/" + wb.ID + "/settings", `{"idle_timeout_minutes":0,"github_access":true}`},
 		{"POST", "/v1/workspaces/" + wb.ID + "/settings", `{"idle_timeout_minutes":60,"connections":{"mode":"open","destinations":[]}}`},
 		{"POST", "/v1/workspaces/" + wb.ID + "/enable-t3", `{"idempotency_key":"deny"}`},
 		{"GET", "/v1/workspaces/" + wb.ID + "/connection", ""},

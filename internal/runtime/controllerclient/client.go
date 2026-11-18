@@ -173,21 +173,6 @@ func (c *Client) Agent(ctx context.Context, id, method, path string, b []byte) (
 	return c.do(ctx, method, "/v1/workspaces/"+id+"/agent"+path, b)
 }
 
-func (c *Client) ConfigureNetwork(ctx context.Context, id string, github bool) error {
-	body, _ := json.Marshal(map[string]bool{"github_access": github})
-	status, _, err := c.do(ctx, "POST", "/v1/workspaces/"+id+"/network-policy", body)
-	if err != nil {
-		return err
-	}
-	if status == 404 && !github {
-		return nil
-	} // Older/unsupported adapters expose no GitHub egress capability.
-	if status != 200 {
-		return fmt.Errorf("network policy refused: %d", status)
-	}
-	return nil
-}
-
 func (c *Client) ConfigureConnections(ctx context.Context, id string, policy shared.ConnectionPolicy) error {
 	body, _ := json.Marshal(map[string]any{"connections": policy})
 	status, _, err := c.do(ctx, "POST", "/v1/workspaces/"+id+"/network-policy", body)

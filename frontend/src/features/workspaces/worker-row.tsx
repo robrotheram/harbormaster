@@ -25,6 +25,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import { isGitHubOnly } from "@/features/connection-profiles/policy";
 import { WorkspaceActivity } from "@/features/history/workspace-activity";
 import { bytes, date } from "@/shared/format";
 import type { Workspace, GlobalConnectionProfile } from "@/shared/types";
@@ -162,13 +163,6 @@ export function WorkerRow({
             Profile update pending
           </div>
         )}
-        {workspace.github_access &&
-          !workspace.git_proxy_ready &&
-          workspace.state !== "STOPPED" && (
-            <div className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-400">
-              Proxy update: stop/start required
-            </div>
-          )}
       </TableCell>
       <TableCell className="pr-5 max-md:col-span-2 max-md:px-0 max-md:pt-3 max-md:pb-0">
         <div className="flex flex-wrap items-center justify-end gap-1.5 max-md:justify-start">
@@ -324,11 +318,8 @@ export function WorkerRow({
 function connectionLabel(workspace: Workspace) {
   const p = workspace.connections;
   if (p?.mode === "open") return "Fully open · unrestricted network";
+  if (isGitHubOnly(p)) return "GitHub allowed";
   if (p?.mode === "allowlist")
     return "Allowlist · " + p.destinations.length + " destinations";
-  return workspace.github_access
-    ? workspace.git_proxy_ready
-      ? "GitHub allowed"
-      : "GitHub enabled — runtime update pending"
-    : "External connections blocked";
+  return "External connections blocked";
 }

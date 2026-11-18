@@ -4,7 +4,9 @@ import (
 	"agent-workbench/internal/coordination"
 	"agent-workbench/internal/orchestration"
 	"context"
+
 	"fmt"
+	"github.com/jackc/pgx/v5/stdlib"
 	"strings"
 )
 
@@ -55,6 +57,7 @@ func (s *Store) migrate(ctx context.Context) error {
 		{14, s.initAgentSubscriptions},
 		{15, s.initMembership},
 		{16, s.initWorkReferences},
+		{17, s.migrateWorkspaceConnections},
 	}
 	for _, step := range steps {
 		var applied int
@@ -73,6 +76,24 @@ func (s *Store) migrate(ctx context.Context) error {
 	}
 	return nil
 }
+
+func (s *Store) migrateWorkspaceConnections(ctx context.Context) error {
+	// Preserve the old opt-in only when there is no explicit policy.
+	const policy = `{"mode":"allowlist","destinations":["github.com:443"]}`
+	query := `UPDATE workspaces
+		SET metadata = json_set(json_remove(metadata, '$.github_access'), '$.connections', json($1))
+		WHERE json_type(metadata, '$.github_access') = 'true'
+		  AND json_extract(metadata, '$.connections') IS NULL`
+	if _, postgres := s.DB.Driver().(*stdlib.Driver); postgres {
+		query = `UPDATE workspaces
+			SET metadata = jsonb_set(metadata::jsonb - 'github_access', '{connections}', $1::jsonb)::text
+			WHERE metadata::jsonb -> 'github_access' = 'true'::jsonb
+			  AND metadata::jsonb ->> 'connections' IS NULL`
+	}
+	_, err := s.DB.ExecContext(ctx, query, policy)
+	return err
+}
+
 func (s *Store) initMetadata(ctx context.Context) error {
 	for _, q := range []string{
 		`CREATE TABLE IF NOT EXISTS deleted_resources(kind TEXT NOT NULL,id TEXT NOT NULL,PRIMARY KEY(kind,id))`,

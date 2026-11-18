@@ -36,17 +36,16 @@ func (k *Kubernetes) Handler() http.Handler {
 	})
 	mux.HandleFunc("POST /v1/workspaces/{id}/network-policy", func(w http.ResponseWriter, r *http.Request) {
 		var input struct {
-			GitHubAccess bool                     `json:"github_access"`
-			Connections  *shared.ConnectionPolicy `json:"connections"`
+			Connections *shared.ConnectionPolicy `json:"connections"`
 		}
 		if !shared.Decode(w, r, &input, 32768) {
 			return
 		}
-		p := shared.Workspace{GitHubAccess: input.GitHubAccess}.EffectiveConnections()
-		if input.Connections != nil {
-			p = *input.Connections
+		if input.Connections == nil {
+			shared.Error(w, 400, "INVALID_REQUEST")
+			return
 		}
-		if k.ApplyNetwork(r.Context(), r.PathValue("id"), p) != nil {
+		if k.ApplyNetwork(r.Context(), r.PathValue("id"), *input.Connections) != nil {
 			shared.Error(w, 503, "NETWORK_POLICY_UNAVAILABLE")
 			return
 		}

@@ -68,8 +68,5 @@ func (w Workspace) EffectiveConnections() ConnectionPolicy {
 	if w.Connections != nil {
 		return *w.Connections
 	}
-	if w.GitHubAccess {
-		return ConnectionPolicy{Mode: "allowlist", Destinations: []string{"github.com:443"}}
-	}
 	return ConnectionPolicy{Mode: "blocked", Destinations: []string{}}
 }

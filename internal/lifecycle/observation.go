@@ -11,9 +11,7 @@ func ApplyObservation(w *shared.Workspace, o shared.Observation, now time.Time, 
 	w.RuntimeType = o.RuntimeType
 	w.IsolationStatus = o.IsolationStatus
 	w.NetworkStatus = o.NetworkStatus
-	w.GitProxyReady = o.GitProxyReady
 	w.ConnectionMode = o.ConnectionMode
-	w.ConnectionProxyVersion = o.ConnectionProxyVersion
 	w.ObservedAt = &now
 	w.CPUCores = o.CPUCores
 	w.MemoryBytes = o.MemoryBytes
