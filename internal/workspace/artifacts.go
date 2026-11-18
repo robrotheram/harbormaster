@@ -34,8 +34,6 @@ func (m *Manager) initFactory() error {
 		`CREATE TABLE IF NOT EXISTS workspace_applications(service_id TEXT PRIMARY KEY,idem_key TEXT UNIQUE NOT NULL,fingerprint TEXT NOT NULL,configuration TEXT NOT NULL)`,
 		`UPDATE retained_services SET state='stopped' WHERE id IN (SELECT service_id FROM workspace_applications) AND state='active'`,
 		`CREATE TABLE IF NOT EXISTS artifacts(id TEXT PRIMARY KEY,idem_key TEXT UNIQUE NOT NULL,source_path TEXT NOT NULL,sha256 TEXT NOT NULL,size_bytes INTEGER NOT NULL,created_at TEXT NOT NULL,content BLOB NOT NULL)`,
-		`CREATE TABLE IF NOT EXISTS recipe_jobs(id TEXT PRIMARY KEY,idem_key TEXT UNIQUE NOT NULL,template TEXT NOT NULL,state TEXT NOT NULL,error_code TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL,timeout_seconds INTEGER NOT NULL)`,
-		`UPDATE recipe_jobs SET state='interrupted',error_code='SUPERVISOR_RESTART' WHERE state IN ('running','cancel_requested')`,
 	} {
 		if _, err := tx.Exec(q); err != nil {
 			return err

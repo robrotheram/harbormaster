@@ -1,5 +1,9 @@
 # Software factory and research platform delivery plan
 
+> This original plan includes the demo recipe workloads and GoGallery image
+> retired in #57. See [implementation status](software-factory-implementation.md)
+> for current support.
+
 Status: implementation plan, established 9 November 2026. Development features
 are integrated as of 10 November; live-host and production acceptance remain open.
 See [implementation status](software-factory-implementation.md) for current

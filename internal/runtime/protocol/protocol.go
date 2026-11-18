@@ -56,14 +56,6 @@ func AllowedAgentPath(method, path string) bool {
 				return method == "GET" || method == "POST"
 			}
 			return len(partsFactory) == 4 && shared.ValidID(partsFactory[2]) && partsFactory[3] == "content" && method == "GET"
-		case "recipe-jobs":
-			if len(partsFactory) == 2 {
-				return method == "POST" || method == "GET"
-			}
-			if !shared.ValidID(partsFactory[2]) {
-				return false
-			}
-			return len(partsFactory) == 3 && method == "GET" || len(partsFactory) == 4 && partsFactory[3] == "cancel" && method == "POST"
 		}
 	}
 	if (method == "POST" && (path == "/v1/matrix/start" || path == "/v1/matrix/stop")) || (method == "GET" && path == "/v1/matrix/status") {

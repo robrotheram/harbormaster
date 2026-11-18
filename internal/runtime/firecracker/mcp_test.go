@@ -70,8 +70,13 @@ func TestProjectMCPGenerationToolInvocation(t *testing.T) {
 	}
 	defer session.Close()
 	tools, err := session.ListTools(ctx, nil)
-	if err != nil || len(tools.Tools) != 23 {
+	if err != nil || len(tools.Tools) != 19 {
 		t.Fatalf("narrow discovery: %v %v", tools, err)
+	}
+	for _, tool := range tools.Tools {
+		if strings.HasPrefix(tool.Name, "factory_job_") {
+			t.Fatalf("retired project tool advertised: %s", tool.Name)
+		}
 	}
 	result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "work_list", Arguments: map[string]string{"project_id": "personal"}})
 	if err != nil || result.IsError || calls != 2 {

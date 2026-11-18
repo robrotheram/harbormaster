@@ -1,5 +1,9 @@
 # Retained gallery implementation contract
 
+> Historical acceptance record. The demo recipe workloads, their MCP and HTTP
+> entry points, and the GoGallery image were retired in #57. See
+> [implementation status](../software-factory-implementation.md) for current support.
+
 Guest API (existing bearer authentication on supervisor port 8080):
 
 - `POST /v1/recipe-jobs`: existing request, now admits `gogallery-v1` in addition to `research-v1`. GoGallery requires the administrator-built `workspace-gogallery` image, otherwise 422 `APPROVED_GOGALLERY_IMAGE_REQUIRED`. No repository manifest is executed as platform configuration. Fixed source: `5f1bfd6a41afec65bc7ab791a14863180d944ee0`. Build/test and gallery generation execute offline from source/module cache baked into the trusted image. Native dependencies are installed during image build.

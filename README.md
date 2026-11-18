@@ -8,7 +8,7 @@ Local primitives for an agent-operated workbench. Go services, Docker Compose, p
 
 **New here?** Follow [Your first session](docs/getting-started.md) for a copy-and-paste walkthrough, expected results, MCP access and troubleshooting. The running dashboard also has a **Getting started** link.
 
-**Next development:** [Software factory and research delivery plan](docs/software-factory-plan.md) covers GoGallery, experimental research, personal/project Hermes assistants, Compose development, and k3s production.
+**Next development:** [Software factory and research delivery plan](docs/software-factory-plan.md) records the original rollout. See [implementation status](docs/software-factory-implementation.md) for current capabilities.
 
 **Ready for real coding?** [Codex and Claude subscription setup](docs/subscription-agents.md) runs the native agent inside a workspace while Vault and the inference gateway keep provider credentials outside it.
 
@@ -130,7 +130,7 @@ Kubernetes resources are native [Kustomize overlays](deploy/kubernetes/README.md
 There are no repository deployment scripts. Build the optional local operator CLI
 with `go build -o bin/workbench ./cmd/workbench`; run it from the repository root.
 `make bootstrap`, `make up` and `make smoke` use this Go implementation.
-Workspace desktop, preview and recipe helpers are compiled into the images.
+Workspace desktop and preview helpers are compiled into the images.
 The [Hermes SDK adapter](integrations/hermes/README.md) is an installed Python
 package. Vault provisioning and optional Firecracker host installation follow the
 operator procedures in `docs/subscription-agents.md` and `docs/firecracker.md`.

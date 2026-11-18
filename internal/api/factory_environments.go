@@ -14,25 +14,23 @@ import (
 // They are intentionally separate from work-attempt projection/dispatch.
 func (s *Server) registerFactoryEnvironments(mux *http.ServeMux) {
 	s.registerApplications(mux)
-	for _, resource := range []string{"recipe-jobs", "artifacts"} {
-		mux.HandleFunc("GET /v1/workspaces/{id}/"+resource, func(w http.ResponseWriter, r *http.Request) {
-			ws, ok := s.workspace(w, r)
-			if !ok {
-				return
-			}
-			unlock := s.operations.Lock(ws.ID)
-			defer unlock()
-			ws, ok = s.workspace(w, r)
-			if !ok {
-				return
-			}
-			if err := s.lifecycle().ObserveTask(r.Context(), &ws); err != nil {
-				apiError(w, err)
-				return
-			}
-			s.factoryForward(w, r, ws.ID, "/v1/"+resource, nil)
-		})
-	}
+	mux.HandleFunc("GET /v1/workspaces/{id}/artifacts", func(w http.ResponseWriter, r *http.Request) {
+		ws, ok := s.workspace(w, r)
+		if !ok {
+			return
+		}
+		unlock := s.operations.Lock(ws.ID)
+		defer unlock()
+		ws, ok = s.workspace(w, r)
+		if !ok {
+			return
+		}
+		if err := s.lifecycle().ObserveTask(r.Context(), &ws); err != nil {
+			apiError(w, err)
+			return
+		}
+		s.factoryForward(w, r, ws.ID, "/v1/artifacts", nil)
+	})
 	mux.HandleFunc("GET /v1/workspaces/{id}/artifacts/{artifact}/content", func(w http.ResponseWriter, r *http.Request) {
 		ws, ok := s.workspace(w, r)
 		if !ok {
@@ -65,70 +63,6 @@ func (s *Server) registerFactoryEnvironments(mux *http.ServeMux) {
 		shared.JSON(w, 200, map[string]any{"artifact_id": id, "content": b})
 	})
 
-	mux.HandleFunc("POST /v1/workspaces/{id}/recipe-jobs", func(w http.ResponseWriter, r *http.Request) {
-		var in struct {
-			Template string `json:"template"`
-			Key      string `json:"idempotency_key"`
-			Timeout  int    `json:"timeout_seconds"`
-			Resource string `json:"resource_class"`
-		}
-		if !decodeRouteBody(w, r, &in) {
-			return
-		}
-		ws, ok := s.workspace(w, r)
-		if !ok {
-			return
-		}
-		if (in.Template != "gogallery-v1" && in.Template != "research-v1") || !shared.ValidKey(in.Key) || in.Timeout < 0 || in.Timeout > 3600 || (in.Resource != "" && in.Resource != "cpu-small") {
-			shared.Error(w, 422, "UNSUPPORTED_APPROVED_TEMPLATE_OR_BUDGET")
-			return
-		}
-		if in.Timeout == 0 {
-			in.Timeout = 600
-			if in.Template == "gogallery-v1" {
-				in.Timeout = 1800
-			}
-		}
-		unlock := s.operations.Lock(ws.ID)
-		defer unlock()
-		ws, ok = s.workspace(w, r)
-		if !ok {
-			return
-		}
-		if err := s.start(r.Context(), &ws); err != nil {
-			apiError(w, err)
-			return
-		}
-		b, _ := json.Marshal(in)
-		s.factoryForward(w, r, ws.ID, "/v1/recipe-jobs", b)
-	})
-	for _, route := range []struct{ pattern, suffix string }{
-		{"GET /v1/workspaces/{id}/recipe-jobs/{job}", ""},
-		{"POST /v1/workspaces/{id}/recipe-jobs/{job}/cancel", "/cancel"},
-	} {
-		mux.HandleFunc(route.pattern, func(w http.ResponseWriter, r *http.Request) {
-			ws, ok := s.workspace(w, r)
-			if !ok {
-				return
-			}
-			job := r.PathValue("job")
-			if !shared.ValidID(job) {
-				shared.Error(w, 400, "INVALID_REQUEST")
-				return
-			}
-			unlock := s.operations.Lock(ws.ID)
-			defer unlock()
-			ws, ok = s.workspace(w, r)
-			if !ok {
-				return
-			}
-			if err := s.lifecycle().ObserveTask(r.Context(), &ws); err != nil {
-				apiError(w, err)
-				return
-			}
-			s.factoryForward(w, r, ws.ID, "/v1/recipe-jobs/"+job+route.suffix, []byte(`{}`))
-		})
-	}
 	mux.HandleFunc("POST /v1/workspaces/{id}/retained-previews", func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
 			Retained string `json:"retained_workspace_id"`

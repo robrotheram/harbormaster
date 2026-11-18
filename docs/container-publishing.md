@@ -18,17 +18,16 @@ All images use `ghcr.io/robrotheram/harbormaster/<image>`:
 - `egress-gateway`
 - `credential-broker`
 - `workspace`
-- `workspace-gogallery`
 
 Builds currently target **Linux AMD64**. ARM64 support requires acceptance of
-bundled native T3/provider binaries and workspace templates before adding it to
+bundled native T3/provider binaries and workspace images before adding it to
 the matrix. PostgreSQL and Vault remain upstream images. Firecracker guest/rootfs
 artifacts and the optional Kubernetes Hermes overlay retain their separate
 provisioning workflows; this pipeline builds the root Dockerfile targets only.
 
 Each published build has `sha-<full-40-character-commit>` tags. Successful `main`
 builds also update `edge`. Pushing a version tag such as `v1.0.0` publishes that
-exact image tag for all nine images. There is deliberately no implicit `latest`.
+exact image tag for all eight images. There is deliberately no implicit `latest`.
 Re-running a commit can rebuild mutable upstream base tags, so use the resulting
 **image digest** for immutable deployments.
 
@@ -61,6 +60,4 @@ workspace image onto the Docker runtime host before allocating workspaces. The
 controller does not gain registry credentials from GitHub Actions. For other
 backends, configure image access using that backend's supported mechanism.
 
-The GoGallery template image is an optional runtime choice; publishing it does
-not select it for all workspaces. Keep runtime-specific acceptance and backups
-in the [release checklist](operations.md).
+Keep runtime-specific acceptance and backups in the [release checklist](operations.md).

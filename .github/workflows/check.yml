@@ -78,7 +78,6 @@ jobs:
           - {image: egress-gateway, target: platform, service: egress-gateway}
           - {image: credential-broker, target: platform, service: credential-broker}
           - {image: workspace, target: workspace, service: workspace}
-          - {image: workspace-gogallery, target: workspace-gogallery, service: workspace}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
