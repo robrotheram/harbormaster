@@ -7,50 +7,20 @@ import (
 	"errors"
 	"time"
 
+	"agent-workbench/internal/jsonmetadata"
 	"agent-workbench/internal/shared"
 )
 
 var ErrOwnership = errors.New("immutable ownership mismatch")
 
 func (s *Store) Project(ctx context.Context, id string) (shared.Project, error) {
-	var p shared.Project
-	var b string
-	err := s.DB.QueryRowContext(ctx, `SELECT metadata FROM projects WHERE id=$1 AND id NOT IN (SELECT id FROM deleted_resources WHERE kind='project')`, id).Scan(&b)
-	if err != nil {
-		return p, err
-	}
-	err = json.Unmarshal([]byte(b), &p)
-	return p, err
+	return jsonmetadata.Get[shared.Project](ctx, s.DB, `SELECT metadata FROM projects WHERE id=$1 AND id NOT IN (SELECT id FROM deleted_resources WHERE kind='project')`, id)
 }
 func (s *Store) ProjectByKey(ctx context.Context, key string) (shared.Project, error) {
-	var p shared.Project
-	var b string
-	err := s.DB.QueryRowContext(ctx, `SELECT metadata FROM projects WHERE create_key=$1 AND id NOT IN (SELECT id FROM deleted_resources WHERE kind='project')`, key).Scan(&b)
-	if err != nil {
-		return p, err
-	}
-	err = json.Unmarshal([]byte(b), &p)
-	return p, err
+	return jsonmetadata.Get[shared.Project](ctx, s.DB, `SELECT metadata FROM projects WHERE create_key=$1 AND id NOT IN (SELECT id FROM deleted_resources WHERE kind='project')`, key)
 }
 func (s *Store) Projects(ctx context.Context) ([]shared.Project, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT metadata FROM projects WHERE id NOT IN (SELECT id FROM deleted_resources WHERE kind='project') ORDER BY id`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []shared.Project{}
-	for rows.Next() {
-		var p shared.Project
-		var b string
-		if err = rows.Scan(&b); err != nil {
-			return nil, err
-		}
-		if err = json.Unmarshal([]byte(b), &p); err != nil {
-			return nil, err
-		}
-		out = append(out, p)
-	}
-	return out, rows.Err()
+	return jsonmetadata.Query[shared.Project](ctx, s.DB, `SELECT metadata FROM projects WHERE id NOT IN (SELECT id FROM deleted_resources WHERE kind='project') ORDER BY id`)
 }
 func (s *Store) CreateProject(ctx context.Context, p shared.Project, key string) error {
 	b, err := json.Marshal(p)
@@ -145,12 +115,8 @@ func (s *Store) saveWorkspace(ctx context.Context, w shared.Workspace) error {
 		return err
 	}
 	defer tx.Rollback()
-	var b string
-	if err = tx.QueryRowContext(ctx, `SELECT metadata FROM workspaces WHERE id=$1`, w.ID).Scan(&b); err != nil {
-		return err
-	}
-	var old shared.Workspace
-	if err = json.Unmarshal([]byte(b), &old); err != nil {
+	old, err := jsonmetadata.Get[shared.Workspace](ctx, tx, `SELECT metadata FROM workspaces WHERE id=$1`, w.ID)
+	if err != nil {
 		return err
 	}
 	old = shared.NormalizeWorkspace(old)

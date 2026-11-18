@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"encoding/json"
+
+	"agent-workbench/internal/jsonmetadata"
 )
 
 // Connections are platform resources. The legacy project_id column is retained
@@ -18,24 +20,7 @@ func (s *Store) initForges(ctx context.Context) error {
 	return err
 }
 func (s *Store) ForgeConnections(ctx context.Context) ([]ForgeConnection, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT metadata FROM forge_connections ORDER BY id`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ForgeConnection{}
-	for rows.Next() {
-		var b string
-		var item ForgeConnection
-		if err = rows.Scan(&b); err != nil {
-			return nil, err
-		}
-		if err = json.Unmarshal([]byte(b), &item); err != nil {
-			return nil, err
-		}
-		items = append(items, item)
-	}
-	return items, rows.Err()
+	return jsonmetadata.Query[ForgeConnection](ctx, s.DB, `SELECT metadata FROM forge_connections ORDER BY id`)
 }
 func (s *Store) SaveForge(ctx context.Context, c ForgeConnection) error {
 	b, err := json.Marshal(c)

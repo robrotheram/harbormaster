@@ -1,10 +1,12 @@
 package orchestration
 
 import (
-	"agent-workbench/internal/shared"
 	"context"
 	"encoding/json"
 	"time"
+
+	"agent-workbench/internal/jsonmetadata"
+	"agent-workbench/internal/shared"
 )
 
 func (r Repository) HasUnfinishedRuns(ctx context.Context, id string) (bool, error) {
@@ -22,26 +24,7 @@ func (r Repository) DeleteSchedule(ctx context.Context, s shared.Schedule, now t
 		return err
 	}
 	defer tx.Rollback()
-	rows, err := tx.QueryContext(ctx, `SELECT metadata FROM orchestration_runs WHERE schedule_id=$1 AND state='queued'`, s.ID)
-	if err != nil {
-		return err
-	}
-	var queued []shared.Run
-	for rows.Next() {
-		var raw string
-		var run shared.Run
-		if err = rows.Scan(&raw); err != nil {
-			rows.Close()
-			return err
-		}
-		if err = json.Unmarshal([]byte(raw), &run); err != nil {
-			rows.Close()
-			return err
-		}
-		queued = append(queued, run)
-	}
-	err = rows.Err()
-	rows.Close()
+	queued, err := jsonmetadata.Query[shared.Run](ctx, tx, `SELECT metadata FROM orchestration_runs WHERE schedule_id=$1 AND state='queued'`, s.ID)
 	if err != nil {
 		return err
 	}

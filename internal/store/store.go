@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	"agent-workbench/internal/jsonmetadata"
 	"agent-workbench/internal/shared"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	_ "modernc.org/sqlite"
@@ -45,45 +46,30 @@ func (s *Store) Create(ctx context.Context, w shared.Workspace, key string) erro
 	return s.createWorkspace(ctx, w, key)
 }
 func (s *Store) ByKey(ctx context.Context, key string) (shared.Workspace, error) {
-	var b string
-	var w shared.Workspace
-	e := s.DB.QueryRowContext(ctx, `SELECT metadata FROM workspaces WHERE create_key=$1 AND id NOT IN (SELECT id FROM deleted_resources WHERE kind='workspace')`, key).Scan(&b)
-	if e != nil {
-		return w, e
-	}
-	e = json.Unmarshal([]byte(b), &w)
-	return shared.NormalizeWorkspace(w), e
+	return s.workspaceMetadata(ctx, `SELECT metadata FROM workspaces WHERE create_key=$1 AND id NOT IN (SELECT id FROM deleted_resources WHERE kind='workspace')`, key)
 }
 func (s *Store) Workspaces(ctx context.Context) ([]shared.Workspace, error) {
-	rows, e := s.DB.QueryContext(ctx, `SELECT metadata FROM workspaces WHERE id NOT IN (SELECT id FROM deleted_resources WHERE kind='workspace') ORDER BY id`)
-	if e != nil {
-		return nil, e
+	workspaces, err := jsonmetadata.Query[shared.Workspace](ctx, s.DB, `SELECT metadata FROM workspaces WHERE id NOT IN (SELECT id FROM deleted_resources WHERE kind='workspace') ORDER BY id`)
+	for i := range workspaces {
+		workspaces[i] = shared.NormalizeWorkspace(workspaces[i])
 	}
-	defer rows.Close()
-	out := []shared.Workspace{}
-	for rows.Next() {
-		var b string
-		var w shared.Workspace
-		if e = rows.Scan(&b); e != nil {
-			return nil, e
-		}
-		if e = json.Unmarshal([]byte(b), &w); e != nil {
-			return nil, e
-		}
-		out = append(out, shared.NormalizeWorkspace(w))
-	}
-	return out, rows.Err()
+	return workspaces, err
 }
 func (s *Store) Workspace(ctx context.Context, id string) (shared.Workspace, error) {
-	var b string
-	var w shared.Workspace
-	e := s.DB.QueryRowContext(ctx, `SELECT metadata FROM workspaces WHERE id=$1 AND id NOT IN (SELECT id FROM deleted_resources WHERE kind='workspace')`, id).Scan(&b)
-	if e != nil {
-		return w, e
-	}
-	e = json.Unmarshal([]byte(b), &w)
-	return shared.NormalizeWorkspace(w), e
+	return s.workspaceMetadata(ctx, `SELECT metadata FROM workspaces WHERE id=$1 AND id NOT IN (SELECT id FROM deleted_resources WHERE kind='workspace')`, id)
 }
+
+// Workspace defaults apply after a successful scan, including on decode errors.
+func (s *Store) workspaceMetadata(ctx context.Context, query string, args ...any) (shared.Workspace, error) {
+	var metadata string
+	if err := s.DB.QueryRowContext(ctx, query, args...).Scan(&metadata); err != nil {
+		return shared.Workspace{}, err
+	}
+	var workspace shared.Workspace
+	err := json.Unmarshal([]byte(metadata), &workspace)
+	return shared.NormalizeWorkspace(workspace), err
+}
+
 func (s *Store) Save(ctx context.Context, w shared.Workspace) error { return s.saveWorkspace(ctx, w) }
 func (s *Store) SaveTask(ctx context.Context, t shared.Task) error {
 	b, e := json.Marshal(t)
@@ -104,22 +90,5 @@ func (s *Store) SaveTask(ctx context.Context, t shared.Task) error {
 	return nil
 }
 func (s *Store) Tasks(ctx context.Context) ([]shared.Task, error) {
-	rows, e := s.DB.QueryContext(ctx, `SELECT metadata FROM task_metadata ORDER BY id`)
-	if e != nil {
-		return nil, e
-	}
-	defer rows.Close()
-	out := []shared.Task{}
-	for rows.Next() {
-		var b string
-		var t shared.Task
-		if e = rows.Scan(&b); e != nil {
-			return nil, e
-		}
-		if e = json.Unmarshal([]byte(b), &t); e != nil {
-			return nil, e
-		}
-		out = append(out, t)
-	}
-	return out, rows.Err()
+	return jsonmetadata.Query[shared.Task](ctx, s.DB, `SELECT metadata FROM task_metadata ORDER BY id`)
 }

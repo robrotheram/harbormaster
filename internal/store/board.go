@@ -1,11 +1,13 @@
 package store
 
 import (
-	"agent-workbench/internal/shared"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
+
+	"agent-workbench/internal/jsonmetadata"
+	"agent-workbench/internal/shared"
 )
 
 var ErrBoardConflict = errors.New("board revision conflict")
@@ -92,17 +94,11 @@ func (s *Store) initBoard(ctx context.Context) error {
 	return err
 }
 func (s *Store) BoardItem(ctx context.Context, project, id string) (BoardItem, error) {
-	var b string
-	var item BoardItem
-	err := s.DB.QueryRowContext(ctx, `SELECT metadata FROM board_items WHERE project_id=$1 AND id=$2`, project, id).Scan(&b)
+	item, err := jsonmetadata.Get[BoardItem](ctx, s.DB, `SELECT metadata FROM board_items WHERE project_id=$1 AND id=$2`, project, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		number, e := s.workReference(ctx, project, id)
 		return BoardItem{ID: id, ProjectID: project, Number: number}, e
 	}
-	if err != nil {
-		return item, err
-	}
-	err = json.Unmarshal([]byte(b), &item)
 	if err == nil {
 		item.Number, err = s.workReference(ctx, project, id)
 	}

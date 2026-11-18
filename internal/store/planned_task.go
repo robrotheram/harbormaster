@@ -1,7 +1,6 @@
 package store
 
 import (
-	"agent-workbench/internal/shared"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -9,6 +8,9 @@ import (
 	"encoding/json"
 	"errors"
 	"time"
+
+	"agent-workbench/internal/jsonmetadata"
+	"agent-workbench/internal/shared"
 )
 
 // CreatePlannedTask saves editable planning content without allocating compute.
@@ -23,12 +25,7 @@ func (s *Store) CreatePlannedTask(ctx context.Context, in shared.BoardCreate, ac
 	if _, err = tx.ExecContext(ctx, `UPDATE projects SET metadata=metadata WHERE id=$1`, in.ProjectID); err != nil {
 		return item, false, err
 	}
-	var raw string
-	err = tx.QueryRowContext(ctx, `SELECT metadata FROM work_items WHERE project_id=$1 AND create_key=$2`, in.ProjectID, in.IdempotencyKey).Scan(&raw)
-	if err == nil {
-		err = json.Unmarshal([]byte(raw), &item)
-		return item, false, err
-	}
+	item, err = jsonmetadata.Get[shared.WorkItem](ctx, tx, `SELECT metadata FROM work_items WHERE project_id=$1 AND create_key=$2`, in.ProjectID, in.IdempotencyKey)
 	if !errors.Is(err, sql.ErrNoRows) {
 		return item, false, err
 	}

@@ -1,12 +1,14 @@
 package orchestration
 
 import (
-	"agent-workbench/internal/shared"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"time"
+
+	"agent-workbench/internal/jsonmetadata"
+	"agent-workbench/internal/shared"
 )
 
 // InitWorkAttempts is additive and safe to invoke from the startup migration owner.
@@ -18,24 +20,7 @@ func (r Repository) Attempts(ctx context.Context, project, id string) ([]shared.
 	if _, err := r.Work(ctx, project, id); err != nil {
 		return nil, err
 	}
-	rows, err := r.DB.QueryContext(ctx, `SELECT metadata FROM work_attempts WHERE project_id=$1 AND work_item_id=$2 ORDER BY id`, project, id)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []shared.WorkAttempt{}
-	for rows.Next() {
-		var b string
-		var a shared.WorkAttempt
-		if err = rows.Scan(&b); err != nil {
-			return nil, err
-		}
-		if err = json.Unmarshal([]byte(b), &a); err != nil {
-			return nil, err
-		}
-		out = append(out, a)
-	}
-	return out, rows.Err()
+	return jsonmetadata.Query[shared.WorkAttempt](ctx, r.DB, `SELECT metadata FROM work_attempts WHERE project_id=$1 AND work_item_id=$2 ORDER BY id`, project, id)
 }
 func (r Repository) RunWork(ctx context.Context, project, id, key string, now time.Time) (shared.WorkAttempt, error) {
 	return r.runWork(ctx, project, id, key, nil, now)
@@ -63,12 +48,9 @@ func (r Repository) runWork(ctx context.Context, project, id, key string, revisi
 		return shared.WorkAttempt{}, err
 	}
 	defer tx.Rollback()
-	var b string
-	var a shared.WorkAttempt
-	err = tx.QueryRowContext(ctx, `SELECT metadata FROM work_attempts WHERE project_id=$1 AND work_item_id=$2 AND delivery_key=$3`, project, id, key).Scan(&b)
+	a, err := jsonmetadata.Get[shared.WorkAttempt](ctx, tx, `SELECT metadata FROM work_attempts WHERE project_id=$1 AND work_item_id=$2 AND delivery_key=$3`, project, id, key)
 	if err == nil {
-		err = json.Unmarshal([]byte(b), &a)
-		if err == nil && revision != nil && (a.ParentAttemptID != revision.ExpectedAttemptID || a.SpecificationPath != revision.Path || a.SpecificationDigest != revision.Digest || (revision.Selection != nil && (a.Provider != revision.Selection.Provider || a.Model != revision.Selection.Model))) {
+		if revision != nil && (a.ParentAttemptID != revision.ExpectedAttemptID || a.SpecificationPath != revision.Path || a.SpecificationDigest != revision.Digest || (revision.Selection != nil && (a.Provider != revision.Selection.Provider || a.Model != revision.Selection.Model))) {
 			return a, ErrConflict
 		}
 		return a, err
@@ -76,11 +58,12 @@ func (r Repository) runWork(ctx context.Context, project, id, key string, revisi
 	if err != sql.ErrNoRows {
 		return a, err
 	}
-	var item shared.WorkItem
-	if err = tx.QueryRowContext(ctx, `SELECT metadata FROM work_items WHERE project_id=$1 AND id=$2`, project, id).Scan(&b); err != nil {
+	var old string
+	if err = tx.QueryRowContext(ctx, `SELECT metadata FROM work_items WHERE project_id=$1 AND id=$2`, project, id).Scan(&old); err != nil {
 		return a, err
 	}
-	if err = json.Unmarshal([]byte(b), &item); err != nil {
+	var item shared.WorkItem
+	if err = json.Unmarshal([]byte(old), &item); err != nil {
 		return a, err
 	}
 	// Planning-only items have no executable specification or worker yet.
@@ -102,15 +85,11 @@ func (r Repository) runWork(ctx context.Context, project, id, key string, revisi
 	default:
 		return a, ErrConflict
 	}
-	old := b
 	if revision != nil {
 		// Older attempts predate specification snapshots. Retain their original
 		// references before advancing the parent to its next instruction.
-		var prior shared.WorkAttempt
-		if err = tx.QueryRowContext(ctx, `SELECT metadata FROM work_attempts WHERE id=$1 AND work_item_id=$2 AND project_id=$3`, item.LatestAttemptID, id, project).Scan(&b); err != nil {
-			return a, err
-		}
-		if err = json.Unmarshal([]byte(b), &prior); err != nil {
+		prior, err := jsonmetadata.Get[shared.WorkAttempt](ctx, tx, `SELECT metadata FROM work_attempts WHERE id=$1 AND work_item_id=$2 AND project_id=$3`, item.LatestAttemptID, id, project)
+		if err != nil {
 			return a, err
 		}
 		if prior.SpecificationPath == "" {
@@ -164,12 +143,12 @@ func (r Repository) saveAttempt(ctx context.Context, project string, a shared.Wo
 		return err
 	}
 	defer tx.Rollback()
-	var b string
-	var item shared.WorkItem
-	if err = tx.QueryRowContext(ctx, `SELECT metadata FROM work_items WHERE project_id=$1 AND id=$2`, project, a.WorkItemID).Scan(&b); err != nil {
+	var old string
+	if err = tx.QueryRowContext(ctx, `SELECT metadata FROM work_items WHERE project_id=$1 AND id=$2`, project, a.WorkItemID).Scan(&old); err != nil {
 		return err
 	}
-	if err = json.Unmarshal([]byte(b), &item); err != nil {
+	var item shared.WorkItem
+	if err = json.Unmarshal([]byte(old), &item); err != nil {
 		return err
 	}
 	ab, _ := json.Marshal(a)
@@ -190,7 +169,7 @@ func (r Repository) saveAttempt(ctx context.Context, project string, a shared.Wo
 		}
 		item.UpdatedAt = a.UpdatedAt
 		ib, _ := json.Marshal(item)
-		res, e := tx.ExecContext(ctx, `UPDATE work_items SET metadata=$1 WHERE id=$2 AND metadata=$3`, string(ib), item.ID, b)
+		res, e := tx.ExecContext(ctx, `UPDATE work_items SET metadata=$1 WHERE id=$2 AND metadata=$3`, string(ib), item.ID, old)
 		if e != nil {
 			return e
 		}
@@ -249,12 +228,8 @@ func (r Repository) ReviewRevisionBy(ctx context.Context, project, id, decision,
 		return item, ErrConflict
 	}
 	if item.LatestAttemptID != "" {
-		var raw string
-		if err = tx.QueryRowContext(ctx, `SELECT metadata FROM work_attempts WHERE id=$1 AND project_id=$2 AND work_item_id=$3`, item.LatestAttemptID, project, id).Scan(&raw); err != nil {
-			return item, err
-		}
-		var attempt shared.WorkAttempt
-		if err = json.Unmarshal([]byte(raw), &attempt); err != nil {
+		attempt, err := jsonmetadata.Get[shared.WorkAttempt](ctx, tx, `SELECT metadata FROM work_attempts WHERE id=$1 AND project_id=$2 AND work_item_id=$3`, item.LatestAttemptID, project, id)
+		if err != nil {
 			return item, err
 		}
 		attempt.ReviewState = decision

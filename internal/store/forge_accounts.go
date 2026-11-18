@@ -1,10 +1,12 @@
 package store
 
 import (
-	"agent-workbench/internal/forge"
 	"context"
 	"encoding/json"
 	"errors"
+
+	"agent-workbench/internal/forge"
+	"agent-workbench/internal/jsonmetadata"
 )
 
 var ErrForgeAccountConflict = errors.New("forge account conflict")
@@ -20,25 +22,11 @@ func (s *Store) initForgeAccounts(ctx context.Context) error {
 	return err
 }
 func (s *Store) ForgeAccounts(ctx context.Context) ([]ForgeAccount, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT metadata FROM forge_accounts ORDER BY name`)
-	if err != nil {
-		return nil, err
+	accounts, err := jsonmetadata.Query[ForgeAccount](ctx, s.DB, `SELECT metadata FROM forge_accounts ORDER BY name`)
+	for i := range accounts {
+		accounts[i].Token = ""
 	}
-	defer rows.Close()
-	accounts := []ForgeAccount{}
-	for rows.Next() {
-		var b string
-		var a ForgeAccount
-		if err = rows.Scan(&b); err != nil {
-			return nil, err
-		}
-		if err = json.Unmarshal([]byte(b), &a); err != nil {
-			return nil, err
-		}
-		a.Token = ""
-		accounts = append(accounts, a)
-	}
-	return accounts, rows.Err()
+	return accounts, err
 }
 func (s *Store) ForgeAccountCredential(ctx context.Context, name string) (string, error) {
 	var value string
