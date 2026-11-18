@@ -1,6 +1,7 @@
 package api
 
 import (
+	"agent-workbench/internal/runtime/protocol"
 	"agent-workbench/internal/shared"
 	"context"
 	"encoding/json"
@@ -39,7 +40,7 @@ func TestStartRestoresPersistedConsoleAndWaitsForReadiness(t *testing.T) {
 				t.Fatal(err)
 			}
 			if alreadyRunning {
-				if _, err := base.Start(context.Background(), ws.ID); err != nil {
+				if _, err := base.StartConfigured(context.Background(), ws.ID, protocol.WorkspaceSpec{}); err != nil {
 					t.Fatal(err)
 				}
 			}

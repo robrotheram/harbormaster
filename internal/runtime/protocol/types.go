@@ -3,15 +3,28 @@ package protocol
 import (
 	"agent-workbench/internal/shared"
 	"context"
+	"net/http"
 )
 
 var ErrCapabilitiesIncompatible = &shared.CodedError{Status: shared.StatusServiceUnavailable, Code: "RUNTIME_CAPABILITIES_INCOMPATIBLE"}
 
+// Runtime is the control plane contract with the runtime controller.
 type Runtime interface {
-	Start(context.Context, string) (shared.Observation, error)
+	StartConfigured(context.Context, string, WorkspaceSpec) (shared.Observation, error)
 	Stop(context.Context, string) error
 	Inspect(context.Context, string) (shared.Observation, error)
 	Agent(context.Context, string, string, string, []byte) (int, []byte, error)
+	Reconcile(context.Context, string) error
+	ConfigureConnections(context.Context, string, shared.ConnectionPolicy) error
+	Capabilities(context.Context) (RuntimeCapability, error)
+	AgentKinds(context.Context) ([]string, error)
+	MatrixCredentialPresent(context.Context, string) bool
+	MatrixCredential(context.Context, string, shared.HermesMatrix, string) error
+	MatrixAction(context.Context, string, string, *shared.HermesMatrix) error
+	EnsureProjectNamespace(context.Context, string) (string, error)
+	Desktop(http.ResponseWriter, *http.Request, string, string)
+	Console(http.ResponseWriter, *http.Request, string, string)
+	Application(http.ResponseWriter, *http.Request, string, string)
 }
 
 type WorkspaceSpec struct {

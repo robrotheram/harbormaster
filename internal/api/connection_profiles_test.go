@@ -25,7 +25,7 @@ func (r *globalProfileRuntime) StartConfigured(ctx context.Context, id string, s
 	if spec.ConnectionMode == "open" {
 		r.mode = "open"
 	}
-	return r.embeddedRuntime.Start(ctx, id)
+	return r.embeddedRuntime.StartConfigured(ctx, id, spec)
 }
 func (r *globalProfileRuntime) ConfigureConnections(_ context.Context, _ string, p shared.ConnectionPolicy) error {
 	r.policy = p

@@ -66,16 +66,7 @@ func (s *Server) hermesAvailable(ctx context.Context) bool {
 func (s *Server) hermesRuntimeStatus(ctx context.Context) string {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
-	var kinds []string
-	var err error
-	if c, ok := s.Runtime.(runtimeAgentKinds); ok {
-		kinds, err = c.AgentKinds(ctx)
-	} else if c, ok := s.Runtime.(runtimeCapabilities); ok {
-		caps, e := c.Capabilities(ctx)
-		kinds, err = caps.AgentKinds, e
-	} else {
-		return "unavailable"
-	}
+	kinds, err := s.Runtime.AgentKinds(ctx)
 	if err != nil {
 		return "unavailable"
 	}
@@ -91,9 +82,7 @@ func (s *Server) hermesResponse(ctx context.Context, c shared.HermesSetup) map[s
 	available := status == "available"
 	result := map[string]any{"config": c, "saved": c.Revision > 0, "runtime_available": available, "runtime_status": status, "matrix_available": available, "matrix_credential_configured": false, "matrix_state": "disconnected"}
 	if c.Matrix != nil {
-		if r, ok := s.Runtime.(matrixCredentialStatus); ok {
-			result["matrix_credential_configured"] = r.MatrixCredentialPresent(ctx, c.ProjectID)
-		}
+		result["matrix_credential_configured"] = s.Runtime.MatrixCredentialPresent(ctx, c.ProjectID)
 	}
 	if workspaces, err := s.Store.Workspaces(ctx); err == nil {
 		for _, ws := range workspaces {
@@ -202,8 +191,7 @@ func (s *Server) registerHermes(mux *http.ServeMux) {
 			shared.Error(w, 409, "HERMES_REVISION_CONFLICT")
 			return
 		}
-		adapter, ok := s.Runtime.(runtimeMatrixCredentialWriter)
-		if !ok || !s.hermesAvailable(r.Context()) {
+		if !s.hermesAvailable(r.Context()) {
 			shared.Error(w, 409, "HERMES_SETUP_REQUIRED")
 			return
 		}
@@ -220,7 +208,7 @@ func (s *Server) registerHermes(mux *http.ServeMux) {
 			shared.Error(w, 409, "HERMES_REVISION_CONFLICT")
 			return
 		}
-		if adapter.MatrixCredential(r.Context(), id, *c.Matrix, body.Token) != nil {
+		if s.Runtime.MatrixCredential(r.Context(), id, *c.Matrix, body.Token) != nil {
 			shared.Error(w, 400, "MATRIX_CREDENTIAL_REJECTED")
 			return
 		}
@@ -236,11 +224,6 @@ func (s *Server) registerHermes(mux *http.ServeMux) {
 			c, err := s.Store.HermesSetup(r.Context(), id)
 			if err != nil || (action == "start" && c.Matrix == nil) {
 				shared.Error(w, 409, "MATRIX_SETTINGS_REQUIRED")
-				return
-			}
-			adapter, ok := s.Runtime.(matrixActionRuntime)
-			if !ok {
-				shared.Error(w, 409, "HERMES_SETUP_REQUIRED")
 				return
 			}
 			projectUnlock := s.operations.Lock("project:" + id)
@@ -273,7 +256,7 @@ func (s *Server) registerHermes(mux *http.ServeMux) {
 				return
 			}
 			if action == "start" {
-				err = adapter.MatrixAction(r.Context(), ws.ID, "enable", c.Matrix)
+				err = s.Runtime.MatrixAction(r.Context(), ws.ID, "enable", c.Matrix)
 				if coded, ok := shared.ErrorDetails(err); ok && coded.Code == "MATRIX_RESTART_REQUIRED" {
 					if ws.ActiveRuns > 0 || ws.BackgroundJobs > 0 {
 						shared.Error(w, 409, "WORKSPACE_BUSY")
@@ -287,7 +270,7 @@ func (s *Server) registerHermes(mux *http.ServeMux) {
 						apiError(w, e)
 						return
 					}
-					err = adapter.MatrixAction(r.Context(), ws.ID, "enable", c.Matrix)
+					err = s.Runtime.MatrixAction(r.Context(), ws.ID, "enable", c.Matrix)
 				}
 				if err != nil {
 					var response error
@@ -303,12 +286,12 @@ func (s *Server) registerHermes(mux *http.ServeMux) {
 			}
 			code, b, err := s.Runtime.Agent(r.Context(), ws.ID, "POST", "/v1/matrix/"+action, nil)
 			if err != nil || (code != 200 && code != 202) {
-				_ = adapter.MatrixAction(r.Context(), ws.ID, "disable", nil)
+				_ = s.Runtime.MatrixAction(r.Context(), ws.ID, "disable", nil)
 				shared.Error(w, 503, "MATRIX_UNAVAILABLE")
 				return
 			}
 			if action == "stop" {
-				_ = adapter.MatrixAction(r.Context(), ws.ID, "disable", nil)
+				_ = s.Runtime.MatrixAction(r.Context(), ws.ID, "disable", nil)
 			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(code)

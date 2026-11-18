@@ -42,20 +42,20 @@ func TestHermesStatusThroughLegacyControllerClient(t *testing.T) {
 	}
 }
 
-type capabilityRuntime struct {
+type agentKindsRuntime struct {
 	*embeddedRuntime
-	cap runtime.RuntimeCapability
-	err error
+	kinds []string
+	err   error
 }
 
-func (r *capabilityRuntime) Capabilities(context.Context) (runtime.RuntimeCapability, error) {
-	return r.cap, r.err
+func (r *agentKindsRuntime) AgentKinds(context.Context) ([]string, error) {
+	return r.kinds, r.err
 }
 
 func TestHermesRuntimeCheckFailureIsNotMissingInstallation(t *testing.T) {
 	s, rt := setup(t)
 	p := domainProject(t, s, "hermes-status")
-	c := &capabilityRuntime{embeddedRuntime: rt}
+	c := &agentKindsRuntime{embeddedRuntime: rt}
 	s.Runtime = c
 	for _, check := range []struct {
 		err       error
@@ -67,7 +67,7 @@ func TestHermesRuntimeCheckFailureIsNotMissingInstallation(t *testing.T) {
 		{nil, []string{"codex"}, "not_installed", false},
 		{nil, []string{"codex", "hermes"}, "available", true},
 	} {
-		c.err, c.cap.AgentKinds = check.err, check.kinds
+		c.err, c.kinds = check.err, check.kinds
 		w := request(t, s, "GET", "/v1/projects/"+p.ID+"/hermes", "")
 		var out struct {
 			Status    string `json:"runtime_status"`
@@ -121,12 +121,12 @@ func TestMatrixCredentialCannotFollowAChangedHomeserver(t *testing.T) {
 	}
 }
 
-func (r *hermesRuntime) Capabilities(context.Context) (runtime.RuntimeCapability, error) {
-	return runtime.RuntimeCapability{AgentKinds: []string{"hermes"}}, nil
+func (r *hermesRuntime) AgentKinds(context.Context) ([]string, error) {
+	return []string{"t3", "codex", "hermes"}, nil
 }
 func (r *hermesRuntime) StartConfigured(ctx context.Context, id string, spec runtime.WorkspaceSpec) (shared.Observation, error) {
 	r.spec = spec
-	return r.Start(ctx, id)
+	return r.embeddedRuntime.StartConfigured(ctx, id, spec)
 }
 
 func TestHermesAdmissionRequiresInstalledEngineAndForwardsSavedSettings(t *testing.T) {

@@ -33,7 +33,7 @@ type fixedToolsRuntime struct {
 
 func (rt *fixedToolsRuntime) StartConfigured(ctx context.Context, id string, spec protocol.WorkspaceSpec) (shared.Observation, error) {
 	rt.spec = spec
-	return rt.Start(ctx, id)
+	return rt.consoleRestoreRuntime.StartConfigured(ctx, id, spec)
 }
 func (rt *fixedToolsRuntime) Desktop(w http.ResponseWriter, r *http.Request, id, path string) {
 	rt.attachments++

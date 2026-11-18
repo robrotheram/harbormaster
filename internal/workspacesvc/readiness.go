@@ -70,15 +70,10 @@ func (s *Service) StartReadiness(ctx context.Context, w shared.Workspace) StartR
 			add("hermes", "Hermes setup", "passed", "", "Model configuration is saved and the Hermes engine is installed.")
 		}
 	}
-	caps, ok := s.Runtime.(CapabilityRuntime)
-	var c protocol.RuntimeCapability
-	var err error
-	if ok {
-		c, err = caps.Capabilities(ctx)
-	}
-	if errors.Is(err, protocol.ErrCapabilitiesIncompatible) || (ok && err == nil && c.SchemaVersion != 1) {
+	c, err := s.Runtime.Capabilities(ctx)
+	if errors.Is(err, protocol.ErrCapabilitiesIncompatible) || (err == nil && c.SchemaVersion != 1) {
 		add("runtime", "Runtime compatibility", "blocked", "RUNTIME_CAPABILITIES_INCOMPATIBLE", "The runtime controller uses an incompatible capability format. Update the host controller to match the control plane, then check again.")
-	} else if !ok || err != nil {
+	} else if err != nil {
 		add("runtime", "Runtime compatibility", "unknown", "RUNTIME_UNAVAILABLE", "Could not verify runtime capabilities. Check Platform services, then check again.")
 	} else {
 		add("runtime", "Runtime compatibility", "passed", "", "The controller reports a supported capability format.")

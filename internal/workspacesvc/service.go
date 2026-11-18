@@ -20,25 +20,6 @@ type Repository interface {
 	ConnectionProfile(context.Context, string) (shared.ConnectionProfile, error)
 	HermesSetup(context.Context, string) (shared.HermesSetup, error)
 }
-type Runtime interface {
-	Start(context.Context, string) (shared.Observation, error)
-	Stop(context.Context, string) error
-	Inspect(context.Context, string) (shared.Observation, error)
-	Agent(context.Context, string, string, string, []byte) (int, []byte, error)
-}
-type Reconciler interface {
-	Reconcile(context.Context, string) error
-}
-type ConfiguredRuntime interface {
-	StartConfigured(context.Context, string, protocol.WorkspaceSpec) (shared.Observation, error)
-}
-type CapabilityRuntime interface {
-	Capabilities(context.Context) (protocol.RuntimeCapability, error)
-}
-
-type ConnectionRuntime interface {
-	ConfigureConnections(context.Context, string, shared.ConnectionPolicy) error
-}
 type Config struct {
 	SharedWorkspaceID string
 	IdleTimeout       time.Duration
@@ -48,7 +29,7 @@ type Config struct {
 }
 type Service struct {
 	Store           Repository
-	Runtime         Runtime
+	Runtime         protocol.Runtime
 	Config          Config
 	Now             func() time.Time
 	HermesAvailable func(context.Context) bool
@@ -170,10 +151,8 @@ func (s *Service) start(ctx context.Context, w *shared.Workspace, opened bool) e
 		return err
 	}
 	if w.Ready {
-		if reconciler, ok := s.Runtime.(Reconciler); ok {
-			if err := reconciler.Reconcile(ctx, w.ID); err != nil {
-				return err
-			}
+		if err := s.Runtime.Reconcile(ctx, w.ID); err != nil {
+			return err
 		}
 		if err := s.ConfigureConnections(ctx, *w); err != nil {
 			return err
@@ -183,20 +162,16 @@ func (s *Service) start(ctx context.Context, w *shared.Workspace, opened bool) e
 		}
 		return s.Store.Save(ctx, *w)
 	}
-	if caps, ok := s.Runtime.(CapabilityRuntime); ok {
-		c, err := caps.Capabilities(ctx)
-		if err != nil {
-			return err
-		}
-		if c.SchemaVersion > 0 {
-			requested := protocol.ResourceLimits{CPUCores: w.CPULimit, MemoryBytes: w.MemoryLimitBytes}
-			if err := protocol.CheckResources(&requested, c.Resources); err != nil {
-				return err
-			}
-			if err := checkNetwork(*w, c); err != nil {
-				return err
-			}
-		}
+	c, err := s.Runtime.Capabilities(ctx)
+	if err != nil {
+		return err
+	}
+	requested := protocol.ResourceLimits{CPUCores: w.CPULimit, MemoryBytes: w.MemoryLimitBytes}
+	if err := protocol.CheckResources(&requested, c.Resources); err != nil {
+		return err
+	}
+	if err := checkNetwork(*w, c); err != nil {
+		return err
 	}
 	s.Coordinator.quotaMu.Lock()
 	e := s.reserve(ctx, w)
@@ -235,12 +210,20 @@ func (s *Service) reserve(ctx context.Context, w *shared.Workspace) error {
 	return s.Store.Save(ctx, *w)
 }
 func (s *Service) startReserved(ctx context.Context, w *shared.Workspace, hermesModel string, hermesMatrix *shared.HermesMatrix) error {
-	var e error
-	if configured, ok := s.Runtime.(ConfiguredRuntime); ok {
-		_, e = configured.StartConfigured(ctx, w.ID, protocol.WorkspaceSpec{Resources: &protocol.ResourceLimits{CPUCores: w.CPULimit, MemoryBytes: w.MemoryLimitBytes}, HermesMatrix: hermesMatrix, HermesModel: hermesModel, ConnectionMode: w.EffectiveConnections().Mode, ProjectID: w.ProjectID, HomeID: w.HomeID, AgentKind: w.AgentKind, TemplateID: w.TemplateID, ConsoleEnabled: w.ConsoleEnabled, Name: w.Name, ParentID: w.ParentID, Branch: w.Branch})
-	} else {
-		_, e = s.Runtime.Start(ctx, w.ID)
-	}
+	_, e := s.Runtime.StartConfigured(ctx, w.ID, protocol.WorkspaceSpec{
+		Resources:      &protocol.ResourceLimits{CPUCores: w.CPULimit, MemoryBytes: w.MemoryLimitBytes},
+		HermesMatrix:   hermesMatrix,
+		HermesModel:    hermesModel,
+		ConnectionMode: w.EffectiveConnections().Mode,
+		ProjectID:      w.ProjectID,
+		HomeID:         w.HomeID,
+		AgentKind:      w.AgentKind,
+		TemplateID:     w.TemplateID,
+		ConsoleEnabled: w.ConsoleEnabled,
+		Name:           w.Name,
+		ParentID:       w.ParentID,
+		Branch:         w.Branch,
+	})
 	if e != nil {
 		w.State = "ERROR"
 		w.Ready = false
@@ -299,11 +282,5 @@ func (s *Service) ResolveConnectionProfile(ctx context.Context, w *shared.Worksp
 	return nil
 }
 func (s *Service) ConfigureConnections(ctx context.Context, w shared.Workspace) error {
-	if rt, ok := s.Runtime.(ConnectionRuntime); ok {
-		return rt.ConfigureConnections(ctx, w.ID, w.EffectiveConnections())
-	}
-	if p := w.EffectiveConnections(); p.Mode == "open" || len(p.Destinations) > 0 {
-		return shared.CodedError{Status: shared.StatusServiceUnavailable, Code: "NETWORK_POLICY_UNAVAILABLE"}
-	}
-	return nil
+	return s.Runtime.ConfigureConnections(ctx, w.ID, w.EffectiveConnections())
 }

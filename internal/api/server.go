@@ -189,8 +189,8 @@ func (s *Server) Handler() http.Handler {
 	s.registerDeletion(secured)
 	s.registerTerminals(secured)
 	secured.HandleFunc("POST /v1/file-handoffs", s.shareFile)
-	secured.HandleFunc("/v1/workspaces/{id}/desktop/{path...}", workspaceProxy(s, desktopRuntime.Desktop))
-	secured.HandleFunc("/v1/workspaces/{id}/console/{path...}", workspaceProxy(s, consoleRuntime.Console))
+	secured.HandleFunc("/v1/workspaces/{id}/desktop/{path...}", workspaceProxy(s, s.Runtime.Desktop))
+	secured.HandleFunc("/v1/workspaces/{id}/console/{path...}", workspaceProxy(s, s.Runtime.Console))
 	secured.HandleFunc("POST /v1/workspaces", func(w http.ResponseWriter, r *http.Request) {
 		var req workspaceCreate
 		if !decodeRouteBody(w, r, &req) {

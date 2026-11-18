@@ -14,11 +14,14 @@ import (
 	"testing"
 	"time"
 
+	"agent-workbench/internal/runtime/protocol"
 	"agent-workbench/internal/shared"
 	"agent-workbench/internal/store"
 	"agent-workbench/internal/workspace"
 )
 
+// embeddedRuntime provides the full controller contract for API tests.
+// Tests embed it and override the operations relevant to their scenario.
 type embeddedRuntime struct {
 	mu             sync.Mutex
 	base, upstream string
@@ -29,7 +32,7 @@ type embeddedRuntime struct {
 	jobs           int
 }
 
-func (rt *embeddedRuntime) Start(ctx context.Context, id string) (shared.Observation, error) {
+func (rt *embeddedRuntime) StartConfigured(_ context.Context, id string, _ protocol.WorkspaceSpec) (shared.Observation, error) {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 	if rt.managers[id] == nil {
@@ -97,6 +100,44 @@ func (rt *embeddedRuntime) Agent(ctx context.Context, id, method, path string, b
 	body, e := io.ReadAll(r.Body)
 	return r.StatusCode, body, e
 }
+func (rt *embeddedRuntime) Capabilities(context.Context) (protocol.RuntimeCapability, error) {
+	return protocol.RuntimeCapability{
+		SchemaVersion: 1,
+		ID:            protocol.DevelopmentTemplate,
+		Version:       "test",
+		Backend:       "docker",
+		AgentKinds:    []string{"t3", "codex"},
+		NetworkModes:  []string{"blocked", "allowlist", "open"},
+		Resources:     protocol.ResourceLimits{CPUCores: 1, MemoryBytes: 512 << 20},
+	}, nil
+}
+func (rt *embeddedRuntime) AgentKinds(context.Context) ([]string, error) {
+	return []string{"t3", "codex"}, nil
+}
+func (rt *embeddedRuntime) Reconcile(context.Context, string) error { return nil }
+func (rt *embeddedRuntime) ConfigureConnections(context.Context, string, shared.ConnectionPolicy) error {
+	return nil
+}
+func (rt *embeddedRuntime) MatrixCredentialPresent(context.Context, string) bool { return false }
+func (rt *embeddedRuntime) MatrixCredential(context.Context, string, shared.HermesMatrix, string) error {
+	return fmt.Errorf("MATRIX_CREDENTIAL_REJECTED")
+}
+func (rt *embeddedRuntime) MatrixAction(context.Context, string, string, *shared.HermesMatrix) error {
+	return fmt.Errorf("HERMES_SETUP_REQUIRED")
+}
+func (rt *embeddedRuntime) EnsureProjectNamespace(context.Context, string) (string, error) {
+	return "", fmt.Errorf("PROJECT_NAMESPACE_UNAVAILABLE")
+}
+func (rt *embeddedRuntime) Desktop(w http.ResponseWriter, _ *http.Request, _, _ string) {
+	shared.Error(w, 503, "CONSOLE_UNAVAILABLE")
+}
+func (rt *embeddedRuntime) Console(w http.ResponseWriter, _ *http.Request, _, _ string) {
+	shared.Error(w, 503, "CONSOLE_UNAVAILABLE")
+}
+func (rt *embeddedRuntime) Application(w http.ResponseWriter, _ *http.Request, _, _ string) {
+	shared.Error(w, 503, "APPLICATION_PROXY_UNAVAILABLE")
+}
+
 func (rt *embeddedRuntime) Close() {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()

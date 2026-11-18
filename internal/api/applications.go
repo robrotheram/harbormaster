@@ -6,10 +6,6 @@ import (
 	"net/http"
 )
 
-type applicationRuntime interface {
-	Application(http.ResponseWriter, *http.Request, string, string)
-}
-
 func (s *Server) registerApplications(mux *http.ServeMux) {
 	mux.HandleFunc("/v1/workspaces/{id}/application-proxy/{service}/{path...}", func(w http.ResponseWriter, r *http.Request) {
 		ws, ok := s.workspace(w, r)
@@ -21,12 +17,7 @@ func (s *Server) registerApplications(mux *http.ServeMux) {
 			shared.Error(w, 404, "SERVICE_NOT_FOUND")
 			return
 		}
-		runtime, ok := s.Runtime.(applicationRuntime)
-		if !ok {
-			shared.Error(w, 503, "APPLICATION_PROXY_UNAVAILABLE")
-			return
-		}
-		runtime.Application(w, r, ws.ID, service+"/"+r.PathValue("path"))
+		s.Runtime.Application(w, r, ws.ID, service+"/"+r.PathValue("path"))
 	})
 	mux.HandleFunc("GET /v1/workspaces/{id}/ports", func(w http.ResponseWriter, r *http.Request) {
 		ws, ok := s.workspace(w, r)
