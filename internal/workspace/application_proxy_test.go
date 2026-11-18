@@ -35,7 +35,7 @@ func TestApplicationProxyStreamsUpgradeAndStripsAuthority(t *testing.T) {
 	}))
 	defer upstream.Close()
 	_, port, _ := net.SplitHostPort(strings.TrimPrefix(upstream.URL, "http://"))
-	m, err := New(Config{ID: "ws_app", DataDir: t.TempDir(), Token: "test-workspace-token"})
+	m, err := New(Config{ID: "ws_app", HomeID: "home_test", DataDir: t.TempDir(), Token: "test-workspace-token"})
 	if err != nil {
 		t.Fatal(err)
 	}

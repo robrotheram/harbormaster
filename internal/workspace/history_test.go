@@ -26,7 +26,7 @@ func readHistoryTest(t *testing.T, m *Manager, query string) shared.HistoryPage 
 	return page
 }
 func TestHistoryPrivatePersistenceRedactionPaginationAndBudget(t *testing.T) {
-	cfg := Config{ID: "ws_history", DataDir: t.TempDir(), Token: "workspace-exact-secret"}
+	cfg := Config{ID: "ws_history", HomeID: "home_test", DataDir: t.TempDir(), Token: "workspace-exact-secret"}
 	m, e := New(cfg)
 	if e != nil {
 		t.Fatal(e)
@@ -87,7 +87,7 @@ func TestHistoryPrivatePersistenceRedactionPaginationAndBudget(t *testing.T) {
 	}
 }
 func TestNativeHistoryOmitsReasoningAndUnauthorisedMatrix(t *testing.T) {
-	m, e := New(Config{ID: "ws_history", DataDir: t.TempDir(), Token: "test-token"})
+	m, e := New(Config{ID: "ws_history", HomeID: "home_test", DataDir: t.TempDir(), Token: "test-token"})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -135,7 +135,7 @@ type historyRoundTrip func(*http.Request) (*http.Response, error)
 
 func (fn historyRoundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return fn(r) }
 func TestT3HistoryCollectsNamespacedIDsWithinWorkspace(t *testing.T) {
-	m, e := New(Config{ID: "ws_history", DataDir: t.TempDir(), Token: "test-token"})
+	m, e := New(Config{ID: "ws_history", HomeID: "home_test", DataDir: t.TempDir(), Token: "test-token"})
 	if e != nil {
 		t.Fatal(e)
 	}

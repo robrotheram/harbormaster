@@ -720,8 +720,7 @@ func (s *Server) createProjectWorkspace(w http.ResponseWriter, r *http.Request, 
 			shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
 			return
 		}
-		// Legacy identities predate private home IDs and the modern create fingerprint.
-		if old.HomeID != "" && (old.Name != req.Name || old.ParentID != req.ParentID || old.Branch != req.Branch || old.AgentKind != req.AgentKind || old.TemplateID != req.TemplateID || old.ConnectionProfileID != req.ConnectionProfileID) {
+		if old.Name != req.Name || old.ParentID != req.ParentID || old.Branch != req.Branch || old.AgentKind != req.AgentKind || old.TemplateID != req.TemplateID || old.ConnectionProfileID != req.ConnectionProfileID {
 			shared.Error(w, 409, "IDEMPOTENCY_CONFLICT")
 			return
 		}

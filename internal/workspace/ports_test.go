@@ -21,7 +21,7 @@ func TestPortDiscoveryForwardAndListenerLifecycle(t *testing.T) {
 	}))
 	defer app.Close()
 	_, p, _ := net.SplitHostPort(strings.TrimPrefix(app.URL, "http://"))
-	m, err := New(Config{ID: "ws_ports", DataDir: t.TempDir(), Token: "test-workspace-token"})
+	m, err := New(Config{ID: "ws_ports", HomeID: "home_test", DataDir: t.TempDir(), Token: "test-workspace-token"})
 	if err != nil {
 		t.Fatal(err)
 	}

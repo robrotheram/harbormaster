@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"agent-workbench/internal/runtime/protocol"
 	"agent-workbench/internal/shared"
 	"agent-workbench/internal/store"
 	"agent-workbench/internal/workspace"
@@ -29,11 +30,21 @@ type embeddedRuntime struct {
 	jobs           int
 }
 
+func (rt *embeddedRuntime) Capabilities(context.Context) (protocol.RuntimeCapability, error) {
+	return protocol.RuntimeCapability{
+		SchemaVersion: 1,
+		Resources:     protocol.ResourceLimits{CPUCores: 1, MemoryBytes: 512 << 20},
+		NetworkModes:  []string{"blocked", "allowlist", "open"},
+		AgentKinds:    []string{"t3", "codex"},
+		BranchSeed:    true,
+	}, nil
+}
+
 func (rt *embeddedRuntime) Start(ctx context.Context, id string) (shared.Observation, error) {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 	if rt.managers[id] == nil {
-		m, e := workspace.New(workspace.Config{ID: id, DataDir: filepath.Join(rt.base, id), Token: "workspace-token", InferenceURL: rt.upstream, Model: "fixture"})
+		m, e := workspace.New(workspace.Config{ID: id, HomeID: "home_" + id, DataDir: filepath.Join(rt.base, id), Token: "workspace-token", InferenceURL: rt.upstream, Model: "fixture"})
 		if e != nil {
 			return shared.Observation{}, e
 		}

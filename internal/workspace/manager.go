@@ -112,10 +112,7 @@ func New(cfg Config) (*Manager, error) {
 	if err := os.MkdirAll(filepath.Join(cfg.DataDir, "files"), 0700); err != nil {
 		return nil, err
 	}
-	home := cfg.DataDir
-	if cfg.HomeID != "" {
-		home = filepath.Join(cfg.DataDir, "homes", cfg.HomeID)
-	}
+	home := homePath(cfg)
 	if e = os.MkdirAll(home, 0700); e != nil {
 		return nil, e
 	}

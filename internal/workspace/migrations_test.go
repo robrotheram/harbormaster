@@ -3,12 +3,13 @@ package workspace
 import (
 	"database/sql"
 	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 )
 
 func TestWorkspaceStartupUsesVersionOne(t *testing.T) {
-	cfg := Config{ID: "ws_test", Token: "test-workspace-token", DataDir: t.TempDir()}
+	cfg := Config{ID: "ws_test", HomeID: "home_test", Token: "test-workspace-token", DataDir: t.TempDir()}
 	for i := 0; i < 2; i++ {
 		m, err := New(cfg)
 		if err != nil {
@@ -24,8 +25,11 @@ func TestWorkspaceStartupUsesVersionOne(t *testing.T) {
 }
 
 func TestWorkspaceStartupRejectsPreReleaseDatabase(t *testing.T) {
-	cfg := Config{ID: "ws_test", Token: "test-workspace-token", DataDir: t.TempDir()}
-	db, err := sql.Open("sqlite", filepath.Join(cfg.DataDir, "workspace.db"))
+	cfg := Config{ID: "ws_test", HomeID: "home_test", Token: "test-workspace-token", DataDir: t.TempDir()}
+	if err := os.MkdirAll(homePath(cfg), 0700); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", filepath.Join(homePath(cfg), "workspace.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

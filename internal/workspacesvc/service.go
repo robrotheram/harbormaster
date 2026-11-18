@@ -183,20 +183,23 @@ func (s *Service) start(ctx context.Context, w *shared.Workspace, opened bool) e
 		}
 		return s.Store.Save(ctx, *w)
 	}
-	if caps, ok := s.Runtime.(CapabilityRuntime); ok {
-		c, err := caps.Capabilities(ctx)
-		if err != nil {
-			return err
-		}
-		if c.SchemaVersion > 0 {
-			requested := protocol.ResourceLimits{CPUCores: w.CPULimit, MemoryBytes: w.MemoryLimitBytes}
-			if err := protocol.CheckResources(&requested, c.Resources); err != nil {
-				return err
-			}
-			if err := checkNetwork(*w, c); err != nil {
-				return err
-			}
-		}
+	caps, ok := s.Runtime.(CapabilityRuntime)
+	if !ok {
+		return errors.New("RUNTIME_UNAVAILABLE")
+	}
+	c, err := caps.Capabilities(ctx)
+	if err != nil {
+		return err
+	}
+	if c.SchemaVersion != 1 {
+		return protocol.ErrCapabilitiesIncompatible
+	}
+	requested := protocol.ResourceLimits{CPUCores: w.CPULimit, MemoryBytes: w.MemoryLimitBytes}
+	if err := protocol.CheckResources(&requested, c.Resources); err != nil {
+		return err
+	}
+	if err := checkNetwork(*w, c); err != nil {
+		return err
 	}
 	s.Coordinator.quotaMu.Lock()
 	e := s.reserve(ctx, w)

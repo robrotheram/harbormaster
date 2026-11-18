@@ -12,7 +12,7 @@ import (
 
 func TestFactoryArtifactsAndResearch(t *testing.T) {
 	installResearchTool(t)
-	cfg := Config{ID: "ws_factory", DataDir: t.TempDir(), Token: "test-workspace-token"}
+	cfg := Config{ID: "ws_factory", HomeID: "home_test", DataDir: t.TempDir(), Token: "test-workspace-token"}
 	m, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -81,7 +81,7 @@ func TestFactoryArtifactsAndResearch(t *testing.T) {
 }
 
 func TestFactoryRestartEvidence(t *testing.T) {
-	cfg := Config{ID: "ws_restart", DataDir: t.TempDir(), Token: "test-workspace-token"}
+	cfg := Config{ID: "ws_restart", HomeID: "home_test", DataDir: t.TempDir(), Token: "test-workspace-token"}
 	m, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -113,7 +113,7 @@ func TestRecipeCancellationOwnsProcess(t *testing.T) {
 		return exec.CommandContext(ctx, limit, "--cpu=60", "--", recipe, "60")
 	}
 	defer func() { researchCommand, researchExecutable = original, executable }()
-	cfg := Config{ID: "ws_cancel", DataDir: t.TempDir(), Token: "test-workspace-token"}
+	cfg := Config{ID: "ws_cancel", HomeID: "home_test", DataDir: t.TempDir(), Token: "test-workspace-token"}
 	m, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -153,7 +153,7 @@ func TestRecipeCancellationOwnsProcess(t *testing.T) {
 }
 
 func TestWorkspaceCoordinationIsPrivateAndBounded(t *testing.T) {
-	cfg := Config{ID: "ws_notes", DataDir: t.TempDir(), Token: "test-workspace-token"}
+	cfg := Config{ID: "ws_notes", HomeID: "home_test", DataDir: t.TempDir(), Token: "test-workspace-token"}
 	m, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)

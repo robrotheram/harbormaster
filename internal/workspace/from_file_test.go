@@ -92,6 +92,14 @@ func TestFileAcceptanceRecoversBeforeReadingEditedOrDeletedSource(t *testing.T) 
 }
 
 func TestHomeOwnershipAndSingleWriterFence(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "missing-home")
+	if m, err := New(Config{ID: "ws_test", ProjectID: "default", DataDir: dir, Token: "test-workspace-token"}); err == nil {
+		m.Close()
+		t.Fatal("started without a private home")
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatal("invalid ownership touched the data directory", err)
+	}
 	cfg := Config{ID: "ws_test", ProjectID: "proj_one", HomeID: "home_one", DataDir: t.TempDir(), Token: "test-workspace-token"}
 	m, err := New(cfg)
 	if err != nil {
@@ -117,7 +125,7 @@ func TestFileReceiptRecoveryPrecedesBusyAdmission(t *testing.T) {
 		io.WriteString(w, `{"choices":[{"message":{"role":"assistant","content":"finished"}}]}`)
 	}))
 	defer upstream.Close()
-	cfg := Config{ID: "ws_busy_receipt", DataDir: t.TempDir(), Token: "test-workspace-token", InferenceURL: upstream.URL, Model: "fixture"}
+	cfg := Config{ID: "ws_busy_receipt", HomeID: "home_test", DataDir: t.TempDir(), Token: "test-workspace-token", InferenceURL: upstream.URL, Model: "fixture"}
 	m, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)

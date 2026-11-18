@@ -11,7 +11,7 @@ import (
 
 func TestFileHandoffRejectsEscapingSymlinksAndOversize(t *testing.T) {
 	dir := t.TempDir()
-	m, err := New(Config{ID: "ws_test", DataDir: dir, Token: "test-workspace-token"})
+	m, err := New(Config{ID: "ws_test", HomeID: "home_test", DataDir: dir, Token: "test-workspace-token"})
 	if err != nil {
 		t.Fatal(err)
 	}

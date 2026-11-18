@@ -38,7 +38,7 @@ func Open(ctx context.Context, dsn string) (*Store, error) {
 		db.Close()
 		return nil, e
 	}
-	if e = s.reconcileLegacyProjects(ctx); e != nil {
+	if e = s.ensureDefaultProject(ctx); e != nil {
 		db.Close()
 		return nil, e
 	}
@@ -74,7 +74,7 @@ func (s *Store) ByKey(ctx context.Context, key string) (shared.Workspace, error)
 		return w, e
 	}
 	e = json.Unmarshal([]byte(b), &w)
-	return shared.NormalizeWorkspace(w), e
+	return w, e
 }
 func (s *Store) Workspaces(ctx context.Context) ([]shared.Workspace, error) {
 	rows, e := s.DB.QueryContext(ctx, `SELECT metadata FROM workspaces WHERE id NOT IN (SELECT id FROM deleted_resources WHERE kind='workspace') ORDER BY id`)
@@ -92,7 +92,7 @@ func (s *Store) Workspaces(ctx context.Context) ([]shared.Workspace, error) {
 		if e = json.Unmarshal([]byte(b), &w); e != nil {
 			return nil, e
 		}
-		out = append(out, shared.NormalizeWorkspace(w))
+		out = append(out, w)
 	}
 	return out, rows.Err()
 }
@@ -104,7 +104,7 @@ func (s *Store) Workspace(ctx context.Context, id string) (shared.Workspace, err
 		return w, e
 	}
 	e = json.Unmarshal([]byte(b), &w)
-	return shared.NormalizeWorkspace(w), e
+	return w, e
 }
 func (s *Store) Save(ctx context.Context, w shared.Workspace) error { return s.saveWorkspace(ctx, w) }
 func (s *Store) SaveTask(ctx context.Context, t shared.Task) error {

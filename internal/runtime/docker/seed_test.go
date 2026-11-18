@@ -23,7 +23,7 @@ func TestProjectSeedScopeAndUnpauseOnFailure(t *testing.T) {
 				path := strings.TrimPrefix(r.URL.Path, "/v1.47")
 				switch {
 				case path == "/containers/testawb-ws_parent/json":
-					shared.JSON(w, 200, map[string]any{"Id": "source", "State": map[string]any{"Running": true}, "Config": map[string]any{"Labels": map[string]string{"workbench.deployment": "testawb", "workbench.workspace": "ws_parent"}}, "HostConfig": map[string]string{"Runtime": "runc"}, "NetworkSettings": map[string]any{"Networks": map[string]any{"testawb-ws_parent": map[string]string{"IPAddress": "172.30.0.5"}}}})
+					shared.JSON(w, 200, map[string]any{"Id": "source", "State": map[string]any{"Running": true}, "Config": map[string]any{"Labels": map[string]string{"workbench.deployment": "testawb", "workbench.workspace": "ws_parent", "workbench.project": "default", "workbench.home": "home_parent"}}, "HostConfig": map[string]string{"Runtime": "runc"}, "NetworkSettings": map[string]any{"Networks": map[string]any{"testawb-ws_parent": map[string]string{"IPAddress": "172.30.0.5"}}}})
 				case strings.Contains(path, "/stats"):
 					shared.JSON(w, 200, map[string]any{})
 				case path == "/containers/source/pause":
@@ -85,7 +85,7 @@ func TestProjectSeedScopeAndUnpauseOnFailure(t *testing.T) {
 				return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body)), Header: http.Header{}}, nil
 			})}
 			target := containerInfo{ID: "target"}
-			target.Config.Labels = map[string]string{"workbench.parent": "ws_parent"}
+			target.Config.Labels = map[string]string{"workbench.parent": "ws_parent", "workbench.project": "default", "workbench.home": "home_target"}
 			err = c.seedFromParent(context.Background(), target, "ws_parent")
 			if fail != (err != nil) {
 				t.Fatalf("seed error mismatch: %v", err)

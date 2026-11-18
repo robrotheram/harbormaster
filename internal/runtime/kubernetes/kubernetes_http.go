@@ -158,7 +158,7 @@ func (k *Kubernetes) verify(w http.ResponseWriter, r *http.Request) {
 			id := item.Metadata.Labels["workbench.workspace"]
 			generation := item.Metadata.Labels["workbench.generation"]
 			if generation != "" && k.owned(item, id) && sandboxReady(item) && subtle.ConstantTimeCompare([]byte(request.Token), []byte(k.token(id, generation))) == 1 {
-				if k.networkEvidence(r.Context(), namespace, protocol.ProjectOf(item.Metadata.Labels)) != nil {
+				if k.networkEvidence(r.Context(), namespace, item.Metadata.Labels["workbench.project"]) != nil {
 					shared.Error(w, 503, "NETWORK_POLICY_DRIFT")
 					return
 				}
@@ -166,7 +166,7 @@ func (k *Kubernetes) verify(w http.ResponseWriter, r *http.Request) {
 					shared.Error(w, 403, "GRANT_REJECTED")
 					return
 				}
-				identity := map[string]any{"workspace_id": id, "project_id": protocol.ProjectOf(item.Metadata.Labels), "principal_id": "local-operator"}
+				identity := map[string]any{"workspace_id": id, "project_id": item.Metadata.Labels["workbench.project"], "principal_id": "local-operator"}
 				if request.Audience == "egress" {
 					p, err := k.readPolicy(r.Context(), item)
 					if err != nil || p.Mode == "blocked" {

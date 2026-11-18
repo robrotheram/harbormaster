@@ -66,20 +66,15 @@ func (s *Server) hermesAvailable(ctx context.Context) bool {
 func (s *Server) hermesRuntimeStatus(ctx context.Context) string {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
-	var kinds []string
-	var err error
-	if c, ok := s.Runtime.(runtimeAgentKinds); ok {
-		kinds, err = c.AgentKinds(ctx)
-	} else if c, ok := s.Runtime.(runtimeCapabilities); ok {
-		caps, e := c.Capabilities(ctx)
-		kinds, err = caps.AgentKinds, e
-	} else {
+	c, ok := s.Runtime.(runtimeCapabilities)
+	if !ok {
 		return "unavailable"
 	}
-	if err != nil {
+	caps, err := c.Capabilities(ctx)
+	if err != nil || caps.SchemaVersion != 1 {
 		return "unavailable"
 	}
-	for _, kind := range kinds {
+	for _, kind := range caps.AgentKinds {
 		if kind == "hermes" {
 			return "available"
 		}

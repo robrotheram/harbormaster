@@ -31,8 +31,9 @@ func (s *Server) registerDeletion(mux *http.ServeMux) {
 			var targets []shared.Workspace
 			project := ""
 			if kind == "projects" {
+				// The shared workspace and bootstrap MCP access depend on this project.
 				if id == "default" {
-					shared.Error(w, 409, "LEGACY_PROJECT_DELETE_UNSUPPORTED")
+					shared.Error(w, 409, "DEFAULT_PROJECT_DELETE_UNSUPPORTED")
 					return
 				}
 				if !s.AuthorizeProject(w, r, id) {

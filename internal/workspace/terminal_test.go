@@ -22,7 +22,7 @@ type terminalReply struct {
 
 func TestTerminalInteractiveLifecycle(t *testing.T) {
 	t.Setenv("PRIVATE_MANAGEMENT_SECRET", "must-not-inherit")
-	m, err := New(Config{ID: "ws_terminal", DataDir: t.TempDir(), Token: "test-workspace-token"})
+	m, err := New(Config{ID: "ws_terminal", HomeID: "home_test", DataDir: t.TempDir(), Token: "test-workspace-token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestTerminalInteractiveLifecycle(t *testing.T) {
 }
 
 func TestTerminalBoundsExpiryAndAuthentication(t *testing.T) {
-	m, err := New(Config{ID: "ws_terminal", DataDir: t.TempDir(), Token: "test-workspace-token"})
+	m, err := New(Config{ID: "ws_terminal", HomeID: "home_test", DataDir: t.TempDir(), Token: "test-workspace-token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +134,7 @@ func TestTerminalBoundsExpiryAndAuthentication(t *testing.T) {
 }
 
 func TestTerminalCloseKillsJobsAndBoundsOutput(t *testing.T) {
-	m, err := New(Config{ID: "ws_terminal", DataDir: t.TempDir(), Token: "test-workspace-token"})
+	m, err := New(Config{ID: "ws_terminal", HomeID: "home_test", DataDir: t.TempDir(), Token: "test-workspace-token"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -38,7 +38,7 @@ go run ./cmd/workbench project list
 go run ./cmd/workbench project access PROJECT_ID
 ```
 
-The command writes a private, expiring MCP configuration under `.local/project-access/` and prints its path, never its credential. Configure the corresponding project's T3/agent environment using that file. The MCP endpoint is http://127.0.0.1:8082/mcp. Project credentials cannot create projects or operate other projects. The original bootstrap MCP credential is now restricted to the legacy `default` project instead of receiving global control authority.
+The command writes a private, expiring MCP configuration under `.local/project-access/` and prints its path, never its credential. Configure the corresponding project's T3/agent environment using that file. The MCP endpoint is http://127.0.0.1:8082/mcp. Project credentials cannot create projects or operate other projects. The original bootstrap MCP credential is now restricted to the `default` project instead of receiving global control authority.
 
 The MCP tools include project discovery, workspace creation and lifecycle, native task submission/results/cancellation, and schedule creation/listing/actions/run metadata. The shared human desktop can use several project connections; an agent connection carries only its authorized project.
 

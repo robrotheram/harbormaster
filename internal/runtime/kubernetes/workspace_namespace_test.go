@@ -125,7 +125,7 @@ func TestWorkspaceNamespacesArePrivateRetainedAndRediscovered(t *testing.T) {
 	if err != nil || len(namespaces) != len(k.cfg.ProjectNamespaces)+2 {
 		t.Fatal("restart lost namespaces", namespaces, err)
 	}
-	labels := map[string]any{"workbench.deployment": k.cfg.Deployment, "workbench.workspace": "ws_private", "workbench.project": projects[0], "workbench.generation": "gen_private"}
+	labels := map[string]any{"workbench.deployment": k.cfg.Deployment, "workbench.workspace": "ws_private", "workbench.project": projects[0], "workbench.generation": "gen_private", "workbench.home": "home_private"}
 	sandboxItems = append(sandboxItems, map[string]any{"metadata": map[string]any{"name": k.name("ws_private"), "namespace": workspaceNamespace(projects[0]), "labels": labels, "generation": 1}, "spec": map[string]any{"operatingMode": "Running"}, "status": map[string]any{"conditions": []any{map[string]any{"type": "Ready", "status": "True", "observedGeneration": 1}}}})
 	verify := func() *httptest.ResponseRecorder {
 		b, _ := json.Marshal(map[string]string{"token": k.token("ws_private", "gen_private"), "audience": "inference"})
@@ -142,6 +142,11 @@ func TestWorkspaceNamespacesArePrivateRetainedAndRediscovered(t *testing.T) {
 		t.Fatal("cross-project grant accepted", got.Code, got.Body)
 	}
 	labels["workbench.project"] = projects[0]
+	delete(labels, "workbench.home")
+	if got := verify(); got.Code != 403 {
+		t.Fatal("grant accepted without home ownership", got.Code, got.Body)
+	}
+	labels["workbench.home"] = "home_private"
 	partialPath := "/apis/rbac.authorization.k8s.io/v1/namespaces/" + workspaceNamespace(projects[1]) + "/rolebindings/workbench-runtime"
 	binding := objects[partialPath]
 	delete(objects, partialPath)

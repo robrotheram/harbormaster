@@ -72,22 +72,6 @@ func (m *Manager) startConsole() error {
 		}
 	}
 
-	// Migrate the initial prototype's old Claude driver name without overwriting
-	// an explicit later choice in the native T3 settings.
-	if b, err := os.ReadFile(settingsPath); err == nil {
-		var settings map[string]any
-		if json.Unmarshal(b, &settings) == nil {
-			instances, _ := settings["providerInstances"].(map[string]any)
-			if instances != nil {
-				if _, ok := instances["claudeAgent"]; !ok {
-					instances["claudeAgent"] = map[string]any{"driver": "claudeAgent", "enabled": m.cfg.ClaudeModel != ""}
-					delete(instances, "claude")
-					encoded, _ := json.Marshal(settings)
-					_ = os.WriteFile(settingsPath, encoded, 0600)
-				}
-			}
-		}
-	}
 	if err := repairEmptyConsoleModel(configPath, settingsPath, m.cfg.CodexModel); err != nil {
 		return err
 	}

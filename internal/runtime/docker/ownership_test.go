@@ -36,13 +36,27 @@ func TestDockerProjectHomeBindingAndGrantIdentity(t *testing.T) {
 	}
 }
 
-func TestLegacyOwnershipIsNeverAdoptedByAnotherProjectOrHome(t *testing.T) {
-	for _, spec := range []protocol.WorkspaceSpec{{ProjectID: "proj_alpha", HomeID: "home_alpha"}, {ProjectID: "default", HomeID: "home_alpha"}} {
-		if protocol.CheckOwnership(map[string]string{}, spec) == nil {
-			t.Fatal("legacy state reassigned")
+func TestDefaultProjectRequiresHomeOwnership(t *testing.T) {
+	c, engine := controller(t, false)
+	for _, body := range []string{`{}`, `{"project_id":"default","home_id":"invalid/home"}`} {
+		if response := controllerRequest(c, "POST", "/v1/workspaces/ws_test/start", c.cfg.Token, body); response.Code != 400 {
+			t.Fatal(response.Code, response.Body)
 		}
 	}
-	if protocol.CheckOwnership(map[string]string{}, protocol.WorkspaceSpec{ProjectID: "default"}) != nil {
-		t.Fatal("legacy path no longer usable")
+	if engine.createCount != 0 {
+		t.Fatal("invalid home allocated a runtime")
+	}
+	spec := protocol.WorkspaceSpec{ProjectID: "default", HomeID: "home_alpha"}
+	for _, labels := range []map[string]string{
+		{},
+		{"workbench.project": "default"},
+		{"workbench.home": "home_alpha"},
+	} {
+		if err := protocol.CheckOwnership(labels, spec); err == nil {
+			t.Fatal("accepted incomplete ownership", labels)
+		}
+	}
+	if err := protocol.CheckOwnership(map[string]string{"workbench.project": "default", "workbench.home": "home_alpha"}, spec); err != nil {
+		t.Fatal(err)
 	}
 }

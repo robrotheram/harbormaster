@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	"agent-workbench/internal/runtime/protocol"
@@ -136,5 +137,23 @@ func TestIncompatibleRuntimeHasActionableErrorCode(t *testing.T) {
 	}
 	if rt.starts != 0 {
 		t.Fatal("incompatible runtime admitted")
+	}
+}
+
+func TestStartRejectsUnsupportedCapabilitySchemasBeforeAllocating(t *testing.T) {
+	for _, version := range []int{0, 2} {
+		s, rt := setup(t)
+		ws := create(t, s, "unsupported-schema")
+		caps, _ := rt.Capabilities(t.Context())
+		caps.SchemaVersion = version
+		s.Runtime = &readinessRuntime{embeddedRuntime: rt, caps: caps}
+		got := request(t, s, "POST", "/v1/workspaces/"+ws.ID+"/start", `{"idempotency_key":"unsupported-schema"}`)
+		if got.Code != 503 || !strings.Contains(got.Body.String(), "RUNTIME_CAPABILITIES_INCOMPATIBLE") {
+			t.Fatalf("schema %d: %d %s", version, got.Code, got.Body)
+		}
+		saved, err := s.Store.Workspace(t.Context(), ws.ID)
+		if err != nil || saved.State != "STOPPED" || rt.starts != 0 {
+			t.Fatalf("schema %d reserved or allocated compute: %s %d %v", version, saved.State, rt.starts, err)
+		}
 	}
 }

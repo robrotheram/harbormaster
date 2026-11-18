@@ -23,7 +23,7 @@ func TestModelsFilterInstalledAgentsAndReportWorkerDefault(t *testing.T) {
 		shared.JSON(w, 200, shared.AgentModels{Items: []shared.AgentModel{{Provider: "codex", Model: "available-model"}, {Provider: "claude", Model: "not-installed"}, {Provider: "codex", Model: "bad model"}}})
 	}))
 	defer gateway.Close()
-	m, err := New(Config{ID: "ws_test", Token: "test-workspace-token", DataDir: t.TempDir(), InferenceURL: gateway.URL, DefaultProvider: "codex", CodexModel: "available-model"})
+	m, err := New(Config{ID: "ws_test", HomeID: "home_test", Token: "test-workspace-token", DataDir: t.TempDir(), InferenceURL: gateway.URL, DefaultProvider: "codex", CodexModel: "available-model"})
 	if err != nil {
 		t.Fatal(err)
 	}

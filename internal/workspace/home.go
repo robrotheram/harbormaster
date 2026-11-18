@@ -20,7 +20,7 @@ func initializeHome(cfg Config) (*os.File, error) {
 	if cfg.ProjectID == "" {
 		cfg.ProjectID = "default"
 	}
-	if !shared.ValidID(cfg.ProjectID) || (cfg.HomeID != "" && !shared.ValidID(cfg.HomeID)) || (cfg.ProjectID != "default" && cfg.HomeID == "") {
+	if !shared.ValidID(cfg.ProjectID) || !shared.ValidID(cfg.HomeID) {
 		return nil, errors.New("invalid home ownership")
 	}
 	if err := os.MkdirAll(cfg.DataDir, 0700); err != nil {
@@ -57,9 +57,10 @@ func initializeHome(cfg Config) (*os.File, error) {
 	return lock, nil
 }
 
+func homePath(cfg Config) string {
+	return filepath.Join(cfg.DataDir, "homes", cfg.HomeID)
+}
+
 func (m *Manager) homePath() string {
-	if m.cfg.HomeID == "" {
-		return m.cfg.DataDir
-	}
-	return filepath.Join(m.cfg.DataDir, "homes", m.cfg.HomeID)
+	return homePath(m.cfg)
 }

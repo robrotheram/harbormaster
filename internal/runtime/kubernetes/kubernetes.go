@@ -183,7 +183,7 @@ func (k *Kubernetes) namespaces() []string {
 }
 func (k *Kubernetes) owned(resource kubeResource, id string) bool {
 	l := resource.Metadata.Labels
-	return l["workbench.deployment"] == k.cfg.Deployment && l["workbench.workspace"] == id && k.workspaceNamespace(protocol.ProjectOf(l)) == resource.Metadata.Namespace && resource.Metadata.Name == k.name(id)
+	return protocol.HasOwnershipLabels(l) && l["workbench.deployment"] == k.cfg.Deployment && l["workbench.workspace"] == id && k.workspaceNamespace(l["workbench.project"]) == resource.Metadata.Namespace && resource.Metadata.Name == k.name(id)
 }
 func (k *Kubernetes) find(ctx context.Context, id string) (kubeResource, error) {
 	if !shared.ValidID(id) || !dnsLabel.MatchString(k.name(id)) {
@@ -297,7 +297,7 @@ func (k *Kubernetes) StartConfigured(ctx context.Context, id string, spec protoc
 		return shared.Observation{}, errors.New("KUBERNETES_BRANCH_SEED_UNAVAILABLE")
 	}
 	namespace := k.workspaceNamespace(spec.ProjectID)
-	if namespace == "" || spec.HomeID == "" || !shared.ValidID(id) || !dnsLabel.MatchString(k.name(id)) {
+	if namespace == "" || !shared.ValidID(id) || !dnsLabel.MatchString(k.name(id)) {
 		return shared.Observation{}, errors.New("project runtime not provisioned")
 	}
 	if _, bound := k.cfg.ProjectNamespaces[spec.ProjectID]; !bound {

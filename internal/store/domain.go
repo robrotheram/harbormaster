@@ -72,30 +72,21 @@ func (s *Store) CreateProject(ctx context.Context, p shared.Project, key string)
 	}
 	return tx.Commit()
 }
-func (s *Store) reconcileLegacyProjects(ctx context.Context) error {
-	legacy := shared.Project{ID: "default", Name: "Legacy workspaces", Legacy: true, CreatedAt: time.Now().UTC()}
-	b, _ := json.Marshal(legacy)
-	if _, err := s.DB.ExecContext(ctx, s.query(`INSERT INTO projects(id,create_key,metadata) VALUES(?,?,?) ON CONFLICT(id) DO NOTHING`), legacy.ID, "legacy-default", string(b)); err != nil {
-		return err
-	}
-	// Validate legacy workspace project bindings without rewriting storage IDs.
-	workspaces, err := s.Workspaces(ctx)
+
+// ensureDefaultProject provisions the project used by default API and MCP requests.
+func (s *Store) ensureDefaultProject(ctx context.Context) error {
+	project := shared.Project{ID: "default", Name: "Workspaces", CreatedAt: time.Now().UTC()}
+	body, err := json.Marshal(project)
 	if err != nil {
 		return err
 	}
-	for _, w := range workspaces {
-		if _, err = s.Project(ctx, w.ProjectID); err != nil {
-			return err
-		}
-	}
-	return nil
+	_, err = s.DB.ExecContext(ctx, s.query(`INSERT INTO projects(id,create_key,metadata) VALUES(?,?,?) ON CONFLICT(id) DO NOTHING`), project.ID, ":default-project", string(body))
+	return err
 }
+
 func workspaceKey(project, key string) string { return "workspace:" + project + ":" + key }
 func (s *Store) ByProjectKey(ctx context.Context, project, key string) (shared.Workspace, error) {
 	w, err := s.ByKey(ctx, workspaceKey(project, key))
-	if err == sql.ErrNoRows && project == "default" {
-		w, err = s.ByKey(ctx, key)
-	}
 	if err == nil && w.ProjectID != project {
 		return shared.Workspace{}, sql.ErrNoRows
 	}
@@ -103,7 +94,6 @@ func (s *Store) ByProjectKey(ctx context.Context, project, key string) (shared.W
 }
 
 func (s *Store) createWorkspace(ctx context.Context, w shared.Workspace, key string) error {
-	w = shared.NormalizeWorkspace(w)
 	if !shared.ValidID(w.ProjectID) || !shared.ValidID(w.HomeID) || !shared.ValidAgentKind(w.AgentKind) {
 		return ErrOwnership
 	}
@@ -126,7 +116,9 @@ func (s *Store) createWorkspace(ctx context.Context, w shared.Workspace, key str
 	return tx.Commit()
 }
 func (s *Store) saveWorkspace(ctx context.Context, w shared.Workspace) error {
-	w = shared.NormalizeWorkspace(w)
+	if !shared.ValidID(w.HomeID) {
+		return ErrOwnership
+	}
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -140,7 +132,6 @@ func (s *Store) saveWorkspace(ctx context.Context, w shared.Workspace) error {
 	if err = json.Unmarshal([]byte(b), &old); err != nil {
 		return err
 	}
-	old = shared.NormalizeWorkspace(old)
 	if old.ProjectID != w.ProjectID || old.HomeID != w.HomeID || old.AgentKind != w.AgentKind || old.ParentID != w.ParentID || old.TemplateID != w.TemplateID || old.Branch != w.Branch {
 		return ErrOwnership
 	}
