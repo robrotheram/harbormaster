@@ -222,23 +222,23 @@ func (m *Manager) submit(s submit) (shared.Task, int, error) {
 
 func (m *Manager) submitLocked(s submit) (shared.Task, int, error) {
 	if s.Model != "" && !shared.ValidWorkSelection(s.Provider, s.Model) {
-		return shared.Task{}, 400, errors.New("INVALID_REQUEST")
+		return shared.Task{}, 400, shared.CodedError{Status: http.StatusBadRequest, Code: "INVALID_REQUEST"}
 	}
 	if m.closed || m.quiescing {
-		return shared.Task{}, 503, errors.New("WORKSPACE_STOPPING")
+		return shared.Task{}, 503, shared.CodedError{Status: http.StatusServiceUnavailable, Code: "WORKSPACE_STOPPING"}
 	}
 	if s.Provider == "" {
 		s.Provider = m.cfg.DefaultProvider
 	}
 	if s.Provider != "" && s.Provider != "codex" && s.Provider != "claude" && !(s.Provider == "hermes" && m.cfg.AgentKind == "hermes") {
-		return shared.Task{}, 400, errors.New("INVALID_REQUEST")
+		return shared.Task{}, 400, shared.CodedError{Status: http.StatusBadRequest, Code: "INVALID_REQUEST"}
 	}
 	var jobs int
 	if err := m.db.QueryRow(`SELECT count(*) FROM recipe_jobs WHERE state IN ('running','cancel_requested')`).Scan(&jobs); err != nil {
-		return shared.Task{}, 503, errors.New("STORAGE_UNAVAILABLE")
+		return shared.Task{}, 503, shared.CodedError{Status: http.StatusServiceUnavailable, Code: "STORAGE_UNAVAILABLE"}
 	}
 	if jobs > 0 {
-		return shared.Task{}, 409, errors.New("WORKSPACE_BUSY")
+		return shared.Task{}, 409, shared.CodedError{Status: http.StatusConflict, Code: "WORKSPACE_BUSY"}
 	}
 	now := time.Now().UTC()
 	accepted, err := m.tasks.Accept(context.Background(), taskstore.Submission{Instruction: s.Instruction, Key: s.Key, Provider: s.Provider, Model: s.Model, SourcePath: s.SourcePath, SpecificationDigest: s.SpecificationDigest}, now)
@@ -249,7 +249,7 @@ func (m *Manager) submitLocked(s submit) (shared.Task, int, error) {
 		if errors.Is(err, taskstore.ErrQueueFull) {
 			return shared.Task{}, 429, err
 		}
-		return shared.Task{}, 503, errors.New("STORAGE_UNAVAILABLE")
+		return shared.Task{}, 503, shared.CodedError{Status: http.StatusServiceUnavailable, Code: "STORAGE_UNAVAILABLE"}
 	}
 	if !accepted.Created {
 		return accepted.Task, 200, nil
@@ -577,7 +577,7 @@ func (m *Manager) Handler() http.Handler {
 		}
 		t, status, e := m.submit(s)
 		if e != nil {
-			shared.Error(w, status, e.Error())
+			shared.WriteHTTPError(w, e, shared.CodedError{Status: status, Code: e.Error()})
 			return
 		}
 		shared.JSON(w, status, t)

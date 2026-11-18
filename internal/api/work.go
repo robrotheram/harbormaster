@@ -121,28 +121,28 @@ func (s *Server) createWorkItem(ctx context.Context, actor principal, input work
 	}
 	repo := orchestration.Repository{DB: s.Store.DB}
 	if !shared.ValidWorkSelection(input.Provider, input.Model) || !shared.ValidKey(input.Key) || !shared.ValidID(input.ProjectID) || (input.Presentation != "" && input.Presentation != "interactive-v1") {
-		return shared.WorkItem{}, false, requestError{400, "INVALID_REQUEST"}
+		return shared.WorkItem{}, false, shared.CodedError{Status: http.StatusBadRequest, Code: "INVALID_REQUEST"}
 	}
 	unlock := s.operations.Lock("work-create:" + input.ProjectID + ":" + input.Key)
 	defer unlock()
 	if input.Instruction != nil && (len(*input.Instruction) == 0 || len(*input.Instruction) > 65536 || input.Path != "" || input.Digest != "") {
-		return shared.WorkItem{}, false, requestError{400, "INVALID_REQUEST"}
+		return shared.WorkItem{}, false, shared.CodedError{Status: http.StatusBadRequest, Code: "INVALID_REQUEST"}
 	}
 	// Validate operational references before allocating any private resources.
 	if input.Instruction == nil && (!shared.ValidProjectFile(input.Path) || len(input.Digest) != 64 || input.Digest != strings.ToLower(input.Digest)) {
-		return shared.WorkItem{}, false, requestError{400, "INVALID_REQUEST"}
+		return shared.WorkItem{}, false, shared.CodedError{Status: http.StatusBadRequest, Code: "INVALID_REQUEST"}
 	}
 	if input.Instruction == nil {
 		if _, err := hex.DecodeString(input.Digest); err != nil {
-			return shared.WorkItem{}, false, requestError{400, "INVALID_REQUEST"}
+			return shared.WorkItem{}, false, shared.CodedError{Status: http.StatusBadRequest, Code: "INVALID_REQUEST"}
 		}
 	}
 	if input.Kind != "software" && input.Kind != "research" && input.Kind != "digest" || len(input.ArtifactPaths) > 32 {
-		return shared.WorkItem{}, false, requestError{400, "INVALID_REQUEST"}
+		return shared.WorkItem{}, false, shared.CodedError{Status: http.StatusBadRequest, Code: "INVALID_REQUEST"}
 	}
 	for _, p := range input.ArtifactPaths {
 		if !shared.ValidProjectFile(p) {
-			return shared.WorkItem{}, false, requestError{400, "INVALID_REQUEST"}
+			return shared.WorkItem{}, false, shared.CodedError{Status: http.StatusBadRequest, Code: "INVALID_REQUEST"}
 		}
 	}
 	if input.WorkspaceID == "" && s.cfg.SharedWorkspaceID != "" {
@@ -151,7 +151,7 @@ func (s *Server) createWorkItem(ctx context.Context, actor principal, input work
 	if input.WorkspaceID != "" {
 		ws, err := s.Store.Workspace(ctx, input.WorkspaceID)
 		if err != nil || !s.workspaceInProject(ws, input.ProjectID) {
-			return shared.WorkItem{}, false, requestError{404, "NOT_FOUND_OR_FORBIDDEN"}
+			return shared.WorkItem{}, false, shared.CodedError{Status: http.StatusNotFound, Code: "NOT_FOUND_OR_FORBIDDEN"}
 		}
 	}
 	if len(input.ArtifactPaths) == 0 {
@@ -161,9 +161,9 @@ func (s *Server) createWorkItem(ctx context.Context, actor principal, input work
 	fingerprint := sha256.Sum256(fingerprintBody)
 	if err := repo.ClaimWorkRequest(ctx, input.ProjectID, input.Key, hex.EncodeToString(fingerprint[:])); err != nil {
 		if errors.Is(err, orchestration.ErrConflict) {
-			return shared.WorkItem{}, false, requestError{409, "IDEMPOTENCY_CONFLICT"}
+			return shared.WorkItem{}, false, shared.CodedError{Status: http.StatusConflict, Code: "IDEMPOTENCY_CONFLICT"}
 		}
-		return shared.WorkItem{}, false, requestError{503, "STORAGE_UNAVAILABLE"}
+		return shared.WorkItem{}, false, shared.CodedError{Status: http.StatusServiceUnavailable, Code: "STORAGE_UNAVAILABLE"}
 	}
 
 	if input.WorkspaceID == "" {
@@ -176,7 +176,7 @@ func (s *Server) createWorkItem(ctx context.Context, actor principal, input work
 	}
 	ws, err := s.Store.Workspace(ctx, input.WorkspaceID)
 	if err != nil || !s.workspaceInProject(ws, input.ProjectID) {
-		return shared.WorkItem{}, false, requestError{404, "NOT_FOUND_OR_FORBIDDEN"}
+		return shared.WorkItem{}, false, shared.CodedError{Status: http.StatusNotFound, Code: "NOT_FOUND_OR_FORBIDDEN"}
 	}
 	if input.Instruction != nil {
 		hash := sha256.Sum256([]byte(input.ProjectID + "\x00" + input.Key))
@@ -186,7 +186,7 @@ func (s *Server) createWorkItem(ctx context.Context, actor principal, input work
 			instruction = "Workbench presentation: interactive-v1.\n" + visualizationGuidance + "\n\nCurrent request:\n" + instruction
 		}
 		if len(instruction) > 65536 {
-			return shared.WorkItem{}, false, requestError{400, "INVALID_REQUEST"}
+			return shared.WorkItem{}, false, shared.CodedError{Status: http.StatusBadRequest, Code: "INVALID_REQUEST"}
 		}
 		digest := sha256.Sum256([]byte(instruction))
 		input.Digest = hex.EncodeToString(digest[:])
@@ -198,33 +198,33 @@ func (s *Server) createWorkItem(ctx context.Context, actor principal, input work
 		body, _ := json.Marshal(shared.FileHandoff{Path: input.Path, Content: []byte(instruction)})
 		status, _, err := s.Runtime.Agent(ctx, ws.ID, "POST", "/v1/files/write-new", body)
 		if err != nil {
-			return shared.WorkItem{}, false, requestError{503, "WORKSPACE_UNAVAILABLE"}
+			return shared.WorkItem{}, false, shared.CodedError{Status: http.StatusServiceUnavailable, Code: "WORKSPACE_UNAVAILABLE"}
 		}
 		if status != 201 {
 			if status != 409 {
-				return shared.WorkItem{}, false, requestError{503, "PRIVATE_PUBLICATION_FAILED"}
+				return shared.WorkItem{}, false, shared.CodedError{Status: http.StatusServiceUnavailable, Code: "PRIVATE_PUBLICATION_FAILED"}
 			}
 			body, _ = json.Marshal(shared.FileHandoff{Path: input.Path})
 			status, data, err := s.Runtime.Agent(ctx, ws.ID, "POST", "/v1/files/read", body)
 			var prior shared.FileHandoff
 			if err != nil || status != 200 || json.Unmarshal(data, &prior) != nil {
-				return shared.WorkItem{}, false, requestError{503, "PRIVATE_PUBLICATION_UNCONFIRMED"}
+				return shared.WorkItem{}, false, shared.CodedError{Status: http.StatusServiceUnavailable, Code: "PRIVATE_PUBLICATION_UNCONFIRMED"}
 			}
 			priorDigest := sha256.Sum256(prior.Content)
 			if hex.EncodeToString(priorDigest[:]) != input.Digest {
-				return shared.WorkItem{}, false, requestError{409, "IDEMPOTENCY_CONFLICT"}
+				return shared.WorkItem{}, false, shared.CodedError{Status: http.StatusConflict, Code: "IDEMPOTENCY_CONFLICT"}
 			}
 		}
 	}
 	item, created, err := repo.CreateWork(ctx, shared.WorkItem{ControllerID: actor.human.ID, Provider: input.Provider, Model: input.Model, ArtifactPaths: input.ArtifactPaths, ProjectID: input.ProjectID, WorkspaceID: input.WorkspaceID, SpecificationPath: input.Path, SpecificationDigest: input.Digest, Kind: input.Kind, CreatedAt: s.now()}, input.Key)
 	if errors.Is(err, orchestration.ErrConflict) {
-		return shared.WorkItem{}, false, requestError{409, "IDEMPOTENCY_CONFLICT"}
+		return shared.WorkItem{}, false, shared.CodedError{Status: http.StatusConflict, Code: "IDEMPOTENCY_CONFLICT"}
 	}
 	if err != nil {
 		if errors.Is(err, orchestration.ErrInvalidWork) {
-			return shared.WorkItem{}, false, requestError{400, "INVALID_REQUEST"}
+			return shared.WorkItem{}, false, shared.CodedError{Status: http.StatusBadRequest, Code: "INVALID_REQUEST"}
 		}
-		return shared.WorkItem{}, false, requestError{503, "STORAGE_UNAVAILABLE"}
+		return shared.WorkItem{}, false, shared.CodedError{Status: http.StatusServiceUnavailable, Code: "STORAGE_UNAVAILABLE"}
 	}
 	return item, created, nil
 }

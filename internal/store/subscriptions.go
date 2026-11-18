@@ -1,11 +1,12 @@
 package store
 
 import (
+	"agent-workbench/internal/shared"
 	"context"
-	"errors"
+	"net/http"
 )
 
-var ErrSubscriptionInUse = errors.New("SUBSCRIPTION_IN_USE")
+var ErrSubscriptionInUse = &shared.CodedError{Status: http.StatusConflict, Code: "SUBSCRIPTION_IN_USE"}
 
 func (s *Store) initSubscriptions(ctx context.Context) error {
 	for _, q := range []string{

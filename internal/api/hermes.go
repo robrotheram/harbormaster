@@ -121,15 +121,8 @@ type matrixOnboarding interface {
 	Prepare(context.Context, shared.HermesMatrix, string, bool) error
 }
 
-func matrixSetupError(w http.ResponseWriter, err error) {
-	code := err.Error()
-	switch code {
-	case "MATRIX_HOMESERVER_INVALID", "MATRIX_TOKEN_INVALID", "MATRIX_BOT_ID_MISMATCH", "MATRIX_BOT_OUTSIDE_ROOMS", "MATRIX_INVITE_REQUIRED", "MATRIX_ACCEPT_INVITATIONS_REQUIRED", "MATRIX_ROOM_ENCRYPTION_REQUIRED":
-		shared.Error(w, 400, code)
-	default:
-		shared.Error(w, 503, "MATRIX_UNAVAILABLE")
-	}
-}
+var matrixUnavailable = shared.CodedError{Status: http.StatusServiceUnavailable, Code: "MATRIX_UNAVAILABLE"}
+
 func (s *Server) onboarding() matrixOnboarding {
 	if s.matrixSetup != nil {
 		return s.matrixSetup
@@ -180,7 +173,7 @@ func (s *Server) registerHermes(mux *http.ServeMux) {
 		defer cancel()
 		origin, err := s.onboarding().Discover(ctx, body.Homeserver)
 		if err != nil {
-			matrixSetupError(w, err)
+			shared.WriteHTTPError(w, err, matrixUnavailable)
 			return
 		}
 		shared.JSON(w, 200, map[string]string{"homeserver": origin})
@@ -219,7 +212,7 @@ func (s *Server) registerHermes(mux *http.ServeMux) {
 		err = s.onboarding().Prepare(ctx, *c.Matrix, body.Token, body.AcceptInvitations)
 		cancel()
 		if err != nil {
-			matrixSetupError(w, err)
+			shared.WriteHTTPError(w, err, matrixUnavailable)
 			return
 		}
 		latest, e := s.Store.HermesSetup(r.Context(), id)
@@ -281,7 +274,7 @@ func (s *Server) registerHermes(mux *http.ServeMux) {
 			}
 			if action == "start" {
 				err = adapter.MatrixAction(r.Context(), ws.ID, "enable", c.Matrix)
-				if err != nil && err.Error() == "MATRIX_RESTART_REQUIRED" {
+				if coded, ok := shared.ErrorDetails(err); ok && coded.Code == "MATRIX_RESTART_REQUIRED" {
 					if ws.ActiveRuns > 0 || ws.BackgroundJobs > 0 {
 						shared.Error(w, 409, "WORKSPACE_BUSY")
 						return
@@ -297,11 +290,14 @@ func (s *Server) registerHermes(mux *http.ServeMux) {
 					err = adapter.MatrixAction(r.Context(), ws.ID, "enable", c.Matrix)
 				}
 				if err != nil {
-					code := err.Error()
-					if code != "MATRIX_RESTART_REQUIRED" && code != "MATRIX_ALREADY_CONNECTED" {
-						code = "MATRIX_CREDENTIAL_REJECTED"
+					var response error
+					if coded, ok := shared.ErrorDetails(err); ok {
+						switch coded.Code {
+						case "MATRIX_RESTART_REQUIRED", "MATRIX_ALREADY_CONNECTED":
+							response = shared.CodedError{Status: http.StatusConflict, Code: coded.Code}
+						}
 					}
-					shared.Error(w, 409, code)
+					shared.WriteHTTPError(w, response, shared.CodedError{Status: http.StatusConflict, Code: "MATRIX_CREDENTIAL_REJECTED"})
 					return
 				}
 			}

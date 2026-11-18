@@ -6,42 +6,37 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
+
 	"net/http"
 	"net/url"
 	"strconv"
 	"time"
 )
 
+var historyUnavailable = shared.CodedError{Status: http.StatusConflict, Code: "HISTORY_UNAVAILABLE"}
+
 func (s *Server) readHistory(ctx context.Context, ws shared.Workspace, q url.Values) (shared.HistoryPage, error) {
 	var page shared.HistoryPage
 	if err := s.refresh(ctx, &ws); err != nil {
-		return page, errors.New("HISTORY_UNAVAILABLE")
+		return page, historyUnavailable
 	}
 	if !ws.Ready {
-		return page, errors.New("HISTORY_WORKSPACE_STOPPED")
+		return page, shared.CodedError{Status: http.StatusConflict, Code: "HISTORY_WORKSPACE_STOPPED"}
 	}
 	q.Set("history", "1")
 	q.Set("limit", "20")
 	code, b, err := s.Runtime.Agent(ctx, ws.ID, "GET", "/v1/tasks?"+q.Encode(), nil)
 	if err != nil || code != 200 || json.Unmarshal(b, &page) != nil || page.SchemaVersion != 1 {
-		return page, errors.New("HISTORY_UNAVAILABLE")
+		return page, historyUnavailable
 	}
 	if len(page.Records) > 20 || page.HighWatermark < 0 || page.NextAfter < 0 || page.NextBefore < 0 {
-		return page, errors.New("HISTORY_UNAVAILABLE")
+		return page, historyUnavailable
 	}
 	// Ignore purpose claims from the guest. Only operator annotations may label runs.
 	for i := range page.Records {
 		page.Records[i].Purpose = ""
 	}
 	return page, nil
-}
-func historyError(w http.ResponseWriter, err error) {
-	code := "HISTORY_UNAVAILABLE"
-	if err.Error() == "HISTORY_WORKSPACE_STOPPED" {
-		code = err.Error()
-	}
-	shared.Error(w, 409, code)
 }
 func (s *Server) registerHistory(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/workspaces/{id}/history", func(w http.ResponseWriter, r *http.Request) {
@@ -72,7 +67,7 @@ func (s *Server) registerHistory(mux *http.ServeMux) {
 		}
 		page, e := s.readHistory(r.Context(), ws, q)
 		if e != nil {
-			historyError(w, e)
+			shared.WriteHTTPError(w, e, historyUnavailable)
 			return
 		}
 		ratings, e := s.Store.HistoryFeedback(r.Context(), ws.ID)
@@ -112,7 +107,7 @@ func (s *Server) registerHistory(mux *http.ServeMux) {
 		}
 		page, e := s.readHistory(r.Context(), ws, url.Values{"episode": []string{in.Episode}})
 		if e != nil {
-			historyError(w, e)
+			shared.WriteHTTPError(w, e, historyUnavailable)
 			return
 		}
 		exists := false
@@ -150,7 +145,7 @@ func (s *Server) registerHistory(mux *http.ServeMux) {
 		}
 		page, e := s.readHistory(r.Context(), ws, url.Values{"episode": []string{in.Episode}})
 		if e != nil {
-			historyError(w, e)
+			shared.WriteHTTPError(w, e, historyUnavailable)
 			return
 		}
 		if len(page.Records) == 0 {
@@ -171,7 +166,7 @@ func (s *Server) registerHistory(mux *http.ServeMux) {
 		}
 		page, e := s.readHistory(r.Context(), ws, url.Values{})
 		if e != nil {
-			historyError(w, e)
+			shared.WriteHTTPError(w, e, historyUnavailable)
 			return
 		}
 		ratings, e := s.Store.HistoryFeedback(r.Context(), ws.ID)

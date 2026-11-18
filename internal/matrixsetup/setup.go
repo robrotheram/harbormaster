@@ -7,7 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
+
 	"io"
 	"net/http"
 	"net/url"
@@ -24,7 +24,7 @@ func New() *Client {
 func origin(raw string) (string, error) {
 	u, e := url.Parse(raw)
 	if e != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
-		return "", errors.New("MATRIX_HOMESERVER_INVALID")
+		return "", shared.CodedError{Status: http.StatusBadRequest, Code: "MATRIX_HOMESERVER_INVALID"}
 	}
 	return strings.TrimRight(raw, "/"), nil
 }
@@ -35,7 +35,7 @@ func (c *Client) request(ctx context.Context, method, endpoint, token string, bo
 	}
 	r, e := http.NewRequestWithContext(ctx, method, endpoint, bytes.NewReader(data))
 	if e != nil {
-		return 0, errors.New("MATRIX_UNAVAILABLE")
+		return 0, shared.CodedError{Status: http.StatusServiceUnavailable, Code: "MATRIX_UNAVAILABLE"}
 	}
 	if token != "" {
 		r.Header.Set("Authorization", "Bearer "+token)
@@ -43,7 +43,7 @@ func (c *Client) request(ctx context.Context, method, endpoint, token string, bo
 	r.Header.Set("Content-Type", "application/json")
 	res, e := c.HTTP.Do(r)
 	if e != nil {
-		return 0, errors.New("MATRIX_UNAVAILABLE")
+		return 0, shared.CodedError{Status: http.StatusServiceUnavailable, Code: "MATRIX_UNAVAILABLE"}
 	}
 	defer res.Body.Close()
 	if res.StatusCode != 200 {
@@ -51,7 +51,7 @@ func (c *Client) request(ctx context.Context, method, endpoint, token string, bo
 	}
 	b, e := io.ReadAll(io.LimitReader(res.Body, (1<<20)+1))
 	if e != nil || len(b) > 1<<20 || json.Unmarshal(b, out) != nil {
-		return res.StatusCode, errors.New("MATRIX_HOMESERVER_INVALID")
+		return res.StatusCode, shared.CodedError{Status: http.StatusBadRequest, Code: "MATRIX_HOMESERVER_INVALID"}
 	}
 	return res.StatusCode, nil
 }
@@ -79,7 +79,7 @@ func (c *Client) Discover(ctx context.Context, raw string) (string, error) {
 	}
 	status, e = c.request(ctx, "GET", base+"/_matrix/client/versions", "", nil, &versions)
 	if e != nil || status != 200 || len(versions.Versions) == 0 {
-		return "", errors.New("MATRIX_HOMESERVER_INVALID")
+		return "", shared.CodedError{Status: http.StatusBadRequest, Code: "MATRIX_HOMESERVER_INVALID"}
 	}
 	return base, nil
 }
@@ -93,7 +93,7 @@ func (c *Client) Prepare(ctx context.Context, config shared.HermesMatrix, token 
 		return e
 	}
 	if token == "" || len(token) > 8192 || strings.ContainsAny(token, " \r\n\t") {
-		return errors.New("MATRIX_TOKEN_INVALID")
+		return shared.CodedError{Status: http.StatusBadRequest, Code: "MATRIX_TOKEN_INVALID"}
 	}
 	// Verify the configured origin without credentials before submitting a token.
 	var versions struct {
@@ -101,7 +101,7 @@ func (c *Client) Prepare(ctx context.Context, config shared.HermesMatrix, token 
 	}
 	status, e := c.request(ctx, "GET", base+"/_matrix/client/versions", "", nil, &versions)
 	if e != nil || status != 200 || len(versions.Versions) == 0 {
-		return errors.New("MATRIX_HOMESERVER_INVALID")
+		return shared.CodedError{Status: http.StatusBadRequest, Code: "MATRIX_HOMESERVER_INVALID"}
 	}
 	var who struct {
 		ID string `json:"user_id"`
@@ -111,13 +111,13 @@ func (c *Client) Prepare(ctx context.Context, config shared.HermesMatrix, token 
 		return e
 	}
 	if status == 401 || status == 403 {
-		return errors.New("MATRIX_TOKEN_INVALID")
+		return shared.CodedError{Status: http.StatusBadRequest, Code: "MATRIX_TOKEN_INVALID"}
 	}
 	if status != 200 {
-		return errors.New("MATRIX_UNAVAILABLE")
+		return shared.CodedError{Status: http.StatusServiceUnavailable, Code: "MATRIX_UNAVAILABLE"}
 	}
 	if who.ID != config.BotUserID {
-		return errors.New("MATRIX_BOT_ID_MISMATCH")
+		return shared.CodedError{Status: http.StatusBadRequest, Code: "MATRIX_BOT_ID_MISMATCH"}
 	}
 	var joined struct {
 		Rooms []string `json:"joined_rooms"`
@@ -127,7 +127,7 @@ func (c *Client) Prepare(ctx context.Context, config shared.HermesMatrix, token 
 		return e
 	}
 	if status != 200 {
-		return errors.New("MATRIX_UNAVAILABLE")
+		return shared.CodedError{Status: http.StatusServiceUnavailable, Code: "MATRIX_UNAVAILABLE"}
 	}
 	allowed, member := map[string]bool{}, map[string]bool{}
 	for _, id := range config.RoomIDs {
@@ -135,7 +135,7 @@ func (c *Client) Prepare(ctx context.Context, config shared.HermesMatrix, token 
 	}
 	for _, id := range joined.Rooms {
 		if !allowed[id] {
-			return errors.New("MATRIX_BOT_OUTSIDE_ROOMS")
+			return shared.CodedError{Status: http.StatusBadRequest, Code: "MATRIX_BOT_OUTSIDE_ROOMS"}
 		}
 		member[id] = true
 	}
@@ -168,7 +168,7 @@ func (c *Client) Prepare(ctx context.Context, config shared.HermesMatrix, token 
 			return e
 		}
 		if status != 200 {
-			return errors.New("MATRIX_UNAVAILABLE")
+			return shared.CodedError{Status: http.StatusServiceUnavailable, Code: "MATRIX_UNAVAILABLE"}
 		}
 		for _, id := range missing {
 			invited := false
@@ -178,11 +178,11 @@ func (c *Client) Prepare(ctx context.Context, config shared.HermesMatrix, token 
 				}
 			}
 			if !invited {
-				return errors.New("MATRIX_INVITE_REQUIRED")
+				return shared.CodedError{Status: http.StatusBadRequest, Code: "MATRIX_INVITE_REQUIRED"}
 			}
 		}
 		if !accept {
-			return errors.New("MATRIX_ACCEPT_INVITATIONS_REQUIRED")
+			return shared.CodedError{Status: http.StatusBadRequest, Code: "MATRIX_ACCEPT_INVITATIONS_REQUIRED"}
 		}
 		for _, id := range missing {
 			var result struct {
@@ -193,7 +193,7 @@ func (c *Client) Prepare(ctx context.Context, config shared.HermesMatrix, token 
 				return e
 			}
 			if status != 200 || result.ID != id {
-				return errors.New("MATRIX_INVITE_REQUIRED")
+				return shared.CodedError{Status: http.StatusBadRequest, Code: "MATRIX_INVITE_REQUIRED"}
 			}
 		}
 	}
@@ -206,7 +206,7 @@ func (c *Client) Prepare(ctx context.Context, config shared.HermesMatrix, token 
 			return e
 		}
 		if status != 200 || encryption.Algorithm != "m.megolm.v1.aes-sha2" {
-			return errors.New("MATRIX_ROOM_ENCRYPTION_REQUIRED")
+			return shared.CodedError{Status: http.StatusBadRequest, Code: "MATRIX_ROOM_ENCRYPTION_REQUIRED"}
 		}
 	}
 	return nil

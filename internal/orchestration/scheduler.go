@@ -156,7 +156,7 @@ func (s *Scheduler) Tick(ctx context.Context) error {
 			}
 			if err = s.Lifecycle.Start(ctx, &ws); err != nil {
 				run.ErrorCode = "WORKSPACE_UNAVAILABLE"
-				if err.Error() == "QUOTA_EXCEEDED" {
+				if errors.Is(err, shared.ErrQuotaExceeded) {
 					run.ErrorCode = "QUOTA_EXCEEDED"
 				}
 				run.UpdatedAt = now

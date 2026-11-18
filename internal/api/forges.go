@@ -16,6 +16,11 @@ import (
 	"time"
 )
 
+// Forge routes historically forward the error text for uncoded failures.
+func writeForgeError(w http.ResponseWriter, status int, err error) {
+	shared.WriteHTTPError(w, err, shared.CodedError{Status: status, Code: err.Error()})
+}
+
 func (s *Server) registerForges(mux *http.ServeMux) {
 	s.registerForgeAccounts(mux)
 	mux.HandleFunc("GET /v1/forge-hosts", func(w http.ResponseWriter, r *http.Request) {
@@ -24,7 +29,7 @@ func (s *Server) registerForges(mux *http.ServeMux) {
 		}
 		hosts, err := s.forgeAccountSummaries(r.Context())
 		if err != nil {
-			shared.Error(w, 503, err.Error())
+			writeForgeError(w, http.StatusServiceUnavailable, err)
 			return
 		}
 		shared.JSON(w, 200, map[string]any{"items": hosts})
@@ -50,7 +55,7 @@ func (s *Server) registerForges(mux *http.ServeMux) {
 		}
 		hosts, err := s.forgeHosts(r.Context())
 		if err != nil {
-			shared.Error(w, 503, err.Error())
+			writeForgeError(w, http.StatusServiceUnavailable, err)
 			return
 		}
 		for _, host := range hosts {
@@ -60,7 +65,7 @@ func (s *Server) registerForges(mux *http.ServeMux) {
 					return
 				}
 				if _, err = (forge.Client{Host: host}).List(r.Context(), input.Repository, 1); err != nil {
-					shared.Error(w, 502, err.Error())
+					writeForgeError(w, http.StatusBadGateway, err)
 					return
 				}
 				input.ID = shared.NewID("forge_")
@@ -125,7 +130,7 @@ func (s *Server) registerForges(mux *http.ServeMux) {
 		}
 		hosts, err := s.forgeHosts(r.Context())
 		if err != nil {
-			shared.Error(w, 503, err.Error())
+			writeForgeError(w, http.StatusServiceUnavailable, err)
 			return
 		}
 		var host forge.Host
@@ -158,7 +163,7 @@ func (s *Server) registerForges(mux *http.ServeMux) {
 			}
 			items, e := client.List(r.Context(), c.Repository, page)
 			if e != nil {
-				shared.Error(w, 502, e.Error())
+				writeForgeError(w, http.StatusBadGateway, e)
 				return
 			}
 			shared.JSON(w, 200, map[string]any{"items": items, "page": page})
@@ -188,7 +193,7 @@ func (s *Server) registerForges(mux *http.ServeMux) {
 			}
 			issue, e := client.Get(r.Context(), c.Repository, number)
 			if e != nil {
-				shared.Error(w, 502, e.Error())
+				writeForgeError(w, http.StatusBadGateway, e)
 				return
 			}
 			status := 200
@@ -224,7 +229,7 @@ func (s *Server) registerForges(mux *http.ServeMux) {
 		}
 		issue, e := client.Save(r.Context(), c.Repository, number, input.Title, input.Body, input.State)
 		if e != nil {
-			shared.Error(w, 502, e.Error())
+			writeForgeError(w, http.StatusBadGateway, e)
 			return
 		}
 		shared.JSON(w, 200, issue)

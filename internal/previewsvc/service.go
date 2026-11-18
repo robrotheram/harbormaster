@@ -7,11 +7,12 @@ import (
 	"agent-workbench/internal/shared"
 	"context"
 	"encoding/json"
-	"errors"
+	"net/http"
+
 	"fmt"
 )
 
-var ErrConflict = errors.New("IDEMPOTENCY_CONFLICT")
+var ErrConflict = &shared.CodedError{Status: http.StatusConflict, Code: "IDEMPOTENCY_CONFLICT"}
 
 type Runtime interface {
 	Agent(context.Context, string, string, string, []byte) (int, []byte, error)

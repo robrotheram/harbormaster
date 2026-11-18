@@ -4,7 +4,6 @@ import (
 	"agent-workbench/internal/lifecycle"
 	"agent-workbench/internal/shared"
 	"context"
-	"errors"
 )
 
 // AssistantRepository adds creation to the workspace application boundary. The
@@ -20,11 +19,11 @@ type AssistantRepository interface {
 // private Hermes workspace. Browsers need not reproduce this workflow.
 func (s *Service) EnsureAssistant(ctx context.Context, repo AssistantRepository, project, key string, memory int64, admission func() func()) (shared.Workspace, bool, error) {
 	if s.Config.SharedWorkspaceID != "" {
-		return shared.Workspace{}, false, errors.New("SHARED_WORKSPACE_ONLY")
+		return shared.Workspace{}, false, shared.CodedError{Status: shared.StatusConflict, Code: "SHARED_WORKSPACE_ONLY"}
 	}
 	config, err := repo.HermesSetup(ctx, project)
 	if err != nil || !s.HermesAvailable(ctx) {
-		return shared.Workspace{}, false, errors.New("HERMES_SETUP_REQUIRED")
+		return shared.Workspace{}, false, shared.CodedError{Status: shared.StatusConflict, Code: "HERMES_SETUP_REQUIRED"}
 	}
 	release := admission()
 	held := true
@@ -41,7 +40,7 @@ func (s *Service) EnsureAssistant(ctx context.Context, repo AssistantRepository,
 	for _, item := range all {
 		if item.ProjectID == project && item.AgentKind == "hermes" {
 			if ws.ID != "" {
-				return shared.Workspace{}, false, errors.New("ASSISTANT_WORKSPACE_AMBIGUOUS")
+				return shared.Workspace{}, false, shared.CodedError{Status: shared.StatusConflict, Code: "ASSISTANT_WORKSPACE_AMBIGUOUS"}
 			}
 			ws = item
 		}
@@ -49,7 +48,7 @@ func (s *Service) EnsureAssistant(ctx context.Context, repo AssistantRepository,
 	created := false
 	if ws.ID == "" {
 		if len(all) >= 100 {
-			return ws, false, errors.New("QUOTA_EXCEEDED")
+			return ws, false, shared.ErrQuotaExceeded
 		}
 		now := s.Now()
 		ws = shared.Workspace{ID: shared.NewID("ws_"), ProjectID: project, HomeID: shared.NewID("home_"), Name: "Hermes", AgentKind: "hermes", State: "STOPPED", CreatedAt: now, UpdatedAt: now, RuntimeType: "docker", IsolationStatus: "unverified", NetworkStatus: "unverified", CPULimit: 1, MemoryLimitBytes: memory, ConnectionProfileID: config.ConnectionProfileID}

@@ -83,7 +83,7 @@ func (c *Client) MatrixAction(ctx context.Context, id, action string, config *sh
 	if status != 200 {
 		var e shared.APIError
 		if json.Unmarshal(body, &e) == nil && e.Code != "" {
-			return fmt.Errorf("%s", e.Code)
+			return shared.CodedError{Status: status, Code: e.Code}
 		}
 		return fmt.Errorf("Matrix operation refused: %d", status)
 	}
@@ -195,10 +195,10 @@ func (c *Client) ConfigureConnections(ctx context.Context, id string, policy sha
 		return err
 	}
 	if status == 409 {
-		return fmt.Errorf("STOP_WORKSPACE_FIRST")
+		return shared.CodedError{Status: http.StatusConflict, Code: "STOP_WORKSPACE_FIRST"}
 	}
 	if status != 200 {
-		return fmt.Errorf("NETWORK_POLICY_UNAVAILABLE")
+		return shared.CodedError{Status: http.StatusServiceUnavailable, Code: "NETWORK_POLICY_UNAVAILABLE"}
 	}
 	return nil
 }

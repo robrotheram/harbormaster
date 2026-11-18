@@ -5,7 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
+
 	"strings"
 	"time"
 
@@ -13,7 +13,7 @@ import (
 	"agent-workbench/internal/shared"
 )
 
-var ErrInvalidWork = errors.New("INVALID_REQUEST")
+var ErrInvalidWork = &shared.CodedError{Status: shared.StatusBadRequest, Code: "INVALID_REQUEST"}
 
 // InitWork is called only by the startup migration owner.
 func (r Repository) InitWork(ctx context.Context) error {

@@ -4,7 +4,7 @@ import (
 	"agent-workbench/internal/shared"
 	"context"
 	"encoding/json"
-	"errors"
+
 	"time"
 )
 
@@ -16,10 +16,10 @@ func (s *Service) RestoreConsole(ctx context.Context, ws shared.Workspace) error
 	defer cancel()
 	status, _, err := s.Runtime.Agent(ctx, ws.ID, "POST", "/v1/console/enable", nil)
 	if status == 409 {
-		return errors.New("WORKSPACE_BUSY")
+		return shared.CodedError{Status: shared.StatusConflict, Code: "WORKSPACE_BUSY"}
 	}
 	if err != nil || status != 200 {
-		return errors.New("CONSOLE_UNAVAILABLE")
+		return shared.CodedError{Status: shared.StatusServiceUnavailable, Code: "CONSOLE_UNAVAILABLE"}
 	}
 	for {
 		status, body, err := s.Runtime.Agent(ctx, ws.ID, "GET", "/v1/activity", nil)
@@ -29,7 +29,7 @@ func (s *Service) RestoreConsole(ctx context.Context, ws shared.Workspace) error
 		}
 		select {
 		case <-ctx.Done():
-			return errors.New("CONSOLE_NOT_READY")
+			return shared.CodedError{Status: shared.StatusServiceUnavailable, Code: "CONSOLE_NOT_READY"}
 		case <-time.After(200 * time.Millisecond):
 		}
 	}

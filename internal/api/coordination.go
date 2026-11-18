@@ -17,21 +17,16 @@ import (
 func (s *Server) RegisterCoordination(mux *http.ServeMux, service *coordination.Service, notes func(string, string) (coordination.NotePublisher, error)) {
 	reply := func(w http.ResponseWriter, v any, e error) {
 		if e != nil {
-			status := 503
-			code := "COORDINATION_UNAVAILABLE"
-			if errors.Is(e, coordination.ErrDenied) {
-				status = 403
-				code = "EXCHANGE_DENIED"
+			var response error
+			switch {
+			case errors.Is(e, coordination.ErrInvalid):
+				response = shared.CodedError{Status: http.StatusBadRequest, Code: "INVALID_REQUEST"}
+			case errors.Is(e, coordination.ErrConflict):
+				response = shared.CodedError{Status: http.StatusConflict, Code: "PUBLICATION_CONFLICT"}
+			case errors.Is(e, coordination.ErrDenied):
+				response = shared.CodedError{Status: http.StatusForbidden, Code: "EXCHANGE_DENIED"}
 			}
-			if errors.Is(e, coordination.ErrConflict) {
-				status = 409
-				code = "PUBLICATION_CONFLICT"
-			}
-			if errors.Is(e, coordination.ErrInvalid) {
-				status = 400
-				code = "INVALID_REQUEST"
-			}
-			shared.Error(w, status, code)
+			shared.WriteHTTPError(w, response, shared.CodedError{Status: http.StatusServiceUnavailable, Code: "COORDINATION_UNAVAILABLE"})
 			return
 		}
 		shared.JSON(w, 200, v)

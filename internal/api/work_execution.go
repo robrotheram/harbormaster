@@ -9,16 +9,16 @@ import (
 )
 
 func workError(w http.ResponseWriter, err error) {
+	var response error
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
-		shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
+		response = shared.CodedError{Status: http.StatusNotFound, Code: "NOT_FOUND_OR_FORBIDDEN"}
 	case errors.Is(err, orchestration.ErrConflict):
-		shared.Error(w, 409, "WORK_STATE_CONFLICT")
+		response = shared.CodedError{Status: http.StatusConflict, Code: "WORK_STATE_CONFLICT"}
 	case errors.Is(err, orchestration.ErrInvalidWork):
-		shared.Error(w, 400, "INVALID_REQUEST")
-	default:
-		shared.Error(w, 503, "STORAGE_UNAVAILABLE")
+		response = orchestration.ErrInvalidWork
 	}
+	shared.WriteHTTPError(w, response, storageUnavailable)
 }
 func (s *Server) registerWorkExecution(mux *http.ServeMux, repo orchestration.Repository) {
 	s.registerWorkImages(mux, repo)

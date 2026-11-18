@@ -51,7 +51,7 @@ func sameSchedule(a, b shared.Schedule) bool {
 	return a.ProjectID == b.ProjectID && a.WorkspaceID == b.WorkspaceID && a.Name == b.Name && a.InstructionPath == b.InstructionPath && a.Provider == b.Provider && a.RunAt.Equal(b.RunAt) && a.IntervalSeconds == b.IntervalSeconds
 }
 
-var ErrConflict = errors.New("IDEMPOTENCY_CONFLICT")
+var ErrConflict = &shared.CodedError{Status: shared.StatusConflict, Code: "IDEMPOTENCY_CONFLICT"}
 
 func (r Repository) CreateSchedule(ctx context.Context, s shared.Schedule, key string) (shared.Schedule, bool, error) {
 	b, _ := json.Marshal(s)

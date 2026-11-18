@@ -32,7 +32,7 @@ func checkNetwork(w shared.Workspace, c protocol.RuntimeCapability) error {
 			return nil
 		}
 	}
-	return errors.New("NETWORK_POLICY_UNAVAILABLE")
+	return shared.CodedError{Status: shared.StatusServiceUnavailable, Code: "NETWORK_POLICY_UNAVAILABLE"}
 }
 
 // StartReadiness observes a copy. It never reserves capacity, writes metadata,
@@ -100,7 +100,7 @@ func (s *Service) StartReadiness(ctx context.Context, w shared.Workspace) StartR
 		}
 	}
 	if err := s.checkQuota(ctx, &w); err != nil {
-		if err.Error() == "QUOTA_EXCEEDED" {
+		if errors.Is(err, shared.ErrQuotaExceeded) {
 			add("capacity", "Factory capacity", "blocked", "QUOTA_EXCEEDED", "The worker or resource quota is full. Stop an idle worker in Infrastructure, then check again.")
 		} else {
 			add("capacity", "Factory capacity", "unknown", "STORAGE_UNAVAILABLE", "Could not read current allocations. Check Platform services, then check again.")

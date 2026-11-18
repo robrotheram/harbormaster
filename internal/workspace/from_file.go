@@ -85,7 +85,7 @@ func (m *Manager) submitFile(w http.ResponseWriter, r *http.Request) {
 	}
 	task, status, err := m.submitLocked(submit{Instruction: string(b), Key: input.Key, Provider: input.Provider, Model: input.Model, SourcePath: input.Path, SpecificationDigest: input.Digest})
 	if err != nil {
-		shared.Error(w, status, err.Error())
+		shared.WriteHTTPError(w, err, shared.CodedError{Status: status, Code: err.Error()})
 		return
 	}
 	shared.JSON(w, status, task)

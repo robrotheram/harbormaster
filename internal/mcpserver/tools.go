@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	"agent-workbench/internal/shared"
 	"context"
 	"fmt"
 	"strings"
@@ -124,7 +125,7 @@ func registerTools(s *mcp.Server, c *controlClient) {
 		err = c.do(ctx, "GET", fmt.Sprintf("%s/result?offset=%d&limit=%d", p, in.Offset, in.Limit), nil, &out)
 		if err == nil && (len(out.Content) > in.Limit || (out.NextOffset != -1 && out.NextOffset < in.Offset) || out.TaskID != in.TaskID) {
 			out = Result{}
-			err = fmt.Errorf("AGENT_PROTOCOL_UNAVAILABLE")
+			err = shared.CodedError{Code: "AGENT_PROTOCOL_UNAVAILABLE"}
 		}
 		return
 	})
