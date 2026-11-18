@@ -6,7 +6,6 @@ services:
       - /run/agent-workbench:/run/agent-workbench:ro
     environment:
       RUNTIME_BACKEND: firecracker
-      WORKSPACE_RUNTIME: firecracker
       REQUIRE_VERIFIED_ISOLATION: "true"
       FIRECRACKER_SOCKET: /run/agent-workbench/controller.sock
   inference-gateway:

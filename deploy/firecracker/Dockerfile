@@ -19,7 +19,7 @@ RUN CGO_ENABLED=0 go build -trimpath -o /out/awb-init ./cmd/sandbox-init && CGO_
 
 FROM ${WORKSPACE_IMAGE}
 USER root
-RUN apt-get update && apt-get install -y --no-install-recommends iproute2 libolm3 xvfb fluxbox x11vnc novnc websockify xterm x11-utils fonts-dejavu-core && rm -rf /var/lib/apt/lists/* && mkdir -p /boot-config /run /data /proc /sys /dev /tmp
+RUN apt-get update && apt-get install -y --no-install-recommends iproute2 libolm3 && rm -rf /var/lib/apt/lists/* && mkdir -p /boot-config /run /data /proc /sys /dev /tmp
 COPY --from=hermes-build /usr/local/ /usr/local/
 COPY --from=hermes-build /opt/hermes /opt/hermes
 COPY --from=guest-build /out/awb-init /sbin/awb-init

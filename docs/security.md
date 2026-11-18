@@ -28,7 +28,7 @@ Docker internal networks are not a complete host firewall. Host listeners, DNS, 
 
 The development controller therefore reports `network_status=unverified`. It does not claim that network segmentation proves allowlist-only containment against a compromised guest.
 
-`WORKSPACE_RUNTIME=kata` requests the Kata shim explicitly and never falls back to runc. It does not install Kata, prove a guest VM exists, attest a patched VMM/device backend, or verify storage confinement. Existing workspaces created with another runtime are refused by runtime creation/start rather than relabeled as Kata. Changing the requested runtime does not migrate persistent workspaces automatically.
+The Docker controller requires runc when starting a workspace. It rejects legacy Kata containers at startup and rejects a legacy `WORKSPACE_RUNTIME=kata` setting. Kata deployment uses the Kubernetes backend.
 
 `REQUIRE_VERIFIED_ISOLATION=true` refuses workspace startup. This is deliberately fail-closed: there is no configuration boolean that turns an untested runtime into verified isolation. Unlocking a secure mode requires implementing an evidence-producing verifier and repeating network/storage/guest-root tests on the selected host stack.
 
@@ -36,7 +36,7 @@ The Docker socket grants root-equivalent host authority to the runtime controlle
 
 ## Remaining release gates for sensitive data
 
-1. Pin and verify the local Kata/VMM/storage combination, one VM per workspace, guest-root containment, resource bounds and host backend confinement.
+1. Pin and verify the selected Kubernetes Kata/VMM/storage combination, one VM per workspace, guest-root containment, resource bounds and host backend confinement.
 2. Enforce and test host-side deny rules covering forwarding, host INPUT, DNS and IPv6; gateway loss, policy failure and daemon restarts must preserve denial.
 3. Introduce verified per-user/project identities, narrowly scoped credential grants and defined revocation behavior, beyond the single-operator development principal.
 4. Provision real approved inference/provider credentials and scoped Vault access; review which workspace data may leave through inference/results.

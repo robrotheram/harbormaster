@@ -73,7 +73,8 @@ configuration management with these inputs:
 1. Build `cmd/firecracker-controller` as a static binary. Build the guest from the
    repository root with `deploy/firecracker/Dockerfile`, passing `WORKSPACE_IMAGE`
    and the `HERMES_COMMIT` / `HERMES_SOURCE_SHA256` values from
-   `deploy/hermes/runtime.json`. Use a workspace image from the same source revision.
+   `deploy/hermes/runtime.json`. Use a workspace image from the same source revision
+   so the guest inherits its desktop packages.
 2. Obtain matching Firecracker/jailer releases and a supported guest kernel from
    trusted sources. Verify their approved SHA256 values before installation.
 3. Export the trusted guest image, extract it into an empty staging directory and
@@ -104,7 +105,6 @@ In `.env` select:
 ```dotenv
 COMPOSE_FILE=compose.yaml:deploy/firecracker/compose.yaml
 RUNTIME_BACKEND=firecracker
-WORKSPACE_RUNTIME=firecracker
 REQUIRE_VERIFIED_ISOLATION=true
 ```
 
@@ -115,7 +115,7 @@ The host controller starts without starting any workspace. Do not restart the
 workbench until installation and real-host acceptance have succeeded.
 
 Unknown runtime backends refuse startup; there is no Docker fallback. Ordinary
-Docker/Kata retain their existing unverified-isolation admission gate. This VM
+Docker retains its existing unverified-isolation admission gate. This VM
 backend always verifies its mandatory controls and cannot disable them via that flag.
 
 ## Operations and limits

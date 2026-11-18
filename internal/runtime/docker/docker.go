@@ -97,10 +97,7 @@ func NewController(d *Docker, c ControllerConfig) (*Controller, error) {
 	if len(c.Token) < 32 || len(c.GatewayServiceToken) < 32 || len(c.GrantSecret) < 32 || !shared.ValidID(c.Deployment) || c.Image == "" {
 		return nil, errors.New("invalid controller configuration")
 	}
-	if c.RuntimeType == "" {
-		c.RuntimeType = "docker"
-	}
-	if c.RuntimeType != "docker" && c.RuntimeType != "kata" {
+	if c.RuntimeType != "" && c.RuntimeType != "docker" {
 		return nil, errors.New("unsupported runtime")
 	}
 	if c.MemoryLimit == 0 {
@@ -188,11 +185,7 @@ func (c *Controller) ensure(ctx context.Context, id string, spec protocol.Worksp
 	}
 	info, e := c.inspect(ctx, id)
 	if e == nil {
-		expected := "runc"
-		if c.cfg.RuntimeType == "kata" {
-			expected = "io.containerd.kata.v2"
-		}
-		if info.HostConfig.Runtime != expected {
+		if info.HostConfig.Runtime != "runc" {
 			return info, errors.New("existing workspace runtime mismatch")
 		}
 		if protocol.CheckOwnership(info.Config.Labels, spec) != nil {
@@ -246,14 +239,10 @@ func (c *Controller) ensure(ctx context.Context, id string, spec protocol.Worksp
 	labels["workbench.agent"], labels["workbench.template"] = spec.AgentKind, spec.TemplateID
 	labels["workbench.generation"] = generation
 	labels["workbench.parent"] = spec.ParentID
-	runtimeName := "runc"
-	if c.cfg.RuntimeType == "kata" {
-		runtimeName = "io.containerd.kata.v2"
-	}
 	body := map[string]any{
 		"Image": c.cfg.Image, "User": "10001:10001", "Labels": labels,
 		"Env":              []string{"PROJECT_ID=" + spec.ProjectID, "AGENT_HOME_ID=" + spec.HomeID, "AGENT_KIND=" + spec.AgentKind, "WORKSPACE_ID=" + id, "WORKSPACE_TOKEN=" + c.token(id, generation), "INFERENCE_URL=http://inference-gateway:8080", "BROKER_URL=http://credential-broker:8080", "INFERENCE_MODEL=" + c.cfg.Model, "WORKSPACE_AGENT=" + c.cfg.DefaultProvider, "CODEX_MODEL=" + c.cfg.CodexModel, "CLAUDE_MODEL=" + c.cfg.ClaudeModel, "MONITOR_PROCESSES=true", "WORKSPACE_T3=" + fmt.Sprint(spec.ConsoleEnabled || c.cfg.Console && spec.AgentKind == "t3"), "WORKSPACE_BRANCH=" + spec.Branch, "WORKSPACE_NAME=" + spec.Name},
-		"HostConfig":       map[string]any{"Init": true, "Runtime": runtimeName, "NetworkMode": c.name(id), "Dns": []string{"127.0.0.1"}, "ReadonlyRootfs": true, "CapDrop": []string{"ALL"}, "SecurityOpt": []string{"no-new-privileges:true"}, "Memory": c.cfg.MemoryLimit, "MemorySwap": c.cfg.MemoryLimit, "NanoCpus": int64(1e9), "PidsLimit": 128, "Tmpfs": map[string]string{"/tmp": "rw,nosuid,nodev,noexec,size=64m"}, "Mounts": []any{map[string]any{"Type": "volume", "Source": volume, "Target": "/data"}}, "LogConfig": map[string]any{"Type": "none"}},
+		"HostConfig":       map[string]any{"Init": true, "Runtime": "runc", "NetworkMode": c.name(id), "Dns": []string{"127.0.0.1"}, "ReadonlyRootfs": true, "CapDrop": []string{"ALL"}, "SecurityOpt": []string{"no-new-privileges:true"}, "Memory": c.cfg.MemoryLimit, "MemorySwap": c.cfg.MemoryLimit, "NanoCpus": int64(1e9), "PidsLimit": 128, "Tmpfs": map[string]string{"/tmp": "rw,nosuid,nodev,noexec,size=64m"}, "Mounts": []any{map[string]any{"Type": "volume", "Source": volume, "Target": "/data"}}, "LogConfig": map[string]any{"Type": "none"}},
 		"NetworkingConfig": map[string]any{"EndpointsConfig": map[string]any{c.name(id): map[string]any{"Aliases": []string{"workspace"}}}},
 	}
 	if c.cfg.EgressContainer != "" {
@@ -297,7 +286,7 @@ func (c *Controller) agent(ctx context.Context, info containerInfo, method, path
 	return resp.StatusCode, out, e
 }
 func (c *Controller) observe(ctx context.Context, id string) (shared.Observation, error) {
-	o := shared.Observation{RuntimeType: c.cfg.RuntimeType, IsolationStatus: "unverified", NetworkStatus: "unverified"}
+	o := shared.Observation{RuntimeType: "docker", IsolationStatus: "unverified", NetworkStatus: "unverified"}
 	info, e := c.inspect(ctx, id)
 	if e != nil {
 		var de protocol.APIError
@@ -314,8 +303,6 @@ func (c *Controller) observe(ctx context.Context, id string) (shared.Observation
 	}
 	if info.HostConfig.Runtime == "io.containerd.kata.v2" {
 		o.RuntimeType = "kata"
-	} else {
-		o.RuntimeType = "docker"
 	}
 	if !o.Running {
 		return o, nil

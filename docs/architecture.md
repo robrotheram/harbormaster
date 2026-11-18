@@ -110,7 +110,6 @@ shutdown path.
 | Backend | Status | Networking and acceptance |
 | --- | --- | --- |
 | Docker | Development implementation | Blocked, allowlist proxy, or explicit open networking; does not establish VM isolation |
-| Kata via Docker | Operator-provisioned experiment | Requires a working shim; verified-isolation requirements fail closed without evidence |
 | Kubernetes Agent Sandbox | Production-target adapter, acceptance pending | Persisted blocked/allowlist policies, destination ceilings, NetworkPolicy drift checks and retained PVC ownership checks; exact-image Hermes with generation-scoped MCP. Real CNI/Kata enforcement and recovery acceptance are required; verified isolation remains fail-closed |
 | Firecracker | Host-installed sandbox implementation | No guest NIC; blocked/allowlist channels only. Requires root-owned pinned artifacts and real host/VM acceptance; no Docker fallback |
 
