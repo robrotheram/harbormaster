@@ -87,9 +87,9 @@ error. Leave the old databases and their migration records intact for recovery.
    file path. For Compose or Kubernetes PostgreSQL, provision a fresh database
    and update the deployment's database URL secret.
 3. Start the new deployment and recreate workspaces using fresh guest storage.
-   The supervisor creates `workspace.db` at the root of the workspace data
-   directory or under `homes/<home-id>/` when the workspace has a home ID. Export project files you
-   need to retain and import them into the new workspaces. The old guest database
+   The supervisor creates `homes/<home-id>/workspace.db` under the workspace
+   data directory. Export project files you need to retain and import them into
+   the new workspaces. The old guest database
    holds task receipts, history, artifacts and retained-service records. Keep it
    with its original backup and images.
 4. Verify workspace creation and recreate the remaining platform metadata the

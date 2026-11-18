@@ -4,6 +4,7 @@ import (
 	"agent-workbench/internal/runtime/protocol"
 	"context"
 	"errors"
+	"slices"
 )
 
 func connectionMode(info containerInfo) string {

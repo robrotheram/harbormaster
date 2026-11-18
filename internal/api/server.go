@@ -138,7 +138,7 @@ func mutationKey(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
-func workspaceProxy[T any](s *Server, forward func(T, http.ResponseWriter, *http.Request, string, string)) http.HandlerFunc {
+func workspaceProxy(s *Server, forward func(http.ResponseWriter, *http.Request, string, string)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ws, ok := s.workspace(w, r)
 		if !ok {
@@ -148,12 +148,7 @@ func workspaceProxy[T any](s *Server, forward func(T, http.ResponseWriter, *http
 			shared.Error(w, 409, "CONSOLE_UPGRADE_REQUIRED")
 			return
 		}
-		proxy, ok := s.Runtime.(T)
-		if !ok {
-			shared.Error(w, 503, "CONSOLE_UNAVAILABLE")
-			return
-		}
-		forward(proxy, w, r, ws.ID, r.PathValue("path"))
+		forward(w, r, ws.ID, r.PathValue("path"))
 	}
 }
 

@@ -215,7 +215,6 @@ func TestUIRouteBodyBoundaries(t *testing.T) {
 		{"POST", "/connection-profiles/github/delete", 32768},
 		{"POST", "/workspaces/ws_one/tasks/task_one/cancel", 70 << 10},
 		{"POST", "/workspaces/ws_one/terminals/term_one/close", 70 << 10},
-		{"POST", "/workspaces/ws_one/recipe-jobs", 4096},
 		{"POST", "/project-exchanges/exchange_one/exports", 100000},
 	} {
 		t.Run(tc.method+tc.path, func(t *testing.T) {

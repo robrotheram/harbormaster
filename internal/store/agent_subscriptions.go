@@ -1,11 +1,12 @@
 package store
 
 import (
+	"agent-workbench/internal/shared"
 	"context"
 	"database/sql"
 )
 
-var ErrSubscriptionInUse = errors.New("SUBSCRIPTION_IN_USE")
+var ErrSubscriptionInUse = &shared.CodedError{Status: shared.StatusConflict, Code: "SUBSCRIPTION_IN_USE"}
 
 type AgentSubscription struct {
 	ID         string `json:"id"`

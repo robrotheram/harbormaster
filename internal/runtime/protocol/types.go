@@ -17,7 +17,6 @@ type Runtime interface {
 	Reconcile(context.Context, string) error
 	ConfigureConnections(context.Context, string, shared.ConnectionPolicy) error
 	Capabilities(context.Context) (RuntimeCapability, error)
-	AgentKinds(context.Context) ([]string, error)
 	MatrixCredentialPresent(context.Context, string) bool
 	MatrixCredential(context.Context, string, shared.HermesMatrix, string) error
 	MatrixAction(context.Context, string, string, *shared.HermesMatrix) error

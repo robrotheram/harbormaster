@@ -13,7 +13,7 @@ func TestFactoryArtifactsSurviveRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	os.WriteFile(filepath.Join(homePath(cfg), "files", "report.txt"), []byte("evidence"), 0600)
+	os.WriteFile(filepath.Join(cfg.DataDir, "files", "report.txt"), []byte("evidence"), 0600)
 	body := `{"source_path":"report.txt","idempotency_key":"publish-one"}`
 	res := invoke(t, m.Handler(), "POST", "/v1/artifacts", body)
 	if res.Code != 201 {
@@ -21,12 +21,12 @@ func TestFactoryArtifactsSurviveRestart(t *testing.T) {
 	}
 	var a Artifact
 	json.Unmarshal(res.Body.Bytes(), &a)
-	os.WriteFile(filepath.Join(homePath(cfg), "files", "report.txt"), []byte("edited"), 0600)
+	os.WriteFile(filepath.Join(cfg.DataDir, "files", "report.txt"), []byte("edited"), 0600)
 	res = invoke(t, m.Handler(), "GET", "/v1/artifacts/"+a.ID+"/content", "")
 	if res.Body.String() != "evidence" {
 		t.Fatal(res.Body)
 	}
-	os.Symlink("/etc/passwd", filepath.Join(homePath(cfg), "files", "escape"))
+	os.Symlink("/etc/passwd", filepath.Join(cfg.DataDir, "files", "escape"))
 	res = invoke(t, m.Handler(), "POST", "/v1/artifacts", `{"source_path":"escape","idempotency_key":"escape-one"}`)
 	if res.Code < 400 {
 		t.Fatal("escaped root")
@@ -62,7 +62,7 @@ func TestWorkspaceCoordinationIsPrivateAndBounded(t *testing.T) {
 	if again.Code != 200 || again.Body.String() != first.Body.String() {
 		t.Fatal("receipt changed", again.Code)
 	}
-	if err = os.WriteFile(filepath.Join(homePath(cfg), "files", "coordination", "notes", "daily.md"), []byte("user edit"), 0600); err != nil {
+	if err = os.WriteFile(filepath.Join(cfg.DataDir, "files", "coordination", "notes", "daily.md"), []byte("user edit"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if got := invoke(t, m.Handler(), "POST", "/v1/coordination/notes", body); got.Code != 409 {

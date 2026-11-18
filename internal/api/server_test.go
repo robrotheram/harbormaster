@@ -111,9 +111,6 @@ func (rt *embeddedRuntime) Capabilities(context.Context) (protocol.RuntimeCapabi
 		Resources:     protocol.ResourceLimits{CPUCores: 1, MemoryBytes: 512 << 20},
 	}, nil
 }
-func (rt *embeddedRuntime) AgentKinds(context.Context) ([]string, error) {
-	return []string{"t3", "codex"}, nil
-}
 func (rt *embeddedRuntime) Reconcile(context.Context, string) error { return nil }
 func (rt *embeddedRuntime) ConfigureConnections(context.Context, string, shared.ConnectionPolicy) error {
 	return nil

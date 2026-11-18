@@ -32,7 +32,7 @@ func TestControllerHTTPContract(t *testing.T) {
 	c, _ := controller(t, false)
 	contracttest.Controller(t, c.Handler(), c.cfg.Token, c.cfg.GatewayServiceToken, 405, 2048, 200)
 	contracttest.HTTP(t, c.Handler(),
-		contracttest.HTTPCase{Name: "empty start", Method: "POST", Path: "/v1/workspaces/ws_test/start", Token: c.cfg.Token, Body: "", Status: 200, Code: ""},
+		contracttest.HTTPCase{Name: "empty start", Method: "POST", Path: "/v1/workspaces/ws_test/start", Token: c.cfg.Token, Body: "", Status: 400, Code: "UNSUPPORTED_WORKSPACE_SPEC"},
 		contracttest.HTTPCase{Name: "agent limit", Method: "POST", Path: "/v1/workspaces/ws_test/agent/v1/tasks", Token: c.cfg.Token, Body: strings.Repeat(" ", (70<<10)+1), Status: 400, Code: "INVALID_REQUEST"},
 		contracttest.HTTPCase{Name: "invalid network target", Method: "POST", Path: "/v1/workspaces/invalid.id/network-policy", Token: c.cfg.Token, Body: "{}", Status: 503, Code: "NETWORK_POLICY_UNAVAILABLE"},
 	)
