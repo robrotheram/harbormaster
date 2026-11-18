@@ -720,10 +720,19 @@ func (f *Firecracker) Close() {
 }
 
 func (f *Firecracker) Handler() http.Handler {
-	mux := http.NewServeMux()
-	m := http.NewServeMux()
-	m.HandleFunc("POST /v1/projects/{id}/matrix-credential", f.storeMatrixCredential)
-	m.HandleFunc("GET /v1/projects/{id}/matrix-credential", func(w http.ResponseWriter, r *http.Request) {
+	return protocol.NewControllerHandler(protocol.Backend{
+		Token: f.token, GatewayServiceToken: f.service, Health: f.health, VerifyGrant: f.verify,
+		RegisterManagement: f.registerManagement,
+		Start:              f.start, Stop: f.stop, Inspect: f.inspectWorkspace,
+		BindNetworkPolicy: f.bindNetworkPolicy, Reconcile: f.reconcileNetwork, Capabilities: f.capabilities,
+		Proxy: f.proxy, Agent: f.proxyAgent,
+		StartBodyLimit: 32768, AllowEmptyStart: true, WorkspaceActionFallback: true,
+	})
+}
+
+func (f *Firecracker) registerManagement(mux *http.ServeMux) {
+	mux.HandleFunc("POST /v1/projects/{id}/matrix-credential", f.storeMatrixCredential)
+	mux.HandleFunc("GET /v1/projects/{id}/matrix-credential", func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		if !shared.ValidID(id) {
 			shared.Error(w, 400, "INVALID_REQUEST")
@@ -732,8 +741,8 @@ func (f *Firecracker) Handler() http.Handler {
 		_, err := os.Stat(filepath.Join(matrixSecrets, id+".json"))
 		shared.JSON(w, 200, map[string]bool{"configured": err == nil})
 	})
-	m.HandleFunc("POST /v1/workspaces/{id}/matrix-enable", f.enableMatrixRoute)
-	m.HandleFunc("POST /v1/workspaces/{id}/matrix-disable", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /v1/workspaces/{id}/matrix-enable", f.enableMatrixRoute)
+	mux.HandleFunc("POST /v1/workspaces/{id}/matrix-disable", func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		v := f.vms[r.PathValue("id")]
 		if v != nil && f.matrixOwners[v.Spec.ProjectID] == v.Generation {
@@ -742,205 +751,174 @@ func (f *Firecracker) Handler() http.Handler {
 		f.mu.Unlock()
 		shared.JSON(w, 200, map[string]bool{"disabled": true})
 	})
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
-		shared.JSON(w, 200, map[string]string{"status": "ok", "backend": "firecracker"})
-	})
-	mux.Handle("POST /v1/grants/verify", shared.RequireToken(f.service, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var q struct{ Token, Audience string }
-		if !shared.Decode(w, r, &q, 2048) {
-			return
+}
+
+func (f *Firecracker) health(w http.ResponseWriter, r *http.Request) {
+	shared.JSON(w, 200, map[string]string{"status": "ok", "backend": "firecracker"})
+}
+
+func (f *Firecracker) verify(w http.ResponseWriter, r *http.Request) {
+	var q struct{ Token, Audience string }
+	if !shared.Decode(w, r, &q, 2048) {
+		return
+	}
+	if len(q.Token) != 64 || (q.Audience != "egress" && q.Audience != "inference" && q.Audience != "broker") {
+		shared.Error(w, 403, "GRANT_REJECTED")
+		return
+	}
+	f.mu.Lock()
+	var found *fcVM
+	for _, v := range f.vms {
+		if v.running && !v.stopping && subtle.ConstantTimeCompare([]byte(f.grant(v)), []byte(q.Token)) == 1 {
+			found = v
+			break
 		}
-		if len(q.Token) != 64 || (q.Audience != "egress" && q.Audience != "inference" && q.Audience != "broker") {
-			shared.Error(w, 403, "GRANT_REJECTED")
-			return
+	}
+	var p shared.ConnectionPolicy
+	if found != nil {
+		p = found.Policy
+	}
+	f.mu.Unlock()
+	if found == nil || f.verifyVM(found) != nil || (q.Audience == "egress" && p.Mode == "blocked") {
+		shared.Error(w, 403, "GRANT_REJECTED")
+		return
+	}
+	shared.JSON(w, 200, map[string]any{"workspace_id": found.ID, "project_id": found.Spec.ProjectID, "principal_id": "local-operator", "connections": p})
+}
+
+func (f *Firecracker) capabilities() protocol.RuntimeCapability {
+	caps := protocol.DevelopmentCapability("firecracker", "firecracker-2", 1<<30)
+	caps.IsolationStatus = "jailed-vm"
+	caps.NetworkStatus = "no-nic-vsock"
+	if f.hermes && projectMCPSecret() != "" {
+		caps.AgentKinds = append(caps.AgentKinds, "hermes")
+	}
+	return caps
+}
+
+func (f *Firecracker) workspace(id string) *fcVM {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.vms[id]
+}
+
+func (f *Firecracker) inspectWorkspace(ctx context.Context, id string) (shared.Observation, *protocol.ControllerError) {
+	if !shared.ValidID(id) {
+		return shared.Observation{}, protocol.Failure(400, "INVALID_REQUEST")
+	}
+	return f.observation(ctx, f.workspace(id)), nil
+}
+
+func (f *Firecracker) start(ctx context.Context, id string, spec protocol.WorkspaceSpec) (shared.Observation, *protocol.ControllerError) {
+	f.lifecycle.Lock()
+	defer f.lifecycle.Unlock()
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	v, err := f.launch(ctx, id, spec)
+	if err != nil {
+		slog.Error("Firecracker start refused", "workspace", id, "error", err)
+		return shared.Observation{}, protocol.Failure(503, "FIRECRACKER_START_REFUSED")
+	}
+	return f.observation(ctx, v), nil
+}
+
+func (f *Firecracker) stop(ctx context.Context, id string) *protocol.ControllerError {
+	f.lifecycle.Lock()
+	defer f.lifecycle.Unlock()
+	f.mu.Lock()
+	v := f.vms[id]
+	running := v != nil && v.running && !v.stopping
+	f.mu.Unlock()
+	if running {
+		status, _, err := f.agent(ctx, v, "POST", "/v1/quiesce", nil)
+		if err != nil || status != 200 {
+			return protocol.Failure(409, "WORKSPACE_BUSY")
 		}
-		f.mu.Lock()
-		var found *fcVM
-		for _, v := range f.vms {
-			if v.running && !v.stopping && subtle.ConstantTimeCompare([]byte(f.grant(v)), []byte(q.Token)) == 1 {
-				found = v
-				break
+		if c, err := fcDialPort(ctx, v, 8081); err == nil {
+			c.SetDeadline(time.Now().Add(3 * time.Second))
+			_, err = c.Write([]byte("S"))
+			var b [3]byte
+			if err == nil {
+				_, err = io.ReadFull(c, b[:])
 			}
+			c.Close()
+			if err != nil || string(b[:]) != "OK\n" {
+				return protocol.Failure(503, "SANDBOX_SYNC_FAILED")
+			}
+		} else {
+			return protocol.Failure(503, "SANDBOX_SYNC_FAILED")
 		}
-		var p shared.ConnectionPolicy
-		if found != nil {
-			p = found.Policy
+	}
+	if v != nil {
+		if err := f.kill(v); err != nil {
+			return protocol.Failure(503, "SANDBOX_STOP_FAILED")
 		}
+	}
+	return nil
+}
+
+func (f *Firecracker) bindNetworkPolicy(_ context.Context, id string) func(*shared.ConnectionPolicy) *protocol.ControllerError {
+	// Bind to the current VM before reading the request body so a delayed
+	// update cannot follow a workspace ID to a replacement generation.
+	v := f.workspace(id)
+	return func(connections *shared.ConnectionPolicy) *protocol.ControllerError {
+		return f.applyNetwork(v, connections)
+	}
+}
+
+func (f *Firecracker) applyNetwork(v *fcVM, connections *shared.ConnectionPolicy) *protocol.ControllerError {
+	if connections == nil {
+		return protocol.Failure(400, "INVALID_REQUEST")
+	}
+	p := *connections
+	if !p.Valid() || p.Mode == "open" {
+		return protocol.Failure(403, "OPEN_NETWORK_FORBIDDEN_IN_SANDBOX")
+	}
+	f.mu.Lock()
+	if v == nil || !v.running || v.stopping {
 		f.mu.Unlock()
-		if found == nil || f.verifyVM(found) != nil || (q.Audience == "egress" && p.Mode == "blocked") {
-			shared.Error(w, 403, "GRANT_REJECTED")
-			return
-		}
-		shared.JSON(w, 200, map[string]any{"workspace_id": found.ID, "project_id": found.Spec.ProjectID, "principal_id": "local-operator", "connections": p})
-	})))
-	m.HandleFunc("GET /v1/capabilities", func(w http.ResponseWriter, r *http.Request) {
-		kinds := []string{"t3", "codex"}
-		if f.hermes && projectMCPSecret() != "" {
-			kinds = append(kinds, "hermes")
-		}
-		shared.JSON(w, 200, protocol.RuntimeCapability{Resources: protocol.ResourceLimits{CPUCores: 1, MemoryBytes: 1 << 30}, SchemaVersion: 1, Backend: "firecracker", NetworkModes: []string{"blocked", "allowlist"}, ID: protocol.DevelopmentTemplate, Version: "firecracker-2", AgentKinds: kinds, IsolationStatus: "jailed-vm", NetworkStatus: "no-nic-vsock", PrivateHomes: true})
-	})
-	m.HandleFunc("/v1/workspaces/{id}/{action...}", func(w http.ResponseWriter, r *http.Request) {
-		id := r.PathValue("id")
-		action := r.PathValue("action")
-		if !shared.ValidID(id) {
-			shared.Error(w, 400, "INVALID_REQUEST")
-			return
-		}
-		f.mu.Lock()
-		v := f.vms[id]
-		f.mu.Unlock()
-		switch {
-		case action == "start" && r.Method == "POST":
-			var s protocol.WorkspaceSpec
-			if r.ContentLength != 0 && !shared.Decode(w, r, &s, 32768) {
-				return
-			}
-			f.lifecycle.Lock()
-			defer f.lifecycle.Unlock()
-			ctx, c := context.WithTimeout(r.Context(), 30*time.Second)
-			defer c()
-			v, err := f.launch(ctx, id, s)
-			if err != nil {
-				slog.Error("Firecracker start refused", "workspace", id, "error", err)
-				shared.Error(w, 503, "FIRECRACKER_START_REFUSED")
-				return
-			}
-			shared.JSON(w, 200, f.observation(ctx, v))
-		case action == "stop" && r.Method == "POST":
-			f.lifecycle.Lock()
-			defer f.lifecycle.Unlock()
-			f.mu.Lock()
-			v = f.vms[id]
-			running := v != nil && v.running && !v.stopping
-			f.mu.Unlock()
-			if running {
-				status, _, err := f.agent(r.Context(), v, "POST", "/v1/quiesce", nil)
-				if err != nil || status != 200 {
-					shared.Error(w, 409, "WORKSPACE_BUSY")
-					return
-				}
-				if c, err := fcDialPort(r.Context(), v, 8081); err == nil {
-					c.SetDeadline(time.Now().Add(3 * time.Second))
-					_, err = c.Write([]byte("S"))
-					var b [3]byte
-					if err == nil {
-						_, err = io.ReadFull(c, b[:])
-					}
-					c.Close()
-					if err != nil || string(b[:]) != "OK\n" {
-						shared.Error(w, 503, "SANDBOX_SYNC_FAILED")
-						return
-					}
-				} else {
-					shared.Error(w, 503, "SANDBOX_SYNC_FAILED")
-					return
-				}
-			}
-			if v != nil {
-				if err := f.kill(v); err != nil {
-					shared.Error(w, 503, "SANDBOX_STOP_FAILED")
-					return
-				}
-			}
-			shared.JSON(w, 200, map[string]bool{"stopped": true})
-		case action == "network-policy" && r.Method == "POST":
-			var q struct {
-				Connections *shared.ConnectionPolicy `json:"connections"`
-			}
-			if !shared.Decode(w, r, &q, 32768) {
-				return
-			}
-			if q.Connections == nil {
-				shared.Error(w, 400, "INVALID_REQUEST")
-				return
-			}
-			p := *q.Connections
-			if !p.Valid() || p.Mode == "open" {
-				shared.Error(w, 403, "OPEN_NETWORK_FORBIDDEN_IN_SANDBOX")
-				return
-			}
-			f.mu.Lock()
-			if v == nil || !v.running || v.stopping {
-				f.mu.Unlock()
-				shared.Error(w, 409, "NOT_READY")
-				return
-			}
-			v.Policy = p
-			f.mu.Unlock()
-			shared.JSON(w, 200, map[string]bool{"applied": true})
-		case action == "reconcile-network" && r.Method == "POST":
-			if v == nil || f.verifyVM(v) != nil {
-				shared.Error(w, 503, "SANDBOX_ENFORCEMENT_UNAVAILABLE")
-				return
-			}
-			shared.JSON(w, 200, map[string]bool{"reconciled": true})
-		case strings.HasPrefix(action, "agent/"):
-			path := "/" + strings.TrimPrefix(action, "agent/")
-			if !protocol.AllowedAgentPath(r.Method, path) {
-				shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
-				return
-			}
-			query, err := protocol.AgentQuery(r.Method, path, r.URL.RawQuery)
-			if err != nil {
-				shared.Error(w, 400, "INVALID_REQUEST")
-				return
-			}
-			limit := protocol.AgentBodyLimit(path)
-			if v == nil || !f.observation(r.Context(), v).Ready {
-				shared.Error(w, 503, "NOT_READY")
-				return
-			}
-			if query != "" {
-				path += "?" + query
-			}
-			body := http.MaxBytesReader(w, r.Body, limit)
-			status, b, err := f.agent(r.Context(), v, r.Method, path, body)
-			if err != nil {
-				shared.Error(w, 503, "WORKSPACE_UNAVAILABLE")
-				return
-			}
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(status)
-			w.Write(b)
-		case strings.HasPrefix(action, "console/") || strings.HasPrefix(action, "desktop/") || strings.HasPrefix(action, "application-proxy/"):
-			if v == nil || !f.observation(r.Context(), v).Ready {
-				shared.Error(w, 503, "CONSOLE_NOT_READY")
-				return
-			}
-			path := "/v1/t3/" + strings.TrimPrefix(action, "console/")
-			if strings.HasPrefix(action, "desktop/") {
-				path = "/v1/t3-desktop/" + strings.TrimPrefix(action, "desktop/")
-			}
-			if strings.HasPrefix(action, "application-proxy/") {
-				path = "/v1/" + action
-			}
-			t := f.transport(v)
-			defer t.CloseIdleConnections()
-			p := &httputil.ReverseProxy{Transport: t, FlushInterval: -1, Rewrite: func(p *httputil.ProxyRequest) {
-				p.Out.URL.Scheme = "http"
-				p.Out.URL.Host = "guest"
-				p.Out.URL.Path = path
-				p.Out.URL.RawPath = ""
-				p.Out.Host = p.In.Host
-				p.Out.Header.Set("Authorization", "Bearer "+f.grant(v))
-			}}
-			p.ServeHTTP(w, r)
-		default:
-			shared.Error(w, 404, "NOT_FOUND")
-		}
-	})
-	m.HandleFunc("GET /v1/workspaces/{id}", func(w http.ResponseWriter, r *http.Request) {
-		id := r.PathValue("id")
-		if !shared.ValidID(id) {
-			shared.Error(w, 400, "INVALID_REQUEST")
-			return
-		}
-		f.mu.Lock()
-		v := f.vms[id]
-		f.mu.Unlock()
-		shared.JSON(w, 200, f.observation(r.Context(), v))
-	})
-	mux.Handle("/", shared.RequireToken(f.token, m))
-	return mux
+		return protocol.Failure(409, "NOT_READY")
+	}
+	v.Policy = p
+	f.mu.Unlock()
+	return nil
+}
+
+func (f *Firecracker) reconcileNetwork(_ context.Context, id string) *protocol.ControllerError {
+	v := f.workspace(id)
+	if v == nil || f.verifyVM(v) != nil {
+		return protocol.Failure(503, "SANDBOX_ENFORCEMENT_UNAVAILABLE")
+	}
+	return nil
+}
+
+func (f *Firecracker) proxyAgent(ctx context.Context, id, method, path string, body io.Reader) (int, []byte, *protocol.ControllerError) {
+	v := f.workspace(id)
+	if v == nil || !f.observation(ctx, v).Ready {
+		return 0, nil, protocol.Failure(503, "NOT_READY")
+	}
+	status, b, err := f.agent(ctx, v, method, path, body)
+	if err != nil {
+		return 0, nil, protocol.Failure(503, "WORKSPACE_UNAVAILABLE")
+	}
+	return status, b, nil
+}
+
+func (f *Firecracker) proxy(w http.ResponseWriter, r *http.Request, id, path, prefix string) {
+	v := f.workspace(id)
+	if v == nil || !f.observation(r.Context(), v).Ready {
+		shared.Error(w, 503, "CONSOLE_NOT_READY")
+		return
+	}
+	t := f.transport(v)
+	defer t.CloseIdleConnections()
+	p := &httputil.ReverseProxy{Transport: t, FlushInterval: -1, Rewrite: func(p *httputil.ProxyRequest) {
+		p.Out.URL.Scheme = "http"
+		p.Out.URL.Host = "guest"
+		p.Out.URL.Path = prefix + path
+		p.Out.URL.RawPath = ""
+		p.Out.Host = p.In.Host
+		p.Out.Header.Set("Authorization", "Bearer "+f.grant(v))
+	}}
+	p.ServeHTTP(w, r)
 }

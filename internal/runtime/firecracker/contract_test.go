@@ -7,6 +7,7 @@ import (
 	"agent-workbench/internal/shared"
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -72,4 +73,40 @@ func TestControllerHTTPContract(t *testing.T) {
 		contracttest.HTTPCase{Name: "wrong method", Method: "GET", Path: "/v1/workspaces/ws_test/start", Token: f.token, Body: "", Status: 404, Code: "NOT_FOUND"},
 		contracttest.HTTPCase{Name: "decoded action", Method: "GET", Path: "/v1/workspaces/ws_test/agent%2Fv1/tasks", Token: f.token, Body: "", Status: 503, Code: "NOT_READY"},
 	)
+}
+
+type policyRequestBody struct {
+	io.Reader
+	beforeRead func()
+}
+
+func (b *policyRequestBody) Read(p []byte) (int, error) {
+	if b.beforeRead != nil {
+		b.beforeRead()
+		b.beforeRead = nil
+	}
+	return b.Reader.Read(p)
+}
+
+func TestNetworkPolicyRequestStaysBoundToOriginalVM(t *testing.T) {
+	f := testFC()
+	original := &fcVM{ID: "ws_test", Generation: "original", running: true}
+	replacement := &fcVM{ID: original.ID, Generation: "replacement", running: true, Policy: shared.ConnectionPolicy{Mode: "blocked"}}
+	f.vms[original.ID] = original
+	body := &policyRequestBody{
+		Reader: strings.NewReader(`{"connections":{"mode":"allowlist","destinations":["github.com:443"]}}`),
+		beforeRead: func() {
+			f.mu.Lock()
+			defer f.mu.Unlock()
+			original.running = false
+			f.vms[original.ID] = replacement
+		},
+	}
+	r := httptest.NewRequest("POST", "/v1/workspaces/ws_test/network-policy", body)
+	r.Header.Set("Authorization", "Bearer "+f.token)
+	response := httptest.NewRecorder()
+	f.Handler().ServeHTTP(response, r)
+	if response.Code != http.StatusConflict || replacement.Policy.Mode != "blocked" {
+		t.Fatalf("policy crossed generations: response %d %s, replacement policy %+v", response.Code, response.Body, replacement.Policy)
+	}
 }
