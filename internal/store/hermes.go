@@ -16,7 +16,7 @@ func (s *Store) initHermes(ctx context.Context) error {
 func (s *Store) HermesSetup(ctx context.Context, project string) (shared.HermesSetup, error) {
 	var c shared.HermesSetup
 	var b string
-	err := s.DB.QueryRowContext(ctx, s.query(`SELECT metadata FROM hermes_setups WHERE project_id=?`), project).Scan(&b)
+	err := s.DB.QueryRowContext(ctx, `SELECT metadata FROM hermes_setups WHERE project_id=$1`, project).Scan(&b)
 	if err != nil {
 		return c, err
 	}
@@ -28,13 +28,13 @@ func (s *Store) SaveHermesSetup(ctx context.Context, c shared.HermesSetup, previ
 	if err != nil {
 		return err
 	}
-	q := `UPDATE hermes_setups SET revision=?,metadata=? WHERE project_id=? AND revision=?`
+	q := `UPDATE hermes_setups SET revision=$1,metadata=$2 WHERE project_id=$3 AND revision=$4`
 	args := []any{c.Revision, string(b), c.ProjectID, previous}
 	if previous == 0 {
-		q = `INSERT INTO hermes_setups(project_id,revision,metadata) VALUES(?,?,?) ON CONFLICT(project_id) DO NOTHING`
+		q = `INSERT INTO hermes_setups(project_id,revision,metadata) VALUES($1,$2,$3) ON CONFLICT(project_id) DO NOTHING`
 		args = []any{c.ProjectID, c.Revision, string(b)}
 	}
-	r, err := s.DB.ExecContext(ctx, s.query(q), args...)
+	r, err := s.DB.ExecContext(ctx, q, args...)
 	if err != nil {
 		return err
 	}

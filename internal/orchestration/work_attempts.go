@@ -201,32 +201,13 @@ func (r Repository) saveAttempt(ctx context.Context, project string, a shared.Wo
 	}
 	return tx.Commit()
 }
-func (r Repository) ReviewWork(ctx context.Context, project, id string, accepted bool, now time.Time) (shared.WorkItem, error) {
-	decision := "changes_requested"
-	if accepted {
-		decision = "accepted"
-	}
-	return r.reviewDecision(ctx, project, id, decision, "", "", now)
-}
-func (r Repository) CloseWork(ctx context.Context, project, id string, now time.Time) (shared.WorkItem, error) {
-	return r.reviewDecision(ctx, project, id, "closed", "", "", now)
-}
 
-// ReviewRevision checks the reviewed revision in the same snapshot used by the
-// compare-and-swap update, including concurrent requests on another API instance.
-func (r Repository) ReviewRevision(ctx context.Context, project, id, decision, expected string, now time.Time) (shared.WorkItem, error) {
-	if expected == "" || (decision != "accepted" && decision != "changes_requested" && decision != "closed") {
-		return shared.WorkItem{}, ErrInvalidWork
-	}
-	return r.reviewDecision(ctx, project, id, decision, expected, "", now)
-}
+// ReviewRevisionBy checks the actor and reviewed revision in the same snapshot
+// used by the compare-and-swap update.
 func (r Repository) ReviewRevisionBy(ctx context.Context, project, id, decision, expected, actor string, now time.Time) (shared.WorkItem, error) {
 	if expected == "" || (decision != "accepted" && decision != "changes_requested" && decision != "closed") {
 		return shared.WorkItem{}, ErrInvalidWork
 	}
-	return r.reviewDecision(ctx, project, id, decision, expected, actor, now)
-}
-func (r Repository) reviewDecision(ctx context.Context, project, id, decision, expected, actor string, now time.Time) (shared.WorkItem, error) {
 	item, err := r.Work(ctx, project, id)
 	if err != nil {
 		return item, err
@@ -234,7 +215,7 @@ func (r Repository) reviewDecision(ctx context.Context, project, id, decision, e
 	if actor != "" && item.ReviewerID != "" && item.ReviewerID != actor {
 		return item, ErrConflict
 	}
-	if expected != "" && item.LatestAttemptID != expected {
+	if item.LatestAttemptID != expected {
 		return item, ErrConflict
 	}
 	target := "changes_requested"

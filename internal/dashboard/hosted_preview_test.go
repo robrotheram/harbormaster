@@ -115,7 +115,7 @@ func TestHostedPreviewConnection(t *testing.T) {
 	if live.Code != 200 || !strings.Contains(live.Body.String(), `const origin="https://reference.example"`) || !strings.Contains(live.Header().Get("Content-Security-Policy"), "wss://"+u.Host) {
 		t.Fatal("hosted application failed", live.Code, live.Header(), live.Body.String())
 	}
-	if w := call("GET", origin+"/ui-api/subscription", "", "", nil); w.Code != 401 {
+	if w := call("GET", origin+"/ui-api/subscriptions", "", "", nil); w.Code != 401 {
 		t.Fatal("preview exposed management API", w.Code)
 	}
 	if authCalls != callsBefore {

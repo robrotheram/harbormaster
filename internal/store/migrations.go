@@ -67,7 +67,7 @@ func (s *Store) migrate(ctx context.Context) error {
 		if err := step.apply(ctx); err != nil {
 			return fmt.Errorf("migration %d: %w", step.version, err)
 		}
-		if _, err := s.DB.ExecContext(ctx, s.query(`INSERT INTO schema_migrations(version) VALUES(?) ON CONFLICT(version) DO NOTHING`), step.version); err != nil {
+		if _, err := s.DB.ExecContext(ctx, `INSERT INTO schema_migrations(version) VALUES($1) ON CONFLICT(version) DO NOTHING`, step.version); err != nil {
 			return err
 		}
 	}

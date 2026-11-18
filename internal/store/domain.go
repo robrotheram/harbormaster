@@ -15,7 +15,7 @@ var ErrOwnership = errors.New("immutable ownership mismatch")
 func (s *Store) Project(ctx context.Context, id string) (shared.Project, error) {
 	var p shared.Project
 	var b string
-	err := s.DB.QueryRowContext(ctx, s.query(`SELECT metadata FROM projects WHERE id=? AND id NOT IN (SELECT id FROM deleted_resources WHERE kind='project')`), id).Scan(&b)
+	err := s.DB.QueryRowContext(ctx, `SELECT metadata FROM projects WHERE id=$1 AND id NOT IN (SELECT id FROM deleted_resources WHERE kind='project')`, id).Scan(&b)
 	if err != nil {
 		return p, err
 	}
@@ -25,7 +25,7 @@ func (s *Store) Project(ctx context.Context, id string) (shared.Project, error) 
 func (s *Store) ProjectByKey(ctx context.Context, key string) (shared.Project, error) {
 	var p shared.Project
 	var b string
-	err := s.DB.QueryRowContext(ctx, s.query(`SELECT metadata FROM projects WHERE create_key=? AND id NOT IN (SELECT id FROM deleted_resources WHERE kind='project')`), key).Scan(&b)
+	err := s.DB.QueryRowContext(ctx, `SELECT metadata FROM projects WHERE create_key=$1 AND id NOT IN (SELECT id FROM deleted_resources WHERE kind='project')`, key).Scan(&b)
 	if err != nil {
 		return p, err
 	}
@@ -62,7 +62,7 @@ func (s *Store) CreateProject(ctx context.Context, p shared.Project, key string)
 		return err
 	}
 	defer tx.Rollback()
-	if _, err = tx.ExecContext(ctx, s.query(`INSERT INTO projects(id,create_key,metadata) VALUES(?,?,?)`), p.ID, key, string(b)); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO projects(id,create_key,metadata) VALUES($1,$2,$3)`, p.ID, key, string(b)); err != nil {
 		return err
 	}
 	if p.Sample {
@@ -88,7 +88,7 @@ func (s *Store) initDomains(ctx context.Context) error {
 func (s *Store) reconcileLegacyProjects(ctx context.Context) error {
 	legacy := shared.Project{ID: "default", Name: "Legacy workspaces", Legacy: true, CreatedAt: time.Now().UTC()}
 	b, _ := json.Marshal(legacy)
-	if _, err := s.DB.ExecContext(ctx, s.query(`INSERT INTO projects(id,create_key,metadata) VALUES(?,?,?) ON CONFLICT(id) DO NOTHING`), legacy.ID, "legacy-default", string(b)); err != nil {
+	if _, err := s.DB.ExecContext(ctx, `INSERT INTO projects(id,create_key,metadata) VALUES($1,$2,$3) ON CONFLICT(id) DO NOTHING`, legacy.ID, "legacy-default", string(b)); err != nil {
 		return err
 	}
 	// Validate legacy workspace project bindings without rewriting storage IDs.
@@ -126,14 +126,14 @@ func (s *Store) createWorkspace(ctx context.Context, w shared.Workspace, key str
 	}
 	defer tx.Rollback()
 	var exists string
-	if err = tx.QueryRowContext(ctx, s.query(`SELECT id FROM projects WHERE id=? AND NOT EXISTS (SELECT 1 FROM deleted_resources WHERE kind='project' AND deleted_resources.id=projects.id)`), w.ProjectID).Scan(&exists); err != nil {
+	if err = tx.QueryRowContext(ctx, `SELECT id FROM projects WHERE id=$1 AND NOT EXISTS (SELECT 1 FROM deleted_resources WHERE kind='project' AND deleted_resources.id=projects.id)`, w.ProjectID).Scan(&exists); err != nil {
 		return err
 	}
 	b, err := json.Marshal(w)
 	if err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, s.query(`INSERT INTO workspaces(id,create_key,metadata) VALUES(?,?,?)`), w.ID, workspaceKey(w.ProjectID, key), string(b)); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO workspaces(id,create_key,metadata) VALUES($1,$2,$3)`, w.ID, workspaceKey(w.ProjectID, key), string(b)); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -146,7 +146,7 @@ func (s *Store) saveWorkspace(ctx context.Context, w shared.Workspace) error {
 	}
 	defer tx.Rollback()
 	var b string
-	if err = tx.QueryRowContext(ctx, s.query(`SELECT metadata FROM workspaces WHERE id=?`), w.ID).Scan(&b); err != nil {
+	if err = tx.QueryRowContext(ctx, `SELECT metadata FROM workspaces WHERE id=$1`, w.ID).Scan(&b); err != nil {
 		return err
 	}
 	var old shared.Workspace
@@ -161,7 +161,7 @@ func (s *Store) saveWorkspace(ctx context.Context, w shared.Workspace) error {
 	if err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, s.query(`UPDATE workspaces SET metadata=? WHERE id=?`), string(data), w.ID); err != nil {
+	if _, err = tx.ExecContext(ctx, `UPDATE workspaces SET metadata=$1 WHERE id=$2`, string(data), w.ID); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -176,7 +176,7 @@ func (s *Store) SaveProjectNamespace(ctx context.Context, p shared.Project) erro
 	if err != nil {
 		return err
 	}
-	result, err := s.DB.ExecContext(ctx, s.query(`UPDATE projects SET metadata=? WHERE id=? AND id NOT IN (SELECT id FROM deleted_resources WHERE kind='project')`), string(b), p.ID)
+	result, err := s.DB.ExecContext(ctx, `UPDATE projects SET metadata=$1 WHERE id=$2 AND id NOT IN (SELECT id FROM deleted_resources WHERE kind='project')`, string(b), p.ID)
 	if err != nil {
 		return err
 	}
@@ -198,7 +198,7 @@ func (s *Store) RenameProject(ctx context.Context, id, name string) (shared.Proj
 	if err != nil {
 		return p, err
 	}
-	result, err := s.DB.ExecContext(ctx, s.query(`UPDATE projects SET metadata=? WHERE id=? AND id NOT IN (SELECT id FROM deleted_resources WHERE kind='project')`), string(body), id)
+	result, err := s.DB.ExecContext(ctx, `UPDATE projects SET metadata=$1 WHERE id=$2 AND id NOT IN (SELECT id FROM deleted_resources WHERE kind='project')`, string(body), id)
 	if err != nil {
 		return p, err
 	}

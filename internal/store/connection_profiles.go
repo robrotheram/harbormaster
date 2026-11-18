@@ -19,7 +19,7 @@ func (s *Store) initConnectionProfiles(ctx context.Context) error {
 	}
 	for _, p := range shared.DefaultConnectionProfiles() {
 		b, _ := json.Marshal(p)
-		if _, err := s.DB.ExecContext(ctx, s.query(`INSERT INTO connection_profiles(id,revision,metadata) SELECT ?,?,? WHERE NOT EXISTS (SELECT 1 FROM deleted_connection_profiles WHERE id=?) ON CONFLICT(id) DO NOTHING`), p.ID, p.Revision, string(b), p.ID); err != nil {
+		if _, err := s.DB.ExecContext(ctx, `INSERT INTO connection_profiles(id,revision,metadata) SELECT $1,$2,$3 WHERE NOT EXISTS (SELECT 1 FROM deleted_connection_profiles WHERE id=$4) ON CONFLICT(id) DO NOTHING`, p.ID, p.Revision, string(b), p.ID); err != nil {
 			return err
 		}
 	}
@@ -28,7 +28,7 @@ func (s *Store) initConnectionProfiles(ctx context.Context) error {
 func (s *Store) ConnectionProfile(ctx context.Context, id string) (shared.ConnectionProfile, error) {
 	var p shared.ConnectionProfile
 	var b string
-	err := s.DB.QueryRowContext(ctx, s.query(`SELECT metadata FROM connection_profiles WHERE id=?`), id).Scan(&b)
+	err := s.DB.QueryRowContext(ctx, `SELECT metadata FROM connection_profiles WHERE id=$1`, id).Scan(&b)
 	if err != nil {
 		return p, err
 	}
@@ -58,7 +58,7 @@ func (s *Store) ConnectionProfiles(ctx context.Context) ([]shared.ConnectionProf
 func (s *Store) SaveConnectionProfile(ctx context.Context, p shared.ConnectionProfile, expected int) error {
 	b, _ := json.Marshal(p)
 	if expected == 0 {
-		result, err := s.DB.ExecContext(ctx, s.query(`INSERT INTO connection_profiles(id,revision,metadata) VALUES(?,?,?) ON CONFLICT(id) DO NOTHING`), p.ID, p.Revision, string(b))
+		result, err := s.DB.ExecContext(ctx, `INSERT INTO connection_profiles(id,revision,metadata) VALUES($1,$2,$3) ON CONFLICT(id) DO NOTHING`, p.ID, p.Revision, string(b))
 		if err != nil {
 			return err
 		}
@@ -68,7 +68,7 @@ func (s *Store) SaveConnectionProfile(ctx context.Context, p shared.ConnectionPr
 		}
 		return nil
 	}
-	result, err := s.DB.ExecContext(ctx, s.query(`UPDATE connection_profiles SET revision=?,metadata=? WHERE id=? AND revision=?`), p.Revision, string(b), p.ID, expected)
+	result, err := s.DB.ExecContext(ctx, `UPDATE connection_profiles SET revision=$1,metadata=$2 WHERE id=$3 AND revision=$4`, p.Revision, string(b), p.ID, expected)
 	if err != nil {
 		return err
 	}
@@ -114,7 +114,7 @@ func (s *Store) DeleteConnectionProfile(ctx context.Context, id string, expected
 	if err != nil {
 		return err
 	}
-	result, err := tx.ExecContext(ctx, s.query(`DELETE FROM connection_profiles WHERE id=? AND revision=?`), id, expected)
+	result, err := tx.ExecContext(ctx, `DELETE FROM connection_profiles WHERE id=$1 AND revision=$2`, id, expected)
 	if err != nil {
 		return err
 	}
@@ -125,7 +125,7 @@ func (s *Store) DeleteConnectionProfile(ctx context.Context, id string, expected
 	if n != 1 {
 		return ErrProfileConflict
 	}
-	if _, err = tx.ExecContext(ctx, s.query(`INSERT INTO deleted_connection_profiles(id) VALUES(?) ON CONFLICT(id) DO NOTHING`), id); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO deleted_connection_profiles(id) VALUES($1) ON CONFLICT(id) DO NOTHING`, id); err != nil {
 		return err
 	}
 	return tx.Commit()

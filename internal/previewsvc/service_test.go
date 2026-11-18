@@ -16,6 +16,15 @@ import (
 	"testing"
 )
 
+type testLifecycle struct{}
+
+func (testLifecycle) Start(_ context.Context, ws *shared.Workspace) error {
+	ws.State = "READY"
+	return nil
+}
+
+func (testLifecycle) Stop(context.Context, *shared.Workspace) error { return nil }
+
 func TestPromotionThroughControllerClientAndRealWorkspaceHandlers(t *testing.T) {
 	managers := map[string]*workspace.Manager{}
 	directories := map[string]string{}
@@ -66,17 +75,17 @@ func TestPromotionThroughControllerClientAndRealWorkspaceHandlers(t *testing.T) 
 	}
 	json.Unmarshal(body, &artifact)
 	coding := shared.Workspace{ID: "ws_coding", ProjectID: "proj_one", HomeID: "home_coding", State: "READY"}
-	retained := shared.Workspace{ID: "ws_retained", ProjectID: "proj_one", HomeID: "home_retained", State: "READY"}
-	svc := Service{Runtime: client}
-	if _, err := svc.Promote(context.Background(), coding, coding, "artifact_one", 3600); err == nil {
+	retained := shared.Workspace{ID: "ws_retained", ProjectID: "proj_one", HomeID: "home_retained", State: "STOPPED"}
+	svc := Service{Runtime: client, Lifecycle: testLifecycle{}}
+	if _, err := svc.Retain(context.Background(), coding, &coding, artifact.ID, 3600, "retain-one"); err == nil {
 		t.Fatal("same allocation admitted")
 	}
 	foreign := retained
 	foreign.ProjectID = "proj_other"
-	if _, err := svc.Promote(context.Background(), coding, foreign, artifact.ID, 3600); err == nil {
+	if _, err := svc.Retain(context.Background(), coding, &foreign, artifact.ID, 3600, "retain-one"); err == nil {
 		t.Fatal("cross-project promotion admitted")
 	}
-	body, err = svc.Promote(context.Background(), coding, retained, artifact.ID, 3600)
+	body, err = svc.Retain(context.Background(), coding, &retained, artifact.ID, 3600, "retain-one")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,8 +98,5 @@ func TestPromotionThroughControllerClientAndRealWorkspaceHandlers(t *testing.T) 
 	status, body, err = client.Agent(context.Background(), retained.ID, "POST", "/v1/services/"+service.ID+"/fetch", []byte(`{"path":"index.html"}`))
 	if err != nil || status != 200 {
 		t.Fatalf("%d %s %v", status, body, err)
-	}
-	if svc.Attach(context.Background(), service.ID) == nil {
-		t.Fatal("unsafe attachment admitted")
 	}
 }

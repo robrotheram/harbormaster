@@ -42,10 +42,10 @@ func (s *Store) SaveForge(ctx context.Context, c ForgeConnection) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.DB.ExecContext(ctx, s.query(`INSERT INTO forge_connections(id,project_id,metadata) VALUES(?,?,?)`), c.ID, "", string(b))
+	_, err = s.DB.ExecContext(ctx, `INSERT INTO forge_connections(id,project_id,metadata) VALUES($1,$2,$3)`, c.ID, "", string(b))
 	return err
 }
 func (s *Store) DeleteForge(ctx context.Context, id string) error {
-	_, err := s.DB.ExecContext(ctx, s.query(`DELETE FROM forge_connections WHERE id=?`), id)
+	_, err := s.DB.ExecContext(ctx, `DELETE FROM forge_connections WHERE id=$1`, id)
 	return err
 }

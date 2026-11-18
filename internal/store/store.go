@@ -5,7 +5,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	"agent-workbench/internal/shared"
@@ -14,14 +13,12 @@ import (
 )
 
 type Store struct {
-	DB       *sql.DB
-	postgres bool
+	DB *sql.DB
 }
 
 func Open(ctx context.Context, dsn string) (*Store, error) {
 	driver := "sqlite"
-	pg := strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://")
-	if pg {
+	if strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://") {
 		driver = "pgx"
 	}
 	db, e := sql.Open(driver, dsn)
@@ -29,7 +26,7 @@ func Open(ctx context.Context, dsn string) (*Store, error) {
 		return nil, e
 	}
 	db.SetMaxOpenConns(1)
-	s := &Store{db, pg}
+	s := &Store{DB: db}
 	if e = db.PingContext(ctx); e != nil {
 		db.Close()
 		return nil, e
@@ -44,32 +41,13 @@ func Open(ctx context.Context, dsn string) (*Store, error) {
 	}
 	return s, nil
 }
-func (s *Store) query(q string) string {
-	if !s.postgres {
-		return q
-	}
-	n := 0
-	return replaceQuestions(q, &n)
-}
-func replaceQuestions(q string, n *int) string {
-	var b strings.Builder
-	for _, r := range q {
-		if r == '?' {
-			*n++
-			fmt.Fprintf(&b, "$%d", *n)
-		} else {
-			b.WriteRune(r)
-		}
-	}
-	return b.String()
-}
 func (s *Store) Create(ctx context.Context, w shared.Workspace, key string) error {
 	return s.createWorkspace(ctx, w, key)
 }
 func (s *Store) ByKey(ctx context.Context, key string) (shared.Workspace, error) {
 	var b string
 	var w shared.Workspace
-	e := s.DB.QueryRowContext(ctx, s.query(`SELECT metadata FROM workspaces WHERE create_key=? AND id NOT IN (SELECT id FROM deleted_resources WHERE kind='workspace')`), key).Scan(&b)
+	e := s.DB.QueryRowContext(ctx, `SELECT metadata FROM workspaces WHERE create_key=$1 AND id NOT IN (SELECT id FROM deleted_resources WHERE kind='workspace')`, key).Scan(&b)
 	if e != nil {
 		return w, e
 	}
@@ -99,7 +77,7 @@ func (s *Store) Workspaces(ctx context.Context) ([]shared.Workspace, error) {
 func (s *Store) Workspace(ctx context.Context, id string) (shared.Workspace, error) {
 	var b string
 	var w shared.Workspace
-	e := s.DB.QueryRowContext(ctx, s.query(`SELECT metadata FROM workspaces WHERE id=? AND id NOT IN (SELECT id FROM deleted_resources WHERE kind='workspace')`), id).Scan(&b)
+	e := s.DB.QueryRowContext(ctx, `SELECT metadata FROM workspaces WHERE id=$1 AND id NOT IN (SELECT id FROM deleted_resources WHERE kind='workspace')`, id).Scan(&b)
 	if e != nil {
 		return w, e
 	}
@@ -112,7 +90,7 @@ func (s *Store) SaveTask(ctx context.Context, t shared.Task) error {
 	if e != nil {
 		return e
 	}
-	result, e := s.DB.ExecContext(ctx, s.query(`INSERT INTO task_metadata(id,workspace_id,metadata) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET metadata=excluded.metadata WHERE task_metadata.workspace_id=excluded.workspace_id`), t.ID, t.WorkspaceID, string(b))
+	result, e := s.DB.ExecContext(ctx, `INSERT INTO task_metadata(id,workspace_id,metadata) VALUES($1,$2,$3) ON CONFLICT(id) DO UPDATE SET metadata=excluded.metadata WHERE task_metadata.workspace_id=excluded.workspace_id`, t.ID, t.WorkspaceID, string(b))
 	if e != nil {
 		return e
 	}

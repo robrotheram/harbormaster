@@ -298,9 +298,8 @@ func (m *Manager) execute(ctx context.Context, id, instruction, provider string,
 		state = "cancelled"
 		code = ""
 	}
-	e := m.tasks.Finish(context.Background(), id, state, result, code, time.Now().UTC())
-	if e != nil { /* The non-terminal durable row prevents unsafe idle stop. */
-	}
+	// If Finish fails, the non-terminal durable row prevents unsafe idle stop.
+	_ = m.tasks.Finish(context.Background(), id, state, result, code, time.Now().UTC())
 	if cancel := m.cancels[id]; cancel != nil {
 		cancel()
 		delete(m.cancels, id)
@@ -540,7 +539,10 @@ func (m *Manager) Handler() http.Handler {
 		}
 		m.quiescing = true
 		m.mu.Unlock()
+		// collectHistory holds this lock for a full pass and checks quiescing
+		// under m.mu after acquiring it. Wait for any pass already in flight.
 		m.historyCollectMu.Lock()
+		//lint:ignore SA2001 This lock pair is a quiesce barrier for history collection.
 		m.historyCollectMu.Unlock()
 		shared.JSON(w, 200, map[string]bool{"quiesced": true})
 	})

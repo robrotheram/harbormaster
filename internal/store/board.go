@@ -94,7 +94,7 @@ func (s *Store) initBoard(ctx context.Context) error {
 func (s *Store) BoardItem(ctx context.Context, project, id string) (BoardItem, error) {
 	var b string
 	var item BoardItem
-	err := s.DB.QueryRowContext(ctx, s.query(`SELECT metadata FROM board_items WHERE project_id=? AND id=?`), project, id).Scan(&b)
+	err := s.DB.QueryRowContext(ctx, `SELECT metadata FROM board_items WHERE project_id=$1 AND id=$2`, project, id).Scan(&b)
 	if errors.Is(err, sql.ErrNoRows) {
 		number, e := s.workReference(ctx, project, id)
 		return BoardItem{ID: id, ProjectID: project, Number: number}, e
@@ -123,7 +123,7 @@ func (s *Store) saveBoardItem(ctx context.Context, db boardWriter, item BoardIte
 		return err
 	}
 	if expected == 0 {
-		res, err := db.ExecContext(ctx, s.query(`INSERT INTO board_items(id,project_id,revision,metadata) VALUES(?,?,?,?) ON CONFLICT(id) DO NOTHING`), item.ID, item.ProjectID, item.Revision, string(b))
+		res, err := db.ExecContext(ctx, `INSERT INTO board_items(id,project_id,revision,metadata) VALUES($1,$2,$3,$4) ON CONFLICT(id) DO NOTHING`, item.ID, item.ProjectID, item.Revision, string(b))
 		if err != nil {
 			return err
 		}
@@ -133,7 +133,7 @@ func (s *Store) saveBoardItem(ctx context.Context, db boardWriter, item BoardIte
 		}
 		return nil
 	}
-	res, err := db.ExecContext(ctx, s.query(`UPDATE board_items SET revision=?,metadata=? WHERE id=? AND project_id=? AND revision=?`), item.Revision, string(b), item.ID, item.ProjectID, expected)
+	res, err := db.ExecContext(ctx, `UPDATE board_items SET revision=$1,metadata=$2 WHERE id=$3 AND project_id=$4 AND revision=$5`, item.Revision, string(b), item.ID, item.ProjectID, expected)
 	if err != nil {
 		return err
 	}

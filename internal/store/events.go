@@ -4,6 +4,7 @@ import (
 	"agent-workbench/internal/shared"
 	"context"
 	"encoding/json"
+	"fmt"
 )
 
 func (s *Store) initEvents(ctx context.Context) error {
@@ -25,11 +26,11 @@ func (s *Store) SaveEvents(ctx context.Context, w shared.Workspace, events []sha
 		}
 		v.At = v.At.UTC()
 		b, _ := json.Marshal(v)
-		if _, e = tx.ExecContext(ctx, s.query(`INSERT INTO workspace_events(workspace_id,project_id,id,at,body) VALUES(?,?,?,?,?) ON CONFLICT(workspace_id,id) DO NOTHING`), w.ID, w.ProjectID, v.ID, v.At.Format("2006-01-02T15:04:05.000000000Z07:00"), string(b)); e != nil {
+		if _, e = tx.ExecContext(ctx, `INSERT INTO workspace_events(workspace_id,project_id,id,at,body) VALUES($1,$2,$3,$4,$5) ON CONFLICT(workspace_id,id) DO NOTHING`, w.ID, w.ProjectID, v.ID, v.At.Format("2006-01-02T15:04:05.000000000Z07:00"), string(b)); e != nil {
 			return e
 		}
 	}
-	if _, e = tx.ExecContext(ctx, s.query(`DELETE FROM workspace_events WHERE workspace_id=? AND id NOT IN (SELECT id FROM workspace_events WHERE workspace_id=? ORDER BY at DESC LIMIT 2000)`), w.ID, w.ID); e != nil {
+	if _, e = tx.ExecContext(ctx, `DELETE FROM workspace_events WHERE workspace_id=$1 AND id NOT IN (SELECT id FROM workspace_events WHERE workspace_id=$2 ORDER BY at DESC LIMIT 2000)`, w.ID, w.ID); e != nil {
 		return e
 	}
 	return tx.Commit()
@@ -45,14 +46,14 @@ func (s *Store) Events(ctx context.Context, project, workspace string) ([]Worksp
 	q := `SELECT workspace_id,project_id,body FROM workspace_events WHERE 1=1`
 	args := []any{}
 	if project != "" {
-		q += ` AND project_id=?`
+		q += ` AND project_id=$1`
 		args = append(args, project)
 	}
 	if workspace != "" {
-		q += ` AND workspace_id=?`
+		q += fmt.Sprintf(` AND workspace_id=$%d`, len(args)+1)
 		args = append(args, workspace)
 	}
-	rows, e := s.DB.QueryContext(ctx, s.query(q+` ORDER BY at DESC LIMIT 500`), args...)
+	rows, e := s.DB.QueryContext(ctx, q+` ORDER BY at DESC LIMIT 500`, args...)
 	if e != nil {
 		return nil, e
 	}

@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"os/exec"
@@ -46,8 +45,6 @@ func (m *Manager) tool(ctx context.Context, name string, raw json.RawMessage) st
 	}
 
 	var args struct {
-		Path          string         `json:"path"`
-		Content       string         `json:"content"`
 		Command       string         `json:"command"`
 		Operation     string         `json:"operation"`
 		CaseID        string         `json:"case_id"`
@@ -126,6 +123,6 @@ func (m *Manager) tool(ctx context.Context, name string, raw json.RawMessage) st
 		b, _ := json.Marshal(map[string]any{"exit_code": code, "output": out.b.String(), "timed_out": commandCtx.Err() != nil})
 		return string(b)
 	default:
-		return fmt.Sprintf(`{"error":"UNKNOWN_TOOL"}`)
+		return `{"error":"UNKNOWN_TOOL"}`
 	}
 }

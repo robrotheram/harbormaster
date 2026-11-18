@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"database/sql"
-	"errors"
 )
 
 type AgentSubscription struct {
@@ -36,11 +35,11 @@ func (s *Store) initAgentSubscriptions(ctx context.Context) error {
 }
 func (s *Store) AgentSubscription(ctx context.Context, owner, id string) (AgentSubscription, error) {
 	var v AgentSubscription
-	err := s.DB.QueryRowContext(ctx, s.query(`SELECT id,name,provider,credential FROM agent_subscriptions WHERE owner=? AND id=?`), owner, id).Scan(&v.ID, &v.Name, &v.Provider, &v.Credential)
+	err := s.DB.QueryRowContext(ctx, `SELECT id,name,provider,credential FROM agent_subscriptions WHERE owner=$1 AND id=$2`, owner, id).Scan(&v.ID, &v.Name, &v.Provider, &v.Credential)
 	return v, err
 }
 func (s *Store) AgentSubscriptions(ctx context.Context, owner string) ([]AgentSubscription, error) {
-	rows, err := s.DB.QueryContext(ctx, s.query(`SELECT id,name,provider,credential FROM agent_subscriptions WHERE owner=? ORDER BY name,id`), owner)
+	rows, err := s.DB.QueryContext(ctx, `SELECT id,name,provider,credential FROM agent_subscriptions WHERE owner=$1 ORDER BY name,id`, owner)
 	if err != nil {
 		return nil, err
 	}
@@ -57,10 +56,10 @@ func (s *Store) AgentSubscriptions(ctx context.Context, owner string) ([]AgentSu
 }
 func (s *Store) SaveAgentSubscription(ctx context.Context, owner string, v AgentSubscription, create bool) error {
 	if create {
-		_, err := s.DB.ExecContext(ctx, s.query(`INSERT INTO agent_subscriptions(owner,id,name,provider,credential) VALUES(?,?,?,?,?)`), owner, v.ID, v.Name, v.Provider, v.Credential)
+		_, err := s.DB.ExecContext(ctx, `INSERT INTO agent_subscriptions(owner,id,name,provider,credential) VALUES($1,$2,$3,$4,$5)`, owner, v.ID, v.Name, v.Provider, v.Credential)
 		return err
 	}
-	res, err := s.DB.ExecContext(ctx, s.query(`UPDATE agent_subscriptions SET name=?,credential=? WHERE owner=? AND id=? AND provider=?`), v.Name, v.Credential, owner, v.ID, v.Provider)
+	res, err := s.DB.ExecContext(ctx, `UPDATE agent_subscriptions SET name=$1,credential=$2 WHERE owner=$3 AND id=$4 AND provider=$5`, v.Name, v.Credential, owner, v.ID, v.Provider)
 	if err != nil {
 		return err
 	}
@@ -75,12 +74,12 @@ func (s *Store) SaveAgentSubscription(ctx context.Context, owner string, v Agent
 }
 func (s *Store) WorkerAgentSubscription(ctx context.Context, workspace, provider string) (string, string, error) {
 	var owner, id string
-	err := s.DB.QueryRowContext(ctx, s.query(`SELECT owner,subscription_id FROM worker_agent_subscriptions WHERE workspace_id=? AND provider=?`), workspace, provider).Scan(&owner, &id)
+	err := s.DB.QueryRowContext(ctx, `SELECT owner,subscription_id FROM worker_agent_subscriptions WHERE workspace_id=$1 AND provider=$2`, workspace, provider).Scan(&owner, &id)
 	return owner, id, err
 }
 func (s *Store) LoadAgentSubscription(ctx context.Context, owner, id, provider, workspace string) error {
 	// The conditional upsert atomically prevents taking over another user's binding.
-	res, err := s.DB.ExecContext(ctx, s.query(`INSERT INTO worker_agent_subscriptions(workspace_id,provider,owner,subscription_id) VALUES(?,?,?,?) ON CONFLICT(workspace_id,provider) DO UPDATE SET subscription_id=excluded.subscription_id WHERE worker_agent_subscriptions.owner=excluded.owner`), workspace, provider, owner, id)
+	res, err := s.DB.ExecContext(ctx, `INSERT INTO worker_agent_subscriptions(workspace_id,provider,owner,subscription_id) VALUES($1,$2,$3,$4) ON CONFLICT(workspace_id,provider) DO UPDATE SET subscription_id=excluded.subscription_id WHERE worker_agent_subscriptions.owner=excluded.owner`, workspace, provider, owner, id)
 	if err != nil {
 		return err
 	}
@@ -94,7 +93,7 @@ func (s *Store) LoadAgentSubscription(ctx context.Context, owner, id, provider, 
 	return nil
 }
 func (s *Store) UnloadAgentSubscription(ctx context.Context, owner, provider, workspace string) error {
-	_, err := s.DB.ExecContext(ctx, s.query(`DELETE FROM worker_agent_subscriptions WHERE workspace_id=? AND provider=? AND owner=?`), workspace, provider, owner)
+	_, err := s.DB.ExecContext(ctx, `DELETE FROM worker_agent_subscriptions WHERE workspace_id=$1 AND provider=$2 AND owner=$3`, workspace, provider, owner)
 	return err
 }
 func (s *Store) DeleteAgentSubscription(ctx context.Context, owner, id string) error {
@@ -103,10 +102,10 @@ func (s *Store) DeleteAgentSubscription(ctx context.Context, owner, id string) e
 		return err
 	}
 	defer tx.Rollback()
-	if _, err = tx.ExecContext(ctx, s.query(`DELETE FROM worker_agent_subscriptions WHERE owner=? AND subscription_id=?`), owner, id); err != nil {
+	if _, err = tx.ExecContext(ctx, `DELETE FROM worker_agent_subscriptions WHERE owner=$1 AND subscription_id=$2`, owner, id); err != nil {
 		return err
 	}
-	res, err := tx.ExecContext(ctx, s.query(`DELETE FROM agent_subscriptions WHERE owner=? AND id=?`), owner, id)
+	res, err := tx.ExecContext(ctx, `DELETE FROM agent_subscriptions WHERE owner=$1 AND id=$2`, owner, id)
 	if err != nil {
 		return err
 	}
@@ -120,7 +119,7 @@ func (s *Store) DeleteAgentSubscription(ctx context.Context, owner, id string) e
 	return tx.Commit()
 }
 func (s *Store) AgentSubscriptionWorkers(ctx context.Context, owner, id string) ([]string, error) {
-	rows, err := s.DB.QueryContext(ctx, s.query(`SELECT workspace_id FROM worker_agent_subscriptions WHERE owner=? AND subscription_id=? ORDER BY workspace_id`), owner, id)
+	rows, err := s.DB.QueryContext(ctx, `SELECT workspace_id FROM worker_agent_subscriptions WHERE owner=$1 AND subscription_id=$2 ORDER BY workspace_id`, owner, id)
 	if err != nil {
 		return nil, err
 	}
@@ -134,38 +133,4 @@ func (s *Store) AgentSubscriptionWorkers(ctx context.Context, owner, id string) 
 		out = append(out, workspace)
 	}
 	return out, rows.Err()
-}
-
-// Compatibility methods address only the migrated default Codex subscription.
-func (s *Store) Subscription(ctx context.Context, owner string) (string, error) {
-	v, e := s.AgentSubscription(ctx, owner, "default")
-	return v.Credential, e
-}
-func (s *Store) SaveSubscription(ctx context.Context, owner, value string) error {
-	v, e := s.AgentSubscription(ctx, owner, "default")
-	create := errors.Is(e, sql.ErrNoRows)
-	if e != nil && !create {
-		return e
-	}
-	if create {
-		v = AgentSubscription{ID: "default", Name: "Codex subscription", Provider: "codex"}
-	}
-	v.Credential = value
-	return s.SaveAgentSubscription(ctx, owner, v, create)
-}
-func (s *Store) SubscriptionOwner(ctx context.Context, workspace string) (string, error) {
-	owner, _, e := s.WorkerAgentSubscription(ctx, workspace, "codex")
-	return owner, e
-}
-func (s *Store) LoadSubscription(ctx context.Context, owner, workspace string) error {
-	return s.LoadAgentSubscription(ctx, owner, "default", "codex", workspace)
-}
-func (s *Store) UnloadSubscription(ctx context.Context, owner, workspace string) error {
-	return s.UnloadAgentSubscription(ctx, owner, "codex", workspace)
-}
-func (s *Store) DeleteSubscription(ctx context.Context, owner string) error {
-	return s.DeleteAgentSubscription(ctx, owner, "default")
-}
-func (s *Store) SubscriptionWorkers(ctx context.Context, owner string) ([]string, error) {
-	return s.AgentSubscriptionWorkers(ctx, owner, "default")
 }
