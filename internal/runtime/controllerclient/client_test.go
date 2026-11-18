@@ -12,25 +12,24 @@ import (
 	"testing"
 )
 
-func TestAgentKindsSupportsLegacyFirecrackerWithoutRelaxingAdmission(t *testing.T) {
+func TestCapabilitiesRequireSchemaOne(t *testing.T) {
 	legacy := `{"id":"development-v1","version":"firecracker-2","agent_kinds":["t3","codex","hermes"],"isolation_status":"jailed-vm","network_status":"no-nic-vsock","private_homes":true}`
 	modern, _ := json.Marshal(protocol.RuntimeCapability{SchemaVersion: 1, ID: protocol.DevelopmentTemplate, Version: "firecracker-2", AgentKinds: []string{"t3", "codex", "hermes"}, NetworkModes: []string{"blocked", "allowlist"}, Resources: protocol.ResourceLimits{CPUCores: 1, MemoryBytes: 1 << 30}})
 	for _, tt := range []struct {
 		name, body string
 		status     int
-		validKinds bool
 		validCaps  bool
 	}{
-		{"legacy", legacy, 200, true, false},
-		{"modern", string(modern), 200, true, true},
-		{"unauthorized", legacy, 401, false, false},
-		{"unavailable", legacy, 503, false, false},
-		{"malformed", `{`, 200, false, false},
-		{"unknown schema", `{"schema_version":2,"id":"development-v1","version":"firecracker-2","agent_kinds":["hermes"]}`, 200, false, false},
-		{"unknown legacy", `{"id":"development-v1","version":"unknown","agent_kinds":["hermes"]}`, 200, false, false},
-		{"missing identity", `{"version":"firecracker-2","agent_kinds":["hermes"]}`, 200, false, false},
-		{"missing kinds", `{"id":"development-v1","version":"firecracker-2"}`, 200, false, false},
-		{"incomplete modern", `{"schema_version":1,"id":"development-v1","version":"firecracker-2","agent_kinds":["hermes"]}`, 200, false, false},
+		{"legacy", legacy, 200, false},
+		{"modern", string(modern), 200, true},
+		{"unauthorized", legacy, 401, false},
+		{"unavailable", legacy, 503, false},
+		{"malformed", `{`, 200, false},
+		{"unknown schema", `{"schema_version":2,"id":"development-v1","version":"firecracker-2","agent_kinds":["hermes"]}`, 200, false},
+		{"unknown legacy", `{"id":"development-v1","version":"unknown","agent_kinds":["hermes"]}`, 200, false},
+		{"missing identity", `{"version":"firecracker-2","agent_kinds":["hermes"]}`, 200, false},
+		{"missing kinds", `{"id":"development-v1","version":"firecracker-2"}`, 200, false},
+		{"incomplete modern", `{"schema_version":1,"id":"development-v1","version":"firecracker-2","agent_kinds":["hermes"]}`, 200, false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -42,16 +41,13 @@ func TestAgentKindsSupportsLegacyFirecrackerWithoutRelaxingAdmission(t *testing.
 			}))
 			defer server.Close()
 			client := NewClient(server.URL, "management-token")
-			kinds, err := client.AgentKinds(context.Background())
-			if (err == nil) != tt.validKinds || tt.validKinds && !slices.Equal(kinds, []string{"t3", "codex", "hermes"}) {
-				t.Fatalf("agent kinds: %v, %v", kinds, err)
-			}
-			if _, err := client.Capabilities(context.Background()); (err == nil) != tt.validCaps {
-				t.Fatalf("workspace admission capability check: %v", err)
+			caps, err := client.Capabilities(context.Background())
+			if (err == nil) != tt.validCaps || tt.validCaps && !slices.Equal(caps.AgentKinds, []string{"t3", "codex", "hermes"}) {
+				t.Fatalf("capabilities: %v, %v", caps, err)
 			}
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
-			if _, err := client.AgentKinds(ctx); err == nil {
+			if _, err := client.Capabilities(ctx); err == nil {
 				t.Fatal("cancelled probe succeeded")
 			}
 		})

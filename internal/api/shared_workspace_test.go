@@ -109,12 +109,12 @@ func TestSharedExecutionDoesNotBroadenProjectMetadataAuthorization(t *testing.T)
 	}
 }
 
-func TestSharedModeCannotStartLegacyWorker(t *testing.T) {
+func TestSharedModeCannotStartDedicatedWorker(t *testing.T) {
 	s, rt := setup(t)
-	legacy := create(t, s, "legacy")
+	dedicated := create(t, s, "dedicated")
 	s.cfg.SharedWorkspaceID = "ws_shared"
-	if err := s.lifecycle().Start(context.Background(), &legacy); err == nil || err.Error() != "SHARED_WORKSPACE_ONLY" || rt.starts != 0 {
-		t.Fatal("legacy execution admitted", err)
+	if err := s.lifecycle().Start(context.Background(), &dedicated); err == nil || err.Error() != "SHARED_WORKSPACE_ONLY" || rt.starts != 0 {
+		t.Fatal("dedicated execution admitted", err)
 	}
 }
 
@@ -160,21 +160,21 @@ func TestSharedInlineWorkAndSchedulesKeepLogicalProjects(t *testing.T) {
 	}
 }
 
-func TestSharedModePreservesStoppedLegacyMetadata(t *testing.T) {
+func TestSharedModePreservesStoppedDedicatedWorkerMetadata(t *testing.T) {
 	s, _ := setup(t)
-	legacy := create(t, s, "legacy")
+	dedicated := create(t, s, "dedicated")
 	s.cfg.SharedWorkspaceID = "ws_shared"
 	if _, err := s.EnsureSharedWorkspace(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	s.Reconcile(context.Background())
-	after, err := s.Store.Workspace(context.Background(), legacy.ID)
-	if err != nil || after.State != "STOPPED" || !after.UpdatedAt.Equal(legacy.UpdatedAt) {
+	after, err := s.Store.Workspace(context.Background(), dedicated.ID)
+	if err != nil || after.State != "STOPPED" || !after.UpdatedAt.Equal(dedicated.UpdatedAt) {
 		t.Fatal("reconciled archived worker", after, err)
 	}
-	legacy.State = "READY"
-	legacy.Ready = true
-	if err := s.Store.Save(context.Background(), legacy); err != nil {
+	dedicated.State = "READY"
+	dedicated.Ready = true
+	if err := s.Store.Save(context.Background(), dedicated); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.EnsureSharedWorkspace(context.Background()); err == nil {

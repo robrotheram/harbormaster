@@ -36,7 +36,7 @@ func (rt *embeddedRuntime) StartConfigured(_ context.Context, id string, _ proto
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 	if rt.managers[id] == nil {
-		m, e := workspace.New(workspace.Config{ID: id, DataDir: filepath.Join(rt.base, id), Token: "workspace-token", InferenceURL: rt.upstream, Model: "fixture"})
+		m, e := workspace.New(workspace.Config{ID: id, HomeID: "home_" + id, DataDir: filepath.Join(rt.base, id), Token: "workspace-token", InferenceURL: rt.upstream, Model: "fixture"})
 		if e != nil {
 			return shared.Observation{}, e
 		}

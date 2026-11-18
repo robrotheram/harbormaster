@@ -56,7 +56,7 @@ func TestDurableAcceptanceToolsAndRestart(t *testing.T) {
 		io.WriteString(w, `{"choices":[{"message":{"role":"assistant","content":"finished"}}]}`)
 	}))
 	defer inference.Close()
-	cfg := Config{ID: "ws_test", Token: "test-workspace-token", DataDir: t.TempDir(), InferenceURL: inference.URL, Model: "fixture"}
+	cfg := Config{ID: "ws_test", HomeID: "home_test", Token: "test-workspace-token", DataDir: t.TempDir(), InferenceURL: inference.URL, Model: "fixture"}
 	m, e := New(cfg)
 	if e != nil {
 		t.Fatal(e)
@@ -122,7 +122,7 @@ func TestCancellationAndAtomicQuiesce(t *testing.T) {
 	}))
 	defer inference.Close()
 	defer close(release)
-	m, e := New(Config{ID: "ws_cancel", Token: "test-workspace-token", DataDir: t.TempDir(), InferenceURL: inference.URL})
+	m, e := New(Config{ID: "ws_cancel", HomeID: "home_test", Token: "test-workspace-token", DataDir: t.TempDir(), InferenceURL: inference.URL})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -153,7 +153,7 @@ func TestCancellationAndAtomicQuiesce(t *testing.T) {
 	}
 }
 func TestToolConfinementAndCancellation(t *testing.T) {
-	m, e := New(Config{ID: "ws_files", Token: "test-workspace-token", DataDir: t.TempDir(), InferenceURL: "http://unused"})
+	m, e := New(Config{ID: "ws_files", HomeID: "home_test", Token: "test-workspace-token", DataDir: t.TempDir(), InferenceURL: "http://unused"})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -186,7 +186,7 @@ func TestToolConfinementAndCancellation(t *testing.T) {
 	}
 }
 func TestInterruptedTasksAreNotReplayed(t *testing.T) {
-	cfg := Config{ID: "ws_restart", Token: "test-workspace-token", DataDir: t.TempDir()}
+	cfg := Config{ID: "ws_restart", HomeID: "home_test", Token: "test-workspace-token", DataDir: t.TempDir()}
 	m, e := New(cfg)
 	if e != nil {
 		t.Fatal(e)

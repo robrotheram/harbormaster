@@ -12,7 +12,7 @@ import (
 )
 
 func TestLiveApplicationLifecycleAndForwarding(t *testing.T) {
-	m, err := New(Config{ID: "ws_application", DataDir: t.TempDir(), Token: "test-workspace-token"})
+	m, err := New(Config{ID: "ws_application", HomeID: "home_test", DataDir: t.TempDir(), Token: "test-workspace-token"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -13,14 +13,14 @@ import (
 	"testing"
 )
 
-func TestHermesStatusThroughLegacyControllerClient(t *testing.T) {
+func TestHermesStatusThroughControllerClient(t *testing.T) {
 	s, _ := setup(t)
-	p := domainProject(t, s, "legacy-hermes-status")
+	p := domainProject(t, s, "hermes-controller-status")
 	controller := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/capabilities" || r.Header.Get("Authorization") != "Bearer management-token" {
 			t.Error("wrong runtime probe")
 		}
-		w.Write([]byte(`{"id":"development-v1","version":"firecracker-2","agent_kinds":["t3","codex","hermes"],"isolation_status":"jailed-vm","network_status":"no-nic-vsock","private_homes":true}`))
+		w.Write([]byte(`{"schema_version":1,"resources":{"cpu_cores":1,"memory_bytes":1073741824},"network_modes":["blocked","allowlist"],"id":"development-v1","version":"firecracker-2","agent_kinds":["t3","codex","hermes"],"isolation_status":"jailed-vm","network_status":"no-nic-vsock","private_homes":true}`))
 	}))
 	defer controller.Close()
 	s.Runtime = controllerclient.NewClient(controller.URL, "management-token")
@@ -48,8 +48,8 @@ type agentKindsRuntime struct {
 	err   error
 }
 
-func (r *agentKindsRuntime) AgentKinds(context.Context) ([]string, error) {
-	return r.kinds, r.err
+func (r *agentKindsRuntime) Capabilities(context.Context) (runtime.RuntimeCapability, error) {
+	return runtime.RuntimeCapability{SchemaVersion: 1, AgentKinds: r.kinds}, r.err
 }
 
 func TestHermesRuntimeCheckFailureIsNotMissingInstallation(t *testing.T) {
@@ -121,8 +121,10 @@ func TestMatrixCredentialCannotFollowAChangedHomeserver(t *testing.T) {
 	}
 }
 
-func (r *hermesRuntime) AgentKinds(context.Context) ([]string, error) {
-	return []string{"t3", "codex", "hermes"}, nil
+func (r *hermesRuntime) Capabilities(context.Context) (runtime.RuntimeCapability, error) {
+	caps, err := r.embeddedRuntime.Capabilities(context.Background())
+	caps.AgentKinds = []string{"hermes"}
+	return caps, err
 }
 func (r *hermesRuntime) StartConfigured(ctx context.Context, id string, spec runtime.WorkspaceSpec) (shared.Observation, error) {
 	r.spec = spec

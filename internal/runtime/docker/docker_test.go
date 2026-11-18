@@ -129,7 +129,7 @@ func TestFixedExecutionProfileAndGrantRevocation(t *testing.T) {
 	if r := controllerRequest(c, "POST", "/v1/workspaces/ws_test/start", "", ""); r.Code != 401 {
 		t.Fatal("unauthorized start")
 	}
-	if r := controllerRequest(c, "POST", "/v1/workspaces/ws_test/start", c.cfg.Token, `{}`); r.Code != 200 {
+	if r := controllerRequest(c, "POST", "/v1/workspaces/ws_test/start", c.cfg.Token, `{"home_id":"home_test"}`); r.Code != 200 {
 		t.Fatalf("start: %d %s", r.Code, r.Body)
 	}
 	host := engine.spec["HostConfig"].(map[string]any)
@@ -161,14 +161,14 @@ func TestFixedExecutionProfileAndGrantRevocation(t *testing.T) {
 func mustJSON(v any) []byte { b, _ := json.Marshal(v); return b }
 func TestVMRequiredModeFailsBeforeAllocation(t *testing.T) {
 	c, engine := controller(t, true)
-	r := controllerRequest(c, "POST", "/v1/workspaces/ws_test/start", c.cfg.Token, "")
+	r := controllerRequest(c, "POST", "/v1/workspaces/ws_test/start", c.cfg.Token, `{"home_id":"home_test"}`)
 	if r.Code != 503 || engine.created {
 		t.Fatal("verified mode fell back to ordinary Docker")
 	}
 }
 func TestSecureGateAlsoBlocksExistingRuntime(t *testing.T) {
 	c, engine := controller(t, false)
-	if r := controllerRequest(c, "POST", "/v1/workspaces/ws_test/start", c.cfg.Token, ""); r.Code != 200 {
+	if r := controllerRequest(c, "POST", "/v1/workspaces/ws_test/start", c.cfg.Token, `{"home_id":"home_test"}`); r.Code != 200 {
 		t.Fatal("setup failed")
 	}
 	c.cfg.RequireVerified = true
@@ -192,12 +192,12 @@ func TestDockerRejectsLegacyKataRuntime(t *testing.T) {
 		t.Fatal("legacy Kata configuration accepted")
 	}
 
-	if r := controllerRequest(c, "POST", "/v1/workspaces/ws_test/start", c.cfg.Token, ""); r.Code != 200 || engine.runtime != "runc" {
+	if r := controllerRequest(c, "POST", "/v1/workspaces/ws_test/start", c.cfg.Token, `{"home_id":"home_test"}`); r.Code != 200 || engine.runtime != "runc" {
 		t.Fatal("Docker workspace did not start with runc")
 	}
 	engine.runtime = "io.containerd.kata.v2"
 	engine.running = false
-	if r := controllerRequest(c, "POST", "/v1/workspaces/ws_test/start", c.cfg.Token, ""); r.Code != 503 || engine.running || engine.createCount != 1 {
+	if r := controllerRequest(c, "POST", "/v1/workspaces/ws_test/start", c.cfg.Token, `{"home_id":"home_test"}`); r.Code != 503 || engine.running || engine.createCount != 1 {
 		t.Fatal("legacy Kata workspace was started or replaced")
 	}
 }
@@ -217,7 +217,7 @@ func TestAgentProxyCannotTargetManagement(t *testing.T) {
 func TestOpenNetworkIsExplicitAndRestrictiveTransitionNeedsStop(t *testing.T) {
 	c, engine := controller(t, false)
 	c.cfg.EgressContainer = "egress"
-	r := controllerRequest(c, "POST", "/v1/workspaces/ws_open/start", c.cfg.Token, `{"connection_mode":"open"}`)
+	r := controllerRequest(c, "POST", "/v1/workspaces/ws_open/start", c.cfg.Token, `{"home_id":"home_open","connection_mode":"open"}`)
 	if r.Code != 200 {
 		t.Fatal(r.Code, r.Body)
 	}
@@ -243,7 +243,11 @@ func TestRetiredToolConfigUpgradeRefreshesOnlyStoppedContainers(t *testing.T) {
 	c, engine := controller(t, false)
 	request := func(action string) {
 		t.Helper()
-		response := controllerRequest(c, "POST", "/v1/workspaces/ws_test/"+action, c.cfg.Token, "")
+		body := ""
+		if action == "start" {
+			body = `{"home_id":"home_test"}`
+		}
+		response := controllerRequest(c, "POST", "/v1/workspaces/ws_test/"+action, c.cfg.Token, body)
 		if response.Code != 200 {
 			t.Fatal(action, response.Code, response.Body.String())
 		}

@@ -36,7 +36,7 @@ fi
 	t.Setenv("PATH", directory+":/usr/bin:/bin")
 	t.Setenv("OPENAI_API_KEY", "must-not-inherit")
 	t.Setenv("VAULT_TOKEN", "must-not-inherit")
-	m, err := New(Config{ID: "ws_native", Token: "workspace-only-grant", DataDir: t.TempDir(), InferenceURL: "http://inference-gateway:8080", CodexModel: "approved-codex", ClaudeModel: "approved-claude"})
+	m, err := New(Config{ID: "ws_native", HomeID: "home_test", Token: "workspace-only-grant", DataDir: t.TempDir(), InferenceURL: "http://inference-gateway:8080", CodexModel: "approved-codex", ClaudeModel: "approved-claude"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +71,7 @@ func TestNativeCancellationKillsProcess(t *testing.T) {
 	directory := t.TempDir()
 	os.WriteFile(filepath.Join(directory, "claude"), []byte("#!/bin/sh\ncat >/dev/null\nsleep 30\n"), 0700)
 	t.Setenv("PATH", directory+":/usr/bin:/bin")
-	m, err := New(Config{ID: "ws_cancel_native", Token: "grant", DataDir: t.TempDir(), ClaudeModel: "model"})
+	m, err := New(Config{ID: "ws_cancel_native", HomeID: "home_test", Token: "grant", DataDir: t.TempDir(), ClaudeModel: "model"})
 	if err != nil {
 		t.Fatal(err)
 	}

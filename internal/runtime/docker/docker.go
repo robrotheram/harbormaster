@@ -114,7 +114,7 @@ func (c *Controller) token(id, generation string) string {
 func (c *Controller) inspect(ctx context.Context, id string) (containerInfo, error) {
 	var out containerInfo
 	e := c.Docker.call(ctx, "GET", "/containers/"+c.name(id)+"/json", nil, &out)
-	if e == nil && (out.Config.Labels["workbench.deployment"] != c.cfg.Deployment || out.Config.Labels["workbench.workspace"] != id) {
+	if e == nil && (out.Config.Labels["workbench.deployment"] != c.cfg.Deployment || out.Config.Labels["workbench.workspace"] != id || !protocol.HasOwnershipLabels(out.Config.Labels)) {
 		return out, errors.New("unmanaged container")
 	}
 	return out, e
@@ -124,7 +124,7 @@ func (c *Controller) ensureNetwork(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	return c.ensureOwnedNetwork(ctx, id, protocol.WorkspaceSpec{ProjectID: protocol.ProjectOf(info.Config.Labels), HomeID: info.Config.Labels["workbench.home"]})
+	return c.ensureOwnedNetwork(ctx, id, protocol.WorkspaceSpec{ProjectID: info.Config.Labels["workbench.project"], HomeID: info.Config.Labels["workbench.home"]})
 }
 func (c *Controller) ensureOwnedNetwork(ctx context.Context, id string, spec protocol.WorkspaceSpec) error {
 	name := c.name(id)
@@ -553,8 +553,8 @@ func (c *Controller) verify(w http.ResponseWriter, r *http.Request) {
 	for _, info := range containers {
 		id := info.Labels["workbench.workspace"]
 		generation := info.Labels["workbench.generation"]
-		if id != "" && generation != "" && subtle.ConstantTimeCompare([]byte(c.token(id, generation)), []byte(req.Token)) == 1 {
-			identity := map[string]any{"workspace_id": id, "project_id": protocol.ProjectOf(info.Labels), "principal_id": "local-operator"}
+		if info.Labels["workbench.deployment"] == c.cfg.Deployment && protocol.HasOwnershipLabels(info.Labels) && shared.ValidID(id) && generation != "" && subtle.ConstantTimeCompare([]byte(c.token(id, generation)), []byte(req.Token)) == 1 {
+			identity := map[string]any{"workspace_id": id, "project_id": info.Labels["workbench.project"], "principal_id": "local-operator"}
 			if req.Audience == "egress" {
 				v, _ := c.policies.Load(generation)
 				policy, ok := v.(shared.ConnectionPolicy)

@@ -688,8 +688,7 @@ func (s *Server) createWorkspace(ctx context.Context, actor principal, req works
 		if old.ProjectID != req.Project {
 			return shared.Workspace{}, false, shared.CodedError{Status: http.StatusNotFound, Code: "NOT_FOUND_OR_FORBIDDEN"}
 		}
-		// Legacy identities predate private home IDs and the modern create fingerprint.
-		if old.HomeID != "" && (old.Name != req.Name || old.ParentID != req.ParentID || old.Branch != req.Branch || old.AgentKind != req.AgentKind || old.TemplateID != req.TemplateID || old.ConnectionProfileID != req.ConnectionProfileID) {
+		if old.Name != req.Name || old.ParentID != req.ParentID || old.Branch != req.Branch || old.AgentKind != req.AgentKind || old.TemplateID != req.TemplateID || old.ConnectionProfileID != req.ConnectionProfileID {
 			return shared.Workspace{}, false, shared.CodedError{Status: http.StatusConflict, Code: "IDEMPOTENCY_CONFLICT"}
 		}
 		return old, false, nil

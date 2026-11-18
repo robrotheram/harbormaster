@@ -31,7 +31,7 @@ func TestPromotionThroughControllerClientAndRealWorkspaceHandlers(t *testing.T) 
 	for _, id := range []string{"ws_coding", "ws_retained"} {
 		directory := t.TempDir()
 		directories[id] = directory
-		m, err := workspace.New(workspace.Config{ID: id, DataDir: directory, Token: "guest-token"})
+		m, err := workspace.New(workspace.Config{ID: id, HomeID: "home_" + id, DataDir: directory, Token: "guest-token"})
 		if err != nil {
 			t.Fatal(err)
 		}

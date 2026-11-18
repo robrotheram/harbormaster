@@ -1,7 +1,6 @@
 package docker
 
 import (
-	"agent-workbench/internal/runtime/protocol"
 	"archive/tar"
 	"bytes"
 	"context"
@@ -30,7 +29,7 @@ func (c *Controller) seedFromParent(ctx context.Context, target containerInfo, p
 		return errors.New("seed ownership mismatch")
 	}
 	source, e := c.inspect(ctx, parentID)
-	if e != nil || protocol.ProjectOf(source.Config.Labels) != protocol.ProjectOf(target.Config.Labels) {
+	if e != nil || source.Config.Labels["workbench.project"] != target.Config.Labels["workbench.project"] {
 		return errors.New("cross-project seed denied")
 	}
 	marker, e := c.archive(ctx, "GET", target.ID, "/data/.workbench-seeded", nil)

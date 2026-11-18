@@ -8,7 +8,7 @@ import (
 )
 
 func TestActivityEventsPersistWithoutRawSecrets(t *testing.T) {
-	cfg := Config{ID: "ws_logs", Token: "workspace-token", DataDir: t.TempDir()}
+	cfg := Config{ID: "ws_logs", HomeID: "home_test", Token: "workspace-token", DataDir: t.TempDir()}
 	m, e := New(cfg)
 	if e != nil {
 		t.Fatal(e)

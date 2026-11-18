@@ -9,11 +9,11 @@ import (
 )
 
 func TestRetainedSnapshotSurvivesCodingAndRetainedRestart(t *testing.T) {
-	coding, err := New(Config{ID: "ws_coding", DataDir: t.TempDir(), Token: "test-workspace-token"})
+	coding, err := New(Config{ID: "ws_coding", HomeID: "home_test", DataDir: t.TempDir(), Token: "test-workspace-token"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg := Config{ID: "ws_preview", DataDir: t.TempDir(), Token: "test-workspace-token"}
+	cfg := Config{ID: "ws_preview", HomeID: "home_test", DataDir: t.TempDir(), Token: "test-workspace-token"}
 	retained, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -61,7 +61,7 @@ func TestRetainedSnapshotSurvivesCodingAndRetainedRestart(t *testing.T) {
 }
 
 func TestRetainedPreviewBackgroundExpiryReleasesIdleReservation(t *testing.T) {
-	m, err := New(Config{ID: "ws_expiry", DataDir: t.TempDir(), Token: "test-workspace-token"})
+	m, err := New(Config{ID: "ws_expiry", HomeID: "home_test", DataDir: t.TempDir(), Token: "test-workspace-token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +92,7 @@ func TestRetainedPreviewBackgroundExpiryReleasesIdleReservation(t *testing.T) {
 }
 
 func TestRetainedPreviewRejectsHostTargetsAndArchiveLinks(t *testing.T) {
-	m, err := New(Config{ID: "ws_fenced", DataDir: t.TempDir(), Token: "test-workspace-token"})
+	m, err := New(Config{ID: "ws_fenced", HomeID: "home_test", DataDir: t.TempDir(), Token: "test-workspace-token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestRetainedPreviewRejectsHostTargetsAndArchiveLinks(t *testing.T) {
 }
 
 func TestRetainedReceiptsSurviveRestartAndRejectChangedPayload(t *testing.T) {
-	cfg := Config{ID: "ws_receipts", DataDir: t.TempDir(), Token: "test-workspace-token"}
+	cfg := Config{ID: "ws_receipts", HomeID: "home_test", DataDir: t.TempDir(), Token: "test-workspace-token"}
 	m, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)

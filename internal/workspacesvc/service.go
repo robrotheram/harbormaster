@@ -166,6 +166,9 @@ func (s *Service) start(ctx context.Context, w *shared.Workspace, opened bool) e
 	if err != nil {
 		return err
 	}
+	if c.SchemaVersion != 1 {
+		return protocol.ErrCapabilitiesIncompatible
+	}
 	requested := protocol.ResourceLimits{CPUCores: w.CPULimit, MemoryBytes: w.MemoryLimitBytes}
 	if err := protocol.CheckResources(&requested, c.Resources); err != nil {
 		return err

@@ -29,8 +29,7 @@ const projects = [
   { id: "p_b", name: "Banking", created_at: "2026-11-01T10:00:00Z" },
   {
     id: "default",
-    name: "Legacy workspaces",
-    legacy: true,
+    name: "Workspaces",
     created_at: "2026-11-01T10:00:00Z",
   },
 ];
