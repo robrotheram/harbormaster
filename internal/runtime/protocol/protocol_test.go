@@ -33,8 +33,8 @@ func TestFactoryAgentPathsAndResponseBounds(t *testing.T) {
 		{"POST", "/v1/artifacts", true}, {"GET", "/v1/artifacts", true},
 		{"GET", "/v1/artifacts/artifact_one/content", true}, {"POST", "/v1/artifacts/artifact_one/content", false},
 		{"GET", "/v1/artifacts/../content", false}, {"GET", "/v1/artifacts/artifact_one/content/more", false},
-		{"POST", "/v1/recipe-jobs", true}, {"GET", "/v1/recipe-jobs/job_one", true},
-		{"POST", "/v1/recipe-jobs/job_one/cancel", true}, {"GET", "/v1/recipe-jobs/job_one/cancel", false},
+		{"POST", "/v1/recipe-jobs", false}, {"GET", "/v1/recipe-jobs/job_one", false},
+		{"POST", "/v1/recipe-jobs/job_one/cancel", false}, {"GET", "/v1/recipe-jobs/job_one/cancel", false},
 		{"POST", "/v1/recipe-jobs/job_one/exec", false},
 	} {
 		if got := AllowedAgentPath(tt.method, tt.path); got != tt.valid {

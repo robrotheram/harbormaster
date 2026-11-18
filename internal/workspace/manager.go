@@ -233,13 +233,6 @@ func (m *Manager) submitLocked(s submit) (shared.Task, int, error) {
 	if s.Provider != "" && s.Provider != "codex" && s.Provider != "claude" && !(s.Provider == "hermes" && m.cfg.AgentKind == "hermes") {
 		return shared.Task{}, 400, errors.New("INVALID_REQUEST")
 	}
-	var jobs int
-	if err := m.db.QueryRow(`SELECT count(*) FROM recipe_jobs WHERE state IN ('running','cancel_requested')`).Scan(&jobs); err != nil {
-		return shared.Task{}, 503, errors.New("STORAGE_UNAVAILABLE")
-	}
-	if jobs > 0 {
-		return shared.Task{}, 409, errors.New("WORKSPACE_BUSY")
-	}
 	now := time.Now().UTC()
 	accepted, err := m.tasks.Accept(context.Background(), taskstore.Submission{Instruction: s.Instruction, Key: s.Key, Provider: s.Provider, Model: s.Model, SourcePath: s.SourcePath, SpecificationDigest: s.SpecificationDigest}, now)
 	if err != nil {
@@ -396,11 +389,6 @@ func (m *Manager) activitySnapshotLocked(allowApplications bool) shared.Activity
 		}
 		terminal.mu.Unlock()
 	}
-	var recipes int
-	if err := m.db.QueryRow(`SELECT count(*) FROM recipe_jobs WHERE state IN ('running','cancel_requested')`).Scan(&recipes); err != nil {
-		a.Known = false
-	}
-	a.BackgroundJobs += recipes
 	var services int
 	query := `SELECT count(*) FROM retained_services WHERE state='active' AND expires_at>?`
 	if allowApplications {
@@ -594,10 +582,6 @@ func (m *Manager) Handler() http.Handler {
 	api.HandleFunc("POST /v1/services/{id}/revoke", m.revokeService)
 	api.HandleFunc("POST /v1/services/{id}/fetch", m.fetchService)
 	api.HandleFunc("POST /v1/services/reconcile", m.reconcileServices)
-	api.HandleFunc("GET /v1/recipe-jobs", m.listRecipes)
-	api.HandleFunc("POST /v1/recipe-jobs", m.startRecipe)
-	api.HandleFunc("GET /v1/recipe-jobs/{id}", m.getRecipe)
-	api.HandleFunc("POST /v1/recipe-jobs/{id}/cancel", m.cancelRecipe)
 	api.HandleFunc("GET /v1/tasks", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("history") == "1" {
 			m.historyPage(w, r)

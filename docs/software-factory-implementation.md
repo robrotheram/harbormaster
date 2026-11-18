@@ -1,8 +1,8 @@
 # Software factory implementation status
 
-Updated 10 November 2026. Tracks delivery against
+Updated 18 November 2026. Tracks delivery against
 [the plan](software-factory-plan.md). The first development workflow is integrated:
-work requests, approved workers, GoGallery/research jobs, evidence, independent
+work requests, approved workers, evidence, independent
 retained previews, assistant handoffs, and operator UI. Production acceptance
 remains gated on real infrastructure; the running deployment has not been updated.
 
@@ -37,35 +37,17 @@ attempts, exchange grants/bindings, consumption receipts, immutable direct-reque
 receipts, and deletion tombstones. Existing workspace
 ownership, homes, native histories, and schedules remain intact.
 
-## Approved jobs and retained environments
+## Artifacts and retained environments
 
-The guest admits the built-in `research-v1` recipe through `/v1/recipe-jobs`.
-It executes the real standard-library regression baseline and regularisation
-variation, records measurements in `outputs/{job-id}/`, and supports status and
-process-group cancellation. Jobs participate in activity/idle decisions and
-restart recovery records interruption rather than replaying execution.
-
-The process profile uses a bounded deadline, address-space/process/file limits,
-and requires Python and `prlimit`. It does not allocate a dedicated CPU core.
-Guest artifacts can retain the metrics and execution log independently of the
-source files. [Runtime contracts](../examples/factory/runtime-contract.md)
-describe the exact guest endpoints and bounds.
-
-The [example workloads](../examples/factory/README.md) include versioned work
-specifications and recipe proposals. Their JSON files do not themselves authorise
-runtime images, privileges, mounts, or networking. The trusted `workspace-gogallery` image admits pinned GoGallery build/test/gallery
-generation offline. Its real workload passed through the platform API in 618
-seconds; authenticated Docker guest acceptance also passed, including independent
-retention after coding compute stopped, revocation, and expiry. See the
-[contracts and recorded evidence](evidence/factory-retained-preview.md).
-
-The Environments UI starts approved jobs, lists status/evidence, and promotes an
-immutable gallery snapshot into a separately registered workspace. Promotion has
-durable retry receipts; one active service is admitted per retained allocation.
-Expiry/revocation and confirmed compute release are reconciled without treating a
-failed stop as released capacity. Evidence list/read wakes stopped private storage
-without replaying jobs. HTTP evidence reads allow 1 MiB; MCP reads allow 512 KiB
-to keep the SDK's duplicated output inside the fixed broker response budget.
+Workspaces publish immutable files through the [guest factory contract](workspace-factory-contract.md).
+A project can promote an archived site into a separately registered workspace.
+Promotion has durable retry receipts, and each retained allocation admits one
+active service. Expiry and revocation reconcile through confirmed compute release.
+Artifact list and read operations can wake stopped private storage. HTTP evidence
+reads allow 1 MiB, and MCP reads allow 512 KiB to keep the SDK's duplicated output
+inside the fixed broker response budget.
+The demo recipe API and GoGallery workspace image were retired in #57. Artifacts
+already published by those jobs remain readable through the artifact catalog.
 
 Local browser attachment uses a distinct service-specific `.localhost` origin,
 one-use tickets and host-only sessions. Every static fetch checks service state
@@ -98,8 +80,8 @@ personal Obsidian vault.
 Hermes has a fixed generation-authenticated Firecracker MCP channel. The host
 issues short-lived project credentials per request; the signing authority stays
 host-only. The shared fixed tool policy includes work create/list/run/attempts/cancel,
-exchange publish/inbox/read/submit, note publication, and approved factory
-job/evidence/preview operations. Human grant administration
+exchange publish/inbox/read/submit, note publication, and factory
+evidence and preview operations. Human grant administration
 and work review remain outside that toolset.
 
 The deterministic digest and destination consumer commands use Workbench-owned
@@ -134,7 +116,7 @@ scheduled digest acceptance have not been established by the local tests.
 The integrated contributor checks passed: Go builds, full race suite,
 architecture checks and vet; frontend formatting, 33 unit tests, typecheck and
 production build; portable Python fixtures and real pinned Hermes SDK composition.
-Browser acceptance additionally covers work requests, jobs/previews/revocation,
+Browser acceptance additionally covers work requests, previews and revocation,
 delete confirmation, assistant setup, profiles, and project switching. Final
 recovery guards have targeted race coverage.
 

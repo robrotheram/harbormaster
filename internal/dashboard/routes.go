@@ -119,8 +119,6 @@ func allowedUIRoute(method, path string) bool {
 			return len(parts) == 3 && get
 		case "applications":
 			return len(parts) == 3 && (get || post)
-		case "recipe-jobs":
-			return len(parts) == 3 && (get || post) || len(parts) == 4 && shared.ValidID(parts[3]) && get || len(parts) == 5 && shared.ValidID(parts[3]) && parts[4] == "cancel" && post
 		case "artifacts":
 			return len(parts) == 3 && get || len(parts) == 5 && shared.ValidID(parts[3]) && parts[4] == "content" && get
 		case "retained-previews":

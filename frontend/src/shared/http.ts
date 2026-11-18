@@ -27,8 +27,6 @@ const messages: Record<string, string> = {
     "Workbench could not verify the preview's status. Refresh and check the preview worker before trying again.",
   PREVIEW_RELEASE_NOT_CONFIRMED:
     "Workbench could not confirm that preview access has ended. Refresh its status, revoke access if it is still active, then release the environment again.",
-  UNSUPPORTED_APPROVED_TEMPLATE_OR_BUDGET:
-    "This recipe or its resource limits are unavailable. Choose another recipe or ask your administrator to check the configured recipes.",
   WORK_STATE_CONFLICT:
     "This work changed since you opened it. Reopen the conversation or review to inspect the latest result before trying again.",
   WORKSPACE_UNAVAILABLE:

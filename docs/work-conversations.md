@@ -112,7 +112,7 @@ process groups. Preview sessions expire after one hour; reload to reconnect.
 
 Managed application services and their supervised process descendants can coexist
 with new conversation turns and private instruction-file handoffs. They still
-count as background activity for idle stopping. Other active tasks, recipe jobs,
+count as background activity for idle stopping. Other active tasks,
 and unrelated background processes continue to block conflicting work.
 
 

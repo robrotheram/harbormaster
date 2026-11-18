@@ -17,7 +17,7 @@ func main() {
 	name, args := filepath.Base(os.Args[0]), os.Args[1:]
 	if name == "workbench-tools" {
 		if len(args) == 0 {
-			fmt.Fprintln(os.Stderr, "usage: workbench-tools preview|desktop|research|gogallery|gallery-fixture")
+			fmt.Fprintln(os.Stderr, "usage: workbench-tools preview|desktop")
 			os.Exit(2)
 		}
 		name, args = args[0], args[1:]

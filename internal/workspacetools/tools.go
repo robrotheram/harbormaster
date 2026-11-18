@@ -16,15 +16,6 @@ func Run(ctx context.Context, name string, args []string, out, errOut io.Writer)
 		return Preview(ctx, args, out, errOut)
 	case "desktop", "workbench-desktop":
 		return Desktop(ctx, args, errOut)
-	case "research":
-		return Research(args, out)
-	case "gogallery", "run":
-		return Gallery(ctx, args, out, errOut)
-	case "gallery-fixture":
-		if len(args) != 1 {
-			return fmt.Errorf("gallery-fixture requires a new output directory")
-		}
-		return GalleryFixture(args[0])
 	default:
 		return fmt.Errorf("unknown workspace tool %q", name)
 	}
