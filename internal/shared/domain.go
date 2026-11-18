@@ -22,11 +22,7 @@ func NormalizeWorkspace(w Workspace) Workspace {
 		w.ProjectID = "default"
 	}
 	if w.AgentKind == "" {
-		if w.ProfileID != "" {
-			w.AgentKind = "t3"
-		} else {
-			w.AgentKind = "codex"
-		}
+		w.AgentKind = "codex"
 	}
 	return w
 }

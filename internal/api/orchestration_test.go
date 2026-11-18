@@ -186,7 +186,7 @@ func writeScheduledInstruction(t *testing.T, rt *scheduledRuntime, workspace, co
 }
 func assertNoInstructionInMetadata(t *testing.T, s *Server, marker string) {
 	t.Helper()
-	for _, table := range []string{"projects", "workspaces", "agent_homes", "task_metadata", "schedules", "orchestration_runs"} {
+	for _, table := range []string{"projects", "workspaces", "task_metadata", "schedules", "orchestration_runs"} {
 		var count int
 		query := fmt.Sprintf(`SELECT count(*) FROM %s WHERE metadata LIKE $1`, table)
 		if err := s.Store.DB.QueryRow(query, "%"+marker+"%").Scan(&count); err != nil {

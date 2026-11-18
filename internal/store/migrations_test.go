@@ -17,10 +17,10 @@ func TestStartupMigrationsAreVersionedAndRepeatable(t *testing.T) {
 		if err = s.DB.QueryRow(`SELECT count(*) FROM schema_migrations`).Scan(&count); err != nil {
 			t.Fatal(err)
 		}
-		if count != 17 {
+		if count != 18 {
 			t.Fatalf("migration versions: %d", count)
 		}
-		for _, table := range []string{"project_members", "agent_subscriptions", "worker_agent_subscriptions", "work_review_history", "forge_accounts", "work_items", "work_attempts", "schedules", "orchestration_runs", "workspaces", "agent_homes"} {
+		for _, table := range []string{"project_members", "agent_subscriptions", "worker_agent_subscriptions", "work_review_history", "forge_accounts", "work_items", "work_attempts", "schedules", "orchestration_runs", "workspaces"} {
 			if _, err = s.DB.Exec(`SELECT 1 FROM ` + table + ` LIMIT 1`); err != nil {
 				t.Fatalf("schema unavailable before requests: %s: %v", table, err)
 			}
@@ -70,46 +70,6 @@ func checkWorkspaceConnectionMigration(t *testing.T, ctx context.Context, s *Sto
 		if p.Mode != tt.mode || p.Allows("github.com:443") != (tt.mode == "allowlist") || p.Allows("registry.npmjs.org:443") {
 			t.Errorf("%s: unexpected policy %+v", tt.id, p)
 		}
-	}
-}
-
-func TestToolProfileRetirementPreservesHistoricalRowsAndWorkspaceHome(t *testing.T) {
-	ctx := context.Background()
-	path := filepath.Join(t.TempDir(), "tool-retirement.db")
-	s, err := Open(ctx, path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Historical catalog rows stay inert after active profile support is removed.
-	if _, err = s.DB.Exec(`INSERT INTO tool_profiles(id,revision,metadata) VALUES('old-custom',1,'{"mcps":[]}')`); err != nil {
-		t.Fatal(err)
-	}
-	original := `{"id":"ws_old_custom","project_id":"default","home_id":"home_private_original","profile_id":"old-custom","agent_kind":"codex","state":"STOPPED"}`
-	if _, err = s.DB.Exec(`INSERT INTO workspaces(id,create_key,metadata) VALUES('ws_old_custom','historical-create',$1)`, original); err != nil {
-		t.Fatal(err)
-	}
-	if err = s.DB.Close(); err != nil {
-		t.Fatal(err)
-	}
-	s, err = Open(ctx, path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.DB.Close()
-	var metadata string
-	if err = s.DB.QueryRow(`SELECT metadata FROM workspaces WHERE id='ws_old_custom'`).Scan(&metadata); err != nil {
-		t.Fatal(err)
-	}
-	if metadata != original {
-		t.Fatal("retirement rewrote private workspace identity")
-	}
-	var rows int
-	if err = s.DB.QueryRow(`SELECT count(*) FROM tool_profiles`).Scan(&rows); err != nil || rows != 1 {
-		t.Fatal("historical profile rows changed or new seeds added", rows, err)
-	}
-	ws, err := s.Workspace(ctx, "ws_old_custom")
-	if err != nil || ws.HomeID != "home_private_original" || ws.AgentKind != "codex" || ws.ConsoleEnabled {
-		t.Fatal("legacy workspace reclassified", ws, err)
 	}
 }
 
@@ -213,5 +173,64 @@ func TestSubscriptionMigrationRetainsDefaultLoginAndBinding(t *testing.T) {
 			t.Fatal("lost migrated binding", err)
 		}
 		s.DB.Close()
+	}
+}
+
+func TestToolProfileCleanupUpgradesVersionSixteen(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "upgrade.db")
+	checkToolProfileCleanupUpgrade(t, ctx, path)
+}
+
+func checkToolProfileCleanupUpgrade(t *testing.T, ctx context.Context, dsn string) {
+	t.Helper()
+	s, err := Open(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.DB.Close()
+	// Recreate the version 16 catalogs using the historical schema.
+	if err := s.initMetadata(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for _, query := range []string{
+		`DELETE FROM schema_migrations WHERE version=18`,
+		`INSERT INTO tool_profiles(id, revision, metadata) VALUES ('old-custom', 1, '{}')`,
+		`INSERT INTO agent_homes(id, project_id, workspace_id, metadata) VALUES ('home_old', 'default', 'ws_explicit', '{}')`,
+		`INSERT INTO workspaces(id, create_key, metadata) VALUES
+		('ws_implicit', 'implicit', '{"id":"ws_implicit","profile_id":"old-custom"}'),
+		('ws_explicit', 'explicit', '{"id":"ws_explicit","home_id":"home_old","profile_id":"old-custom","agent_kind":"codex"}'),
+		('ws_unmarked', 'unmarked', '{"id":"ws_unmarked"}')`,
+	} {
+		if _, err := s.DB.ExecContext(ctx, query); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.DB.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err = Open(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.DB.Close()
+	for _, table := range []string{"tool_profiles", "agent_homes"} {
+		if _, err := s.DB.ExecContext(ctx, `SELECT 1 FROM `+table+` LIMIT 1`); err == nil {
+			t.Errorf("obsolete table %s still exists", table)
+		}
+	}
+	for _, want := range []struct{ id, kind, home string }{
+		{"ws_implicit", "t3", ""},
+		{"ws_explicit", "codex", "home_old"},
+		{"ws_unmarked", "codex", ""},
+	} {
+		ws, err := s.Workspace(ctx, want.id)
+		if err != nil || ws.AgentKind != want.kind || ws.HomeID != want.home || ws.ProjectID != "default" {
+			t.Fatalf("workspace %s lost runtime identity: %+v, %v", want.id, ws, err)
+		}
+		if err := s.Save(ctx, ws); err != nil {
+			t.Fatalf("save upgraded workspace %s: %v", want.id, err)
+		}
 	}
 }

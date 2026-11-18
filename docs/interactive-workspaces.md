@@ -28,7 +28,7 @@ T3 and native Codex/Claude workers include the same two bundled MCP servers:
 
 These are fixed workspace tools, not separate credential authorities. Full-access coding agents can run programs in their own container; the network and credential boundaries are enforced outside it. Additional MCP software must be baked into an approved image, and remote MCP endpoints need their own allowlist and credential policy. No MCP receives a Docker socket, Vault token or provider subscription token.
 
-Workspace names do not enable external integrations or grant network access. Tool-profile management and selection have been removed; T3 and native Codex/Claude workers use the bundled file/Git tools. Hermes retains its native toolsets. Existing private homes and workspace data are preserved.
+Workspace names do not enable external integrations or grant network access. Tool-profile management and selection have been removed; T3 and native Codex/Claude workers use the bundled file/Git tools. Hermes retains its native toolsets. Existing private homes and workspace data are preserved. After upgrading the Docker controller, it refreshes existing containers on their next start from a stopped state and reuses their data volumes.
 
 ## Separate workspaces for branches and PR work
 

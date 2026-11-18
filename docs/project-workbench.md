@@ -19,7 +19,7 @@ Open **Settings → General** to rename a project. Its ID, worker storage and de
 
 Use **Reviews** to inspect task outputs: UI previews, code, data and reports. Outputs & previews is no longer a separate page; its old URL opens Reviews. Agent homes is also retired as a page; its old URL opens Workers.
 
-Workers still retain their private storage. Internal `home_id` values, runtime ownership labels and existing directory paths remain unchanged because they identify that storage and protect it from reuse by another worker. The separate agent-home catalog, HTTP endpoint and MCP discovery tool have been removed. Historical `agent_homes` database rows remain inert for upgrade compatibility; new workers do not write them.
+Workers still retain their private storage. Internal `home_id` values, runtime ownership labels and existing directory paths remain unchanged because they identify that storage and protect it from reuse by another worker. The separate agent-home catalog, HTTP endpoint and MCP discovery tool have been removed. The database upgrade removes the obsolete `agent_homes` table.
 
 ## Schedule work
 
