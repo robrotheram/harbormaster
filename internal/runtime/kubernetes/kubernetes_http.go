@@ -142,7 +142,12 @@ func (k *Kubernetes) verify(w http.ResponseWriter, r *http.Request) {
 		shared.Error(w, 403, "GRANT_REJECTED")
 		return
 	}
-	for _, namespace := range k.namespaces() {
+	namespaces, err := k.runtimeNamespaces(r.Context())
+	if err != nil {
+		shared.Error(w, 503, "GRANT_VERIFIER_UNAVAILABLE")
+		return
+	}
+	for _, namespace := range namespaces {
 		var list struct {
 			Items []kubeResource `json:"items"`
 		}

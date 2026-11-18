@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -15,6 +16,7 @@ func TestWorkspaceNamespacesArePrivateRetainedAndRediscovered(t *testing.T) {
 	k.cfg.SharedGatewayProject = "default"
 	objects := map[string]map[string]any{}
 	posts := 0
+	sandboxItems := []any{}
 	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		status := 200
 		var body any
@@ -29,6 +31,24 @@ func TestWorkspaceNamespacesArePrivateRetainedAndRediscovered(t *testing.T) {
 			items := []any{}
 			for _, o := range objects {
 				if o["kind"] == "Namespace" {
+					items = append(items, o)
+				}
+			}
+			body = map[string]any{"items": items}
+		case strings.HasSuffix(path, "/sandboxes") && r.Method == "GET":
+			items := []any{}
+			for _, v := range sandboxItems {
+				o := v.(map[string]any)
+				ns := o["metadata"].(map[string]any)["namespace"].(string)
+				if path == k.collection(ns) {
+					items = append(items, o)
+				}
+			}
+			body = map[string]any{"items": items}
+		case strings.HasSuffix(path, "/networkpolicies") && r.Method == "GET":
+			items := []any{}
+			for key, o := range objects {
+				if strings.HasPrefix(key, path+"/") {
 					items = append(items, o)
 				}
 			}
@@ -105,6 +125,23 @@ func TestWorkspaceNamespacesArePrivateRetainedAndRediscovered(t *testing.T) {
 	if err != nil || len(namespaces) != len(k.cfg.ProjectNamespaces)+2 {
 		t.Fatal("restart lost namespaces", namespaces, err)
 	}
+	labels := map[string]any{"workbench.deployment": k.cfg.Deployment, "workbench.workspace": "ws_private", "workbench.project": projects[0], "workbench.generation": "gen_private"}
+	sandboxItems = append(sandboxItems, map[string]any{"metadata": map[string]any{"name": k.name("ws_private"), "namespace": workspaceNamespace(projects[0]), "labels": labels, "generation": 1}, "spec": map[string]any{"operatingMode": "Running"}, "status": map[string]any{"conditions": []any{map[string]any{"type": "Ready", "status": "True", "observedGeneration": 1}}}})
+	verify := func() *httptest.ResponseRecorder {
+		b, _ := json.Marshal(map[string]string{"token": k.token("ws_private", "gen_private"), "audience": "inference"})
+		r := httptest.NewRequest("POST", "/v1/grants/verify", strings.NewReader(string(b)))
+		w := httptest.NewRecorder()
+		restarted.verify(w, r)
+		return w
+	}
+	if got := verify(); got.Code != 200 || !strings.Contains(got.Body.String(), projects[0]) {
+		t.Fatal("dynamic workspace grant rejected after restart", got.Code, got.Body)
+	}
+	labels["workbench.project"] = projects[1]
+	if got := verify(); got.Code != 403 {
+		t.Fatal("cross-project grant accepted", got.Code, got.Body)
+	}
+	labels["workbench.project"] = projects[0]
 	partialPath := "/apis/rbac.authorization.k8s.io/v1/namespaces/" + workspaceNamespace(projects[1]) + "/rolebindings/workbench-runtime"
 	binding := objects[partialPath]
 	delete(objects, partialPath)
