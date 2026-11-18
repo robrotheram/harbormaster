@@ -26,7 +26,7 @@ func (s *Store) MoveBoardWork(ctx context.Context, board BoardItem, expected int
 	}
 	defer tx.Rollback()
 	var raw string
-	if err = tx.QueryRowContext(ctx, s.query(`SELECT metadata FROM work_items WHERE project_id=? AND id=?`), previous.ProjectID, previous.ID).Scan(&raw); err != nil {
+	if err = tx.QueryRowContext(ctx, `SELECT metadata FROM work_items WHERE project_id=$1 AND id=$2`, previous.ProjectID, previous.ID).Scan(&raw); err != nil {
 		return previous, err
 	}
 	var work shared.WorkItem
@@ -38,7 +38,7 @@ func (s *Store) MoveBoardWork(ctx context.Context, board BoardItem, expected int
 	}
 	if work.LatestAttemptID != "" {
 		var prior string
-		if err = tx.QueryRowContext(ctx, s.query(`SELECT metadata FROM work_attempts WHERE project_id=? AND work_item_id=? AND id=? AND active_workspace IS NULL`), work.ProjectID, work.ID, work.LatestAttemptID).Scan(&prior); err != nil {
+		if err = tx.QueryRowContext(ctx, `SELECT metadata FROM work_attempts WHERE project_id=$1 AND work_item_id=$2 AND id=$3 AND active_workspace IS NULL`, work.ProjectID, work.ID, work.LatestAttemptID).Scan(&prior); err != nil {
 			return previous, err
 		}
 		var attempt shared.WorkAttempt
@@ -54,7 +54,7 @@ func (s *Store) MoveBoardWork(ctx context.Context, board BoardItem, expected int
 		}
 
 		if decision != "" {
-			if _, err = tx.ExecContext(ctx, s.query(`INSERT INTO work_review_history(id,project_id,work_item_id,attempt_id,decision,at) VALUES(?,?,?,?,?,?)`), shared.NewID("review_"), work.ProjectID, work.ID, attempt.ID, decision, now.UTC().Format(time.RFC3339Nano)); err != nil {
+			if _, err = tx.ExecContext(ctx, `INSERT INTO work_review_history(id,project_id,work_item_id,attempt_id,decision,at) VALUES($1,$2,$3,$4,$5,$6)`, shared.NewID("review_"), work.ProjectID, work.ID, attempt.ID, decision, now.UTC().Format(time.RFC3339Nano)); err != nil {
 				return previous, err
 			}
 		}
@@ -64,7 +64,7 @@ func (s *Store) MoveBoardWork(ctx context.Context, board BoardItem, expected int
 		}
 		attempt.UpdatedAt = now.UTC()
 		data, _ := json.Marshal(attempt)
-		result, e := tx.ExecContext(ctx, s.query(`UPDATE work_attempts SET metadata=? WHERE project_id=? AND id=? AND metadata=? AND active_workspace IS NULL`), string(data), work.ProjectID, attempt.ID, prior)
+		result, e := tx.ExecContext(ctx, `UPDATE work_attempts SET metadata=$1 WHERE project_id=$2 AND id=$3 AND metadata=$4 AND active_workspace IS NULL`, string(data), work.ProjectID, attempt.ID, prior)
 		if e != nil {
 			return previous, e
 		}
@@ -75,7 +75,7 @@ func (s *Store) MoveBoardWork(ctx context.Context, board BoardItem, expected int
 	work.State = target
 	work.UpdatedAt = now.UTC()
 	data, _ := json.Marshal(work)
-	result, err := tx.ExecContext(ctx, s.query(`UPDATE work_items SET metadata=? WHERE project_id=? AND id=? AND metadata=?`), string(data), work.ProjectID, work.ID, raw)
+	result, err := tx.ExecContext(ctx, `UPDATE work_items SET metadata=$1 WHERE project_id=$2 AND id=$3 AND metadata=$4`, string(data), work.ProjectID, work.ID, raw)
 	if err != nil {
 		return previous, err
 	}

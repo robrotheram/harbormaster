@@ -19,7 +19,7 @@ func TestLegacyReopenPreservesRuntimePathsAndPrivateIdentity(t *testing.T) {
 	}
 	old := shared.Workspace{ID: "ws_existing", ProjectID: "default", Name: "Do not classify by this name", ProfileID: "gallery", State: "STOPPED", CreatedAt: time.Now().UTC()}
 	b, _ := json.Marshal(old)
-	if _, err = s.DB.Exec(`INSERT INTO workspaces(id,create_key,metadata) VALUES(?,?,?)`, old.ID, "old-key", string(b)); err != nil {
+	if _, err = s.DB.Exec(`INSERT INTO workspaces(id,create_key,metadata) VALUES($1,$2,$3)`, old.ID, "old-key", string(b)); err != nil {
 		t.Fatal(err)
 	}
 	s.DB.Close()
@@ -75,7 +75,7 @@ func TestRetiredHomeCatalogDoesNotChangeWorkerStorage(t *testing.T) {
 		t.Fatal(err)
 	}
 	original := `{"id":"home_old","workspace_id":"ws_old","project_id":"default"}`
-	if _, err := s.DB.Exec(`INSERT INTO agent_homes(id,project_id,workspace_id,metadata) VALUES('home_old','default','ws_old',?)`, original); err != nil {
+	if _, err := s.DB.Exec(`INSERT INTO agent_homes(id,project_id,workspace_id,metadata) VALUES('home_old','default','ws_old',$1)`, original); err != nil {
 		t.Fatal(err)
 	}
 	ws := shared.Workspace{ID: "ws_new", ProjectID: "default", HomeID: "home_new", AgentKind: "codex", State: "STOPPED", CreatedAt: time.Now()}

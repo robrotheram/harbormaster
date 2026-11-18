@@ -20,11 +20,11 @@ func (s *Store) initHistoryFeedback(ctx context.Context) error {
 }
 func (s *Store) SaveHistoryFeedback(ctx context.Context, workspace, episode string, rating int) (HistoryFeedback, error) {
 	v := HistoryFeedback{ID: shared.NewID("review_"), EpisodeID: episode, Rating: rating, At: time.Now().UTC(), Reviewer: "local-operator"}
-	_, e := s.DB.ExecContext(ctx, s.query(`INSERT INTO history_feedback(id,workspace_id,episode_id,rating,at) VALUES(?,?,?,?,?)`), v.ID, workspace, episode, rating, v.At.Format(time.RFC3339Nano))
+	_, e := s.DB.ExecContext(ctx, `INSERT INTO history_feedback(id,workspace_id,episode_id,rating,at) VALUES($1,$2,$3,$4,$5)`, v.ID, workspace, episode, rating, v.At.Format(time.RFC3339Nano))
 	return v, e
 }
 func (s *Store) HistoryFeedback(ctx context.Context, workspace string) (map[string]HistoryFeedback, error) {
-	rows, e := s.DB.QueryContext(ctx, s.query(`SELECT id,episode_id,rating,at FROM history_feedback WHERE workspace_id=? ORDER BY at,id`), workspace)
+	rows, e := s.DB.QueryContext(ctx, `SELECT id,episode_id,rating,at FROM history_feedback WHERE workspace_id=$1 ORDER BY at,id`, workspace)
 	if e != nil {
 		return nil, e
 	}

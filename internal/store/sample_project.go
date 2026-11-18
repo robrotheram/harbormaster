@@ -25,7 +25,7 @@ func (s *Store) createSampleTasks(ctx context.Context, tx *sql.Tx, project share
 		if err != nil {
 			return err
 		}
-		if _, err = tx.ExecContext(ctx, s.query(`INSERT INTO work_items(id,project_id,create_key,metadata) VALUES(?,?,?,?)`), id, project.ID, fmt.Sprintf("sample-v1-%d", i+1), string(metadata)); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO work_items(id,project_id,create_key,metadata) VALUES($1,$2,$3,$4)`, id, project.ID, fmt.Sprintf("sample-v1-%d", i+1), string(metadata)); err != nil {
 			return err
 		}
 		description := task.description

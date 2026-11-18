@@ -18,12 +18,12 @@ func (s *Store) DeleteStopped(ctx context.Context, workspaces []shared.Workspace
 		if ws.State != "STOPPED" {
 			return fmt.Errorf("STOP_WORKSPACE_FIRST")
 		}
-		if _, err = tx.ExecContext(ctx, s.query(`INSERT INTO deleted_resources(kind,id) VALUES('workspace',?) ON CONFLICT(kind,id) DO NOTHING`), ws.ID); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO deleted_resources(kind,id) VALUES('workspace',$1) ON CONFLICT(kind,id) DO NOTHING`, ws.ID); err != nil {
 			return err
 		}
 	}
 	if project != "" {
-		if _, err = tx.ExecContext(ctx, s.query(`INSERT INTO deleted_resources(kind,id) VALUES('project',?) ON CONFLICT(kind,id) DO NOTHING`), project); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO deleted_resources(kind,id) VALUES('project',$1) ON CONFLICT(kind,id) DO NOTHING`, project); err != nil {
 			return err
 		}
 	}

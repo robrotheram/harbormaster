@@ -22,7 +22,7 @@ func (s *Store) initMembership(ctx context.Context) error {
 	return err
 }
 func (s *Store) ProjectMembers(ctx context.Context, project string) ([]ProjectMember, error) {
-	rows, err := s.DB.QueryContext(ctx, s.query(`SELECT project_id,email,user_id,role,status,revision FROM project_members WHERE project_id=? ORDER BY email`), project)
+	rows, err := s.DB.QueryContext(ctx, `SELECT project_id,email,user_id,role,status,revision FROM project_members WHERE project_id=$1 ORDER BY email`, project)
 	if err != nil {
 		return nil, err
 	}
@@ -39,11 +39,11 @@ func (s *Store) ProjectMembers(ctx context.Context, project string) ([]ProjectMe
 }
 func (s *Store) MemberRole(ctx context.Context, project, user string) (string, error) {
 	var role string
-	err := s.DB.QueryRowContext(ctx, s.query(`SELECT role FROM project_members WHERE project_id=? AND user_id=? AND status='active'`), project, user).Scan(&role)
+	err := s.DB.QueryRowContext(ctx, `SELECT role FROM project_members WHERE project_id=$1 AND user_id=$2 AND status='active'`, project, user).Scan(&role)
 	return role, err
 }
 func (s *Store) Invitations(ctx context.Context, email string) ([]ProjectMember, error) {
-	rows, err := s.DB.QueryContext(ctx, s.query(`SELECT project_id,email,user_id,role,status,revision FROM project_members WHERE email=? AND status='invited' AND project_id NOT IN (SELECT id FROM deleted_resources WHERE kind='project')`), email)
+	rows, err := s.DB.QueryContext(ctx, `SELECT project_id,email,user_id,role,status,revision FROM project_members WHERE email=$1 AND status='invited' AND project_id NOT IN (SELECT id FROM deleted_resources WHERE kind='project')`, email)
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +66,7 @@ func (s *Store) SaveMember(ctx context.Context, m ProjectMember, expected int, a
 		return err
 	}
 	defer tx.Rollback()
-	res, err := tx.ExecContext(ctx, s.query(`UPDATE projects SET metadata=metadata WHERE id=? AND id NOT IN (SELECT id FROM deleted_resources WHERE kind='project')`), m.ProjectID)
+	res, err := tx.ExecContext(ctx, `UPDATE projects SET metadata=metadata WHERE id=$1 AND id NOT IN (SELECT id FROM deleted_resources WHERE kind='project')`, m.ProjectID)
 	if err != nil {
 		return err
 	}
@@ -76,14 +76,14 @@ func (s *Store) SaveMember(ctx context.Context, m ProjectMember, expected int, a
 	}
 	if !system {
 		var role string
-		err = tx.QueryRowContext(ctx, s.query(`SELECT role FROM project_members WHERE project_id=? AND user_id=? AND status='active'`), m.ProjectID, actor).Scan(&role)
+		err = tx.QueryRowContext(ctx, `SELECT role FROM project_members WHERE project_id=$1 AND user_id=$2 AND status='active'`, m.ProjectID, actor).Scan(&role)
 		if err != nil || role != "admin" {
 			return sql.ErrNoRows
 		}
 	}
 	var oldRole, oldStatus string
 	var oldRev int
-	err = tx.QueryRowContext(ctx, s.query(`SELECT role,status,revision FROM project_members WHERE project_id=? AND email=?`), m.ProjectID, m.Email).Scan(&oldRole, &oldStatus, &oldRev)
+	err = tx.QueryRowContext(ctx, `SELECT role,status,revision FROM project_members WHERE project_id=$1 AND email=$2`, m.ProjectID, m.Email).Scan(&oldRole, &oldStatus, &oldRev)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
@@ -92,14 +92,14 @@ func (s *Store) SaveMember(ctx context.Context, m ProjectMember, expected int, a
 	}
 	if oldRole == "admin" && oldStatus == "active" && (m.Role != "admin" || m.Status != "active") {
 		var count int
-		if err = tx.QueryRowContext(ctx, s.query(`SELECT count(*) FROM project_members WHERE project_id=? AND role='admin' AND status='active'`), m.ProjectID).Scan(&count); err != nil {
+		if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM project_members WHERE project_id=$1 AND role='admin' AND status='active'`, m.ProjectID).Scan(&count); err != nil {
 			return err
 		}
 		if count <= 1 {
 			return ErrMembershipConflict
 		}
 	}
-	_, err = tx.ExecContext(ctx, s.query(`INSERT INTO project_members(project_id,email,user_id,role,status,revision) VALUES(?,?,?,?,?,?) ON CONFLICT(project_id,email) DO UPDATE SET user_id=excluded.user_id,role=excluded.role,status=excluded.status,revision=excluded.revision`), m.ProjectID, m.Email, m.UserID, m.Role, m.Status, expected+1)
+	_, err = tx.ExecContext(ctx, `INSERT INTO project_members(project_id,email,user_id,role,status,revision) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(project_id,email) DO UPDATE SET user_id=excluded.user_id,role=excluded.role,status=excluded.status,revision=excluded.revision`, m.ProjectID, m.Email, m.UserID, m.Role, m.Status, expected+1)
 	if err != nil {
 		return err
 	}
@@ -113,7 +113,7 @@ func (s *Store) AcceptInvitation(ctx context.Context, project, email, user strin
 	defer tx.Rollback()
 	// Use the same project lock as roster edits. Acceptance must not race past
 	// the last-admin check or overwrite a concurrent revocation.
-	result, err := tx.ExecContext(ctx, s.query(`UPDATE projects SET metadata=metadata WHERE id=? AND id NOT IN (SELECT id FROM deleted_resources WHERE kind='project')`), project)
+	result, err := tx.ExecContext(ctx, `UPDATE projects SET metadata=metadata WHERE id=$1 AND id NOT IN (SELECT id FROM deleted_resources WHERE kind='project')`, project)
 	if err != nil {
 		return err
 	}
@@ -121,7 +121,7 @@ func (s *Store) AcceptInvitation(ctx context.Context, project, email, user strin
 	if n != 1 {
 		return ErrMembershipConflict
 	}
-	result, err = tx.ExecContext(ctx, s.query(`UPDATE project_members SET user_id=?,status='active',revision=revision+1 WHERE project_id=? AND email=? AND status='invited' AND revision=?`), user, project, email, revision)
+	result, err = tx.ExecContext(ctx, `UPDATE project_members SET user_id=$1,status='active',revision=revision+1 WHERE project_id=$2 AND email=$3 AND status='invited' AND revision=$4`, user, project, email, revision)
 	if err != nil {
 		return err
 	}

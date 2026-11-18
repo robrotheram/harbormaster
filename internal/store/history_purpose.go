@@ -17,11 +17,11 @@ func (s *Store) SaveHistoryPurpose(ctx context.Context, workspace, episode, purp
 	if !shared.ValidID(workspace) || !shared.ValidID(episode) || (purpose != "test" && purpose != "normal") {
 		return errors.New("invalid history purpose")
 	}
-	_, err := s.DB.ExecContext(ctx, s.query(`INSERT INTO history_purpose(workspace_id,episode_id,purpose,updated_at) VALUES(?,?,?,?) ON CONFLICT(workspace_id,episode_id) DO UPDATE SET purpose=excluded.purpose,updated_at=excluded.updated_at`), workspace, episode, purpose, time.Now().UTC().Format(time.RFC3339Nano))
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO history_purpose(workspace_id,episode_id,purpose,updated_at) VALUES($1,$2,$3,$4) ON CONFLICT(workspace_id,episode_id) DO UPDATE SET purpose=excluded.purpose,updated_at=excluded.updated_at`, workspace, episode, purpose, time.Now().UTC().Format(time.RFC3339Nano))
 	return err
 }
 func (s *Store) HistoryPurposes(ctx context.Context, workspace string) (map[string]string, error) {
-	rows, err := s.DB.QueryContext(ctx, s.query(`SELECT episode_id,purpose FROM history_purpose WHERE workspace_id=?`), workspace)
+	rows, err := s.DB.QueryContext(ctx, `SELECT episode_id,purpose FROM history_purpose WHERE workspace_id=$1`, workspace)
 	if err != nil {
 		return nil, err
 	}
