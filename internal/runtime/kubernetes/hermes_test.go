@@ -9,8 +9,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func TestHermesApprovalAndGenerationMCP(t *testing.T) {
@@ -39,17 +42,17 @@ func TestHermesApprovalAndGenerationMCP(t *testing.T) {
 	f.resources["project-one/"+k.name("ws_one")] = body
 	controller := httptest.NewServer(k.Handler())
 	defer controller.Close()
-	calls := 0
+	var acceptedCalls atomic.Int32
 	cp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		project, err := shared.VerifyProjectAccess(strings.Repeat("s", 32), strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "), time.Now())
 		if err != nil || project != "proj_one" {
 			t.Error("project authority escaped verified metadata")
 		}
 		if r.URL.Query().Get("project_id") != project {
-			http.Error(w, "forbidden", 403)
+			shared.Error(w, http.StatusNotFound, "NOT_FOUND_OR_FORBIDDEN")
 			return
 		}
-		calls++
+		acceptedCalls.Add(1)
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"items":[]}`))
 	}))
@@ -74,12 +77,18 @@ func TestHermesApprovalAndGenerationMCP(t *testing.T) {
 		t.Fatalf("MCP tools: %d %s", w.Code, w.Body.String())
 	}
 	w = invoke(grant, `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"work_list","arguments":{"project_id":"proj_one"}}}`)
-	if w.Code != 200 || calls != 1 {
+	if w.Code != http.StatusOK || acceptedCalls.Load() != 1 {
 		t.Fatalf("own project invocation failed: %d %s", w.Code, w.Body.String())
 	}
 	w = invoke(grant, `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"work_list","arguments":{"project_id":"proj_two"}}}`)
-	if calls != 1 {
-		t.Fatal("foreign project reached controlplane")
+	var response struct {
+		Result mcp.CallToolResult `json:"result"`
+	}
+	if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &response) != nil || !response.Result.IsError {
+		t.Fatalf("foreign project invocation did not return an MCP tool error: %d %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "NOT_FOUND_OR_FORBIDDEN") || acceptedCalls.Load() != 1 {
+		t.Fatalf("foreign project invocation was not denied by project scope: %s", w.Body.String())
 	}
 	for _, token := range []string{k.token("ws_foreign", "gen_one"), k.token("ws_one", "gen_old")} {
 		if w := invoke(token, `{"method":"tools/list"}`); w.Code != 401 {
