@@ -268,7 +268,7 @@ func (m *Manager) submitLocked(s submit) (shared.Task, int, error) {
 	go m.execute(ctx, id, s.Instruction, s.Provider, s.Model)
 	return accepted.Task, 202, nil
 }
-func (m *Manager) execute(ctx context.Context, id, instruction, provider string, models ...string) {
+func (m *Manager) execute(ctx context.Context, id, instruction, provider, model string) {
 	defer m.wg.Done()
 	m.serial.Lock()
 	defer m.serial.Unlock()
@@ -286,7 +286,7 @@ func (m *Manager) execute(ctx context.Context, id, instruction, provider string,
 	if provider == "" {
 		result, code = m.run(ctx, id, instruction)
 	} else {
-		result, code = m.runNativeTask(ctx, provider, instruction, id, models...)
+		result, code = m.runNativeTask(ctx, provider, instruction, id, model)
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()

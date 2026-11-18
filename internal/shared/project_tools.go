@@ -3,6 +3,7 @@ package shared
 import (
 	_ "embed"
 	"encoding/json"
+	"slices"
 )
 
 // ProjectToolPolicy is the neutral fixed tool policy embedded by both brokers
@@ -16,10 +17,5 @@ func ProjectToolAllowed(name string) bool {
 	if json.Unmarshal(projectToolPolicy, &names) != nil {
 		return false
 	}
-	for _, allowed := range names {
-		if name == allowed {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(names, name)
 }

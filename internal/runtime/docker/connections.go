@@ -4,23 +4,17 @@ import (
 	"agent-workbench/internal/runtime/protocol"
 	"context"
 	"errors"
+	"slices"
 )
 
 func connectionMode(info containerInfo) string {
-	for _, v := range info.Config.Env {
-		if v == "WORKSPACE_CONNECTION_MODE=open" {
-			return "open"
-		}
+	if slices.Contains(info.Config.Env, "WORKSPACE_CONNECTION_MODE=open") {
+		return "open"
 	}
 	return "restricted"
 }
 func hasConnectionProxy(info containerInfo) bool {
-	for _, v := range info.Config.Env {
-		if v == "CONNECTION_PROXY_VERSION=2" {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(info.Config.Env, "CONNECTION_PROXY_VERSION=2")
 }
 func (c *Controller) ensureInternetNetwork(ctx context.Context, id string, spec protocol.WorkspaceSpec) (string, error) {
 	name := c.name(id) + "-internet"

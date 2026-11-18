@@ -30,15 +30,6 @@ func toolDefinitions() []any {
 	}
 }
 
-type limitedOutput struct{ b bytes.Buffer }
-
-func (o *limitedOutput) Write(p []byte) (int, error) {
-	n := len(p)
-	if remaining := 65536 - o.b.Len(); remaining > 0 {
-		o.b.Write(p[:min(remaining, len(p))])
-	}
-	return n, nil
-}
 func (m *Manager) tool(ctx context.Context, name string, raw json.RawMessage) string {
 	switch name {
 	case "read_file", "write_file", "list_files":
@@ -100,7 +91,7 @@ func (m *Manager) tool(ctx context.Context, name string, raw json.RawMessage) st
 			cmd.Env = egress.Environment(cmd.Env, m.cfg.InferenceURL, m.cfg.BrokerURL)
 		}
 		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-		out := &limitedOutput{}
+		out := shared.NewCappedOutput(64 << 10)
 		cmd.Stdout = out
 		cmd.Stderr = out
 		cmd.WaitDelay = time.Second
@@ -123,7 +114,7 @@ func (m *Manager) tool(ctx context.Context, name string, raw json.RawMessage) st
 				code = ee.ExitCode()
 			}
 		}
-		b, _ := json.Marshal(map[string]any{"exit_code": code, "output": out.b.String(), "timed_out": commandCtx.Err() != nil})
+		b, _ := json.Marshal(map[string]any{"exit_code": code, "output": string(out.Data), "timed_out": commandCtx.Err() != nil})
 		return string(b)
 	default:
 		return fmt.Sprintf(`{"error":"UNKNOWN_TOOL"}`)

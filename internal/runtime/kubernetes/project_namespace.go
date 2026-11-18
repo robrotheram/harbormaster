@@ -3,6 +3,7 @@ package kubernetes
 import (
 	"context"
 	"errors"
+	"maps"
 	"reflect"
 
 	"agent-workbench/internal/runtime/protocol"
@@ -24,10 +25,7 @@ func (k *Kubernetes) EnsureProjectNamespace(ctx context.Context, project string)
 	}
 	ns := object("v1", "Namespace", namespace)
 	delete(ns["metadata"].(map[string]any), "namespace")
-	nsLabels := map[string]any{}
-	for key, value := range labels {
-		nsLabels[key] = value
-	}
+	nsLabels := maps.Clone(labels)
 	nsLabels["pod-security.kubernetes.io/enforce"] = "restricted"
 	nsLabels["pod-security.kubernetes.io/enforce-version"] = "latest"
 	ns["metadata"].(map[string]any)["labels"] = nsLabels

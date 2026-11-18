@@ -7,12 +7,9 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"regexp"
 	"time"
 )
 
-var identifier = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$`)
-var keyPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$`)
 var invalid = errors.New("INVALID_REQUEST")
 
 type controlClient struct {

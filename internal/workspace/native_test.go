@@ -78,7 +78,7 @@ func TestNativeCancellationKillsProcess(t *testing.T) {
 	defer m.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
-	if _, code := m.runNativeTask(ctx, "claude", "wait", ""); code != "EXECUTION_INTERRUPTED" {
+	if _, code := m.runNativeTask(ctx, "claude", "wait", "", ""); code != "EXECUTION_INTERRUPTED" {
 		t.Fatal("native cancellation failed")
 	}
 }

@@ -3,6 +3,7 @@ package broker
 
 import (
 	"agent-workbench/internal/gateway"
+	"agent-workbench/internal/shared"
 	"bytes"
 	"context"
 	"crypto/tls"
@@ -10,7 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"regexp"
+	"slices"
 	"strings"
 	"time"
 )
@@ -54,14 +55,12 @@ type Input struct {
 	Parameters    map[string]json.RawMessage `json:"parameters"`
 }
 
-var namePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$`)
-
 func fixedPath(p string) bool {
 	if p == "" || strings.ContainsAny(p, "?#%\\") {
 		return false
 	}
 	for _, part := range strings.Split(p, "/") {
-		if part == "" || part == "." || part == ".." || !namePattern.MatchString(part) {
+		if part == "" || part == "." || part == ".." || !shared.ValidID(part) {
 			return false
 		}
 	}
@@ -97,11 +96,11 @@ func NewHandler(c Config) (http.Handler, error) {
 	}
 	endpoints := map[string]string{}
 	for name, op := range c.Operations {
-		if !namePattern.MatchString(name) {
+		if !shared.ValidID(name) {
 			return nil, gateway.ErrDenied
 		}
 		for key, p := range op.Parameters {
-			if !namePattern.MatchString(key) || (p.Type != "string" && p.Type != "number" && p.Type != "boolean") || p.MaxLength < 0 || p.MaxLength > 8192 {
+			if !shared.ValidID(key) || (p.Type != "string" && p.Type != "number" && p.Type != "boolean") || p.MaxLength < 0 || p.MaxLength > 8192 {
 				return nil, gateway.ErrDenied
 			}
 		}
@@ -128,7 +127,7 @@ func NewHandler(c Config) (http.Handler, error) {
 				return nil, gateway.ErrDenied
 			}
 			for _, caseID := range p.ApprovedCases {
-				if !namePattern.MatchString(caseID) {
+				if !shared.ValidID(caseID) {
 					return nil, gateway.ErrDenied
 				}
 			}
@@ -141,7 +140,7 @@ func NewHandler(c Config) (http.Handler, error) {
 	vaultOrigin := ""
 	if c.Mode == "upstream" {
 		u, err := gateway.HTTPSOrigin(c.VaultAddr)
-		if err != nil || c.VaultToken == "" || !namePattern.MatchString(c.Vault.Mount) {
+		if err != nil || c.VaultToken == "" || !shared.ValidID(c.Vault.Mount) {
 			return nil, gateway.ErrDenied
 		}
 		vaultOrigin = u.String()
@@ -152,11 +151,11 @@ func NewHandler(c Config) (http.Handler, error) {
 		vaultClient = &http.Client{Transport: tr, Timeout: 10 * time.Second, CheckRedirect: gateway.NoRedirect}
 	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { gateway.JSON(w, 200, map[string]string{"status": "ok"}) })
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { shared.JSON(w, 200, map[string]string{"status": "ok"}) })
 	mux.HandleFunc("POST /v1/operations/{operation}", func(w http.ResponseWriter, r *http.Request) {
 		id, err := gateway.Authenticate(r, c.Verify, "broker")
 		if err != nil {
-			gateway.Error(w, 401, "UNAUTHORIZED")
+			shared.Error(w, 401, "UNAUTHORIZED")
 			return
 		}
 		name := r.PathValue("operation")
@@ -164,46 +163,39 @@ func NewHandler(c Config) (http.Handler, error) {
 		policy, hasPrincipal := c.Principals[id.PrincipalID]
 		permission, hasPermission := policy.Operations[name]
 		if !ok || !hasPrincipal || !hasPermission {
-			gateway.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
+			shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
 			return
 		}
 		b, err := gateway.ReadBounded(r.Body, 64<<10)
 		if err != nil {
-			gateway.Error(w, 400, "INVALID_REQUEST")
+			shared.Error(w, 400, "INVALID_REQUEST")
 			return
 		}
 		var in Input
 		if gateway.Decode(b, &in) != nil || !validInput(in, op) {
-			gateway.Error(w, 400, "INVALID_REQUEST")
+			shared.Error(w, 400, "INVALID_REQUEST")
 			return
 		}
-		approved := false
-		for _, v := range permission.ApprovedCases {
-			if in.CaseID == v {
-				approved = true
-				break
-			}
-		}
-		if !approved {
-			gateway.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
+		if !slices.Contains(permission.ApprovedCases, in.CaseID) {
+			shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
 			return
 		}
 		if c.Mode == "fixture" {
-			gateway.JSON(w, 200, map[string]any{"mode": "fixture", "synthetic": true, "operation": name, "principal_id": id.PrincipalID, "workspace_id": id.WorkspaceID, "project_id": id.ProjectID, "case_id": in.CaseID, "parameters": in.Parameters})
+			shared.JSON(w, 200, map[string]any{"mode": "fixture", "synthetic": true, "operation": name, "principal_id": id.PrincipalID, "workspace_id": id.WorkspaceID, "project_id": id.ProjectID, "case_id": in.CaseID, "parameters": in.Parameters})
 			return
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 		defer cancel()
 		cert, err := fetchCertificate(ctx, vaultClient, vaultOrigin, c.Vault.Mount, permission.VaultPath, c.VaultToken)
 		if err != nil {
-			gateway.Error(w, 503, "UPSTREAM_UNAVAILABLE")
+			shared.Error(w, 503, "UPSTREAM_UNAVAILABLE")
 			return
 		}
 		// Each request has its own certificate and connection pool. An identity can
 		// never reuse a TLS session or connection authenticated as another identity.
 		tr, err := op.Network.Transport(&cert)
 		if err != nil {
-			gateway.Error(w, 503, "UPSTREAM_UNAVAILABLE")
+			shared.Error(w, 503, "UPSTREAM_UNAVAILABLE")
 			return
 		}
 		defer tr.CloseIdleConnections()
@@ -211,19 +203,19 @@ func NewHandler(c Config) (http.Handler, error) {
 		payload, _ := json.Marshal(map[string]any{"case_id": in.CaseID, "justification": in.Justification, "parameters": in.Parameters, "principal_id": id.PrincipalID, "workspace_id": id.WorkspaceID, "project_id": id.ProjectID})
 		req, err := http.NewRequestWithContext(ctx, op.Method, endpoints[name], bytes.NewReader(payload))
 		if err != nil {
-			gateway.Error(w, 503, "UPSTREAM_UNAVAILABLE")
+			shared.Error(w, 503, "UPSTREAM_UNAVAILABLE")
 			return
 		}
 		req.Header.Set("Content-Type", "application/json")
 		res, err := client.Do(req)
 		if err != nil {
-			gateway.Error(w, 503, "UPSTREAM_UNAVAILABLE")
+			shared.Error(w, 503, "UPSTREAM_UNAVAILABLE")
 			return
 		}
 		defer res.Body.Close()
 		response, err := gateway.ReadBounded(res.Body, 1<<20)
 		if err != nil || res.StatusCode < 200 || res.StatusCode >= 300 || !json.Valid(response) {
-			gateway.Error(w, 503, "UPSTREAM_UNAVAILABLE")
+			shared.Error(w, 503, "UPSTREAM_UNAVAILABLE")
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -234,7 +226,7 @@ func NewHandler(c Config) (http.Handler, error) {
 	return mux, nil
 }
 func validInput(in Input, op Operation) bool {
-	if in.Parameters == nil || !namePattern.MatchString(in.CaseID) || strings.TrimSpace(in.Justification) == "" || len(in.Justification) > 2048 || len(in.Parameters) > 32 {
+	if in.Parameters == nil || !shared.ValidID(in.CaseID) || strings.TrimSpace(in.Justification) == "" || len(in.Justification) > 2048 || len(in.Parameters) > 32 {
 		return false
 	}
 	for key, p := range op.Parameters {
@@ -265,16 +257,8 @@ func validInput(in Input, op Operation) bool {
 			if len(v) > limit {
 				return false
 			}
-			if len(p.Enum) > 0 {
-				found := false
-				for _, e := range p.Enum {
-					if v == e {
-						found = true
-					}
-				}
-				if !found {
-					return false
-				}
+			if len(p.Enum) > 0 && !slices.Contains(p.Enum, v) {
+				return false
 			}
 		case "number":
 			var v float64

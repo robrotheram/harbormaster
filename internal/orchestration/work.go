@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"time"
 
@@ -60,7 +61,7 @@ func (r Repository) CreateWork(ctx context.Context, item shared.WorkItem, key st
 		return item, false, err
 	}
 	stored, err := r.Work(ctx, item.ProjectID, item.ID)
-	if err == nil && (stored.Provider != item.Provider || stored.Model != item.Model || stored.WorkspaceID != item.WorkspaceID || stored.SpecificationPath != item.SpecificationPath || stored.SpecificationDigest != item.SpecificationDigest || stored.Kind != item.Kind || !sameArtifactPaths(stored.ArtifactPaths, item.ArtifactPaths)) {
+	if err == nil && (stored.Provider != item.Provider || stored.Model != item.Model || stored.WorkspaceID != item.WorkspaceID || stored.SpecificationPath != item.SpecificationPath || stored.SpecificationDigest != item.SpecificationDigest || stored.Kind != item.Kind || !slices.Equal(stored.ArtifactPaths, item.ArtifactPaths)) {
 		err = ErrConflict
 	}
 	return stored, n == 1, err
@@ -123,18 +124,6 @@ func (r Repository) CancelDraft(ctx context.Context, project, id string, now tim
 		err = ErrConflict
 	}
 	return item, err
-}
-
-func sameArtifactPaths(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }
 
 // ClaimWorkRequest retains only a fingerprint, allowing partial provisioning to

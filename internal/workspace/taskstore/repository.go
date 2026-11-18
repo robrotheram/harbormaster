@@ -102,20 +102,12 @@ func (r *Repository) scan(row scanner) (shared.Task, error) {
 func (r *Repository) Get(ctx context.Context, id string) (shared.Task, error) {
 	return r.scan(r.db.QueryRowContext(ctx, `SELECT id,state,error_code,created_at,updated_at FROM tasks WHERE id=?`, id))
 }
-func (r *Repository) FileAcceptance(ctx context.Context, key, path, provider string, digest ...string) (shared.Task, error) {
+func (r *Repository) FileAcceptance(ctx context.Context, key, path, provider, digest, model string) (shared.Task, error) {
 	var oldPath, oldProvider, id, oldDigest, oldModel string
 	if err := r.db.QueryRowContext(ctx, `SELECT instruction_path,provider,task_id,specification_digest,model FROM file_acceptances WHERE idem_key=?`, key).Scan(&oldPath, &oldProvider, &id, &oldDigest, &oldModel); err != nil {
 		return shared.Task{}, err
 	}
-	requested := ""
-	if len(digest) > 0 {
-		requested = digest[0]
-	}
-	model := ""
-	if len(digest) > 1 {
-		model = digest[1]
-	}
-	if model != oldModel || path != oldPath || provider != oldProvider || requested != oldDigest {
+	if model != oldModel || path != oldPath || provider != oldProvider || digest != oldDigest {
 		return shared.Task{}, ErrConflict
 	}
 	return r.Get(ctx, id)

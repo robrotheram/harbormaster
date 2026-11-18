@@ -2,6 +2,7 @@ package shared
 
 import (
 	"net"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -61,12 +62,7 @@ func (p ConnectionPolicy) Allows(destination string) bool {
 	if p.Mode != "allowlist" {
 		return false
 	}
-	for _, v := range p.Destinations {
-		if v == destination {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(p.Destinations, destination)
 }
 func (w Workspace) EffectiveConnections() ConnectionPolicy {
 	if w.Connections != nil {

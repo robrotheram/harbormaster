@@ -3,6 +3,7 @@ package gateway
 // Native CLI requests retain their provider protocol. Subscription credentials
 // never cross this boundary into a workspace; its bearer is a workspace grant.
 import (
+	"agent-workbench/internal/shared"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -11,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -127,23 +129,18 @@ func registerSubscriptions(mux *http.ServeMux, c Config) error {
 		handler := func(w http.ResponseWriter, r *http.Request) {
 			id, err := Authenticate(r, c.Verify, "inference")
 			if err != nil {
-				Error(w, 401, "UNAUTHORIZED")
+				shared.Error(w, 401, "UNAUTHORIZED")
 				return
 			}
-			allowed := c.Subscriptions.UserAccounts
-			for _, p := range c.Subscriptions.Principals[id.PrincipalID] {
-				if p == provider {
-					allowed = true
-				}
-			}
+			allowed := c.Subscriptions.UserAccounts || slices.Contains(c.Subscriptions.Principals[id.PrincipalID], provider)
 			if !allowed || !safeSubscriptionPart(id.PrincipalID) {
-				Error(w, 403, "NOT_FOUND_OR_FORBIDDEN")
+				shared.Error(w, 403, "NOT_FOUND_OR_FORBIDDEN")
 				return
 			}
 			query := r.URL.Query()
 			for k, v := range query {
 				if provider != "claude" || k != "beta" || len(v) != 1 || v[0] != "true" {
-					Error(w, 400, "INVALID_REQUEST")
+					shared.Error(w, 400, "INVALID_REQUEST")
 					return
 				}
 			}
@@ -152,7 +149,7 @@ func registerSubscriptions(mux *http.ServeMux, c Config) error {
 				Model string `json:"model"`
 			}
 			if err != nil || json.Unmarshal(body, &fields) != nil || !models[fields.Model] {
-				Error(w, 400, "MODEL_NOT_ALLOWED")
+				shared.Error(w, 400, "MODEL_NOT_ALLOWED")
 				return
 			}
 			// The path is selected by a registered handler; no caller URL, Vault
@@ -164,23 +161,23 @@ func registerSubscriptions(mux *http.ServeMux, c Config) error {
 				var resolveErr error
 				cred, resolveErr = c.ResolveSubscription(ctx, id.WorkspaceID, provider)
 				if resolveErr != nil {
-					Error(w, 503, "PROVIDER_LOGIN_REQUIRED")
+					shared.Error(w, 503, "PROVIDER_LOGIN_REQUIRED")
 					return
 				}
 			} else {
 				if renew(ctx) != nil {
-					Error(w, 503, "CREDENTIAL_UNAVAILABLE")
+					shared.Error(w, 503, "CREDENTIAL_UNAVAILABLE")
 					return
 				}
 				vreq, err := http.NewRequestWithContext(ctx, "GET", strings.TrimRight(c.SubscriptionVaultAddr, "/")+"/v1/subscription-auth/data/"+id.PrincipalID+"/"+provider, nil)
 				if err != nil {
-					Error(w, 503, "CREDENTIAL_UNAVAILABLE")
+					shared.Error(w, 503, "CREDENTIAL_UNAVAILABLE")
 					return
 				}
 				vreq.Header.Set("X-Vault-Token", c.SubscriptionVaultToken)
 				vres, err := vc.Do(vreq)
 				if err != nil {
-					Error(w, 503, "CREDENTIAL_UNAVAILABLE")
+					shared.Error(w, 503, "CREDENTIAL_UNAVAILABLE")
 					return
 				}
 				vb, verr := ReadBounded(vres.Body, 64<<10)
@@ -191,13 +188,13 @@ func registerSubscriptions(mux *http.ServeMux, c Config) error {
 					} `json:"data"`
 				}
 				if verr != nil || vres.StatusCode != 200 || json.Unmarshal(vb, &secret) != nil {
-					Error(w, 503, "PROVIDER_LOGIN_REQUIRED")
+					shared.Error(w, 503, "PROVIDER_LOGIN_REQUIRED")
 					return
 				}
 				cred = secret.Data.Data
 			}
 			if cred.AccessToken == "" || strings.ContainsAny(cred.AccessToken, " \r\n\t") || cred.ExpiresAt <= time.Now().Add(30*time.Second).Unix() {
-				Error(w, 503, "PROVIDER_LOGIN_REQUIRED")
+				shared.Error(w, 503, "PROVIDER_LOGIN_REQUIRED")
 				return
 			}
 			upstreamCtx, stop := context.WithDeadline(ctx, time.Unix(cred.ExpiresAt, 0))
@@ -207,7 +204,7 @@ func registerSubscriptions(mux *http.ServeMux, c Config) error {
 			// otherwise a healthy long generation is truncated during streaming.
 			deadline, _ := upstreamCtx.Deadline()
 			if err := http.NewResponseController(w).SetWriteDeadline(deadline); err != nil && !errors.Is(err, http.ErrNotSupported) {
-				Error(w, 503, "UPSTREAM_UNAVAILABLE")
+				shared.Error(w, 503, "UPSTREAM_UNAVAILABLE")
 				return
 			}
 			// A stopped/revoked workspace loses an already-open stream as well.
@@ -240,7 +237,7 @@ func registerSubscriptions(mux *http.ServeMux, c Config) error {
 			}
 			req, err := http.NewRequestWithContext(upstreamCtx, "POST", upstream, strings.NewReader(string(body)))
 			if err != nil {
-				Error(w, 503, "UPSTREAM_UNAVAILABLE")
+				shared.Error(w, 503, "UPSTREAM_UNAVAILABLE")
 				return
 			}
 			req.Header.Set("Content-Type", "application/json")
@@ -248,7 +245,7 @@ func registerSubscriptions(mux *http.ServeMux, c Config) error {
 			req.Header.Set("Authorization", "Bearer "+cred.AccessToken)
 			if provider == "codex" {
 				if cred.AccountID == "" || strings.ContainsAny(cred.AccountID, "\r\n") {
-					Error(w, 503, "PROVIDER_LOGIN_REQUIRED")
+					shared.Error(w, 503, "PROVIDER_LOGIN_REQUIRED")
 					return
 				}
 				req.Header.Set("ChatGPT-Account-Id", cred.AccountID)
@@ -266,15 +263,15 @@ func registerSubscriptions(mux *http.ServeMux, c Config) error {
 			}
 			res, err := client.Do(req)
 			if err != nil {
-				Error(w, 503, "UPSTREAM_UNAVAILABLE")
+				shared.Error(w, 503, "UPSTREAM_UNAVAILABLE")
 				return
 			}
 			defer res.Body.Close()
 			if res.StatusCode != 200 {
 				if res.StatusCode == 401 || res.StatusCode == 403 {
-					Error(w, 503, "PROVIDER_LOGIN_REQUIRED")
+					shared.Error(w, 503, "PROVIDER_LOGIN_REQUIRED")
 				} else {
-					Error(w, 503, "UPSTREAM_REJECTED")
+					shared.Error(w, 503, "UPSTREAM_REJECTED")
 				}
 				return
 			}

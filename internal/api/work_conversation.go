@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -145,13 +146,7 @@ func (s *Server) registerWorkConversation(mux *http.ServeMux, repo orchestration
 				shared.Error(w, 503, "MODEL_CATALOG_UNAVAILABLE")
 				return
 			}
-			allowed := false
-			for _, option := range catalog.Items {
-				if option == *in.Selection {
-					allowed = true
-				}
-			}
-			if !allowed {
+			if !slices.Contains(catalog.Items, *in.Selection) {
 				shared.Error(w, 400, "MODEL_NOT_AVAILABLE")
 				return
 			}

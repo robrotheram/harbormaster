@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"slices"
 
 	"agent-workbench/internal/runtime/protocol"
 	"agent-workbench/internal/shared"
@@ -108,13 +109,7 @@ func (k *Kubernetes) allowedPolicy(project string, p shared.ConnectionPolicy) bo
 		return false
 	}
 	for _, d := range p.Destinations {
-		found := false
-		for _, a := range k.cfg.ProjectAllowlists[project] {
-			if a == d {
-				found = true
-			}
-		}
-		if !found {
+		if !slices.Contains(k.cfg.ProjectAllowlists[project], d) {
 			return false
 		}
 	}

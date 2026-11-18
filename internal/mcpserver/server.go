@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -165,20 +166,12 @@ func allowedAuthority(s string, hosts []string) bool {
 	if !validAuthority(s) {
 		return false
 	}
-	for _, h := range hosts {
-		if s == h {
-			return true
-		}
-		// A hostname-only entry permits any explicit local listening port; an
-		// entry with a port is exact and never widens to other ports.
-		if !strings.Contains(h, ":") {
-			host, _, e := net.SplitHostPort(s)
-			if e == nil && host == h {
-				return true
-			}
-		}
-	}
-	return false
+	// A hostname-only entry permits any explicit local listening port; an
+	// entry with a port is exact and never widens to other ports.
+	host, _, err := net.SplitHostPort(s)
+	return slices.ContainsFunc(hosts, func(h string) bool {
+		return s == h || (err == nil && host == h && !strings.Contains(h, ":"))
+	})
 }
 func allowedOrigin(r *http.Request, hosts []string) bool {
 	values := r.Header.Values("Origin")

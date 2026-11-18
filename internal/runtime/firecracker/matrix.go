@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
@@ -192,13 +193,7 @@ func matrixRouteAllowed(method, path string, config shared.HermesMatrix) bool {
 	if parts[3] != "rooms" || len(parts) < 6 {
 		return false
 	}
-	approved := false
-	for _, id := range config.RoomIDs {
-		if id == parts[4] {
-			approved = true
-		}
-	}
-	if !approved {
+	if !slices.Contains(config.RoomIDs, parts[4]) {
 		return false
 	}
 	operation := parts[5]

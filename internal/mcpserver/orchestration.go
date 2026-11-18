@@ -54,7 +54,7 @@ func registerOrchestrationTools(s *mcp.Server, c *controlClient) {
 		return
 	})
 	add(s, "schedule_run_now", "Queue one idempotent schedule occurrence.", func(ctx context.Context, in ScheduleAction) (out shared.Run, err error) {
-		if !identifier.MatchString(in.ScheduleID) || !keyPattern.MatchString(in.IdempotencyKey) {
+		if !shared.ValidID(in.ScheduleID) || !shared.ValidKey(in.IdempotencyKey) {
 			return out, invalid
 		}
 		err = c.do(ctx, "POST", "/v1/schedules/"+in.ScheduleID+"/run-now", map[string]string{"idempotency_key": in.IdempotencyKey}, &out)
@@ -62,7 +62,7 @@ func registerOrchestrationTools(s *mcp.Server, c *controlClient) {
 	})
 	for _, action := range []string{"enable", "disable"} {
 		add(s, "schedule_"+action, "Change whether future schedule occurrences are enabled.", func(ctx context.Context, in ScheduleAction) (out shared.Schedule, err error) {
-			if !identifier.MatchString(in.ScheduleID) || !keyPattern.MatchString(in.IdempotencyKey) {
+			if !shared.ValidID(in.ScheduleID) || !shared.ValidKey(in.IdempotencyKey) {
 				return out, invalid
 			}
 			err = c.do(ctx, "POST", "/v1/schedules/"+in.ScheduleID+"/"+action, map[string]string{"idempotency_key": in.IdempotencyKey}, &out)
