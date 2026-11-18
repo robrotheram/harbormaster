@@ -154,7 +154,7 @@ func (s *Store) saveWorkspace(ctx context.Context, w shared.Workspace) error {
 		return err
 	}
 	old = shared.NormalizeWorkspace(old)
-	if old.ProjectID != w.ProjectID || old.HomeID != w.HomeID || old.AgentKind != w.AgentKind || old.ParentID != w.ParentID || old.TemplateID != w.TemplateID || old.ProfileID != w.ProfileID || old.Branch != w.Branch {
+	if old.ProjectID != w.ProjectID || old.HomeID != w.HomeID || old.AgentKind != w.AgentKind || old.ParentID != w.ParentID || old.TemplateID != w.TemplateID || old.Branch != w.Branch {
 		return ErrOwnership
 	}
 	data, err := json.Marshal(w)

@@ -45,6 +45,9 @@ func TestPostgresMetadataContract(t *testing.T) {
 	q := u.Query()
 	q.Set("search_path", schema)
 	u.RawQuery = q.Encode()
+	t.Run("upgrade tool-profile catalogs", func(t *testing.T) {
+		checkToolProfileCleanupUpgrade(t, ctx, u.String())
+	})
 	s, err := Open(ctx, u.String())
 	if err != nil {
 		t.Fatal("migrate PostgreSQL metadata:", err)

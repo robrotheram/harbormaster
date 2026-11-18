@@ -1,13 +1,14 @@
 package store
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+
 	"agent-workbench/internal/coordination"
 	"agent-workbench/internal/orchestration"
-	"context"
-
-	"fmt"
 	"github.com/jackc/pgx/v5/stdlib"
-	"strings"
 )
 
 // Migrations run before listeners or workers start. Existing prototype schemas
@@ -58,6 +59,7 @@ func (s *Store) migrate(ctx context.Context) error {
 		{15, s.initMembership},
 		{16, s.initWorkReferences},
 		{17, s.migrateWorkspaceConnections},
+		{18, s.retireToolProfiles},
 	}
 	for _, step := range steps {
 		var applied int
@@ -125,4 +127,63 @@ func (s *Store) initMetadata(ctx context.Context) error {
 		return e
 	}
 	return nil
+}
+
+// Older records used the profile marker to select T3 implicitly. Persist that
+// selection before normalizing all other workspaces without a kind to Codex.
+func (s *Store) retireToolProfiles(ctx context.Context) error {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	rows, err := tx.QueryContext(ctx, `SELECT id, metadata FROM workspaces WHERE metadata LIKE '%"profile_id"%'`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	updates := make(map[string]string)
+	for rows.Next() {
+		var id, raw string
+		if err := rows.Scan(&id, &raw); err != nil {
+			return err
+		}
+		var legacy struct {
+			ProfileID string `json:"profile_id"`
+			AgentKind string `json:"agent_kind"`
+		}
+		if err := json.Unmarshal([]byte(raw), &legacy); err != nil {
+			return fmt.Errorf("workspace %s: %w", id, err)
+		}
+		if legacy.ProfileID == "" || legacy.AgentKind != "" {
+			continue
+		}
+		var metadata map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(raw), &metadata); err != nil {
+			return err
+		}
+		metadata["agent_kind"] = json.RawMessage(`"t3"`)
+		data, err := json.Marshal(metadata)
+		if err != nil {
+			return err
+		}
+		updates[id] = string(data)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for id, metadata := range updates {
+		if _, err := tx.ExecContext(ctx, `UPDATE workspaces SET metadata=$1 WHERE id=$2`, metadata, id); err != nil {
+			return err
+		}
+	}
+	for _, query := range []string{`DROP TABLE IF EXISTS tool_profiles`, `DROP TABLE IF EXISTS agent_homes`} {
+		if _, err := tx.ExecContext(ctx, query); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }

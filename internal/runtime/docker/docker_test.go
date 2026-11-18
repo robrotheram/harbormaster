@@ -235,3 +235,42 @@ func TestOpenNetworkIsExplicitAndRestrictiveTransitionNeedsStop(t *testing.T) {
 		t.Fatal(r.Code, r.Body)
 	}
 }
+
+func TestRetiredToolConfigUpgradeRefreshesOnlyStoppedContainers(t *testing.T) {
+	c, engine := controller(t, false)
+	request := func(action string) {
+		t.Helper()
+		response := controllerRequest(c, "POST", "/v1/workspaces/ws_test/"+action, c.cfg.Token, "")
+		if response.Code != 200 {
+			t.Fatal(action, response.Code, response.Body.String())
+		}
+	}
+
+	request("start")
+	oldMounts := engine.spec["HostConfig"].(map[string]any)["Mounts"]
+	engine.spec["Env"] = append(engine.spec["Env"].([]any), "WORKSPACE_MCPS=[]")
+	request("start")
+	if engine.removed != 0 {
+		t.Fatal("replaced a running workspace")
+	}
+
+	request("stop")
+	request("start")
+	if engine.removed != 1 || engine.createCount != 2 {
+		t.Fatal("stopped workspace did not receive current configuration")
+	}
+	if !bytes.Equal(mustJSON(oldMounts), mustJSON(engine.spec["HostConfig"].(map[string]any)["Mounts"])) {
+		t.Fatal("upgrade changed the persistent volume")
+	}
+	for _, env := range engine.spec["Env"].([]any) {
+		if strings.HasPrefix(env.(string), "WORKSPACE_MCPS=") {
+			t.Fatal("replacement retained the retired tool configuration")
+		}
+	}
+
+	request("stop")
+	request("start")
+	if engine.removed != 1 || engine.createCount != 2 {
+		t.Fatal("replaced a workspace with current configuration")
+	}
+}
