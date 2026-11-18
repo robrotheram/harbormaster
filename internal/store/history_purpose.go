@@ -7,11 +7,6 @@ import (
 	"time"
 )
 
-func (s *Store) initHistoryPurpose(ctx context.Context) error {
-	_, err := s.DB.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS history_purpose(workspace_id TEXT NOT NULL REFERENCES workspaces(id),episode_id TEXT NOT NULL,purpose TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(workspace_id,episode_id))`)
-	return err
-}
-
 // Operator annotations describe a run's purpose without altering its transcript.
 func (s *Store) SaveHistoryPurpose(ctx context.Context, workspace, episode, purpose string) error {
 	if !shared.ValidID(workspace) || !shared.ValidID(episode) || (purpose != "test" && purpose != "normal") {

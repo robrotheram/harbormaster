@@ -14,12 +14,6 @@ import (
 
 var ErrInvalidWork = errors.New("INVALID_REQUEST")
 
-// InitWork is called only by the startup migration owner.
-func (r Repository) InitWork(ctx context.Context) error {
-	_, err := r.DB.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS work_items (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, create_key TEXT NOT NULL, metadata TEXT NOT NULL, UNIQUE(project_id,create_key))`)
-	return err
-}
-
 // CreateWork durably creates a draft. Acceptance/execution is deliberately a
 // separate operation: saving a reference does not prove its bytes were verified.
 func (r Repository) CreateWork(ctx context.Context, item shared.WorkItem, key string) (shared.WorkItem, bool, error) {
@@ -149,11 +143,5 @@ func (r Repository) ClaimWorkRequest(ctx context.Context, project, key, fingerpr
 	if err == nil && prior != fingerprint {
 		return ErrConflict
 	}
-	return err
-}
-
-// InitWorkRequests is an additive startup migration for existing work schemas.
-func (r Repository) InitWorkRequests(ctx context.Context) error {
-	_, err := r.DB.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS work_create_requests (project_id TEXT NOT NULL,create_key TEXT NOT NULL,fingerprint TEXT NOT NULL,PRIMARY KEY(project_id,create_key))`)
 	return err
 }

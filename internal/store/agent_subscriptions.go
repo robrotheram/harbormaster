@@ -6,6 +6,8 @@ import (
 	"errors"
 )
 
+var ErrSubscriptionInUse = errors.New("SUBSCRIPTION_IN_USE")
+
 type AgentSubscription struct {
 	ID         string `json:"id"`
 	Name       string `json:"name"`
@@ -13,27 +15,6 @@ type AgentSubscription struct {
 	Credential string `json:"-"`
 }
 
-func (s *Store) initAgentSubscriptions(ctx context.Context) error {
-	tx, err := s.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	for _, q := range []string{
-		`CREATE TABLE IF NOT EXISTS agent_subscriptions(owner TEXT NOT NULL,id TEXT NOT NULL,name TEXT NOT NULL,provider TEXT NOT NULL,credential TEXT NOT NULL,PRIMARY KEY(owner,id))`,
-		`INSERT INTO agent_subscriptions(owner,id,name,provider,credential) SELECT owner,'default','Codex subscription','codex',credential FROM user_subscriptions WHERE true ON CONFLICT(owner,id) DO NOTHING`,
-		`CREATE TABLE IF NOT EXISTS worker_agent_subscriptions(workspace_id TEXT NOT NULL,provider TEXT NOT NULL,owner TEXT NOT NULL,subscription_id TEXT NOT NULL,PRIMARY KEY(workspace_id,provider))`,
-		`INSERT INTO worker_agent_subscriptions(workspace_id,provider,owner,subscription_id) SELECT workspace_id,'codex',owner,'default' FROM worker_subscriptions WHERE true ON CONFLICT(workspace_id,provider) DO NOTHING`,
-		`DROP TABLE worker_subscriptions`, `DROP TABLE user_subscriptions`,
-		// Commit the version marker with the destructive migration so a restart cannot replay it.
-		`INSERT INTO schema_migrations(version) VALUES(14) ON CONFLICT(version) DO NOTHING`,
-	} {
-		if _, err = tx.ExecContext(ctx, q); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
-}
 func (s *Store) AgentSubscription(ctx context.Context, owner, id string) (AgentSubscription, error) {
 	var v AgentSubscription
 	err := s.DB.QueryRowContext(ctx, s.query(`SELECT id,name,provider,credential FROM agent_subscriptions WHERE owner=? AND id=?`), owner, id).Scan(&v.ID, &v.Name, &v.Provider, &v.Credential)

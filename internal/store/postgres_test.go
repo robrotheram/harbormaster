@@ -45,14 +45,19 @@ func TestPostgresMetadataContract(t *testing.T) {
 	q := u.Query()
 	q.Set("search_path", schema)
 	u.RawQuery = q.Encode()
-	t.Run("upgrade tool-profile catalogs", func(t *testing.T) {
-		checkToolProfileCleanupUpgrade(t, ctx, u.String())
-	})
 	s, err := Open(ctx, u.String())
 	if err != nil {
 		t.Fatal("migrate PostgreSQL metadata:", err)
 	}
-	defer func() { s.DB.Close() }()
+	defer func() {
+		if s != nil {
+			s.DB.Close()
+		}
+	}()
+	var count, version int
+	if err := s.DB.QueryRowContext(ctx, `SELECT count(*), max(version) FROM schema_migrations`).Scan(&count, &version); err != nil || count != 1 || version != 1 {
+		t.Fatal("expected PostgreSQL baseline version 1", count, version, err)
+	}
 
 	now := time.Now().UTC()
 	project := shared.Project{ID: "project_test", Name: "Test project", CreatedAt: now}
@@ -125,7 +130,4 @@ func TestPostgresMetadataContract(t *testing.T) {
 	if got, err := s.Workspace(ctx, w.ID); err != nil || got.HomeID != w.HomeID || got.ProjectID != project.ID {
 		t.Fatal("workspace ownership did not survive reopen", err)
 	}
-	t.Run("workspace connection migration", func(t *testing.T) {
-		checkWorkspaceConnectionMigration(t, ctx, s)
-	})
 }

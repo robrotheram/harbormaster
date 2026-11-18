@@ -25,56 +25,14 @@ type Repository struct {
 
 func New(db *sql.DB, workspace string) *Repository { return &Repository{db: db, workspace: workspace} }
 
-func (r *Repository) Init(ctx context.Context) error {
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	for _, q := range []string{
-		`CREATE TABLE IF NOT EXISTS tasks(id TEXT PRIMARY KEY,idem_key TEXT UNIQUE NOT NULL,fingerprint TEXT NOT NULL,instruction TEXT NOT NULL,state TEXT NOT NULL,result TEXT NOT NULL DEFAULT '',messages TEXT NOT NULL DEFAULT '[]',error_code TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL,updated_at TEXT NOT NULL)`,
-		`CREATE TABLE IF NOT EXISTS file_acceptances(idem_key TEXT PRIMARY KEY,instruction_path TEXT NOT NULL,provider TEXT NOT NULL,task_id TEXT NOT NULL)`,
-		`UPDATE tasks SET state='failed',error_code='INTERRUPTED',updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE state IN ('queued','running','cancel_requested')`,
-	} {
-		if _, err = tx.ExecContext(ctx, q); err != nil {
-			return err
-		}
-	}
-	// Additive migration: old receipts retain the empty digest contract.
-	var count, modelCount int
-	rows, err := tx.QueryContext(ctx, `PRAGMA table_info(file_acceptances)`)
-	if err != nil {
-		return err
-	}
-	for rows.Next() {
-		var cid, nn, pk int
-		var name, typ string
-		var def any
-		if err := rows.Scan(&cid, &name, &typ, &nn, &def, &pk); err != nil {
-			rows.Close()
-			return err
-		}
-		if name == "model" {
-			modelCount++
-		}
-		if name == "specification_digest" {
-			count++
-		}
-	}
-	if err := rows.Close(); err != nil {
-		return err
-	}
-	if count == 0 {
-		if _, err := tx.ExecContext(ctx, `ALTER TABLE file_acceptances ADD COLUMN specification_digest TEXT NOT NULL DEFAULT ''`); err != nil {
-			return err
-		}
-	}
-	if modelCount == 0 {
-		if _, err := tx.ExecContext(ctx, `ALTER TABLE file_acceptances ADD COLUMN model TEXT NOT NULL DEFAULT ''`); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
+// Schema defines the task tables in the workspace database.
+const Schema = `CREATE TABLE tasks(id TEXT PRIMARY KEY,idem_key TEXT UNIQUE NOT NULL,fingerprint TEXT NOT NULL,instruction TEXT NOT NULL,state TEXT NOT NULL,result TEXT NOT NULL DEFAULT '',messages TEXT NOT NULL DEFAULT '[]',error_code TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
+CREATE TABLE file_acceptances(idem_key TEXT PRIMARY KEY,instruction_path TEXT NOT NULL,provider TEXT NOT NULL,task_id TEXT NOT NULL,specification_digest TEXT NOT NULL DEFAULT '',model TEXT NOT NULL DEFAULT '');`
+
+// RecoverInterrupted fails in-flight tasks without replaying them.
+func RecoverInterrupted(ctx context.Context, tx *sql.Tx) error {
+	_, err := tx.ExecContext(ctx, `UPDATE tasks SET state='failed',error_code='INTERRUPTED',updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE state IN ('queued','running','cancel_requested')`)
+	return err
 }
 
 type Submission struct{ Instruction, Key, Provider, Model, SourcePath, SpecificationDigest string }

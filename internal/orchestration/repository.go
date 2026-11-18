@@ -16,19 +16,6 @@ import (
 
 type Repository struct{ DB *sql.DB }
 
-func (r Repository) Init(ctx context.Context) error {
-	for _, q := range []string{
-		`CREATE TABLE IF NOT EXISTS schedules (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, create_key TEXT NOT NULL, metadata TEXT NOT NULL, UNIQUE(project_id,create_key))`,
-		`CREATE TABLE IF NOT EXISTS orchestration_runs (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, schedule_id TEXT NOT NULL, state TEXT NOT NULL, created_at TEXT NOT NULL, metadata TEXT NOT NULL)`,
-		`CREATE INDEX IF NOT EXISTS orchestration_runs_state ON orchestration_runs(state,created_at)`,
-	} {
-		if _, err := r.DB.ExecContext(ctx, q); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func (r Repository) Schedules(ctx context.Context, project string) ([]shared.Schedule, error) {
 	q := `SELECT metadata FROM schedules`
 	args := []any{}

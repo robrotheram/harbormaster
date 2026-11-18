@@ -15,10 +15,6 @@ type ForgeAccount struct {
 	Managed  bool `json:"managed"`
 }
 
-func (s *Store) initForgeAccounts(ctx context.Context) error {
-	_, err := s.DB.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS forge_accounts(name TEXT PRIMARY KEY, revision INTEGER NOT NULL, metadata TEXT NOT NULL, credential TEXT NOT NULL)`)
-	return err
-}
 func (s *Store) ForgeAccounts(ctx context.Context) ([]ForgeAccount, error) {
 	rows, err := s.DB.QueryContext(ctx, `SELECT metadata FROM forge_accounts ORDER BY name`)
 	if err != nil {

@@ -78,10 +78,8 @@ func TestWorkExecutionRecoveryReviewAndRetry(t *testing.T) {
 		t.Fatal(err)
 	}
 	repo := Repository{DB: db}
-	for _, init := range []func(context.Context) error{repo.Init, repo.InitWork, repo.InitWorkAttempts} {
-		if err = init(ctx); err != nil {
-			t.Fatal(err)
-		}
+	if _, err := repo.DB.ExecContext(ctx, Schema); err != nil {
+		t.Fatal(err)
 	}
 	item, _, err := repo.CreateWork(ctx, shared.WorkItem{Provider: "claude", Model: "chosen-model", ProjectID: "project_a", WorkspaceID: "ws_a", ArtifactPaths: []string{"result.md"}, SpecificationPath: "work.json", SpecificationDigest: strings.Repeat("a", 64), Kind: "research", CreatedAt: time.Now()}, "create")
 	if err != nil {
@@ -214,10 +212,8 @@ func TestAttemptStorageFailureIsNotReportedAsStateConflict(t *testing.T) {
 	defer db.Close()
 	ctx := context.Background()
 	repo := Repository{DB: db}
-	for _, init := range []func(context.Context) error{repo.InitWork, repo.InitWorkAttempts} {
-		if err = init(ctx); err != nil {
-			t.Fatal(err)
-		}
+	if _, err := repo.DB.ExecContext(ctx, Schema); err != nil {
+		t.Fatal(err)
 	}
 	item, _, err := repo.CreateWork(ctx, shared.WorkItem{ProjectID: "project", WorkspaceID: "workspace", SpecificationPath: "work.md", SpecificationDigest: strings.Repeat("a", 64), Kind: "research", CreatedAt: time.Now()}, "create")
 	if err != nil {
@@ -266,10 +262,8 @@ func TestUncertainDispatchCancellationSurvivesRetryableRejection(t *testing.T) {
 			}
 			defer db.Close()
 			repo := Repository{DB: db}
-			for _, init := range []func(context.Context) error{repo.Init, repo.InitWork, repo.InitWorkAttempts} {
-				if err = init(ctx); err != nil {
-					t.Fatal(err)
-				}
+			if _, err := repo.DB.ExecContext(ctx, Schema); err != nil {
+				t.Fatal(err)
 			}
 			item, _, err := repo.CreateWork(ctx, shared.WorkItem{ProjectID: "project_a", WorkspaceID: "ws_a", SpecificationPath: "work.md", SpecificationDigest: strings.Repeat("a", 64), Kind: "software", CreatedAt: time.Now()}, "create")
 			if err != nil {
@@ -326,10 +320,8 @@ func TestDefaultModelDispatchRemainsCompatibleWithInstalledWorkers(t *testing.T)
 	}
 	defer db.Close()
 	repo := Repository{DB: db}
-	for _, init := range []func(context.Context) error{repo.Init, repo.InitWork, repo.InitWorkAttempts} {
-		if err = init(ctx); err != nil {
-			t.Fatal(err)
-		}
+	if _, err := repo.DB.ExecContext(ctx, Schema); err != nil {
+		t.Fatal(err)
 	}
 	item, _, err := repo.CreateWork(ctx, shared.WorkItem{ProjectID: "project_a", WorkspaceID: "ws_a", SpecificationPath: "work.md", SpecificationDigest: strings.Repeat("a", 64), Kind: "software", CreatedAt: time.Now()}, "create")
 	if err != nil {

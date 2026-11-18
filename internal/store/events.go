@@ -6,13 +6,6 @@ import (
 	"encoding/json"
 )
 
-func (s *Store) initEvents(ctx context.Context) error {
-	_, e := s.DB.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS workspace_events(workspace_id TEXT NOT NULL REFERENCES workspaces(id), project_id TEXT NOT NULL,id TEXT NOT NULL,at TEXT NOT NULL,body TEXT NOT NULL,PRIMARY KEY(workspace_id,id))`)
-	if e == nil {
-		_, e = s.DB.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS workspace_events_project_time ON workspace_events(project_id,at)`)
-	}
-	return e
-}
 func (s *Store) SaveEvents(ctx context.Context, w shared.Workspace, events []shared.ActivityEvent) error {
 	tx, e := s.DB.BeginTx(ctx, nil)
 	if e != nil {

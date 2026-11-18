@@ -8,11 +8,6 @@ import (
 	"time"
 )
 
-func (s *Store) initWorkReviewHistory(ctx context.Context) error {
-	_, err := s.DB.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS work_review_history(id TEXT PRIMARY KEY,project_id TEXT NOT NULL,work_item_id TEXT NOT NULL,attempt_id TEXT NOT NULL,decision TEXT NOT NULL,at TEXT NOT NULL)`)
-	return err
-}
-
 // MoveBoardWork changes planning and task status together. It retains the last
 // decision, clears the current review, and never creates or dispatches an attempt.
 func (s *Store) MoveBoardWork(ctx context.Context, board BoardItem, expected int, previous shared.WorkItem, now time.Time) (shared.WorkItem, error) {

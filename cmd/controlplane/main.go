@@ -7,6 +7,7 @@ import (
 	"agent-workbench/internal/store"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"os"
@@ -36,7 +37,11 @@ func main() {
 	defer cancel()
 	db, e := store.Open(ctx, dsn)
 	if e != nil {
-		slog.Error("metadata database unavailable")
+		if errors.Is(e, store.ErrPreReleaseSchema) {
+			slog.Error(store.ErrPreReleaseSchema.Error())
+		} else {
+			slog.Error("metadata database unavailable")
+		}
 		os.Exit(1)
 	}
 	defer db.DB.Close()

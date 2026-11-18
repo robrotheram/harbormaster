@@ -19,7 +19,7 @@ func TestDueDeliveryRollsBackBothOccurrenceAndTrigger(t *testing.T) {
 	}
 	defer db.Close()
 	repo := Repository{DB: db}
-	if err = repo.Init(ctx); err != nil {
+	if _, err = repo.DB.ExecContext(ctx, Schema); err != nil {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC()
