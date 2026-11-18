@@ -216,7 +216,7 @@ func NewInteractiveHandler(readURL, controlURL, token string) (http.Handler, err
 			if parts[0] == "board" && len(parts) <= 2 {
 				limit = 100000
 			}
-			if path == "/subscription" || path == "/subscriptions" || strings.HasPrefix(path, "/subscriptions/") {
+			if path == "/subscriptions" || strings.HasPrefix(path, "/subscriptions/") {
 				limit = 70 << 10
 			}
 			if parts[0] == "work-items" && len(parts) == 1 {

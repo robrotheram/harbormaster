@@ -19,7 +19,7 @@ func TestSubscriptionIdentityCannotBeSpoofed(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, verified := range []bool{false, true} {
-		r := httptest.NewRequest("GET", "http://localhost/ui-api/subscription", nil)
+		r := httptest.NewRequest("GET", "http://localhost/ui-api/subscriptions", nil)
 		r.Header.Set("X-Workbench-Subscription-User", "user_victim")
 		if verified {
 			r = withSubscriptionIdentity(r, "issuer", "alice")

@@ -67,7 +67,7 @@ func TestHostedSharedWorkerRequiresTicketAndSecureCookie(t *testing.T) {
 	if w := call("GET", "https://ws-shared.reference.example/", "", nil); w.Code != 401 {
 		t.Fatal("unauthenticated worker access", w.Code)
 	}
-	if w := call("GET", "https://ws-shared.reference.example/ui-api/subscription", "", nil); w.Code != 401 {
+	if w := call("GET", "https://ws-shared.reference.example/ui-api/subscriptions", "", nil); w.Code != 401 {
 		t.Fatal("worker origin can manage subscriptions", w.Code)
 	}
 	landing := call("GET", "https://ws-shared.reference.example/", "", nil)

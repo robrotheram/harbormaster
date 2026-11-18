@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"database/sql"
-	"errors"
 )
 
 type AgentSubscription struct {
@@ -134,38 +133,4 @@ func (s *Store) AgentSubscriptionWorkers(ctx context.Context, owner, id string) 
 		out = append(out, workspace)
 	}
 	return out, rows.Err()
-}
-
-// Compatibility methods address only the migrated default Codex subscription.
-func (s *Store) Subscription(ctx context.Context, owner string) (string, error) {
-	v, e := s.AgentSubscription(ctx, owner, "default")
-	return v.Credential, e
-}
-func (s *Store) SaveSubscription(ctx context.Context, owner, value string) error {
-	v, e := s.AgentSubscription(ctx, owner, "default")
-	create := errors.Is(e, sql.ErrNoRows)
-	if e != nil && !create {
-		return e
-	}
-	if create {
-		v = AgentSubscription{ID: "default", Name: "Codex subscription", Provider: "codex"}
-	}
-	v.Credential = value
-	return s.SaveAgentSubscription(ctx, owner, v, create)
-}
-func (s *Store) SubscriptionOwner(ctx context.Context, workspace string) (string, error) {
-	owner, _, e := s.WorkerAgentSubscription(ctx, workspace, "codex")
-	return owner, e
-}
-func (s *Store) LoadSubscription(ctx context.Context, owner, workspace string) error {
-	return s.LoadAgentSubscription(ctx, owner, "default", "codex", workspace)
-}
-func (s *Store) UnloadSubscription(ctx context.Context, owner, workspace string) error {
-	return s.UnloadAgentSubscription(ctx, owner, "codex", workspace)
-}
-func (s *Store) DeleteSubscription(ctx context.Context, owner string) error {
-	return s.DeleteAgentSubscription(ctx, owner, "default")
-}
-func (s *Store) SubscriptionWorkers(ctx context.Context, owner string) ([]string, error) {
-	return s.AgentSubscriptionWorkers(ctx, owner, "default")
 }

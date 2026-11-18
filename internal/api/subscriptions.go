@@ -2,8 +2,6 @@ package api
 
 import (
 	"crypto/subtle"
-	"database/sql"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -33,74 +31,6 @@ func (s *Server) subscriptionUser(w http.ResponseWriter, r *http.Request) string
 }
 func (s *Server) registerSubscriptions(mux *http.ServeMux) {
 	s.registerAgentSubscriptions(mux)
-	mux.HandleFunc("GET /v1/subscription", func(w http.ResponseWriter, r *http.Request) {
-		owner := s.subscriptionUser(w, r)
-		if owner == "" {
-			return
-		}
-		sealed, err := s.Store.Subscription(r.Context(), owner)
-		if errors.Is(err, sql.ErrNoRows) {
-			shared.JSON(w, 200, map[string]any{"saved": false, "workers": []string{}})
-			return
-		}
-		if err != nil {
-			shared.Error(w, 503, "STORAGE_UNAVAILABLE")
-			return
-		}
-		c, err := subscriptions.Open(s.cfg.Token, owner, sealed)
-		if err != nil {
-			shared.Error(w, 503, "CREDENTIAL_UNAVAILABLE")
-			return
-		}
-		workers, err := s.Store.SubscriptionWorkers(r.Context(), owner)
-		if err != nil {
-			shared.Error(w, 503, "STORAGE_UNAVAILABLE")
-			return
-		}
-		shared.JSON(w, 200, map[string]any{"saved": true, "account_id": c.AccountID, "expires_at": c.ExpiresAt, "expired": c.ExpiresAt <= s.now().Add(time.Minute).Unix(), "workers": workers})
-	})
-	mux.HandleFunc("POST /v1/subscription", func(w http.ResponseWriter, r *http.Request) {
-		owner := s.subscriptionUser(w, r)
-		if owner == "" {
-			return
-		}
-		var input struct {
-			Auth json.RawMessage `json:"auth"`
-		}
-		if !shared.Decode(w, r, &input, 70<<10) {
-			return
-		}
-		c, err := subscriptions.Parse(input.Auth, s.now())
-		if err != nil {
-			shared.Error(w, 400, "SUBSCRIPTION_INVALID")
-			return
-		}
-		sealed, err := subscriptions.Seal(s.cfg.Token, owner, c)
-		if err != nil {
-			shared.Error(w, 503, "CREDENTIAL_UNAVAILABLE")
-			return
-		}
-		unlock := s.operations.Lock("subscription:" + owner)
-		defer unlock()
-		if err = s.Store.SaveSubscription(r.Context(), owner, sealed); err != nil {
-			shared.Error(w, 503, "STORAGE_UNAVAILABLE")
-			return
-		}
-		shared.JSON(w, 200, map[string]bool{"saved": true})
-	})
-	mux.HandleFunc("POST /v1/subscription/delete", func(w http.ResponseWriter, r *http.Request) {
-		owner := s.subscriptionUser(w, r)
-		if owner == "" {
-			return
-		}
-		unlock := s.operations.Lock("subscription:" + owner)
-		defer unlock()
-		if err := s.Store.DeleteSubscription(r.Context(), owner); err != nil && !errors.Is(err, sql.ErrNoRows) {
-			shared.Error(w, 503, "STORAGE_UNAVAILABLE")
-			return
-		}
-		shared.JSON(w, 200, map[string]bool{"saved": false})
-	})
 	for _, action := range []string{"load", "unload"} {
 		mux.HandleFunc("POST /v1/workspaces/{id}/subscription/"+action, func(w http.ResponseWriter, r *http.Request) {
 			owner := s.subscriptionUser(w, r)

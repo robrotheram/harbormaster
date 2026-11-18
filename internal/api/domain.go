@@ -58,9 +58,9 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 			metadata := boardMetadata || projectMetadata || path == "/v1/project-invitations" || path == "/v1/templates" || (r.Method == "GET" && (path == "/v1/board" || path == "/v1/work-items" || (strings.HasPrefix(path, "/v1/work-items/") && (len(parts) == 3 || strings.HasSuffix(path, "/attempts")))))
 			// Personal account storage is owner-scoped and does not grant access to
 			// shared worker execution or output. Worker load/unload remains gated.
-			personalSubscriptions := (path == "/v1/subscriptions" || path == "/v1/subscription") && (r.Method == "GET" || r.Method == "POST")
+			personalSubscriptions := path == "/v1/subscriptions" && (r.Method == "GET" || r.Method == "POST")
 			if r.Method == "POST" {
-				personalSubscriptions = personalSubscriptions || path == "/v1/subscription/delete" ||
+				personalSubscriptions = personalSubscriptions ||
 					(len(parts) == 3 && parts[1] == "subscriptions" && shared.ValidID(parts[2])) ||
 					(len(parts) == 4 && parts[1] == "subscriptions" && shared.ValidID(parts[2]) && parts[3] == "delete")
 			}
