@@ -26,8 +26,8 @@ kubectl --context default apply --server-side -k deploy/kubernetes/overlays/refe
 ```
 
 Create new environment overlays with native `images` and `patches`. They must
-select the shared workspace binding, a tested RWOP storage class, gateway endpoints,
-authenticated ingress/TLS and immutable image digests. Keep secrets outside Git.
+select project workspace bindings or automatic namespace provisioning, a tested
+RWOP storage class, gateway endpoints, authenticated ingress/TLS and immutable image digests. Keep secrets outside Git.
 `make kubernetes-check` builds with pinned Kustomize and checks the deployment
 contract in CI. There are no Python rendering or bootstrap steps.
 
@@ -50,7 +50,8 @@ controlplane database_url Secret. No dashboard or workspace receives it.
 Only dashboard HTTPS ingress is exposed. MCP/controlplane remain cluster-private.
 The existing platform token is a service credential, not human authentication or
 project membership. An ingress login alone does not implement per-user project
-membership: remote multi-user management remains gated on that integration.
+membership. The reference verifies signed-in identity and enforces explicit project
+membership before worker or private-output access.
 Keep one controlplane replica and Recreate strategy until multi-writer coordination
 exists. Use project quotas for bounded CPU/memory/storage; pending capacity must
 be visible through the existing controller timeout, never silently upgraded.
@@ -118,8 +119,8 @@ Before production record:
 
 Required neutral-contract extensions: project endpoint routing for multiple gateway
 sets; independently measured isolation/network evidence; explicit admission/pending
-failure observations; CSI branch provenance; and authenticated human project
-identity propagation. No change to the neutral runtime protocol is made here.
+failure observations; CSI branch provenance; and continuous verification of human
+project identity propagation. No change to the neutral runtime protocol is made here.
 
 ## Web preview origins
 

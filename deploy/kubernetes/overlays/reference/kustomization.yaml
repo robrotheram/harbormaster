@@ -28,9 +28,9 @@ patches:
 - path: gateway-services-patch.yaml
 images:
 - name: ghcr.io/robrotheram/harbormaster/controlplane
-  digest: sha256:fcbc33537f5178724cf1a3cb61b2c5e1d81a6a9fa653773ebc6cb74cdf085ce2
+  digest: sha256:0387528d546098f1359ee5b99a3617ceebed47fde3525ca917ddce4c4505236f
 - name: ghcr.io/robrotheram/harbormaster/runtime-controller
-  digest: sha256:8b755d303d68ad5a2e02a5db57380df84da9cbd728ab0ffab065676b8116bb46
+  digest: sha256:674e6e1f2e1a16e70f9e358a483438d3258ab8ef48814b2ca0d3f52a672b220f
 - name: ghcr.io/robrotheram/harbormaster/dashboard
   digest: sha256:d136063603aa77c2cbf1eb7ccc743aa23b482aa3c26d1d1cc142f8ca17b726a5
 - name: ghcr.io/robrotheram/harbormaster/mcp

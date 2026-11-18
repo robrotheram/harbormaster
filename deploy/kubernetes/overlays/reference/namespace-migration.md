@@ -1,4 +1,11 @@
-# Consolidating the shared worker and sandbox controller
+# Historical namespace consolidation
+
+These procedures record the shared-worker consolidation completed on 2026-11-15.
+Ref moved to project-isolated workers on 2026-11-18; follow the current
+[project-isolated worker runbook](README.md#project-isolated-workers). Do not
+re-enable shared mode or move the old mixed-project volume into a private project.
+
+## Consolidating the shared worker and sandbox controller (historical procedure)
 
 The desired application namespace is now `harbormaster`. Agent Sandbox is included
 in the main Kustomization; new `hm-prj-*` namespaces are application deployment

@@ -19,10 +19,10 @@ kubectl --context default apply --server-side -k deploy/kubernetes/overlays/refe
 ```
 
 Review differences first. `kubectl diff` exits 1 when changes are present.
-The application has one namespace, `harbormaster`: platform services, PostgreSQL,
-Agent Sandbox controller and the shared agent workspace. New project namespaces
-contain deployed applications only. The cluster's existing storage, ingress,
-authentication and Kata host runtime remain independently managed prerequisites.
+The core namespace, `harbormaster`, contains platform services, PostgreSQL,
+Agent Sandbox controller and stopped legacy agents. Each project uses a separate
+`hm-wrk-*` namespace for workers and `hm-prj-*` namespace for deployed applications.
+The cluster's existing storage, ingress, authentication and Kata host runtime remain independently managed prerequisites.
 
 Existing installations must follow [the migration procedure](namespace-migration.md)
 when moving a retained workspace. A namespace cannot be renamed, and applying
@@ -88,18 +88,18 @@ CPU/memory/storage/Pod quotas, isolated networking, the scoped GHCR pull Secret 
 an `application` ServiceAccount with token mounting disabled. Application manifests
 should use `serviceAccountName: application` and run as non-root. Ingress allows
 same-project traffic and the cluster's Traefik Pods. Egress allows same-project
-traffic and CoreDNS. Other project namespaces, the shared worker, core services and
+traffic and CoreDNS. Other project namespaces, worker namespaces, core services and
 public destinations are blocked by default. Add explicit application-specific
 outbound NetworkPolicies in the application deployment when external access is
 required; a broad Internet rule can also allow node-hosted cluster services.
 
 Deploy built application manifests with normal Helm/Kustomize or project CI into
 this namespace; namespace provisioning does not automatically build or deploy an
-application. Existing in-workspace preview APIs remain local previews. The shared
-agent receives no Kubernetes token. Registry credential rotation must also update
+application. Existing in-workspace preview APIs remain local previews. Workers
+receive no Kubernetes token. Registry credential rotation must also update
 provisioned project Secrets through the secret manager.
 
-Project deletion retains the shared agent, application namespace, deployed apps
+Project deletion retains worker and application namespaces, deployed apps
 and storage. Retiring deployed applications is a separate explicit operator action.
 
 ## Dependencies and ownership
@@ -191,14 +191,15 @@ application Secret values and restart controlplane after CNPG credential/CA rota
 
 The reference image overrides are pinned in this overlay's `kustomization.yaml`;
 the matching workspace digest is in `runtime-controller-patch.yaml`. Platform
-services and the shared workspace use source
+services other than controlplane/runtime-controller, and the workspace image, use source
 `284b3370f574f28d21c893228f4f3c9e91dfcc3c`. This release consolidates the workbench
 navigation, project membership, task coordination, review evidence and hosted
 preview origins. It also fixes task-list error messaging, narrow worker controls,
 and focus when drafting a debugging request from application logs.
-The runtime-controller additionally uses source
-`fc8d141bcee139d7a2ac16911205b0849de88f87`, which allows the read-only model
-catalog through the runtime proxy.
+Controlplane and runtime-controller use source
+`b75f8feef0fa485a4b6575cffba70789e52e01f0`, which provisions project-isolated
+workers, discovers their grants after restart, and preserves owner-scoped
+subscription management. It includes the read-only model catalog proxy fix.
 The Codex policy and worker default continue to select `gpt-6.1-sol`.
 The base retains its independently pinned default release.
 
@@ -220,7 +221,7 @@ reject image drift; plan retained-workspace migration before changing that value
 
 ## Authentication and execution
 
-Dashboard and separate shared-worker HTTPS origins are exposed. MCP and controlplane remain ClusterIP services.
+Dashboard and separate per-worker HTTPS origins are exposed. MCP and controlplane remain ClusterIP services.
 The existing `oauth-redirect` handler and namespace-local `harbormaster-auth`
 middleware use `https://oidc.exceptionerror.io` / Entra. The dashboard independently
 validates session cookies against OAuth2 Proxy, rejects caller identity headers,
@@ -231,12 +232,12 @@ explicitly enables execution with `false` after live acceptance. The application
 still reports isolation and networking as **unverified**: manual probes do not
 implement continuous attestation. The inference gateway uses **subscription** mode:
 users save a current Codex ChatGPT login under Workers → Subscription, then load
-it into the shared worker. See [subscription setup](../../../../docs/subscription-agents.md).
+it into a worker owned by their project. See [subscription setup](../../../../docs/subscription-agents.md).
 Credential-broker and egress fixture modes remain unchanged.
 
-Browser console and desktop pairing use `ws-shared.harbormaster.exceptionerror.io`
-and `desktop-ws-shared.harbormaster.exceptionerror.io`. DNS must resolve both to
-the ingress; the certificate includes both names. Their ingress deliberately has
+Browser console and desktop pairing use `ws-<id>.harbormaster.exceptionerror.io`
+and `desktop-ws-<id>.harbormaster.exceptionerror.io`. Wildcard DNS and the preview
+wildcard certificate cover new workers. Their ingress deliberately has
 no operator OAuth middleware: the dashboard requires a one-use browser ticket or
 native desktop bearer. Cookies are secure and host-only. Worker origins cannot
 access the operator API. Application preview hosting remains separately configured.
@@ -250,6 +251,27 @@ workspace supervisor repairs empty initial model selections while retaining
 explicit model choices.
 
 ## Acceptance and recovery
+
+The 2026-11-18 isolation migration deployed controlplane and runtime-controller
+from `b75f8fe` after the complete CI check and both image publishing jobs passed.
+Two projects received distinct `hm-wrk-*` namespaces, retained RWOP claims and
+agent homes. Both ran with Kata and without Kubernetes tokens. Live connections
+in both directions to the other worker, controlplane, Kubernetes API and public
+Internet were blocked; the inference gateway remained reachable.
+
+The Sample project worker is Ready with its owner's existing ChatGPT subscription
+selected. Personal account listing, model catalog and authenticated T3 HTML passed,
+including after a runtime-controller restart. Nonmembers could not access its
+worker or history; Sample project membership could not access another project's
+worker or `ws_shared`. Another identity saw no saved personal accounts. The
+acceptance worker was stopped and its temporary project archived, with disks
+retained. No provider inference was requested during these checks.
+
+The old shared worker remains suspended, with its Sandbox UID, PVC UIDs and PV
+bindings unchanged. A private database backup and pre-cutover file hashes were
+retained. All platform Deployments and PostgreSQL were healthy; HTTPS remained
+valid and the final server-side overlay diff was empty. These are point-in-time
+acceptance checks, not continuous isolation attestation.
 
 The subscription repair on 2026-11-15 verified a managed Codex task through the
 shared worker, its configured outbound-proxy environment, the inference gateway,
