@@ -313,10 +313,7 @@ export function Workspaces({ project }: { project: Project }) {
             onClick={() => refresh()}
           >
             <RefreshCw
-              className={cn(
-                "size-4",
-                query.isFetching && "motion-safe:animate-spin",
-              )}
+              className={cn("size-4", query.isFetching && "loading-refresh")}
             />
           </Button>
         </div>
@@ -344,7 +341,7 @@ export function Workspaces({ project }: { project: Project }) {
         />
       )}
       {blocked ? null : query.isPending ? (
-        <div className="space-y-3 rounded-md border bg-card p-4">
+        <div className="loading-placeholder space-y-3 rounded-md border bg-card p-4">
           {[1, 2, 3, 4].map((i) => (
             <Skeleton key={i} className="h-16 w-full" />
           ))}

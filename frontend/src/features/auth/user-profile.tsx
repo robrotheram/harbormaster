@@ -63,7 +63,7 @@ export function UserProfileMenu() {
         >
           <span className="operator-avatar" aria-hidden="true">
             {session.status === "loading" ? (
-              <LoaderCircle className="size-4 motion-safe:animate-spin" />
+              <LoaderCircle className="size-4 loading-spinner" />
             ) : (
               profile.initials || <UserRound size={16} />
             )}
@@ -120,7 +120,7 @@ export function UserProfileMenu() {
           }}
         >
           {pending ? (
-            <LoaderCircle className="motion-safe:animate-spin" />
+            <LoaderCircle className="loading-spinner" />
           ) : signedIn ? (
             <LogOut />
           ) : (

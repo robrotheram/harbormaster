@@ -31,7 +31,7 @@ export function PlatformServices() {
           onClick={() => query.refetch()}
           disabled={query.isFetching}
         >
-          <RefreshCw className={query.isFetching ? "animate-spin" : ""} />
+          <RefreshCw className={query.isFetching ? "loading-refresh" : ""} />
           Refresh
         </Button>
       </div>

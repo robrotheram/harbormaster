@@ -549,7 +549,13 @@ export function ProjectShell({
         </header>
 
         <main id="main" tabIndex={-1} className="factory-main">
-          <Suspense fallback={<Skeleton className="h-80 w-full" />}>
+          <Suspense
+            fallback={
+              <Skeleton className="h-80 w-full" role="status">
+                <span className="sr-only">Loading page…</span>
+              </Skeleton>
+            }
+          >
             {projects.isError && (independentPage || !projectsBlocked) && (
               <section
                 aria-label="Project list status"
@@ -585,7 +591,11 @@ export function ProjectShell({
                 }
               />
             ) : projects.isPending ? (
-              <div role="status" aria-label="Loading projects">
+              <div
+                className="loading-placeholder"
+                role="status"
+                aria-label="Loading projects"
+              >
                 <p className="mb-4 text-sm text-muted-foreground">
                   Loading projects…
                 </p>

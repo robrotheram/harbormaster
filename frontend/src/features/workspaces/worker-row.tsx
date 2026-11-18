@@ -180,7 +180,7 @@ export function WorkerRow({
               }
             >
               {busy === workspace.id ? (
-                <Loader2 className="size-3.5 animate-spin" />
+                <Loader2 className="size-3.5 loading-spinner" />
               ) : stopped ? (
                 <Play className="size-3.5" />
               ) : (

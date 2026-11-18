@@ -5,6 +5,7 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  --loading-indicator-delay: 350ms;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -374,6 +375,47 @@
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+@keyframes loading-reveal {
+  from {
+    visibility: hidden;
+  }
+}
+@keyframes loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes loading-pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@layer components {
+  /* Reserve space during short requests without showing the indicator. */
+  .loading-placeholder,
+  .loading-skeleton,
+  .loading-spinner {
+    animation: loading-reveal 0s var(--loading-indicator-delay) backwards;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .loading-skeleton {
+      animation:
+        loading-reveal 0s var(--loading-indicator-delay) backwards,
+        loading-pulse 2s ease-in-out var(--loading-indicator-delay) infinite;
+    }
+    .loading-spinner {
+      animation:
+        loading-reveal 0s var(--loading-indicator-delay) backwards,
+        loading-spin 1s linear var(--loading-indicator-delay) infinite;
+    }
+    .loading-refresh {
+      animation: loading-spin 1s linear var(--loading-indicator-delay) infinite;
+    }
   }
 }
 

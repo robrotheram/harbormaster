@@ -296,7 +296,7 @@ export function WorkConversation({
         onClick={() => mutation.mutate("run")}
       >
         {mutation.isPending && mutation.variables === "run" ? (
-          <Loader2 size={14} className="animate-spin" />
+          <Loader2 size={14} className="loading-spinner" />
         ) : retry ? (
           <RotateCcw size={14} />
         ) : (
@@ -690,7 +690,7 @@ export function WorkConversation({
                       aria-label="Send"
                     >
                       {mutation.isPending ? (
-                        <Loader2 size={16} className="animate-spin" />
+                        <Loader2 size={16} className="loading-spinner" />
                       ) : (
                         <ArrowUp size={16} />
                       )}
