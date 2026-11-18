@@ -204,35 +204,14 @@ func NewInteractiveHandler(readURL, controlURL, token string) (http.Handler, err
 				previews.issue(w, r, parts[1], parts[3])
 				return
 			}
-			if !allowedUIRoute(r.Method, path) {
+			limit := shared.DashboardBodyLimit(r.Method, path)
+			if limit == 0 {
 				writeError(w, 404, "NOT_FOUND")
 				return
 			}
 			if r.Method == "POST" && (r.Header.Get("X-Workbench-Request") != "1" || !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json")) {
 				writeError(w, 403, "ORIGIN_REJECTED")
 				return
-			}
-			limit := int64(4096)
-			if parts[0] == "board" && len(parts) <= 2 {
-				limit = 100000
-			}
-			if path == "/subscriptions" || strings.HasPrefix(path, "/subscriptions/") {
-				limit = 70 << 10
-			}
-			if parts[0] == "work-items" && len(parts) == 1 {
-				limit = 400000
-			}
-			if parts[0] == "work-items" && len(parts) == 3 && parts[2] == "continue" {
-				limit = 6 << 20
-			}
-			if parts[0] == "note-publications" || (parts[0] == "project-exchanges" && len(parts) == 3 && parts[2] == "exports") {
-				limit = 100000
-			}
-			if parts[0] == "connection-profiles" || len(parts) >= 3 && (parts[2] == "settings" || parts[2] == "hermes") {
-				limit = 32768
-			}
-			if len(parts) >= 3 && (parts[2] == "tasks" || parts[2] == "terminals") {
-				limit = 70 << 10
 			}
 			r.Body = http.MaxBytesReader(w, r.Body, limit)
 			if len(parts) == 3 && parts[2] == "desktop-pair" && r.Context().Value(humanIdentityKey{}) != nil {

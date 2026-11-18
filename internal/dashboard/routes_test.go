@@ -1,10 +1,13 @@
 package dashboard
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"agent-workbench/internal/shared"
 )
 
 func TestUIRouteBoundary(t *testing.T) {
@@ -72,9 +75,18 @@ func TestUIRouteBoundary(t *testing.T) {
 		{"GET", "/workspaces//logs", false},
 		{"GET", "/workspaces/", false},
 		{"GET", "workspaces", false},
+		{"HEAD", "/workspaces", false},
+		{"OPTIONS", "/projects", false},
+		{"POST", "/forge-connections/forge_one/issues/12/import", true},
+		{"POST", "/forge-connections/forge_one/issues/invalid.id/import", false},
+		{"GET", "/work-items/work_one/artifacts/artifact_one/content", true},
+		{"GET", "/work-items/work_one/artifacts/invalid.id/content", false},
+		{"POST", "/workspaces/ws_one/recipe-jobs/invalid.id/cancel", false},
+		{"POST", "/workspaces/ws_one/terminals/invalid.id/close", false},
+		{"POST", "/workspaces/ws_one/services/service_one/fetch", false},
 	} {
 		t.Run(tt.method+tt.path, func(t *testing.T) {
-			if got := allowedUIRoute(tt.method, tt.path); got != tt.allowed {
+			if got := shared.DashboardBodyLimit(tt.method, tt.path) > 0; got != tt.allowed {
 				t.Fatalf("allowed = %v, want %v", got, tt.allowed)
 			}
 		})
@@ -131,7 +143,7 @@ func TestFactoryWorkIngressIsExplicit(t *testing.T) {
 		{"POST", "/work-items/work_1/review", true}, {"GET", "/work-items/work_1/run", false},
 		{"POST", "/work-items/work_1/exec", false}, {"GET", "/work-items/work_1/attempts/other", false},
 	} {
-		if got := allowedUIRoute(test.method, test.path); got != test.allowed {
+		if got := shared.DashboardBodyLimit(test.method, test.path) > 0; got != test.allowed {
 			t.Errorf("%s %s: allowed=%v", test.method, test.path, got)
 		}
 	}
@@ -170,5 +182,53 @@ func TestConversationHistoryQueryIngress(t *testing.T) {
 	}
 	if calls != 1 {
 		t.Fatalf("unexpected upstream calls: %d", calls)
+	}
+}
+
+func TestUIRouteBodyBoundaries(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, err := io.Copy(io.Discard, r.Body); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer upstream.Close()
+	handler, err := NewInteractiveHandler(upstream.URL, upstream.URL, "private-operator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		method, path string
+		limit        int
+	}{
+		{"POST", "/forge-hosts", 4096},
+		{"POST", "/forge-connections/forge_one/issues/1/import", 4096},
+		{"POST", "/board/work_one/sync", 4096},
+		{"POST", "/board/work_one", 100000},
+		{"GET", "/board", 100000},
+		{"POST", "/subscriptions/sub_one/delete", 70 << 10},
+		{"POST", "/workspaces/ws_one/subscription/load", 4096},
+		{"POST", "/work-items", 400000},
+		{"POST", "/work-items/work_one/continue", 6 << 20},
+		{"POST", "/projects/project_one/hermes/matrix/start", 32768},
+		{"POST", "/connection-profiles/github/delete", 32768},
+		{"POST", "/workspaces/ws_one/tasks/task_one/cancel", 70 << 10},
+		{"POST", "/workspaces/ws_one/terminals/term_one/close", 70 << 10},
+		{"POST", "/workspaces/ws_one/recipe-jobs", 4096},
+		{"POST", "/project-exchanges/exchange_one/exports", 100000},
+	} {
+		t.Run(tc.method+tc.path, func(t *testing.T) {
+			for _, over := range []int{0, 1} {
+				r := httptest.NewRequest(tc.method, "http://127.0.0.1:8080/ui-api"+tc.path, strings.NewReader(strings.Repeat(" ", tc.limit+over)))
+				r.Header.Set("X-Workbench-Request", "1")
+				r.Header.Set("Content-Type", "application/json")
+				w := httptest.NewRecorder()
+				handler.ServeHTTP(w, r)
+				if over == 0 && w.Code != http.StatusNoContent || over != 0 && w.Code == http.StatusNoContent {
+					t.Fatalf("limit + %d: status = %d", over, w.Code)
+				}
+			}
+		})
 	}
 }

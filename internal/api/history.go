@@ -103,7 +103,7 @@ func (s *Server) registerHistory(mux *http.ServeMux) {
 			Episode string `json:"episode_id"`
 			Purpose string `json:"purpose"`
 		}
-		if !shared.Decode(w, r, &in, 2048) {
+		if !decodeRouteBody(w, r, &in) {
 			return
 		}
 		if !shared.ValidID(in.Episode) || (in.Purpose != "test" && in.Purpose != "normal") {
@@ -141,7 +141,7 @@ func (s *Server) registerHistory(mux *http.ServeMux) {
 			Episode string `json:"episode_id"`
 			Rating  *int   `json:"rating"`
 		}
-		if !shared.Decode(w, r, &in, 2048) {
+		if !decodeRouteBody(w, r, &in) {
 			return
 		}
 		if !shared.ValidID(in.Episode) || in.Rating == nil || *in.Rating < -1 || *in.Rating > 1 {

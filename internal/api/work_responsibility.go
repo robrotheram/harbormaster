@@ -30,7 +30,7 @@ func (s *Server) registerWorkResponsibility(mux *http.ServeMux, repo orchestrati
 			ExpectedReviewer   string `json:"expected_reviewer_id"`
 			ExpectedAttempt    string `json:"expected_attempt_id"`
 		}
-		if !shared.Decode(w, r, &in, 4096) || !s.AuthorizeProject(w, r, in.ProjectID) {
+		if !decodeRouteBody(w, r, &in) || !s.AuthorizeProject(w, r, in.ProjectID) {
 			return
 		}
 		unlock := s.operations.Lock("work:" + r.PathValue("id"))

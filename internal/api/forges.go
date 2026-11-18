@@ -48,7 +48,7 @@ func (s *Server) registerForges(mux *http.ServeMux) {
 			return
 		}
 		var input store.ForgeConnection
-		if !shared.Decode(w, r, &input, 4096) {
+		if !decodeRouteBody(w, r, &input) {
 			return
 		}
 		hosts, err := s.forgeHosts(r.Context())
@@ -89,7 +89,7 @@ func (s *Server) registerForges(mux *http.ServeMux) {
 		}
 		project := r.URL.Query().Get("project_id")
 		if r.Method == "POST" {
-			if !shared.Decode(w, r, &input, 70000) {
+			if !decodeRouteBody(w, r, &input) {
 				return
 			}
 			project = input.ProjectID

@@ -50,24 +50,9 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 		}
 		// Shared-worker mode intentionally crosses project storage boundaries. It is
 		// not an execution environment for explicit per-project human membership.
-		if p.human.ID != "" && s.cfg.SharedWorkspaceID != "" {
-			path := r.URL.Path
-			parts := strings.Split(strings.Trim(path, "/"), "/")
-			projectMetadata := path == "/v1/projects" || (len(parts) == 4 && parts[1] == "projects" && (parts[3] == "members" || parts[3] == "accept-invitation" || parts[3] == "rename" || parts[3] == "delete" || parts[3] == "capabilities"))
-			boardMetadata := (path == "/v1/board" || (len(parts) == 3 && parts[1] == "board")) && r.Method == "POST"
-			metadata := boardMetadata || projectMetadata || path == "/v1/project-invitations" || path == "/v1/templates" || (r.Method == "GET" && (path == "/v1/board" || path == "/v1/work-items" || (strings.HasPrefix(path, "/v1/work-items/") && (len(parts) == 3 || strings.HasSuffix(path, "/attempts")))))
-			// Personal account storage is owner-scoped and does not grant access to
-			// shared worker execution or output. Worker load/unload remains gated.
-			personalSubscriptions := path == "/v1/subscriptions" && (r.Method == "GET" || r.Method == "POST")
-			if r.Method == "POST" {
-				personalSubscriptions = personalSubscriptions ||
-					(len(parts) == 3 && parts[1] == "subscriptions" && shared.ValidID(parts[2])) ||
-					(len(parts) == 4 && parts[1] == "subscriptions" && shared.ValidID(parts[2]) && parts[3] == "delete")
-			}
-			if !metadata && !personalSubscriptions {
-				shared.Error(w, 409, "PROJECT_ISOLATED_WORKERS_REQUIRED")
-				return
-			}
+		if p.human.ID != "" && s.cfg.SharedWorkspaceID != "" && !shared.SharedHumanRouteAllowed(r.Method, r.URL.Path) {
+			shared.Error(w, 409, "PROJECT_ISOLATED_WORKERS_REQUIRED")
+			return
 		}
 		ctx := context.WithValue(r.Context(), principalKey{}, p)
 		if !p.admin {
@@ -147,7 +132,7 @@ func (s *Server) registerDomains(mux *http.ServeMux) {
 		var input struct {
 			TTL int64 `json:"ttl_seconds"`
 		}
-		if !shared.Decode(w, r, &input, 1024) {
+		if !decodeRouteBody(w, r, &input) {
 			return
 		}
 		if input.TTL == 0 {
@@ -201,7 +186,7 @@ func (s *Server) registerDomains(mux *http.ServeMux) {
 			Key    string `json:"idempotency_key"`
 			Sample bool   `json:"sample,omitempty"`
 		}
-		if !shared.Decode(w, r, &input, 1024) {
+		if !decodeRouteBody(w, r, &input) {
 			return
 		}
 		input.Name = strings.TrimSpace(input.Name)
@@ -265,7 +250,7 @@ func (s *Server) registerDomains(mux *http.ServeMux) {
 		var input struct {
 			Name string `json:"name"`
 		}
-		if !shared.Decode(w, r, &input, 1024) {
+		if !decodeRouteBody(w, r, &input) {
 			return
 		}
 		input.Name = strings.TrimSpace(input.Name)

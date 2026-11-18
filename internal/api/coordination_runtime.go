@@ -122,7 +122,7 @@ func (s *Server) registerCoordinationRuntime(mux *http.ServeMux) {
 			WorkspaceID  string `json:"workspace_id"`
 			NotesEnabled bool   `json:"notes_enabled"`
 		}
-		if !shared.Decode(w, r, &in, 1024) {
+		if !decodeRouteBody(w, r, &in) {
 			return
 		}
 		workspace, err := s.Store.Workspace(r.Context(), in.WorkspaceID)

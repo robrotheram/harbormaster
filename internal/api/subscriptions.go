@@ -53,7 +53,7 @@ func (s *Server) registerSubscriptions(mux *http.ServeMux) {
 				ID       string `json:"subscription_id"`
 				Provider string `json:"provider"`
 			}
-			if !shared.Decode(w, r, &input, 4096) {
+			if !decodeRouteBody(w, r, &input) {
 				return
 			}
 			if input.ID == "" {
@@ -117,7 +117,7 @@ func (s *Server) resolveSubscription(w http.ResponseWriter, r *http.Request) {
 		WorkspaceID string `json:"workspace_id"`
 		Provider    string `json:"provider"`
 	}
-	if !shared.Decode(w, r, &input, 4096) {
+	if !decodeRouteBody(w, r, &input) {
 		return
 	}
 	if input.Provider == "" {

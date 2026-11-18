@@ -20,7 +20,7 @@ func (s *Server) registerWorkImages(mux *http.ServeMux, repo orchestration.Repos
 				AttemptID string `json:"attempt_id"`
 				Path      string `json:"path"`
 			}
-			if !shared.Decode(w, r, &in, 2048) || !s.AuthorizeProject(w, r, in.ProjectID) {
+			if !decodeRouteBody(w, r, &in) || !s.AuthorizeProject(w, r, in.ProjectID) {
 				return
 			}
 			if !shared.ValidProjectFile(in.Path) || !shared.ValidID(in.AttemptID) {

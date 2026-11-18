@@ -67,7 +67,7 @@ func (s *Server) registerWorkConversation(mux *http.ServeMux, repo orchestration
 			Screenshots       []reviewScreenshot `json:"screenshots,omitempty"`
 			Selection         *shared.AgentModel `json:"selection,omitempty"`
 		}
-		if !shared.Decode(w, r, &in, 6<<20) || !s.AuthorizeProject(w, r, in.ProjectID) {
+		if !decodeRouteBody(w, r, &in) || !s.AuthorizeProject(w, r, in.ProjectID) {
 			return
 		}
 		if (in.Selection != nil && !shared.ValidWorkSelection(in.Selection.Provider, in.Selection.Model)) || (in.Presentation != "" && in.Presentation != "interactive-v1") || !shared.ValidID(in.ProjectID) || !shared.ValidID(in.ExpectedAttemptID) || !shared.ValidKey(in.Key) || strings.TrimSpace(in.Instruction) == "" || len(in.Instruction) > 16000 || !utf8.ValidString(in.Instruction) {

@@ -42,7 +42,7 @@ func (s *Server) RegisterCoordination(mux *http.ServeMux, service *coordination.
 			return
 		}
 		var in coordination.Grant
-		if !shared.Decode(w, r, &in, 4096) || !s.AuthorizeProject(w, r, in.Source) || !s.AuthorizeProject(w, r, in.Destination) {
+		if !decodeRouteBody(w, r, &in) || !s.AuthorizeProject(w, r, in.Source) || !s.AuthorizeProject(w, r, in.Destination) {
 			return
 		}
 		reply(w, in, service.Create(r.Context(), in.Source, in))
@@ -55,7 +55,7 @@ func (s *Server) RegisterCoordination(mux *http.ServeMux, service *coordination.
 			var in struct {
 				ProjectID string `json:"project_id"`
 			}
-			if !shared.Decode(w, r, &in, 1024) || !s.AuthorizeProject(w, r, in.ProjectID) {
+			if !decodeRouteBody(w, r, &in) || !s.AuthorizeProject(w, r, in.ProjectID) {
 				return
 			}
 			var e error
@@ -73,7 +73,7 @@ func (s *Server) RegisterCoordination(mux *http.ServeMux, service *coordination.
 			Occurrence string `json:"occurrence"`
 			Body       string `json:"body"`
 		}
-		if !shared.Decode(w, r, &in, 70000) || !s.AuthorizeProject(w, r, in.ProjectID) {
+		if !decodeRouteBody(w, r, &in) || !s.AuthorizeProject(w, r, in.ProjectID) {
 			return
 		}
 		x, e := service.Publish(r.Context(), in.ProjectID, r.PathValue("id"), in.Occurrence, []byte(in.Body))
@@ -108,7 +108,7 @@ func (s *Server) RegisterCoordination(mux *http.ServeMux, service *coordination.
 		var in struct {
 			ProjectID string `json:"project_id"`
 		}
-		if !shared.Decode(w, r, &in, 1024) || !s.AuthorizeProject(w, r, in.ProjectID) {
+		if !decodeRouteBody(w, r, &in) || !s.AuthorizeProject(w, r, in.ProjectID) {
 			return
 		}
 		var response *coordinationResponse
@@ -161,7 +161,7 @@ func (s *Server) RegisterCoordination(mux *http.ServeMux, service *coordination.
 			WorkspaceID string                 `json:"workspace_id"`
 			Write       coordination.NoteWrite `json:"write"`
 		}
-		if !shared.Decode(w, r, &in, 70000) || !s.AuthorizeProject(w, r, in.ProjectID) {
+		if !decodeRouteBody(w, r, &in) || !s.AuthorizeProject(w, r, in.ProjectID) {
 			return
 		}
 		ws, e := s.Store.Workspace(r.Context(), in.WorkspaceID)

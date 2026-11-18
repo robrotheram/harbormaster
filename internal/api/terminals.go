@@ -35,7 +35,7 @@ func (s *Server) terminalRoute(w http.ResponseWriter, r *http.Request) {
 		}
 		path += "/" + id + "/" + action
 	}
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 32<<10))
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, shared.APIBodyLimit(r.Pattern)))
 	if err != nil {
 		shared.Error(w, 400, "INVALID_REQUEST")
 		return

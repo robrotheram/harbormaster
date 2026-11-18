@@ -35,7 +35,7 @@ func (s *Server) registerConnectionProfiles(mux *http.ServeMux) {
 			Policy      shared.ConnectionPolicy `json:"policy"`
 			Revision    int                     `json:"revision"`
 		}
-		if !shared.Decode(w, r, &input, 32768) {
+		if !decodeRouteBody(w, r, &input) {
 			return
 		}
 		input.Name = strings.TrimSpace(input.Name)
@@ -75,7 +75,7 @@ func (s *Server) registerConnectionProfiles(mux *http.ServeMux) {
 		var input struct {
 			Revision int `json:"revision"`
 		}
-		if !shared.Decode(w, r, &input, 4096) {
+		if !decodeRouteBody(w, r, &input) {
 			return
 		}
 		id := r.PathValue("id")

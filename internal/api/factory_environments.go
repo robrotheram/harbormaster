@@ -72,7 +72,7 @@ func (s *Server) registerFactoryEnvironments(mux *http.ServeMux) {
 			Timeout  int    `json:"timeout_seconds"`
 			Resource string `json:"resource_class"`
 		}
-		if !shared.Decode(w, r, &in, 2<<20) {
+		if !decodeRouteBody(w, r, &in) {
 			return
 		}
 		ws, ok := s.workspace(w, r)
@@ -136,7 +136,7 @@ func (s *Server) registerFactoryEnvironments(mux *http.ServeMux) {
 			Artifact string `json:"artifact_id"`
 			TTL      int    `json:"ttl_seconds"`
 		}
-		if !shared.Decode(w, r, &in, 2<<20) {
+		if !decodeRouteBody(w, r, &in) {
 			return
 		}
 		coding, ok := s.workspace(w, r)
@@ -242,7 +242,7 @@ func (s *Server) registerFactoryEnvironments(mux *http.ServeMux) {
 					ContentType string `json:"content_type,omitempty"`
 					Body        []byte `json:"body,omitempty"`
 				}
-				if !shared.Decode(w, r, &in, 2<<20) {
+				if !decodeRouteBody(w, r, &in) {
 					return
 				}
 				if in.Path != "" && !shared.ValidProjectFile(strings.TrimSuffix(in.Path, "/")) {

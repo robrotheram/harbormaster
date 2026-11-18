@@ -17,7 +17,7 @@ func (s *Server) registerWorkspaceSettings(mux *http.ServeMux) {
 			Connections         *shared.ConnectionPolicy `json:"connections"`
 			ConnectionProfileID *string                  `json:"connection_profile_id"`
 		}
-		if !shared.Decode(w, r, &input, 32768) {
+		if !decodeRouteBody(w, r, &input) {
 			return
 		}
 		if input.IdleTimeoutMinutes == nil || (input.GitHubAccess == nil && input.Connections == nil && input.ConnectionProfileID == nil) || (input.Connections != nil && !input.Connections.Valid()) || (*input.IdleTimeoutMinutes != 0 && (*input.IdleTimeoutMinutes < 5 || *input.IdleTimeoutMinutes > 1440)) {

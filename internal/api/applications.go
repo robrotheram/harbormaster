@@ -58,7 +58,7 @@ func (s *Server) registerApplications(mux *http.ServeMux) {
 					Key         string                   `json:"idempotency_key"`
 					TTL         int                      `json:"ttl_seconds"`
 				}
-				if !shared.Decode(w, r, &in, 8192) {
+				if !decodeRouteBody(w, r, &in) {
 					return
 				}
 				if !in.Application.Valid() || !shared.ValidKey(in.Key) || in.TTL < 1 || in.TTL > 86400 {
