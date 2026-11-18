@@ -61,7 +61,7 @@ Accepted tasks survive client disconnect. Files, messages and results live in th
 | Component | Responsibility |
 | --- | --- |
 | Control plane | Single local principal, metadata, quotas, lifecycle and task routing |
-| Runtime controller | Fixed Docker/Kata execution profiles and generation-bound workspace grants |
+| Runtime controller | Backend-specific execution profiles and generation-bound workspace grants |
 | Workspace | SQLite tasks/conversation records, files and bounded coding tools |
 | Dashboard / launcher | Local single-operator workspace controls, native T3 access and read-only runtime overview |
 | MCP | Separate authenticated adapter for external agents |
@@ -78,11 +78,11 @@ Configure an HTTP MCP client for `http://127.0.0.1:8082/mcp` with an Authorizati
 
 For another machine, use an authenticated SSH tunnel to the loopback endpoint rather than publishing unauthenticated network access. Client compatibility must be tested against the intended client/version. Results may contain sensitive workspace content; result access conveys that content to the caller.
 
-## Real integrations and Kata
+## Real integrations
 
 Keep fixture mode enabled until upstream policies and credentials are provisioned. Gateway configuration lives in `config/`. Vault starts as a persistent, uninitialized service with no root token invented or embedded by the application. Initialize/unseal it and provide a scoped broker policy before enabling real certificate requests. No live inference or user certificate is required for fixture tests.
 
-Set `WORKSPACE_RUNTIME=kata` only after installing and configuring a compatible Kata shim on the Docker host. The controller requests `io.containerd.kata.v2` and does not fall back. `REQUIRE_VERIFIED_ISOLATION=true` currently blocks startup because this code has no verifier that can establish the required isolation/network evidence.
+The Docker backend uses runc. `REQUIRE_VERIFIED_ISOLATION=true` blocks Docker workspace startup. For Kata deployment, see the [Kubernetes reference deployment](docs/k3s.md).
 
 Interactive workspaces run the pinned native T3 server and bundled web client. Its protocol-2 WebSocket traffic is proxied without a Go wire reimplementation. Use **Open T3** for browser access or **Connect desktop** for native desktop pairing. `/v1/workspaces/{id}/connection` remains the legacy, unimplemented generic attachment contract. The task API/MCP remains available separately.
 

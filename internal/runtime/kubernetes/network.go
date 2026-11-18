@@ -40,20 +40,15 @@ func (k *Kubernetes) networkEvidence(ctx context.Context, namespace, project str
 	}
 	return nil
 }
-func projectPolicies(project string) map[string]map[string]any {
+func projectPolicies(project, gatewayProject string) map[string]map[string]any {
 	// Decode canonical JSON to match Kubernetes' unstructured numeric types.
-	peer := func(role string) any {
-		return map[string]any{"namespaceSelector": map[string]any{"matchLabels": map[string]string{"kubernetes.io/metadata.name": "harbormaster"}}, "podSelector": map[string]any{"matchLabels": map[string]string{"workbench.project": project, "workbench.role": role}}}
-	}
 	workspaceSelector := map[string]any{"matchExpressions": []any{map[string]any{"key": "workbench.workspace", "operator": "Exists"}}}
 	selector := map[string]any{"matchLabels": map[string]string{"workbench.project": project}, "matchExpressions": workspaceSelector["matchExpressions"]}
-	rules := []any{}
-	for _, r := range []struct {
-		role  string
-		ports []any
-	}{{"dns", []any{map[string]any{"protocol": "UDP", "port": 53}, map[string]any{"protocol": "TCP", "port": 53}}}, {"gateway", []any{map[string]any{"protocol": "TCP", "port": 8080}}}, {"registry", []any{map[string]any{"protocol": "TCP", "port": 8081}}}} {
-		rules = append(rules, map[string]any{"to": []any{peer(r.role)}, "ports": r.ports})
+	gateway := map[string]any{
+		"namespaceSelector": map[string]any{"matchLabels": map[string]string{"kubernetes.io/metadata.name": "harbormaster"}},
+		"podSelector":       map[string]any{"matchLabels": map[string]string{"workbench.project": gatewayProject, "workbench.role": "gateway"}},
 	}
+	rules := []any{map[string]any{"to": []any{gateway}, "ports": []any{map[string]any{"protocol": "TCP", "port": 8080}}}}
 	raw := map[string]any{
 		"workspace-default-deny":       map[string]any{"podSelector": workspaceSelector, "policyTypes": []string{"Ingress", "Egress"}},
 		"workspace-controller-ingress": map[string]any{"podSelector": selector, "policyTypes": []string{"Ingress"}, "ingress": []any{map[string]any{"from": []any{map[string]any{"namespaceSelector": map[string]any{"matchLabels": map[string]string{"kubernetes.io/metadata.name": "harbormaster"}}, "podSelector": map[string]any{"matchLabels": map[string]string{"app": "runtime-controller"}}}}, "ports": []any{map[string]any{"protocol": "TCP", "port": 8080}}}}},
@@ -68,17 +63,11 @@ func projectPolicies(project string) map[string]map[string]any {
 // Central gateways authenticate every request with a workspace grant. The optional
 // shared gateway binding changes only the destination, never the worker selector.
 func (k *Kubernetes) workspacePolicies(project string) map[string]map[string]any {
-	policies := projectPolicies(project)
-	if k.cfg.SharedGatewayProject != "" {
-		rules := policies["workspace-project-egress"]["egress"].([]any)
-		for _, rule := range rules {
-			for _, peer := range rule.(map[string]any)["to"].([]any) {
-				labels := peer.(map[string]any)["podSelector"].(map[string]any)["matchLabels"].(map[string]any)
-				labels["workbench.project"] = k.cfg.SharedGatewayProject
-			}
-		}
+	gatewayProject := k.cfg.SharedGatewayProject
+	if gatewayProject == "" {
+		gatewayProject = project
 	}
-	return policies
+	return projectPolicies(project, gatewayProject)
 }
 
 func (k *Kubernetes) policyPath(r kubeResource) string {

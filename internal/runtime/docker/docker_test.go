@@ -24,7 +24,6 @@ type fakeEngine struct {
 	removed          int
 	spec             map[string]any
 	runtime, network string
-	failStart        bool
 }
 
 func (f *fakeEngine) handler(w http.ResponseWriter, r *http.Request) {
@@ -67,10 +66,6 @@ func (f *fakeEngine) handler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(201)
 		io.WriteString(w, `{"Id":"container"}`)
 	case r.Method == "POST" && strings.HasSuffix(path, "/start"):
-		if f.failStart {
-			http.Error(w, "runtime unavailable", 500)
-			return
-		}
 		f.running = true
 		w.WriteHeader(204)
 	case r.Method == "POST" && strings.HasSuffix(path, "/stop"):
@@ -189,13 +184,21 @@ func TestSecureGateAlsoBlocksExistingRuntime(t *testing.T) {
 		t.Fatal("existing grant bypassed secure mode")
 	}
 }
-func TestKataFailureDoesNotFallback(t *testing.T) {
+func TestDockerRejectsLegacyKataRuntime(t *testing.T) {
 	c, engine := controller(t, false)
-	c.cfg.RuntimeType = "kata"
-	engine.failStart = true
-	r := controllerRequest(c, "POST", "/v1/workspaces/ws_test/start", c.cfg.Token, "")
-	if r.Code != 503 || engine.createCount != 1 || engine.runtime != "io.containerd.kata.v2" {
-		t.Fatal("Kata fallback or invalid runtime selection")
+	cfg := c.cfg
+	cfg.RuntimeType = "kata"
+	if _, err := NewController(c.Docker, cfg); err == nil {
+		t.Fatal("legacy Kata configuration accepted")
+	}
+
+	if r := controllerRequest(c, "POST", "/v1/workspaces/ws_test/start", c.cfg.Token, ""); r.Code != 200 || engine.runtime != "runc" {
+		t.Fatal("Docker workspace did not start with runc")
+	}
+	engine.runtime = "io.containerd.kata.v2"
+	engine.running = false
+	if r := controllerRequest(c, "POST", "/v1/workspaces/ws_test/start", c.cfg.Token, ""); r.Code != 503 || engine.running || engine.createCount != 1 {
+		t.Fatal("legacy Kata workspace was started or replaced")
 	}
 }
 func TestAgentProxyCannotTargetManagement(t *testing.T) {

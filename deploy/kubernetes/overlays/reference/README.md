@@ -219,6 +219,16 @@ mutable tags. Workspace images are independently configured with the
 runtime-controller's `WORKSPACE_IMAGE` environment value. Existing Sandboxes
 reject image drift; plan retained-workspace migration before changing that value.
 
+When upgrading to the gateway-only workspace egress policy, coordinate the
+NetworkPolicy update with a digest for a runtime-controller image built with the
+same policy change. Quiesce workspace operations during the rollout because the
+controller requires exact policy specs.
+Apply the rendered static policies and remove the DNS and registry entries from
+`workspace-project-egress` in each existing controller-provisioned workspace
+namespace. Preserve the gateway rule's project selector and TCP port 8080.
+The upgraded controller creates the reduced policy in new namespaces. Apply the
+inverse policy changes if rolling back the controller image.
+
 ## Authentication and execution
 
 Dashboard and separate per-worker HTTPS origins are exposed. MCP and controlplane remain ClusterIP services.

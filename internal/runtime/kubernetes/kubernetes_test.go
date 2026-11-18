@@ -64,7 +64,7 @@ func (f *fakeKubernetes) serve(w http.ResponseWriter, r *http.Request) {
 			project = "proj_two"
 		}
 		items := []any{}
-		for name, spec := range projectPolicies(project) {
+		for name, spec := range projectPolicies(project, project) {
 			items = append(items, map[string]any{"metadata": map[string]string{"name": name}, "spec": spec})
 		}
 		shared.JSON(w, 200, map[string]any{"items": items})

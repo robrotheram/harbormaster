@@ -65,6 +65,7 @@ services:
       EGRESS_CONTAINER: ${DEPLOYMENT_ID:-awb}-egress-gateway
       BROKER_CONTAINER: ${DEPLOYMENT_ID:-awb}-credential-broker
       WORKSPACE_IMAGE: agent-workbench-workspace:dev
+      # Reject retired runtime selections from existing Docker deployments.
       WORKSPACE_RUNTIME: ${WORKSPACE_RUNTIME:-docker}
       RUNTIME_BACKEND: ${RUNTIME_BACKEND:-docker}
       REQUIRE_VERIFIED_ISOLATION: ${REQUIRE_VERIFIED_ISOLATION:-false}
