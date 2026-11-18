@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { NativeSelect } from "@/components/ui/native-select";
 import { ErrorNotice, State, Modal } from "@/shared/components";
-import { request } from "@/shared/http";
+import { APIError, request } from "@/shared/http";
 import type { Project } from "@/shared/types";
 import { evidenceURL, workKeys, type WorkItem } from "@/features/work/api";
 
@@ -26,6 +26,16 @@ type Issue = {
   labels: string[];
   milestone: string;
 };
+
+function requiresPlatformOperator(error: unknown) {
+  return (
+    error instanceof APIError &&
+    ((error.status === 403 && error.code === "FORBIDDEN") ||
+      (error.status === 409 &&
+        error.code === "PROJECT_ISOLATED_WORKERS_REQUIRED"))
+  );
+}
+
 export function RepositoryConnections({
   projects,
   embedded = false,
@@ -45,11 +55,13 @@ export function RepositoryConnections({
   const hosts = useQuery({
     queryKey: ["forge-hosts"],
     queryFn: () => request<{ items: ForgeAccount[] }>("/forge-hosts"),
+    retry: (count, error) => count < 1 && !requiresPlatformOperator(error),
   });
   const key = ["platform", "forge-connections"];
   const connections = useQuery({
     queryKey: key,
     queryFn: () => request<{ items: Connection[] }>("/forge-connections"),
+    retry: (count, error) => count < 1 && !requiresPlatformOperator(error),
   });
   const save = useMutation({
     mutationFn: () =>
@@ -76,16 +88,34 @@ export function RepositoryConnections({
     !!repo.trim() &&
     hosts.isSuccess &&
     !!hosts.data?.items.some((account) => account.name === host);
+
+  const heading = embedded ? (
+    <h2 className="text-lg font-semibold">Repository connections</h2>
+  ) : (
+    <h1>Repository connections</h1>
+  );
+  if (
+    requiresPlatformOperator(hosts.error) ||
+    requiresPlatformOperator(connections.error) ||
+    requiresPlatformOperator(save.error) ||
+    requiresPlatformOperator(remove.error)
+  ) {
+    return (
+      <section className="space-y-3">
+        {heading}
+        <p role="alert">
+          Repository connections require local platform operator access. Ask a
+          platform operator to configure the provider account or connect the
+          repository.
+        </p>
+      </section>
+    );
+  }
+
   return (
     <div className="space-y-5">
       <div className="page-title">
-        <div>
-          {embedded ? (
-            <h2 className="text-lg font-semibold">Repository connections</h2>
-          ) : (
-            <h1>Repository connections</h1>
-          )}
-        </div>
+        <div>{heading}</div>
       </div>
       {save.isError && <ErrorNotice error={save.error} />}
       {hosts.isPending && <p role="status">Loading configured accounts…</p>}
@@ -117,6 +147,7 @@ export function RepositoryConnections({
               </p>
             </div>
             <Button
+              disabled={hosts.isPending || connections.isPending}
               onClick={() => {
                 setAccountSaved("");
                 setAccountForm("new");

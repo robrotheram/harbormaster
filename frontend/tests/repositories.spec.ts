@@ -1,5 +1,38 @@
 import { test, expect } from "@playwright/test";
 
+for (const [status, code] of [
+  [403, "FORBIDDEN"],
+  [409, "PROJECT_ISOLATED_WORKERS_REQUIRED"],
+] as const) {
+  test(`repository setup explains platform access when both lists return ${code}`, async ({
+    page,
+  }) => {
+    await page.route("**/ui-api/**", async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (
+        path === "/ui-api/forge-hosts" ||
+        path === "/ui-api/forge-connections"
+      )
+        return route.fulfill({ status, json: { code } });
+      return route.fulfill({ json: { items: [] } });
+    });
+
+    await page.goto("/app/connections?tab=repositories");
+    await expect(page.getByRole("alert")).toHaveText(
+      /Repository connections require local platform operator access/,
+    );
+    await expect(page.getByRole("button", { name: "Add account" })).toHaveCount(
+      0,
+    );
+    await expect(page.getByRole("button", { name: "Try again" })).toHaveCount(
+      0,
+    );
+    await expect(
+      page.getByRole("tab", { name: "Agent subscriptions" }),
+    ).toBeEnabled();
+  });
+}
+
 test("repository connections are platform-wide and imports choose a project", async ({
   page,
 }) => {

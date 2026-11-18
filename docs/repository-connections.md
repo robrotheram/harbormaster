@@ -1,13 +1,13 @@
 # Repository connections, issue board and reviews
 
-Platform navigation includes **Repositories** and **Connection profiles**.
+Platform navigation includes **Connections** and **Network profiles**.
 Project navigation includes **Issue board** and **Reviews**. Repository connections
 are shared across the platform; existing project connections remain available.
 Existing work conversations, workers and outputs remain available.
 
 ## Add an account in the UI
 
-Open **Platform → Repositories → Add account**. Give the account a name, choose
+From the local operator console, open **Platform → Connections → Repositories → Add account**. Give the account a name, choose
 GitHub, GitLab.com or GitLab self-hosted, and enter its access token. For a private
 GitLab installation, enter its HTTPS address (including any installation subpath).
 Select **Test & save account** to verify the credential with the provider before
@@ -16,7 +16,11 @@ saving. The account is selected automatically in the repository connection form.
 Use **Update token** to replace an expired or revoked credential. The provider and
 server address stay fixed; add a separate account for a different destination.
 A failed authentication check leaves the previously saved credential intact.
-Account setup and changes require the existing platform administrator authority.
+Account setup and repository connections require local platform operator
+authority. A browser sign-in (AuthKit or OAuth2 Proxy) grants a human identity.
+Project administrators and project-scoped agent credentials cannot manage these
+platform-wide connections. If the page requires local platform operator access,
+ask a platform operator to perform the setup from the local console.
 
 Tokens entered in the UI are encrypted with AES-256-GCM before persistence. The
 key is purpose-separated from the persistent control-plane authentication secret,
@@ -69,11 +73,12 @@ the saved repository connection. Removing its account disables remote operations
 existing imported work stays available.
 
 GitHub fine-grained tokens need access to the selected repository and Issues
-read/write permission for mutations. GitLab project/group/personal tokens need
-appropriate project membership and the `api` scope for writes. Prefer dedicated
-accounts with access limited to the intended repositories. References:
+read permission to connect it. Mutations require Issues write permission.
+GitLab project, group, and personal tokens need appropriate project access and
+an API scope that allows reads (`read_api` or `api`). Writes require `api`.
+Prefer dedicated accounts with access limited to the intended repositories. References:
 [GitHub issues](https://docs.github.com/en/rest/issues/issues) and
-[GitLab issues](https://docs.gitlab.com/api/issues/).
+[GitLab access token scopes](https://docs.gitlab.com/security/tokens/access_token_scopes/).
 
 On-prem GitLab must be reachable from the control plane, use HTTPS, and present
 a certificate trusted by its system CA store. TLS verification is never disabled.
@@ -86,7 +91,7 @@ require the local administrator, not project-scoped agent credentials.
 
 ## Tickets and factory work
 
-Open **Platform → Repositories**. Select an account, enter `owner/repository` (GitHub) or `group/subgroup/project`
+Open **Platform → Connections → Repositories**. Select an account, enter `owner/repository` (GitHub) or `group/subgroup/project`
 (GitLab), and choose **Connect repository**. Access is checked before saving.
 Select the connection to browse paginated tickets, view descriptions, labels and
 milestones, create a ticket, or close/reopen one. GitHub pull requests are excluded.

@@ -14,8 +14,21 @@ func TestAccountCreateRotateAndEncryptedPersistence(t *testing.T) {
 	s, _ := setup(t)
 	t.Setenv("WORKBENCH_FORGE_CONFIG", "")
 	calls := 0
+	repositoryAllowed := false
 	remote := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
+		if r.URL.EscapedPath() == "/api/v4/projects/team%2Frepo/issues" {
+			if r.Method != http.MethodGet || r.Header.Get("PRIVATE-TOKEN") != "synthetic-private-token" {
+				t.Error("repository access check must use the saved provider credential")
+			}
+			if !repositoryAllowed {
+				w.WriteHeader(http.StatusForbidden)
+				w.Write([]byte(`{"error":"private provider detail"}`))
+				return
+			}
+			w.Write([]byte(`[]`))
+			return
+		}
 		if r.URL.Path != "/api/v4/user" {
 			t.Error(r.URL.Path)
 		}
@@ -61,6 +74,21 @@ func TestAccountCreateRotateAndEncryptedPersistence(t *testing.T) {
 	hosts, err := s.forgeHosts(context.Background())
 	if err != nil || len(hosts) != 1 || hosts[0].Token != "synthetic-private-token" {
 		t.Fatal("stored credential unavailable", err)
+	}
+	connect := func() *httptest.ResponseRecorder {
+		return request(t, s, "POST", "/v1/forge-connections", `{"host":"Office GitLab","repository":"team/repo"}`)
+	}
+	response = connect()
+	if response.Code != 502 || !strings.Contains(response.Body.String(), `"code":"FORGE_HTTP_403"`) || strings.Contains(response.Body.String(), "private provider detail") {
+		t.Fatal(response.Code, response.Body)
+	}
+	connections, err := s.Store.ForgeConnections(context.Background())
+	if err != nil || len(connections) != 0 {
+		t.Fatal("repository was saved after provider denied access", err)
+	}
+	repositoryAllowed = true
+	if response = connect(); response.Code != 201 {
+		t.Fatal(response.Code, response.Body)
 	}
 	response = save("rejected", 1, remote.URL)
 	if response.Code != 502 {
