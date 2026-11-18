@@ -348,14 +348,17 @@ func TestConsolidatedCoreRetainsWorkspaceBoundary(t *testing.T) {
 	}
 }
 
-func TestReferenceUsesOneSharedWorker(t *testing.T) {
+func TestReferenceUsesIsolatedProjectWorkers(t *testing.T) {
 	objects := build(t, "overlays/reference")
-	if env(find(t, objects, "Deployment", "controlplane"))["SHARED_WORKSPACE_ID"] != "ws_shared" {
-		t.Fatal("shared worker not configured")
+	if env(find(t, objects, "Deployment", "controlplane"))["SHARED_WORKSPACE_ID"] != "" {
+		t.Fatal("shared worker must be disabled")
+	}
+	if env(find(t, objects, "Deployment", "runtime-controller"))["PROVISION_WORKSPACE_NAMESPACES"] != "true" {
+		t.Fatal("isolated worker provisioning not configured")
 	}
 	quota := map[string]any(find(t, objects, "ResourceQuota", "project-quota"))
 	if field(quota, "metadata", "namespace") != "harbormaster" || field(quota, "spec", "hard", "pods") != "1" {
-		t.Fatal("reference must permit only one workspace pod")
+		t.Fatal("legacy namespace must retain its one-worker limit")
 	}
 }
 

@@ -13,6 +13,10 @@ spec:
           value: claude-sonnet-5-5
         - name: CODEX_MODEL
           value: gpt-6.1-sol
+        - name: PROVISION_WORKSPACE_NAMESPACES
+          value: 'true'
+        - name: KUBERNETES_SHARED_GATEWAY_PROJECT
+          value: default
         - name: PROVISION_PROJECT_NAMESPACES
           value: 'true'
         - name: REQUIRE_VERIFIED_ISOLATION

@@ -12,6 +12,6 @@ spec:
         - name: PROVISION_PROJECT_NAMESPACES
           value: 'true'
         - name: SHARED_WORKSPACE_ID
-          value: ws_shared
+          value: ''
         - name: MEMORY_QUOTA_BYTES
           value: '2147483648'

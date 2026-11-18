@@ -42,21 +42,38 @@ Provision the Secrets below, then apply the complete overlay. The bootstrap and
 complete overlay deliberately share the same resources; do not create separate
 Argo Applications that compete for ownership of them.
 
-## Shared workspace
+## Project-isolated workers
 
-The reference controlplane sets `SHARED_WORKSPACE_ID=ws_shared`. All projects use
-that one T3/Codex workspace, its persistent files, agent home, history and network
-settings. Project work boards and scheduling metadata remain separately addressed;
-projects are organizational labels, not filesystem isolation boundaries in this mode.
-Use project-specific folders to organize repositories in the shared filesystem.
+`SHARED_WORKSPACE_ID` is empty. Signed-in users access projects through explicit
+membership; project ownership is also checked before worker, history, file,
+preview and subscription-load operations.
 
-The worker is provisioned idempotently at controlplane startup. Creating projects
-never creates additional agents. Its PriorityClass-scoped quota permits one worker
-Pod, including Kata VM overhead, without applying that quota to core services.
-Workspace network policies select workspace-labelled Pods, so sharing the namespace
-does not grant the agent access to the database, platform API or Kubernetes API.
-Branch workers, additional agent types and deletion of the shared worker remain
-unavailable in shared mode.
+`PROVISION_WORKSPACE_NAMESPACES=true` creates `hm-wrk-<project ID suffix>` when a
+project first starts a worker. These namespaces are distinct from application
+namespaces. Each receives restricted admission, a token-free workspace account,
+private retained RWOP claims, the registry pull credential, a scoped runtime role
+binding and the canonical deny-by-default worker network policies. The controller
+discovers owned namespaces after restart; no generated project-binding file is
+needed. Namespace ownership conflicts fail closed rather than adopting resources.
+
+Each namespace permits two worker Pods (including Kata overhead within 3 CPU and
+3 GiB), four claims and 40 GiB of storage. The controlplane's global 2 GiB worker
+memory budget normally permits two 1 GiB workers across all projects. Stopping an
+idle worker frees compute while preserving its files. Namespace creation does not
+start compute. Kata branch seeding remains unsupported.
+
+`KUBERNETES_SHARED_GATEWAY_PROJECT=default` points worker network rules at the
+central gateway service Pods. Each request still requires a workspace-scoped grant;
+this does not permit worker-to-worker, application, database, Kubernetes API or
+direct Internet traffic. Project destination allowlists remain explicitly managed
+in runtime-bindings; new projects start with blocked outbound connections.
+
+The former `ws_shared` worker and its mixed-project data are retained, stopped,
+under the operator-only `default` legacy project. Do not grant project membership
+to that legacy project or copy its whole volume into a private project. Its old
+acceptance-project work records are retained for operator recovery; new work uses
+fresh project-owned workers and subscription selections. Saved personal accounts
+are retained and users choose which account to load into their new worker.
 
 ## Project application namespaces
 
@@ -88,7 +105,8 @@ and storage. Retiring deployed applications is a separate explicit operator acti
 ## Dependencies and ownership
 
 - `harbormaster`: platform, gateways, CNPG PostgreSQL 17, TLS/auth, sandbox controller
-  and the one persistent shared agent.
+  and retained legacy agents.
+- `hm-wrk-*`: project-isolated agents and their persistent storage.
 - `hm-prj-*`: application deployment destinations created for new projects.
 - Existing Longhorn 1.11.2, CloudNativePG 1.29.1, cert-manager with
   `letsencrypt-prod`, Traefik and oauth2-proxy are cluster-owned prerequisites.
@@ -206,8 +224,7 @@ Dashboard and separate shared-worker HTTPS origins are exposed. MCP and controlp
 The existing `oauth-redirect` handler and namespace-local `harbormaster-auth`
 middleware use `https://oidc.exceptionerror.io` / Entra. The dashboard independently
 validates session cookies against OAuth2 Proxy, rejects caller identity headers,
-and enforces its exact HTTPS origin. This is a shared operator console, not per-user
-project authorization. WorkOS and OAuth2 Proxy settings cannot be combined.
+and enforces its exact HTTPS origin. Verified signed-in identities are subject to explicit project membership. WorkOS and OAuth2 Proxy settings cannot be combined.
 
 The base defaults to `REQUIRE_VERIFIED_ISOLATION=true`. The reference runtime patch
 explicitly enables execution with `false` after live acceptance. The application
@@ -224,7 +241,7 @@ no operator OAuth middleware: the dashboard requires a one-use browser ticket or
 native desktop bearer. Cookies are secure and host-only. Worker origins cannot
 access the operator API. Application preview hosting remains separately configured.
 
-For an upgrade, stop the idle shared worker through the application API, update
+For a worker-image upgrade, stop each idle worker through the application API, update
 its suspended Sandbox image and `CODEX_MODEL` environment entry to match the
 controller defaults, then start it through the application API. Preserve the
 Sandbox UID, grant generation, existing claim, home ID and project state. Changing

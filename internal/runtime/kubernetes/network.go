@@ -24,7 +24,7 @@ func (k *Kubernetes) networkEvidence(ctx context.Context, namespace, project str
 	if err := k.call(ctx, "GET", "/apis/networking.k8s.io/v1/namespaces/"+namespace+"/networkpolicies", nil, &list); err != nil {
 		return err
 	}
-	expected := projectPolicies(project)
+	expected := k.workspacePolicies(project)
 	if len(list.Items) != len(expected) {
 		return errors.New("network policy set drift")
 	}
@@ -64,6 +64,23 @@ func projectPolicies(project string) map[string]map[string]any {
 	_ = json.Unmarshal(b, &out)
 	return out
 }
+
+// Central gateways authenticate every request with a workspace grant. The optional
+// shared gateway binding changes only the destination, never the worker selector.
+func (k *Kubernetes) workspacePolicies(project string) map[string]map[string]any {
+	policies := projectPolicies(project)
+	if k.cfg.SharedGatewayProject != "" {
+		rules := policies["workspace-project-egress"]["egress"].([]any)
+		for _, rule := range rules {
+			for _, peer := range rule.(map[string]any)["to"].([]any) {
+				labels := peer.(map[string]any)["podSelector"].(map[string]any)["matchLabels"].(map[string]any)
+				labels["workbench.project"] = k.cfg.SharedGatewayProject
+			}
+		}
+	}
+	return policies
+}
+
 func (k *Kubernetes) policyPath(r kubeResource) string {
 	return "/api/v1/namespaces/" + r.Metadata.Namespace + "/secrets/" + r.Metadata.Name + "-network"
 }

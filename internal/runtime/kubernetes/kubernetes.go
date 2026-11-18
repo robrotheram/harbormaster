@@ -34,6 +34,8 @@ type KubernetesConfig struct {
 	InferenceURL, BrokerURL, CodexModel, ClaudeModel    string
 	ProjectNamespaces                                   map[string]string
 	ProvisionProjectNamespaces                          bool
+	ProvisionWorkspaceNamespaces                        bool
+	SharedGatewayProject                                string
 	CoreNamespace                                       string
 	ProjectAllowlists                                   map[string][]string
 	EgressURL                                           string
@@ -61,6 +63,9 @@ func NewKubernetes(c KubernetesConfig) (*Kubernetes, error) {
 	}
 	if !dnsLabel.MatchString(c.CoreNamespace) {
 		return nil, errors.New("invalid core namespace")
+	}
+	if c.SharedGatewayProject != "" && !shared.ValidID(c.SharedGatewayProject) {
+		return nil, errors.New("invalid shared gateway project")
 	}
 	if c.EgressURL == "" {
 		c.EgressURL = "http://egress-gateway.harbormaster.svc:8080"
@@ -178,14 +183,18 @@ func (k *Kubernetes) namespaces() []string {
 }
 func (k *Kubernetes) owned(resource kubeResource, id string) bool {
 	l := resource.Metadata.Labels
-	return l["workbench.deployment"] == k.cfg.Deployment && l["workbench.workspace"] == id && k.cfg.ProjectNamespaces[protocol.ProjectOf(l)] == resource.Metadata.Namespace && resource.Metadata.Name == k.name(id)
+	return l["workbench.deployment"] == k.cfg.Deployment && l["workbench.workspace"] == id && k.workspaceNamespace(protocol.ProjectOf(l)) == resource.Metadata.Namespace && resource.Metadata.Name == k.name(id)
 }
 func (k *Kubernetes) find(ctx context.Context, id string) (kubeResource, error) {
 	if !shared.ValidID(id) || !dnsLabel.MatchString(k.name(id)) {
 		return kubeResource{}, errors.New("invalid workspace")
 	}
 	var found *kubeResource
-	for _, namespace := range k.namespaces() {
+	namespaces, err := k.runtimeNamespaces(ctx)
+	if err != nil {
+		return kubeResource{}, err
+	}
+	for _, namespace := range namespaces {
 		var list struct {
 			Items []kubeResource `json:"items"`
 		}
@@ -287,9 +296,14 @@ func (k *Kubernetes) StartConfigured(ctx context.Context, id string, spec protoc
 	if spec.ParentID != "" {
 		return shared.Observation{}, errors.New("KUBERNETES_BRANCH_SEED_UNAVAILABLE")
 	}
-	namespace, ok := k.cfg.ProjectNamespaces[spec.ProjectID]
-	if !ok || spec.HomeID == "" || !shared.ValidID(id) || !dnsLabel.MatchString(k.name(id)) {
+	namespace := k.workspaceNamespace(spec.ProjectID)
+	if namespace == "" || spec.HomeID == "" || !shared.ValidID(id) || !dnsLabel.MatchString(k.name(id)) {
 		return shared.Observation{}, errors.New("project runtime not provisioned")
+	}
+	if _, bound := k.cfg.ProjectNamespaces[spec.ProjectID]; !bound {
+		if err := k.ensureWorkspaceNamespace(ctx, spec.ProjectID); err != nil {
+			return shared.Observation{}, err
+		}
 	}
 	if err := k.networkEvidence(ctx, namespace, spec.ProjectID); err != nil {
 		return shared.Observation{}, err

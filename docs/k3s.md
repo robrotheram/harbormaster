@@ -31,8 +31,9 @@ authenticated ingress/TLS and immutable image digests. Keep secrets outside Git.
 `make kubernetes-check` builds with pinned Kustomize and checks the deployment
 contract in CI. There are no Python rendering or bootstrap steps.
 
-The reference uses one shared agent and gateway set in `harbormaster`. New projects
-receive separate application deployment namespaces, not agent workspaces. Namespace
+The reference uses project-isolated agents in `hm-wrk-*` namespaces, with central
+authenticated gateways in `harbormaster`. Applications use separate `hm-prj-*`
+namespaces. The old shared workspace is retained stopped for operator recovery. Namespace
 creation is idempotent and does not deploy application workloads; use the namespace
 shown in project settings with normal Helm/Kustomize/CI. Workspace DNS remains
 restricted; the reference uses fixed gateway Service IPs. Platform services use

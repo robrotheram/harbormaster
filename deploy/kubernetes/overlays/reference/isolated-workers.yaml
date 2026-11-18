@@ -1,0 +1,92 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: harbormaster-workspace-rolebinding
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+    - apiGroups: [rbac.authorization.k8s.io]
+      apiVersions: [v1]
+      operations: [CREATE, UPDATE]
+      resources: [rolebindings]
+  matchConditions:
+  - name: runtime-controller-only
+    expression: "request.userInfo.username == 'system:serviceaccount:harbormaster:runtime-controller'"
+  validations:
+  - expression: >-
+      has(namespaceObject.metadata.labels) &&
+      namespaceObject.metadata.labels['harbormaster.io/deployment'] == 'harbormaster' &&
+      namespaceObject.metadata.labels['harbormaster.io/purpose'] == 'workspace' &&
+      namespaceObject.metadata.labels['workbench.security'] == 'enforced' &&
+      namespaceObject.metadata.labels['workbench.project'].matches('^prj_[a-f0-9]{32}$') &&
+      namespaceObject.metadata.name == 'hm-wrk-' + namespaceObject.metadata.labels['workbench.project'].substring(4)
+    message: Runtime access can only be bound inside an owned project worker namespace.
+  - expression: >-
+      object.metadata.name == 'workbench-runtime' &&
+      object.roleRef.apiGroup == 'rbac.authorization.k8s.io' &&
+      object.roleRef.kind == 'ClusterRole' &&
+      object.roleRef.name == 'harbormaster-workspace-runtime' &&
+      object.subjects.size() == 1 &&
+      object.subjects[0].kind == 'ServiceAccount' &&
+      object.subjects[0].name == 'runtime-controller' &&
+      object.subjects[0].namespace == 'harbormaster'
+    message: Only the runtime controller may receive the fixed worker runtime role.
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: harbormaster-workspace-rolebinding
+spec:
+  policyName: harbormaster-workspace-rolebinding
+  validationActions: [Deny]
+  matchResources: {}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: harbormaster-workspace-runtime
+rules:
+- apiGroups: [agents.x-k8s.io]
+  resources: [sandboxes]
+  verbs: [get, list, create, patch]
+- apiGroups: ['']
+  resources: [secrets]
+  verbs: [get, create, patch]
+- apiGroups: ['']
+  resources: [persistentvolumeclaims]
+  verbs: [get, list]
+- apiGroups: [networking.k8s.io]
+  resources: [networkpolicies]
+  verbs: [get, list]
+---
+# This ClusterRole is NOT bound cluster-wide. The controller may bind it only
+# inside owned worker namespaces, as enforced by the admission policy below.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: harbormaster-workspace-provisioner
+rules:
+- apiGroups: ['']
+  resources: [namespaces]
+  verbs: [list]
+- apiGroups: [rbac.authorization.k8s.io]
+  resources: [rolebindings]
+  verbs: [get, create]
+- apiGroups: [rbac.authorization.k8s.io]
+  resources: [clusterroles]
+  resourceNames: [harbormaster-workspace-runtime]
+  verbs: [bind]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: harbormaster-workspace-provisioner
+subjects:
+- kind: ServiceAccount
+  name: runtime-controller
+  namespace: harbormaster
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: harbormaster-workspace-provisioner

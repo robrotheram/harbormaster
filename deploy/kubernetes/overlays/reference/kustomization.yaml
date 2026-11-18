@@ -5,6 +5,7 @@ resources:
 - foundation
 - ingress.yaml
 - user-subscriptions.yaml
+- isolated-workers.yaml
 patches:
 - target:
     group: apps
