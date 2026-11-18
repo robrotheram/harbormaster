@@ -2,6 +2,7 @@ package firecracker
 
 import (
 	"agent-workbench/internal/runtime/controllerclient"
+	"agent-workbench/internal/runtime/internal/contracttest"
 	"agent-workbench/internal/runtime/protocol"
 	"agent-workbench/internal/shared"
 	"context"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -59,4 +61,15 @@ func TestFailedEnforcementCheckDoesNotClaimUnconfirmedTermination(t *testing.T) 
 	if response.Code != http.StatusOK || v.running {
 		t.Fatal("could not retry termination after guest became unavailable", response.Code)
 	}
+}
+
+func TestControllerHTTPContract(t *testing.T) {
+	f := testFC()
+	contracttest.Controller(t, f.Handler(), f.token, f.service, 404, 32768, 200)
+	contracttest.HTTP(t, f.Handler(),
+		contracttest.HTTPCase{Name: "invalid start target", Method: "POST", Path: "/v1/workspaces/invalid.id/start", Token: f.token, Body: "{}", Status: 400, Code: "INVALID_REQUEST"},
+		contracttest.HTTPCase{Name: "absent guest checked before agent body", Method: "POST", Path: "/v1/workspaces/ws_test/agent/v1/tasks", Token: f.token, Body: strings.Repeat(" ", (70<<10)+1), Status: 503, Code: "NOT_READY"},
+		contracttest.HTTPCase{Name: "wrong method", Method: "GET", Path: "/v1/workspaces/ws_test/start", Token: f.token, Body: "", Status: 404, Code: "NOT_FOUND"},
+		contracttest.HTTPCase{Name: "decoded action", Method: "GET", Path: "/v1/workspaces/ws_test/agent%2Fv1/tasks", Token: f.token, Body: "", Status: 503, Code: "NOT_READY"},
+	)
 }

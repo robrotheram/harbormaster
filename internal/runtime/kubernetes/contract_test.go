@@ -66,3 +66,13 @@ func TestNetworkPolicyThroughRealClient(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestControllerHTTPContract(t *testing.T) {
+	k, _ := kubeProvider(t)
+	contracttest.Controller(t, k.Handler(), k.cfg.Token, k.cfg.GatewayServiceToken, 405, 2048, 409)
+	contracttest.HTTP(t, k.Handler(),
+		contracttest.HTTPCase{Name: "empty start", Method: "POST", Path: "/v1/workspaces/ws_test/start", Token: k.cfg.Token, Body: "", Status: 400, Code: "INVALID_REQUEST"},
+		contracttest.HTTPCase{Name: "agent limit", Method: "POST", Path: "/v1/workspaces/ws_test/agent/v1/tasks", Token: k.cfg.Token, Body: strings.Repeat(" ", (70<<10)+1), Status: 400, Code: "INVALID_REQUEST"},
+		contracttest.HTTPCase{Name: "invalid network target", Method: "POST", Path: "/v1/workspaces/invalid.id/network-policy", Token: k.cfg.Token, Body: "{}", Status: 400, Code: "INVALID_REQUEST"},
+	)
+}
