@@ -1,8 +1,8 @@
 package kubernetes
 
 import (
+	"context"
 	"crypto/subtle"
-	"io"
 	"net/http"
 
 	"agent-workbench/internal/runtime/protocol"
@@ -10,15 +10,25 @@ import (
 )
 
 func (k *Kubernetes) Handler() http.Handler {
-	root := http.NewServeMux()
-	root.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
-		if k.call(r.Context(), "GET", "/version", nil, nil) != nil {
-			shared.Error(w, 503, "KUBERNETES_UNAVAILABLE")
-			return
-		}
-		shared.JSON(w, 200, map[string]string{"status": "ok"})
+	return protocol.NewControllerHandler(protocol.Backend{
+		Token: k.cfg.Token, GatewayServiceToken: k.cfg.GatewayServiceToken,
+		Health: k.health, VerifyGrant: k.verify, RegisterManagement: k.registerManagement,
+		Start: k.startWorkspace, Stop: k.stopWorkspace, Inspect: k.inspectWorkspace,
+		BindNetworkPolicy: protocol.BindNetworkPolicy(k.applyWorkspaceNetwork), Reconcile: k.reconcileWorkspaceNetwork,
+		Capabilities: k.capabilities, Proxy: k.proxy, Agent: protocol.BufferedAgent(k.proxyAgent),
+		StartBodyLimit: 2048, AgentNoStore: true,
 	})
-	mux := http.NewServeMux()
+}
+
+func (k *Kubernetes) health(w http.ResponseWriter, r *http.Request) {
+	if k.call(r.Context(), "GET", "/version", nil, nil) != nil {
+		shared.Error(w, 503, "KUBERNETES_UNAVAILABLE")
+		return
+	}
+	shared.JSON(w, 200, map[string]string{"status": "ok"})
+}
+
+func (k *Kubernetes) registerManagement(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/projects/{id}/namespace", func(w http.ResponseWriter, r *http.Request) {
 		namespace, err := k.EnsureProjectNamespace(r.Context(), r.PathValue("id"))
 		if err != nil {
@@ -27,102 +37,62 @@ func (k *Kubernetes) Handler() http.Handler {
 		}
 		shared.JSON(w, 200, map[string]string{"namespace": namespace})
 	})
-	mux.HandleFunc("GET /v1/capabilities", func(w http.ResponseWriter, r *http.Request) {
-		c := protocol.RuntimeCapability{Resources: protocol.ResourceLimits{CPUCores: 1, MemoryBytes: k.cfg.MemoryLimit}, SchemaVersion: 1, Backend: "kubernetes-agent-sandbox", Version: AgentSandboxRelease, ID: protocol.DevelopmentTemplate, AgentKinds: []string{"t3", "codex"}, NetworkModes: []string{"blocked", "allowlist"}, IsolationStatus: "unverified", NetworkStatus: "unverified", PrivateHomes: true}
-		if k.hermesEnabled() {
-			c.AgentKinds = append(c.AgentKinds, "hermes")
-		}
-		shared.JSON(w, 200, c)
-	})
-	mux.HandleFunc("POST /v1/workspaces/{id}/network-policy", func(w http.ResponseWriter, r *http.Request) {
-		var input struct {
-			Connections *shared.ConnectionPolicy `json:"connections"`
-		}
-		if !shared.Decode(w, r, &input, 32768) {
-			return
-		}
-		if input.Connections == nil {
-			shared.Error(w, 400, "INVALID_REQUEST")
-			return
-		}
-		if k.ApplyNetwork(r.Context(), r.PathValue("id"), *input.Connections) != nil {
-			shared.Error(w, 503, "NETWORK_POLICY_UNAVAILABLE")
-			return
-		}
-		shared.JSON(w, 200, map[string]bool{"applied": true})
-	})
-	mux.HandleFunc("POST /v1/workspaces/{id}/start", func(w http.ResponseWriter, r *http.Request) {
-		var spec protocol.WorkspaceSpec
-		if !shared.Decode(w, r, &spec, 2048) {
-			return
-		}
-		o, err := k.StartConfigured(r.Context(), r.PathValue("id"), spec)
-		if err != nil {
-			shared.Error(w, 503, "RUNTIME_UNAVAILABLE")
-			return
-		}
-		shared.JSON(w, 200, o)
-	})
-	mux.HandleFunc("GET /v1/workspaces/{id}", func(w http.ResponseWriter, r *http.Request) {
-		o, err := k.Inspect(r.Context(), r.PathValue("id"))
-		if err != nil {
-			shared.Error(w, 503, "RUNTIME_UNAVAILABLE")
-			return
-		}
-		shared.JSON(w, 200, o)
-	})
-	mux.HandleFunc("POST /v1/workspaces/{id}/stop", func(w http.ResponseWriter, r *http.Request) {
-		if k.Stop(r.Context(), r.PathValue("id")) != nil {
-			shared.Error(w, 409, "WORKSPACE_BUSY")
-			return
-		}
-		shared.JSON(w, 200, map[string]bool{"stopped": true})
-	})
-	mux.HandleFunc("POST /v1/workspaces/{id}/reconcile-network", func(w http.ResponseWriter, r *http.Request) {
-		if k.Reconcile(r.Context(), r.PathValue("id")) != nil {
-			shared.Error(w, 503, "RUNTIME_UNAVAILABLE")
-			return
-		}
-		shared.JSON(w, 200, map[string]bool{"reconciled": true})
-	})
-	mux.HandleFunc("/v1/workspaces/{id}/console/{path...}", func(w http.ResponseWriter, r *http.Request) { k.Console(w, r, r.PathValue("id"), r.PathValue("path")) })
-	mux.HandleFunc("/v1/workspaces/{id}/application-proxy/{path...}", func(w http.ResponseWriter, r *http.Request) {
-		k.Application(w, r, r.PathValue("id"), r.PathValue("path"))
-	})
-	mux.HandleFunc("/v1/workspaces/{id}/desktop/{path...}", func(w http.ResponseWriter, r *http.Request) { k.Desktop(w, r, r.PathValue("id"), r.PathValue("path")) })
-	mux.HandleFunc("/v1/workspaces/{id}/agent/{path...}", func(w http.ResponseWriter, r *http.Request) {
-		path := "/" + r.PathValue("path")
-		if !protocol.AllowedAgentPath(r.Method, path) {
-			shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
-			return
-		}
-		query, err := protocol.AgentQuery(r.Method, path, r.URL.RawQuery)
-		if err != nil {
-			shared.Error(w, 400, "INVALID_REQUEST")
-			return
-		}
-		limit := protocol.AgentBodyLimit(path)
-		if query != "" {
-			path += "?" + query
-		}
-		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, limit))
-		if err != nil {
-			shared.Error(w, 400, "INVALID_REQUEST")
-			return
-		}
-		status, out, err := k.Agent(r.Context(), r.PathValue("id"), r.Method, path, body)
-		if err != nil {
-			shared.Error(w, 503, "WORKSPACE_UNAVAILABLE")
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Cache-Control", "no-store")
-		w.WriteHeader(status)
-		_, _ = w.Write(out)
-	})
-	root.Handle("/v1/", shared.RequireToken(k.cfg.Token, mux))
-	root.Handle("POST /v1/grants/verify", shared.RequireToken(k.cfg.GatewayServiceToken, http.HandlerFunc(k.verify)))
-	return root
+}
+
+func (k *Kubernetes) capabilities() protocol.RuntimeCapability {
+	caps := protocol.DevelopmentCapability("kubernetes-agent-sandbox", AgentSandboxRelease, k.cfg.MemoryLimit)
+	if k.hermesEnabled() {
+		caps.AgentKinds = append(caps.AgentKinds, "hermes")
+	}
+	return caps
+}
+
+func (k *Kubernetes) startWorkspace(ctx context.Context, id string, spec protocol.WorkspaceSpec) (shared.Observation, *protocol.ControllerError) {
+	o, err := k.StartConfigured(ctx, id, spec)
+	if err != nil {
+		return shared.Observation{}, protocol.Failure(503, "RUNTIME_UNAVAILABLE")
+	}
+	return o, nil
+}
+
+func (k *Kubernetes) inspectWorkspace(ctx context.Context, id string) (shared.Observation, *protocol.ControllerError) {
+	o, err := k.Inspect(ctx, id)
+	if err != nil {
+		return shared.Observation{}, protocol.Failure(503, "RUNTIME_UNAVAILABLE")
+	}
+	return o, nil
+}
+
+func (k *Kubernetes) stopWorkspace(ctx context.Context, id string) *protocol.ControllerError {
+	if k.Stop(ctx, id) != nil {
+		return protocol.Failure(409, "WORKSPACE_BUSY")
+	}
+	return nil
+}
+
+func (k *Kubernetes) applyWorkspaceNetwork(ctx context.Context, id string, connections *shared.ConnectionPolicy) *protocol.ControllerError {
+	if connections == nil {
+		return protocol.Failure(400, "INVALID_REQUEST")
+	}
+	if k.ApplyNetwork(ctx, id, *connections) != nil {
+		return protocol.Failure(503, "NETWORK_POLICY_UNAVAILABLE")
+	}
+	return nil
+}
+
+func (k *Kubernetes) reconcileWorkspaceNetwork(ctx context.Context, id string) *protocol.ControllerError {
+	if k.Reconcile(ctx, id) != nil {
+		return protocol.Failure(503, "RUNTIME_UNAVAILABLE")
+	}
+	return nil
+}
+
+func (k *Kubernetes) proxyAgent(ctx context.Context, id, method, path string, body []byte) (int, []byte, *protocol.ControllerError) {
+	status, out, err := k.Agent(ctx, id, method, path, body)
+	if err != nil {
+		return 0, nil, protocol.Failure(503, "WORKSPACE_UNAVAILABLE")
+	}
+	return status, out, nil
 }
 
 func (k *Kubernetes) verify(w http.ResponseWriter, r *http.Request) {

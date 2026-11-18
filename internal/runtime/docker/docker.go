@@ -341,276 +341,190 @@ func (c *Controller) observe(ctx context.Context, id string) (shared.Observation
 	}
 	return o, nil
 }
+
 func (c *Controller) Handler() http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
-		if c.Docker.call(r.Context(), "GET", "/_ping", nil, nil) != nil {
-			shared.Error(w, 503, "DOCKER_UNAVAILABLE")
-			return
-		}
-		shared.JSON(w, 200, map[string]string{"status": "ok"})
+	return protocol.NewControllerHandler(protocol.Backend{
+		Token: c.cfg.Token, GatewayServiceToken: c.cfg.GatewayServiceToken,
+		Health: c.health, VerifyGrant: c.verify,
+		Start: c.start, Stop: c.stop, Inspect: c.inspectWorkspace,
+		BindNetworkPolicy: protocol.BindNetworkPolicy(c.applyNetwork), Reconcile: c.reconcileNetwork, Capabilities: c.capabilities,
+		Proxy: c.proxy, Agent: protocol.BufferedAgent(c.proxyAgent),
+		StartBodyLimit: 2048, AllowEmptyStart: true, ValidateAgentID: true, AgentNoStore: true,
 	})
-	management := http.NewServeMux()
-	management.HandleFunc("POST /v1/workspaces/{id}/network-policy", func(w http.ResponseWriter, r *http.Request) {
-		var input struct {
-			Connections *shared.ConnectionPolicy `json:"connections"`
-		}
-		if !shared.Decode(w, r, &input, 32768) {
-			return
-		}
-		if !shared.ValidID(r.PathValue("id")) || c.cfg.RequireVerified {
-			shared.Error(w, 503, "NETWORK_POLICY_UNAVAILABLE")
-			return
-		}
-		if input.Connections == nil || !input.Connections.Valid() {
-			shared.Error(w, 400, "INVALID_REQUEST")
-			return
-		}
-		info, err := c.inspect(r.Context(), r.PathValue("id"))
-		if err != nil || !info.State.Running {
-			shared.Error(w, 409, "NOT_READY")
-			return
-		}
-		if (input.Connections.Mode == "open") != (connectionMode(info) == "open") {
-			shared.Error(w, 409, "STOP_WORKSPACE_FIRST")
-			return
-		}
-		c.policies.Store(info.Config.Labels["workbench.generation"], *input.Connections)
-		shared.JSON(w, 200, map[string]bool{"applied": true})
-	})
-	management.HandleFunc("GET /v1/capabilities", func(w http.ResponseWriter, r *http.Request) {
-		caps := RuntimeCapabilities()
-		caps.Resources.MemoryBytes = c.cfg.MemoryLimit
-		shared.JSON(w, 200, caps)
-	})
-	management.HandleFunc("POST /v1/workspaces/{id}/reconcile-network", func(w http.ResponseWriter, r *http.Request) {
-		id := r.PathValue("id")
-		if !shared.ValidID(id) || c.cfg.RequireVerified {
-			shared.Error(w, 403, "NOT_FOUND_OR_FORBIDDEN")
-			return
-		}
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		info, err := c.inspect(r.Context(), id)
-		if err != nil || !info.State.Running {
-			shared.Error(w, 409, "NOT_READY")
-			return
-		}
-		if c.ensureNetwork(r.Context(), id) != nil {
-			shared.Error(w, 503, "NETWORK_UNAVAILABLE")
-			return
-		}
-		shared.JSON(w, 200, map[string]bool{"reconciled": true})
-	})
-	management.HandleFunc("/v1/workspaces/{id}/application-proxy/{path...}", func(w http.ResponseWriter, r *http.Request) {
-		id := r.PathValue("id")
-		if !shared.ValidID(id) || c.cfg.RequireVerified {
-			shared.Error(w, 403, "CONSOLE_UNAVAILABLE")
-			return
-		}
-		info, err := c.inspect(r.Context(), id)
-		if err != nil || !info.State.Running {
-			shared.Error(w, 503, "CONSOLE_NOT_READY")
-			return
-		}
-		endpoint := info.NetworkSettings.Networks[c.name(id)]
-		if net.ParseIP(endpoint.IPAddress) == nil {
-			shared.Error(w, 503, "CONSOLE_NOT_READY")
-			return
-		}
-		shared.Proxy(w, r, "http://"+net.JoinHostPort(endpoint.IPAddress, "8080"), "/v1/application-proxy/"+r.PathValue("path"), c.token(id, info.Config.Labels["workbench.generation"]))
-	})
-	management.HandleFunc("/v1/workspaces/{id}/desktop/{path...}", func(w http.ResponseWriter, r *http.Request) {
-		id := r.PathValue("id")
-		if !shared.ValidID(id) || c.cfg.RequireVerified {
-			shared.Error(w, 403, "CONSOLE_UNAVAILABLE")
-			return
-		}
-		info, err := c.inspect(r.Context(), id)
-		if err != nil || !info.State.Running {
-			shared.Error(w, 503, "CONSOLE_NOT_READY")
-			return
-		}
-		endpoint := info.NetworkSettings.Networks[c.name(id)]
-		if net.ParseIP(endpoint.IPAddress) == nil {
-			shared.Error(w, 503, "CONSOLE_NOT_READY")
-			return
-		}
-		shared.Proxy(w, r, "http://"+net.JoinHostPort(endpoint.IPAddress, "8080"), "/v1/t3-desktop/"+r.PathValue("path"), c.token(id, info.Config.Labels["workbench.generation"]))
-	})
-	management.HandleFunc("/v1/workspaces/{id}/console/{path...}", func(w http.ResponseWriter, r *http.Request) {
-		id := r.PathValue("id")
-		if !shared.ValidID(id) || c.cfg.RequireVerified {
-			shared.Error(w, 403, "CONSOLE_UNAVAILABLE")
-			return
-		}
-		info, err := c.inspect(r.Context(), id)
-		if err != nil || !info.State.Running {
-			shared.Error(w, 503, "CONSOLE_NOT_READY")
-			return
-		}
-		endpoint := info.NetworkSettings.Networks[c.name(id)]
-		if net.ParseIP(endpoint.IPAddress) == nil {
-			shared.Error(w, 503, "CONSOLE_NOT_READY")
-			return
-		}
-		shared.Proxy(w, r, "http://"+net.JoinHostPort(endpoint.IPAddress, "8080"), "/v1/t3/"+r.PathValue("path"), c.token(id, info.Config.Labels["workbench.generation"]))
-	})
-	management.HandleFunc("GET /v1/workspaces/{id}", func(w http.ResponseWriter, r *http.Request) {
-		id := r.PathValue("id")
-		if !shared.ValidID(id) {
-			shared.Error(w, 400, "INVALID_REQUEST")
-			return
-		}
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		o, e := c.observe(r.Context(), id)
-		if e != nil {
-			shared.Error(w, 503, "RUNTIME_UNAVAILABLE")
-			return
-		}
-		shared.JSON(w, 200, o)
-	})
-	management.HandleFunc("POST /v1/workspaces/{id}/start", func(w http.ResponseWriter, r *http.Request) {
-		var spec protocol.WorkspaceSpec
-		if r.ContentLength != 0 {
-			if !shared.Decode(w, r, &spec, 2048) {
-				return
-			}
-		}
-		if _, err := protocol.NormalizeSpec(spec); err != nil {
-			shared.Error(w, 400, "UNSUPPORTED_WORKSPACE_SPEC")
-			return
-		}
-		if (spec.ParentID != "" && !shared.ValidID(spec.ParentID)) || (spec.Branch != "" && !shared.ValidBranch(spec.Branch)) {
-			shared.Error(w, 400, "INVALID_REQUEST")
-			return
-		}
-		id := r.PathValue("id")
-		if !shared.ValidID(id) {
-			shared.Error(w, 400, "INVALID_REQUEST")
-			return
-		}
-		if c.cfg.RequireVerified {
-			shared.Error(w, 503, "VERIFIED_ISOLATION_UNAVAILABLE")
-			return
-		}
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		info, e := c.ensure(r.Context(), id, spec)
-		if e != nil {
-			shared.Error(w, 503, "RUNTIME_UNAVAILABLE")
-			return
-		}
-		if spec.ParentID != "" {
-			if err := c.seedFromParent(r.Context(), info, spec.ParentID); err != nil {
-				shared.Error(w, 503, "WORKSPACE_SEED_UNAVAILABLE")
-				return
-			}
-		}
-		if !info.State.Running {
-			if e = c.Docker.call(r.Context(), "POST", "/containers/"+info.ID+"/start", nil, nil); e != nil {
-				shared.Error(w, 503, "RUNTIME_UNAVAILABLE")
-				return
-			}
-		}
-		ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
-		defer cancel()
-		for {
-			info, e = c.inspect(ctx, id)
-			if e == nil {
-				status, _, err := c.agent(ctx, info, "POST", "/v1/resume", nil)
-				if err == nil && status == 200 {
-					break
-				}
-			}
-			select {
-			case <-ctx.Done():
-				shared.Error(w, 503, "NOT_READY")
-				return
-			case <-time.After(200 * time.Millisecond):
-			}
-		}
-		o, e := c.observe(ctx, id)
-		if e != nil {
-			shared.Error(w, 503, "RUNTIME_UNAVAILABLE")
-			return
-		}
-		shared.JSON(w, 200, o)
-	})
-	management.HandleFunc("POST /v1/workspaces/{id}/stop", func(w http.ResponseWriter, r *http.Request) {
-		id := r.PathValue("id")
-		if !shared.ValidID(id) {
-			shared.Error(w, 400, "INVALID_REQUEST")
-			return
-		}
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		info, e := c.inspect(r.Context(), id)
-		var de protocol.APIError
-		if errors.As(e, &de) && de.Status == 404 {
-			shared.JSON(w, 200, map[string]bool{"stopped": true})
-			return
-		}
-		if e != nil {
-			shared.Error(w, 503, "RUNTIME_UNAVAILABLE")
-			return
-		}
-		if info.State.Running {
-			status, _, e := c.agent(r.Context(), info, "POST", "/v1/quiesce", nil)
-			if e != nil || status != 200 {
-				shared.Error(w, 409, "WORKSPACE_BUSY")
-				return
-			}
-			if e = c.Docker.call(r.Context(), "POST", "/containers/"+info.ID+"/stop?t=5", nil, nil); e != nil {
-				_, _, _ = c.agent(r.Context(), info, "POST", "/v1/resume", nil)
-				shared.Error(w, 503, "RUNTIME_UNAVAILABLE")
-				return
-			}
-		}
-		shared.JSON(w, 200, map[string]bool{"stopped": true})
-	})
-	management.HandleFunc("/v1/workspaces/{id}/agent/{path...}", func(w http.ResponseWriter, r *http.Request) {
-		id := r.PathValue("id")
-		path := "/" + r.PathValue("path")
-		if !shared.ValidID(id) || !protocol.AllowedAgentPath(r.Method, path) {
-			shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
-			return
-		}
-		query, err := protocol.AgentQuery(r.Method, path, r.URL.RawQuery)
-		if err != nil {
-			shared.Error(w, 400, "INVALID_REQUEST")
-			return
-		}
-		body, e := io.ReadAll(http.MaxBytesReader(w, r.Body, protocol.AgentBodyLimit(path)))
-		if e != nil {
-			shared.Error(w, 400, "INVALID_REQUEST")
-			return
-		}
-		if query != "" {
-			path += "?" + query
-		}
-		c.mu.Lock()
-		info, e := c.inspect(r.Context(), id)
-		c.mu.Unlock()
-		if e != nil || !info.State.Running {
-			shared.Error(w, 503, "NOT_READY")
-			return
-		}
-		status, b, e := c.agent(r.Context(), info, r.Method, path, body)
-		if e != nil {
-			shared.Error(w, 503, "WORKSPACE_UNAVAILABLE")
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Cache-Control", "no-store")
-		w.WriteHeader(status)
-		_, _ = w.Write(b)
-	})
-	mux.Handle("POST /v1/grants/verify", shared.RequireToken(c.cfg.GatewayServiceToken, http.HandlerFunc(c.verify)))
-	mux.Handle("/v1/", shared.RequireToken(c.cfg.Token, management))
-	return mux
 }
+
+func (c *Controller) health(w http.ResponseWriter, r *http.Request) {
+	if c.Docker.call(r.Context(), "GET", "/_ping", nil, nil) != nil {
+		shared.Error(w, 503, "DOCKER_UNAVAILABLE")
+		return
+	}
+	shared.JSON(w, 200, map[string]string{"status": "ok"})
+}
+
+func (c *Controller) capabilities() protocol.RuntimeCapability {
+	caps := RuntimeCapabilities()
+	caps.Resources.MemoryBytes = c.cfg.MemoryLimit
+	return caps
+}
+
+func (c *Controller) applyNetwork(ctx context.Context, id string, connections *shared.ConnectionPolicy) *protocol.ControllerError {
+	if !shared.ValidID(id) || c.cfg.RequireVerified {
+		return protocol.Failure(503, "NETWORK_POLICY_UNAVAILABLE")
+	}
+	if connections == nil || !connections.Valid() {
+		return protocol.Failure(400, "INVALID_REQUEST")
+	}
+	info, err := c.inspect(ctx, id)
+	if err != nil || !info.State.Running {
+		return protocol.Failure(409, "NOT_READY")
+	}
+	if (connections.Mode == "open") != (connectionMode(info) == "open") {
+		return protocol.Failure(409, "STOP_WORKSPACE_FIRST")
+	}
+	c.policies.Store(info.Config.Labels["workbench.generation"], *connections)
+	return nil
+}
+
+func (c *Controller) reconcileNetwork(ctx context.Context, id string) *protocol.ControllerError {
+	if !shared.ValidID(id) || c.cfg.RequireVerified {
+		return protocol.Failure(403, "NOT_FOUND_OR_FORBIDDEN")
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	info, err := c.inspect(ctx, id)
+	if err != nil || !info.State.Running {
+		return protocol.Failure(409, "NOT_READY")
+	}
+	if c.ensureNetwork(ctx, id) != nil {
+		return protocol.Failure(503, "NETWORK_UNAVAILABLE")
+	}
+	return nil
+}
+
+func (c *Controller) inspectWorkspace(ctx context.Context, id string) (shared.Observation, *protocol.ControllerError) {
+	if !shared.ValidID(id) {
+		return shared.Observation{}, protocol.Failure(400, "INVALID_REQUEST")
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	o, e := c.observe(ctx, id)
+	if e != nil {
+		return shared.Observation{}, protocol.Failure(503, "RUNTIME_UNAVAILABLE")
+	}
+	return o, nil
+}
+
+func (c *Controller) stop(ctx context.Context, id string) *protocol.ControllerError {
+	if !shared.ValidID(id) {
+		return protocol.Failure(400, "INVALID_REQUEST")
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	info, e := c.inspect(ctx, id)
+	var de protocol.APIError
+	if errors.As(e, &de) && de.Status == 404 {
+		return nil
+	}
+	if e != nil {
+		return protocol.Failure(503, "RUNTIME_UNAVAILABLE")
+	}
+	if info.State.Running {
+		status, _, e := c.agent(ctx, info, "POST", "/v1/quiesce", nil)
+		if e != nil || status != 200 {
+			return protocol.Failure(409, "WORKSPACE_BUSY")
+		}
+		if e = c.Docker.call(ctx, "POST", "/containers/"+info.ID+"/stop?t=5", nil, nil); e != nil {
+			_, _, _ = c.agent(ctx, info, "POST", "/v1/resume", nil)
+			return protocol.Failure(503, "RUNTIME_UNAVAILABLE")
+		}
+	}
+	return nil
+}
+
+func (c *Controller) start(ctx context.Context, id string, spec protocol.WorkspaceSpec) (shared.Observation, *protocol.ControllerError) {
+	if _, err := protocol.NormalizeSpec(spec); err != nil {
+		return shared.Observation{}, protocol.Failure(400, "UNSUPPORTED_WORKSPACE_SPEC")
+	}
+	if (spec.ParentID != "" && !shared.ValidID(spec.ParentID)) || (spec.Branch != "" && !shared.ValidBranch(spec.Branch)) {
+		return shared.Observation{}, protocol.Failure(400, "INVALID_REQUEST")
+	}
+	if !shared.ValidID(id) {
+		return shared.Observation{}, protocol.Failure(400, "INVALID_REQUEST")
+	}
+	if c.cfg.RequireVerified {
+		return shared.Observation{}, protocol.Failure(503, "VERIFIED_ISOLATION_UNAVAILABLE")
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	info, e := c.ensure(ctx, id, spec)
+	if e != nil {
+		return shared.Observation{}, protocol.Failure(503, "RUNTIME_UNAVAILABLE")
+	}
+	if spec.ParentID != "" {
+		if err := c.seedFromParent(ctx, info, spec.ParentID); err != nil {
+			return shared.Observation{}, protocol.Failure(503, "WORKSPACE_SEED_UNAVAILABLE")
+		}
+	}
+	if !info.State.Running {
+		if e = c.Docker.call(ctx, "POST", "/containers/"+info.ID+"/start", nil, nil); e != nil {
+			return shared.Observation{}, protocol.Failure(503, "RUNTIME_UNAVAILABLE")
+		}
+	}
+	ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
+	defer cancel()
+	for {
+		info, e = c.inspect(ctx, id)
+		if e == nil {
+			status, _, err := c.agent(ctx, info, "POST", "/v1/resume", nil)
+			if err == nil && status == 200 {
+				break
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return shared.Observation{}, protocol.Failure(503, "NOT_READY")
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
+	o, e := c.observe(ctx, id)
+	if e != nil {
+		return shared.Observation{}, protocol.Failure(503, "RUNTIME_UNAVAILABLE")
+	}
+	return o, nil
+}
+
+func (c *Controller) proxy(w http.ResponseWriter, r *http.Request, id, path, prefix string) {
+	if !shared.ValidID(id) || c.cfg.RequireVerified {
+		shared.Error(w, 403, "CONSOLE_UNAVAILABLE")
+		return
+	}
+	info, err := c.inspect(r.Context(), id)
+	if err != nil || !info.State.Running {
+		shared.Error(w, 503, "CONSOLE_NOT_READY")
+		return
+	}
+	endpoint := info.NetworkSettings.Networks[c.name(id)]
+	if net.ParseIP(endpoint.IPAddress) == nil {
+		shared.Error(w, 503, "CONSOLE_NOT_READY")
+		return
+	}
+	shared.Proxy(w, r, "http://"+net.JoinHostPort(endpoint.IPAddress, "8080"), prefix+path, c.token(id, info.Config.Labels["workbench.generation"]))
+}
+
+func (c *Controller) proxyAgent(ctx context.Context, id, method, path string, body []byte) (int, []byte, *protocol.ControllerError) {
+	c.mu.Lock()
+	info, e := c.inspect(ctx, id)
+	c.mu.Unlock()
+	if e != nil || !info.State.Running {
+		return 0, nil, protocol.Failure(503, "NOT_READY")
+	}
+	status, b, e := c.agent(ctx, info, method, path, body)
+	if e != nil {
+		return 0, nil, protocol.Failure(503, "WORKSPACE_UNAVAILABLE")
+	}
+	return status, b, nil
+}
+
 func (c *Controller) verify(w http.ResponseWriter, r *http.Request) {
 	if c.cfg.RequireVerified {
 		shared.Error(w, 503, "VERIFIED_ISOLATION_UNAVAILABLE")

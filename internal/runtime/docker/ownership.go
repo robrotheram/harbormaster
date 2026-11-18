@@ -9,5 +9,8 @@ func (c *Controller) ownedLabels(id string, spec protocol.WorkspaceSpec) map[str
 }
 
 func RuntimeCapabilities() protocol.RuntimeCapability {
-	return protocol.RuntimeCapability{Resources: protocol.ResourceLimits{CPUCores: 1, MemoryBytes: 512 << 20}, SchemaVersion: 1, Backend: "docker", BranchSeed: true, NetworkModes: []string{"blocked", "allowlist", "open"}, ID: protocol.DevelopmentTemplate, Version: "1", AgentKinds: []string{"t3", "codex"}, IsolationStatus: "unverified", NetworkStatus: "unverified", PrivateHomes: true}
+	caps := protocol.DevelopmentCapability("docker", "1", 512<<20)
+	caps.BranchSeed = true
+	caps.NetworkModes = append(caps.NetworkModes, "open")
+	return caps
 }

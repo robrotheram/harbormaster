@@ -61,3 +61,14 @@ type ResourceLimits struct {
 	CPUCores    float64 `json:"cpu_cores"`
 	MemoryBytes int64   `json:"memory_bytes"`
 }
+
+// DevelopmentCapability returns the common development template capabilities.
+// Backends add optional agents and features after checking their configuration.
+func DevelopmentCapability(backend, version string, memoryBytes int64) RuntimeCapability {
+	return RuntimeCapability{
+		SchemaVersion: 1, Backend: backend, Version: version, ID: DevelopmentTemplate,
+		Resources:  ResourceLimits{CPUCores: 1, MemoryBytes: memoryBytes},
+		AgentKinds: []string{"t3", "codex"}, NetworkModes: []string{"blocked", "allowlist"},
+		IsolationStatus: "unverified", NetworkStatus: "unverified", PrivateHomes: true,
+	}
+}
