@@ -11,16 +11,18 @@ permissions:
   contents: read
 
 concurrency:
-  group: check-${{ github.ref }}
-  cancel-in-progress: true
+  group: check-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    outputs:
+      images: ${{ steps.changes.outputs.images }}
     services:
       postgres:
-        image: postgres:17-alpine
+        image: postgres:17-alpine@sha256:526f86d93c6ea08fd3f1fe5605650cacc781b2c6013169a0ad8f42c7d3d84f32
         env:
           POSTGRES_HOST_AUTH_METHOD: trust
         ports:
@@ -33,18 +35,28 @@ jobs:
     env:
       TEST_DATABASE_URL: postgres://postgres@127.0.0.1:5432/postgres?sslmode=disable
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Detect image inputs
+        id: changes
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || (github.ref == 'refs/heads/main' && github.event.before) || '' }}
+        run: bash .github/scripts/image-inputs-changed.sh "$BASE" "$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
+      - name: Verify Go modules
+        run: go mod verify
       - name: Check source, race safety, PostgreSQL, and frontend
         run: make check
       - name: Check reachable Go vulnerabilities
@@ -56,12 +68,25 @@ jobs:
         run: make browser-check
       - name: Validate development deployment
         run: docker compose config --quiet
+      - name: Install pinned linters
+        run: bash .github/scripts/install-linters.sh .local/tools
+      - name: Lint Go, workflows, Dockerfiles, and Kubernetes
+        run: |
+          .local/tools/golangci-lint run --config .github/golangci.yml --timeout 5m
+          # actionlint 1.7.12 predates GitHub's concurrency queue option.
+          .local/tools/actionlint -ignore 'unexpected key "queue" for "concurrency" section'
+          .local/tools/hadolint --ignore DL3008 --ignore DL3018 Dockerfile
+          bash .github/scripts/check-manifests.sh
 
   containers:
     name: Container (${{ matrix.image }})
     needs: check
+    if: needs.check.outputs.images == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    concurrency:
+      group: container-${{ github.sha }}-${{ matrix.image }}
+      queue: max
     permissions:
       contents: read
       packages: write
@@ -78,81 +103,201 @@ jobs:
           - {image: egress-gateway, target: platform, service: egress-gateway}
           - {image: credential-broker, target: platform, service: credential-broker}
           - {image: workspace, target: workspace, service: workspace}
+          - {image: workspace-hermes, target: workspace-hermes, service: workspace}
+    env:
+      PUBLISH: ${{ github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
+      IMAGE: ${{ matrix.image }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Set image namespace
-        id: registry
-        env:
-          REPOSITORY: ${{ github.repository }}
-        run: echo "namespace=ghcr.io/${REPOSITORY,,}" >> "$GITHUB_OUTPUT"
-      - name: Set up Buildx
-        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Log in to GitHub Container Registry
-        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+        if: env.PUBLISH == 'true'
         uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Image tags and labels
-        id: meta
-        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
-        with:
-          images: ${{ steps.registry.outputs.namespace }}/${{ matrix.image }}
-          flavor: latest=false
-          tags: |
-            type=sha,format=long
-            type=raw,value=edge,enable=${{ github.ref == 'refs/heads/main' }}
-            type=ref,event=tag
-            type=ref,event=pr
-      - name: Build and publish
+      - name: Set image reference and find existing build
+        id: image
+        run: |
+          ref="ghcr.io/${GITHUB_REPOSITORY,,}/$IMAGE"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          if [[ "$PUBLISH" == true ]]; then
+            digest=$(docker buildx imagetools inspect "$ref:sha-$GITHUB_SHA" --format '{{.Manifest.Digest}}' 2>/dev/null) || exit 0
+            [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+            echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Read pinned Hermes source
+        id: hermes
+        if: matrix.image == 'workspace-hermes' && steps.image.outputs.digest == ''
+        run: |
+          commit=$(jq -er '.commit | select(test("^[0-9a-f]{40}$"))' deploy/hermes/runtime.json)
+          digest=$(jq -er '.source_sha256 | select(test("^[0-9a-f]{64}$"))' deploy/hermes/runtime.json)
+          {
+            echo "commit=$commit"
+            echo "digest=$digest"
+          } >> "$GITHUB_OUTPUT"
+      - name: Build image
+        id: build
+        if: steps.image.outputs.digest == ''
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
-          file: Dockerfile
           target: ${{ matrix.target }}
           platforms: linux/amd64
-          build-args: SERVICE=${{ matrix.service }}
-          push: ${{ github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            SERVICE=${{ matrix.service }}
+            HERMES_COMMIT=${{ steps.hermes.outputs.commit }}
+            HERMES_SOURCE_SHA256=${{ steps.hermes.outputs.digest }}
+          tags: ${{ steps.image.outputs.ref }}:ci-${{ github.run_id }}-${{ github.run_attempt }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          push: ${{ env.PUBLISH == 'true' }}
+          load: ${{ env.PUBLISH != 'true' }}
           cache-from: type=gha,scope=${{ matrix.image }}-amd64
           cache-to: type=gha,scope=${{ matrix.image }}-amd64,mode=max
-          provenance: mode=min
-          sbom: true
+          provenance: ${{ env.PUBLISH == 'true' && 'mode=min' || 'false' }}
+          sbom: ${{ env.PUBLISH == 'true' }}
+      - name: Select image for scanning
+        id: scan
+        env:
+          REF: ${{ steps.image.outputs.ref }}
+          DIGEST: ${{ steps.image.outputs.digest || steps.build.outputs.digest }}
+        run: |
+          if [[ "$PUBLISH" == true ]]; then
+            [[ "$DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
+            echo "ref=$REF@$DIGEST" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=$REF:ci-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Scan image for vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.76.2
+          image-ref: ${{ steps.scan.outputs.ref }}
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          format: table
+          exit-code: '0'
+      - name: Publish scanned commit image and record digest
+        if: env.PUBLISH == 'true'
+        env:
+          REF: ${{ steps.image.outputs.ref }}
+          SCANNED: ${{ steps.scan.outputs.ref }}
+          EXISTING: ${{ steps.image.outputs.digest }}
+        run: |
+          if [[ -z "$EXISTING" ]]; then
+            docker buildx imagetools create --tag "$REF:sha-$GITHUB_SHA" "$SCANNED"
+          fi
+          jq -n --arg name "$IMAGE" --arg digest "${SCANNED##*@}" \
+            '{name: $name, digest: $digest}' > "$IMAGE.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: env.PUBLISH == 'true'
+        with:
+          name: digest-${{ matrix.image }}
+          path: ${{ matrix.image }}.json
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 7
 
-  hermes-workspace:
-    name: Container (workspace Hermes)
-    if: startsWith(github.ref, 'refs/tags/v')
+  edge:
+    name: Promote edge images
     needs: containers
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     permissions:
       contents: read
       packages: write
+    concurrency:
+      group: edge-images
+      queue: max
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Publish Hermes-enabled workspace
-        shell: bash
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: digest-*
+          path: digests
+          merge-multiple: true
+      - name: Advance edge from the newest completed build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          image="ghcr.io/${GITHUB_REPOSITORY,,}/workspace"
-          digest="$(docker buildx imagetools inspect "$image:$GITHUB_REF_NAME" --format '{{.Manifest.Digest}}')"
-          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]] || exit 1
-          docker buildx build --platform linux/amd64 --push \
-            --metadata-file /tmp/hermes-image.json \
-            --build-arg "WORKSPACE_BASE=$image@$digest" \
-            --build-arg "HERMES_COMMIT=$(jq -r .commit deploy/hermes/runtime.json)" \
-            --build-arg "HERMES_SOURCE_SHA256=$(jq -r .source_sha256 deploy/hermes/runtime.json)" \
-            --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
-            -f deploy/kubernetes/Dockerfile.hermes -t "$image:hermes-$GITHUB_REF_NAME" .
-          jq -r '."containerimage.digest"' /tmp/hermes-image.json
+          namespace="ghcr.io/${GITHUB_REPOSITORY,,}"
+          head=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
+          if [[ "$head" != "$GITHUB_SHA" ]]; then
+            changes=$(bash .github/scripts/image-inputs-changed.sh "$GITHUB_SHA" "$head")
+            if [[ "$changes" == images=true ]]; then
+              echo 'The main branch has newer image inputs. Skipping edge promotion.'
+              exit 0
+            fi
+          fi
+          bash .github/scripts/tag-images.sh "$namespace" edge digests
+
+  release:
+    name: Publish versioned release
+    needs: containers
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: release-${{ github.ref }}
+      queue: max
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: digest-*
+          path: digests
+          merge-multiple: true
+      - name: Render digest-pinned manifests
+        run: |
+          [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]
+          GOBIN="$RUNNER_TEMP/bin" go install sigs.k8s.io/kustomize/kustomize/v5@v5.8.1
+          python3 .github/scripts/render-release.py \
+            --digests digests --namespace "ghcr.io/${GITHUB_REPOSITORY,,}" \
+            --revision "$GITHUB_SHA" --output release \
+            --kustomize "$RUNNER_TEMP/bin/kustomize"
+      - name: Publish release images and assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          namespace="ghcr.io/${GITHUB_REPOSITORY,,}"
+          bash .github/scripts/tag-images.sh "$namespace" "$GITHUB_REF_NAME" digests
+          digest=$(jq -er .digest digests/workspace-hermes.json)
+          # Preserve the existing Hermes tag on the workspace image.
+          docker buildx imagetools create --tag "$namespace/workspace:hermes-$GITHUB_REF_NAME" "$namespace/workspace-hermes@$digest"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" release/* --clobber
+          else
+            flags=()
+            if [[ "$GITHUB_REF_NAME" == *-* ]]; then flags+=(--prerelease); fi
+            gh release create "$GITHUB_REF_NAME" release/* --verify-tag --generate-notes \
+              --title "Harbormaster $GITHUB_REF_NAME" "${flags[@]}"
+          fi

@@ -70,3 +70,26 @@ func TestTransportFiltersDNSAddresses(t *testing.T) {
 		})
 	}
 }
+
+func TestTransportHostnamePolicy(t *testing.T) {
+	calls := 0
+	policy := NetworkPolicy{AllowedHosts: []string{"UPSTREAM.example."}, AllowPrivate: true}
+	transport, err := policy.transport(nil, func(_ context.Context, _, host string) ([]netip.Addr, error) {
+		calls++
+		if host != "upstream.example" {
+			t.Errorf("unexpected lookup for %s", host)
+		}
+		return []netip.Addr{netip.MustParseAddr("127.0.0.1")}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, host := range []string{"other.example", "upstream.example"} {
+		if _, err := transport.DialContext(context.Background(), "tcp", host+":443"); !errors.Is(err, ErrDenied) {
+			t.Fatalf("dial %s: %v", host, err)
+		}
+	}
+	if calls != 1 {
+		t.Fatalf("expected only the approved name to reach DNS, got %d lookups", calls)
+	}
+}

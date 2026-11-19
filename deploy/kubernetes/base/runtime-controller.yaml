@@ -33,21 +33,19 @@ spec:
         - name: REQUIRE_VERIFIED_ISOLATION
           value: 'true'
         - name: WORKSPACE_IMAGE
-          value: ghcr.io/robrotheram/harbormaster/workspace@sha256:e6b223c61f679a48057a81e7cadd741cc1952356fc8740c6dc66963d17a9c5d8
-        - name: KUBERNETES_STORAGE_CLASS
-          value: workbench-rwop
+          value: ghcr.io/robrotheram/harbormaster/workspace
         - name: KUBERNETES_PROJECTS_FILE
           value: /etc/runtime/projects.json
         - name: KUBERNETES_ALLOWLISTS_FILE
           value: /etc/runtime/allowlists.json
         - name: DEPLOYMENT_ID
           value: harbormaster
-        - name: KUBERNETES_INFERENCE_URL
-          value: http://inference-gateway.harbormaster.svc:8080
-        - name: KUBERNETES_BROKER_URL
-          value: http://credential-broker.harbormaster.svc:8080
-        - name: KUBERNETES_EGRESS_URL
-          value: http://egress-gateway.harbormaster.svc:8080
+        - name: KUBERNETES_DISCOVER_GATEWAYS
+          value: 'true'
+        - name: KUBERNETES_CORE_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
         - name: CONTROLLER_TOKEN_FILE
           value: /run/workbench-secrets/controller_token
         - name: GATEWAY_SERVICE_TOKEN_FILE
@@ -67,6 +65,11 @@ spec:
           limits:
             cpu: '1'
             memory: 1Gi
+        livenessProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 10
+          timeoutSeconds: 3
         readinessProbe:
           exec:
             command:

@@ -1,9 +1,12 @@
 package kubernetes
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 func TestCoreNamespacePeersRemainPodScoped(t *testing.T) {
-	policies := projectPolicies("project-a", "project-a")
+	policies := projectPolicies("project-a", "project-a", "platform")
 	if rules := policies["workspace-project-egress"]["egress"].([]any); len(rules) != 1 {
 		t.Fatalf("expected one workspace egress rule, got %d", len(rules))
 	}
@@ -17,7 +20,7 @@ func TestCoreNamespacePeersRemainPodScoped(t *testing.T) {
 				peer := value.(map[string]any)
 				ns := peer["namespaceSelector"].(map[string]any)["matchLabels"].(map[string]any)
 				labels := peer["podSelector"].(map[string]any)["matchLabels"].(map[string]any)
-				if ns["kubernetes.io/metadata.name"] != "harbormaster" {
+				if ns["kubernetes.io/metadata.name"] != "platform" {
 					t.Fatalf("wrong namespace: %v", ns)
 				}
 				if direction == "ingress" && labels["app"] != "runtime-controller" {
@@ -28,5 +31,26 @@ func TestCoreNamespacePeersRemainPodScoped(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestNetworkEvidenceAllowsPoliciesThatExcludeWorkspaces(t *testing.T) {
+	k, fake := kubeProvider(t)
+	spec := map[string]any{
+		"podSelector": map[string]any{
+			"matchExpressions": []any{map[string]string{"key": "workbench.workspace", "operator": "DoesNotExist"}},
+		},
+		"policyTypes": []string{"Ingress"},
+	}
+	fake.extraNetworkPolicy = spec
+	if err := k.networkEvidence(context.Background(), "project-one", "proj_one"); err != nil {
+		t.Fatal(err)
+	}
+
+	fake.mu.Lock()
+	spec["podSelector"] = map[string]any{}
+	fake.mu.Unlock()
+	if err := k.networkEvidence(context.Background(), "project-one", "proj_one"); err == nil {
+		t.Fatal("unrecognized policy selecting workspace Pods passed validation")
 	}
 }

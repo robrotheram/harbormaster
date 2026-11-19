@@ -43,6 +43,7 @@ type KubernetesConfig struct {
 	MemoryLimit                                         int64
 	RequireVerified                                     bool
 	HermesApprovedImage, HermesModel, HermesMCPIP       string
+	DiscoverGateways                                    bool
 }
 
 type Kubernetes struct {
@@ -74,8 +75,14 @@ func NewKubernetes(c KubernetesConfig) (*Kubernetes, error) {
 			return nil, errors.New("invalid Hermes MCP service IP")
 		}
 	}
-	if c.EgressURL == "" {
-		c.EgressURL = "http://egress-gateway.harbormaster.svc:8080"
+	for service, origin := range map[string]*string{
+		"inference-gateway": &c.InferenceURL,
+		"credential-broker": &c.BrokerURL,
+		"egress-gateway":    &c.EgressURL,
+	} {
+		if *origin == "" {
+			*origin = "http://" + service + "." + c.CoreNamespace + ".svc:8080"
+		}
 	}
 	for project, destinations := range c.ProjectAllowlists {
 		if _, ok := c.ProjectNamespaces[project]; !ok {
@@ -110,7 +117,15 @@ func NewKubernetes(c KubernetesConfig) (*Kubernetes, error) {
 		}
 	}
 	denyRedirect := func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	return &Kubernetes{cfg: c, apiHTTP: &http.Client{Timeout: 30 * time.Second, CheckRedirect: denyRedirect, Transport: &http.Transport{Proxy: nil, TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: pool}}}, agentHTTP: &http.Client{Timeout: 10 * time.Second, CheckRedirect: denyRedirect, Transport: &http.Transport{Proxy: nil}}}, nil
+	k := &Kubernetes{cfg: c, apiHTTP: &http.Client{Timeout: 30 * time.Second, CheckRedirect: denyRedirect, Transport: &http.Transport{Proxy: nil, TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: pool}}}, agentHTTP: &http.Client{Timeout: 10 * time.Second, CheckRedirect: denyRedirect, Transport: &http.Transport{Proxy: nil}}}
+	if c.DiscoverGateways {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if err := k.discoverGateways(ctx); err != nil {
+			return nil, err
+		}
+	}
+	return k, nil
 }
 
 type kubeResource struct {

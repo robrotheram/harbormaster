@@ -16,13 +16,11 @@ before exposing or deploying it on a shared host.
 
 ## Release gates
 
-The GitLab pipeline in `.gitlab-ci.yml` runs Go formatting/build/vet/race tests,
-a real PostgreSQL contract, portable Python contracts, frontend formatting/unit
-checks, Chromium workflows and Compose validation. It requires Linux container
-runners with outbound dependency access. No Docker socket or privileged runner
-is needed for these checks. Go race tests need the C compiler in the Go image.
-Browser traces are retained for seven days; Go coverage for fourteen days.
-Tests use synthetic credentials and data. Never add production secrets to CI.
+[GitHub Actions](../.github/workflows/check.yml) runs Go module verification,
+formatting, builds, vet and race tests, a PostgreSQL contract, Python contracts,
+frontend formatting and unit tests, Chromium workflows, Compose validation and
+Go, Dockerfile, Kubernetes and workflow linting. Tests use synthetic credentials
+and data. Never add production secrets to CI.
 
 Before a release:
 
@@ -32,7 +30,7 @@ Before a release:
 2. Run `make go-vuln-check` and review dependency findings. `npm audit` runs in
    `frontend/`; review build dependencies as well as shipped JavaScript. Do not
    apply forced major-version downgrades without compatibility checks.
-3. Require a green GitLab pipeline on the exact commit being released. Review
+3. Require a green GitHub Actions run on the exact commit being released. Review
    `git status --short` and `git diff --check`; ensure all required new source
    files are included and local configuration/secrets are excluded.
 4. Build the deployment images on a disposable host with `make up`, then run
@@ -42,12 +40,12 @@ Before a release:
 5. Run the selected runtime's live acceptance and a restore rehearsal. Do not
    claim production readiness for experimental adapters based on simulated tests.
 
-GitLab verifies source only. GitHub also builds and publishes container images
-after its checks pass; see [container publishing](container-publishing.md). Neither
-pipeline deploys automatically.
-Use immutable release image tags/digests in deployment overrides. The default
-`:dev` workspace image is for local development. Base image tags and remote
-package repositories can change, so retain the actual image digests used.
+Push the version tag after the release checks pass. GitHub Actions scans the
+release images, publishes version tags and attaches the image inventory and
+digest-pinned Kubernetes manifests to the GitHub Release. Update environment
+overlays through reviewed pull requests using the digests in the inventory.
+See [container publishing](container-publishing.md). The workflow does not
+deploy to any environment.
 
 ## Upgrade and recovery
 

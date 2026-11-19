@@ -1,4 +1,4 @@
-# Override the project label and pinned image in the consuming overlay. Provision the named
+# Set the project label and pin the image in the consuming overlay. Provision the named
 # Secret out of band with control_token, mcp_token, gateway_service_token.
 apiVersion: apps/v1
 kind: Deployment
@@ -25,7 +25,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: mcp
-          image: ghcr.io/robrotheram/harbormaster/mcp@sha256:43176ff6b9bbb84aa898c52c3197b608d6d0360f0180d2b2389c9bb936a68f11
+          image: ghcr.io/robrotheram/harbormaster/mcp
           ports: [{containerPort: 8080}]
           env:
             - {name: CONTROLPLANE_URL, value: 'http://controlplane.harbormaster.svc:8080'}
@@ -41,6 +41,10 @@ spec:
           resources:
             requests: {cpu: 100m, memory: 128Mi}
             limits: {cpu: '1', memory: 1Gi}
+          livenessProbe:
+            httpGet: {path: /healthz, port: 8080}
+            initialDelaySeconds: 10
+            timeoutSeconds: 3
           readinessProbe:
             httpGet: {path: /healthz, port: 8080}
           volumeMounts:

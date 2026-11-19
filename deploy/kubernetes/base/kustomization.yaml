@@ -5,7 +5,9 @@ resources:
 - ../infrastructure/agent-sandbox
 - runtime-bindings.yaml
 - workspace.yaml
+- core-network-policies.yaml
 - workspace-priority.yaml
+- provisioning-admission.yaml
 - project-namespaces.yaml
 - admission.yaml
 - controlplane.yaml
@@ -15,18 +17,3 @@ resources:
 - inference-gateway.yaml
 - credential-broker.yaml
 - egress-gateway.yaml
-images:
-- name: ghcr.io/robrotheram/harbormaster/controlplane
-  digest: sha256:cfe8f76e79be2e3b1f3cd593f4a13926279e249e1c34cb03061343cb2e1ea1da
-- name: ghcr.io/robrotheram/harbormaster/runtime-controller
-  digest: sha256:a14f7c54205f4c7dc578728b996aa269d372f7e2c85d15099d53312510419c1f
-- name: ghcr.io/robrotheram/harbormaster/dashboard
-  digest: sha256:218197b0db49b7a307419f53f64680f5266fec235952a961990a694fcd7245dc
-- name: ghcr.io/robrotheram/harbormaster/mcp
-  digest: sha256:a01056e90d4b0d96b17ccb67f99bc7b273e487de5b8d58896ed66328e0697e76
-- name: ghcr.io/robrotheram/harbormaster/inference-gateway
-  digest: sha256:c619bc181592873b115690677fd37dfc4f8671a2119946d204bc8409d7714526
-- name: ghcr.io/robrotheram/harbormaster/credential-broker
-  digest: sha256:d08deb8038e9c18b118828151fb245abe443beae0864a117468400c2d5ad9919
-- name: ghcr.io/robrotheram/harbormaster/egress-gateway
-  digest: sha256:3e73a7301eee791a4768c22d3db7c3501efb59ab6fd0d075c5e843d36b124c1c

@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: runtime-controller
+  namespace: harbormaster
+spec:
+  template:
+    spec:
+      containers:
+      - name: runtime-controller
+        env:
+        - name: KUBERNETES_STORAGE_CLASS
+          value: replace-with-rwop-storage-class
+        - name: PROVISION_PROJECT_NAMESPACES
+          value: 'true'
+        - name: PROVISION_WORKSPACE_NAMESPACES
+          value: 'true'
+        - name: KUBERNETES_SHARED_GATEWAY_PROJECT
+          value: default

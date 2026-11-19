@@ -62,8 +62,7 @@ mount namespaces, rather than the namespace-relative text of `/proc/PID/root`.
 
 ## Installation
 
-The reference deployment uses Kubernetes/Kata. Firecracker remains an optional,
-operator-managed backend; automatic host installation and image staging have been
+The reference deployment uses Kubernetes/Kata. Firecracker is an experimental, unsupported backend managed by the operator; automatic host installation and image staging have been
 removed. Existing installations and private disks are unaffected.
 
 A new installation requires x86_64 Linux, KVM, cgroup v2 with cpu/memory/pids,
@@ -71,10 +70,15 @@ Docker, Go, iproute2, e2fsprogs and systemd. Provision it through your host
 configuration management with these inputs:
 
 1. Build `cmd/firecracker-controller` as a static binary. Build the guest from the
-   repository root with `deploy/firecracker/Dockerfile`, passing `WORKSPACE_IMAGE`
-   and the `HERMES_COMMIT` / `HERMES_SOURCE_SHA256` values from
-   `deploy/hermes/runtime.json`. Use a workspace image from the same source revision
-   so the guest inherits its desktop packages.
+   repository root with the `firecracker-guest` target. It uses the workspace
+   binaries and desktop packages from the same source revision.
+
+   ```sh
+   docker build --target firecracker-guest \
+     --build-arg HERMES_COMMIT="$(jq -r .commit deploy/hermes/runtime.json)" \
+     --build-arg HERMES_SOURCE_SHA256="$(jq -r .source_sha256 deploy/hermes/runtime.json)" \
+     -t harbormaster-firecracker-guest:local .
+   ```
 2. Obtain matching Firecracker/jailer releases and a supported guest kernel from
    trusted sources. Verify their approved SHA256 values before installation.
 3. Export the trusted guest image, extract it into an empty staging directory and
@@ -92,7 +96,8 @@ configuration management with these inputs:
 6. Install `deploy/firecracker/agent-workbench-firecracker.service` into systemd
    and reload units. Run `controller --prepare-host`, then `controller --self-test`
    with the three `*_FILE` environment variables shown in the unit. Start the unit
-   only after real KVM acceptance succeeds. The service's compiled hooks prepare
+   only after real KVM acceptance succeeds. The systemd unit expects the host
+   preparation step to have created `/srv/agent-workbench-jailer`. Its compiled hooks prepare
    its cgroup subtree and clean up its own stale guests/namespaces.
 
 Quiesce workspaces before replacing any installed artifacts. The self-test boots
@@ -109,8 +114,7 @@ REQUIRE_VERIFIED_ISOLATION=true
 ```
 
 The Compose overlay replaces the controller's Docker socket mount with the host
-controller's root-only Unix socket. It publishes the three trusted gateways only
-on host loopback. Rebuild the runtime-controller before using the new backend.
+controller's root-only Unix socket. It publishes the inference gateway, credential broker, egress gateway and MCP service on host loopback. Rebuild the runtime-controller before using the new backend.
 The host controller starts without starting any workspace. Do not restart the
 workbench until installation and real-host acceptance have succeeded.
 

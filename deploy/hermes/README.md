@@ -81,33 +81,28 @@ No credential value is returned by a read endpoint.
 
 ## Install or update the runtime
 
-Follow [Firecracker installation](../../docs/firecracker.md). Staging builds the
-Hermes engine into the guest image; installation checks its imports inside a real
-VM. Stop workspaces cleanly and stop the host controller before replacing its
-artifacts. Do not restart Vault as part of a runtime update.
-
-The older `deploy/hermes/compose.yaml` is a separate, onboarding-only version
-probe. It does not install the supported workbench runtime or connect Matrix.
-The `project-config.example.yaml` file is a planning template, not a runtime
-configuration file. Workbench MCP scheduling from Hermes is not wired into this
-adapter.
+Follow the [Firecracker installation steps](../../docs/firecracker.md) or the
+[Kubernetes Hermes guide](../../docs/k3s-hermes.md). The workspace image contains
+the pinned Hermes engine and performs an import check during the build. Stop
+workspaces cleanly and stop the Firecracker host controller before replacing its
+artifacts.
 
 Sources: [pinned upstream source](https://github.com/NousResearch/hermes-agent/tree/2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19),
 [Matrix adapter](https://github.com/NousResearch/hermes-agent/blob/2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19/plugins/platforms/matrix/adapter.py).
 
 ## Adapter maintenance
 
-The Firecracker guest's pinned Hermes identity and source checksum are defined
-in `runtime.json`. The Firecracker Docker build takes the manifest commit and source hash as build arguments for the
-Docker build arguments, installed guest identity and host admission record.
+The pinned Hermes identity and source checksum are defined in `runtime.json`.
+Both image targets use its commit and checksum as build arguments. Firecracker
+also uses the manifest as its installed guest identity and host admission record.
 Task and Matrix entrypoints share `integrations/hermes/src/workbench_hermes/common.py` for their fixed
 inference route, private no-fallback configuration and versioned event framing.
 Rebuild and restage the guest when changing these files.
 
-Run `make hermes-check` for portable routing, authorization,
-delivery and failure tests with SDK import stubs and no network. The existing
-`test-hermes-runner.py` and `test-hermes-matrix.py` can also run in the guest with
-its real pinned SDK; portable tests do not replace that image acceptance check.
+Run `make hermes-check` for portable routing, authorization, delivery and
+failure tests with SDK import stubs. For image acceptance, run
+`hermes-runner --version` inside a booted workspace to check imports against the
+pinned SDK.
 
 ### Fixed project MCP channel
 
@@ -119,9 +114,8 @@ exchange_submit, note_publish. The upstream target is compiled in:
 `http://127.0.0.1:18085/project-mcp`. No guest-selected host is accepted.
 The Compose Firecracker overlay publishes MCP there on host loopback.
 
-The Firecracker installer provisions
-`/etc/agent-workbench/firecracker/project_mcp_signing_key` from
-`.local/secrets/control_token` during both full and controller-only installation.
+During Firecracker provisioning, copy `.local/secrets/control_token` to
+`/etc/agent-workbench/firecracker/project_mcp_signing_key`.
 It is a root-owned 0600 file with root-owned non-writable ancestors. Its content must equal the MCP
 and control-plane `CONTROL_TOKEN_FILE` signing authority. This is deliberately a
 host-only file; neither that key nor a global MCP/operator credential enters the
@@ -151,9 +145,10 @@ provider/account test.
 
 ### Digest fixture (one Workbench owner)
 
-Stage fixtures/digest-task.md and fixtures/digest-source.json into the owning
-Hermes guest's `files/jobs/` using the normal guest file transfer path. Substitute
-project/workspace/time in fixtures/digest-schedule.json, then POST that JSON to
+Stage `digest-task.md` and `digest-source.json` from
+`integrations/hermes/examples/` into the owning Hermes guest's `files/jobs/`.
+Substitute project, workspace and time in `digest-schedule.json` from the same
+directory, then POST that JSON to
 `/v1/schedules` using operator/project authorization. The existing scheduler
 accepts provider=hermes for Hermes workspaces; its native task runs the deterministic
 `/usr/local/bin/hermes-digest` command inside the Hermes workspace. The command

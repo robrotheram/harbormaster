@@ -11,15 +11,16 @@ import (
 )
 
 func KubernetesConfigFromEnv() (KubernetesConfig, error) {
-	c := KubernetesConfig{APIURL: shared.Env("KUBERNETES_API_SERVER", "https://kubernetes.default.svc"), CAFile: shared.Env("KUBERNETES_CA_FILE", "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"), Deployment: shared.Env("DEPLOYMENT_ID", "awb"), Image: shared.Env("WORKSPACE_IMAGE", ""), RuntimeClass: shared.Env("KUBERNETES_RUNTIME_CLASS", "kata"), StorageClass: shared.Env("KUBERNETES_STORAGE_CLASS", ""), ServiceAccount: shared.Env("KUBERNETES_WORKSPACE_SERVICE_ACCOUNT", "workspace"), InferenceURL: shared.Env("KUBERNETES_INFERENCE_URL", "http://inference-gateway.harbormaster.svc:8080"), BrokerURL: shared.Env("KUBERNETES_BROKER_URL", "http://credential-broker.harbormaster.svc:8080"), CodexModel: shared.Env("CODEX_MODEL", ""), ClaudeModel: shared.Env("CLAUDE_MODEL", ""), MemoryLimit: shared.IntEnv("WORKSPACE_MEMORY_BYTES", 1<<30), RequireVerified: shared.Env("REQUIRE_VERIFIED_ISOLATION", "true") == "true"}
+	c := KubernetesConfig{APIURL: shared.Env("KUBERNETES_API_SERVER", "https://kubernetes.default.svc"), CAFile: shared.Env("KUBERNETES_CA_FILE", "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"), Deployment: shared.Env("DEPLOYMENT_ID", "awb"), Image: shared.Env("WORKSPACE_IMAGE", ""), RuntimeClass: shared.Env("KUBERNETES_RUNTIME_CLASS", "kata"), StorageClass: shared.Env("KUBERNETES_STORAGE_CLASS", ""), ServiceAccount: shared.Env("KUBERNETES_WORKSPACE_SERVICE_ACCOUNT", "workspace"), InferenceURL: shared.Env("KUBERNETES_INFERENCE_URL", ""), BrokerURL: shared.Env("KUBERNETES_BROKER_URL", ""), CodexModel: shared.Env("CODEX_MODEL", ""), ClaudeModel: shared.Env("CLAUDE_MODEL", ""), MemoryLimit: shared.IntEnv("WORKSPACE_MEMORY_BYTES", 1<<30), RequireVerified: shared.Env("REQUIRE_VERIFIED_ISOLATION", "true") == "true"}
 	c.ProvisionProjectNamespaces = shared.Env("PROVISION_PROJECT_NAMESPACES", "false") == "true"
 	c.ProvisionWorkspaceNamespaces = shared.Env("PROVISION_WORKSPACE_NAMESPACES", "false") == "true"
 	c.SharedGatewayProject = os.Getenv("KUBERNETES_SHARED_GATEWAY_PROJECT")
 	c.CoreNamespace = shared.Env("KUBERNETES_CORE_NAMESPACE", "harbormaster")
+	c.DiscoverGateways = shared.Env("KUBERNETES_DISCOVER_GATEWAYS", "false") == "true"
 	c.HermesApprovedImage = os.Getenv("KUBERNETES_HERMES_V023_APPROVED_IMAGE")
 	c.HermesModel = os.Getenv("HERMES_MODEL")
 	c.HermesMCPIP = os.Getenv("KUBERNETES_HERMES_MCP_IP")
-	c.EgressURL = shared.Env("KUBERNETES_EGRESS_URL", "http://egress-gateway.harbormaster.svc:8080")
+	c.EgressURL = shared.Env("KUBERNETES_EGRESS_URL", "")
 	if path := os.Getenv("KUBERNETES_ALLOWLISTS_FILE"); path != "" {
 		b, e := os.ReadFile(path)
 		if e != nil || json.Unmarshal(b, &c.ProjectAllowlists) != nil {

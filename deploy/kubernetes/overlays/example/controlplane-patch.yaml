@@ -1,13 +1,13 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: credential-broker
+  name: controlplane
   namespace: harbormaster
 spec:
   template:
     spec:
       containers:
-      - name: credential-broker
+      - name: controlplane
         env:
-        - name: GATEWAY_MODE
-          value: fixture
+        - name: PROVISION_PROJECT_NAMESPACES
+          value: 'true'

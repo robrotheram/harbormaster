@@ -125,11 +125,13 @@ func Decode(b []byte, dst any) error {
 	return nil
 }
 
-// NetworkPolicy is operator controlled. Explicit CIDRs are required, including for
-// private addresses. DNS is checked at dial time and only a checked IP is dialed.
+// NetworkPolicy is operator controlled. Use CIDRs, exact DNS names, or both
+// to constrain destinations. Private addresses require explicit CIDRs.
+// DNS is checked at dial time and only a checked IP is dialed.
 // Proxy environment variables are intentionally ignored.
 type NetworkPolicy struct {
-	AllowedCIDRs []string `json:"allowed_cidrs"`
+	AllowedCIDRs []string `json:"allowed_cidrs,omitempty"`
+	AllowedHosts []string `json:"allowed_hosts,omitempty"`
 	CAFile       string   `json:"ca_file,omitempty"`
 	AllowPrivate bool     `json:"allow_private,omitempty"`
 }
@@ -147,7 +149,7 @@ func (p NetworkPolicy) Transport(cert *tls.Certificate) (*http.Transport, error)
 }
 
 func (p NetworkPolicy) transport(cert *tls.Certificate, lookup func(context.Context, string, string) ([]netip.Addr, error)) (*http.Transport, error) {
-	if len(p.AllowedCIDRs) == 0 {
+	if len(p.AllowedCIDRs) == 0 && len(p.AllowedHosts) == 0 {
 		return nil, ErrDenied
 	}
 	prefixes := make([]netip.Prefix, 0, len(p.AllowedCIDRs))
@@ -157,6 +159,14 @@ func (p NetworkPolicy) transport(cert *tls.Certificate, lookup func(context.Cont
 			return nil, ErrDenied
 		}
 		prefixes = append(prefixes, v)
+	}
+	hosts := make(map[string]bool, len(p.AllowedHosts))
+	for _, host := range p.AllowedHosts {
+		host = strings.ToLower(strings.TrimSuffix(host, "."))
+		if !validPolicyHostname(host) {
+			return nil, ErrDenied
+		}
+		hosts[host] = true
 	}
 	tc := &tls.Config{MinVersion: tls.VersionTLS12}
 	if p.CAFile != "" {
@@ -182,6 +192,9 @@ func (p NetworkPolicy) transport(cert *tls.Certificate, lookup func(context.Cont
 		if !p.AllowPrivate && (ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast()) {
 			return false
 		}
+		if len(prefixes) == 0 {
+			return ip.IsGlobalUnicast() && !ip.IsPrivate() && !sharedAddressSpace.Contains(ip)
+		}
 		return slices.ContainsFunc(prefixes, func(prefix netip.Prefix) bool {
 			return prefix.Contains(ip)
 		})
@@ -189,6 +202,9 @@ func (p NetworkPolicy) transport(cert *tls.Certificate, lookup func(context.Cont
 	dial := func(ctx context.Context, network, address string) (net.Conn, error) {
 		host, port, err := net.SplitHostPort(address)
 		if err != nil {
+			return nil, ErrDenied
+		}
+		if len(hosts) != 0 && !hosts[strings.ToLower(strings.TrimSuffix(host, "."))] {
 			return nil, ErrDenied
 		}
 		ips, err := lookup(ctx, "ip", host)
@@ -210,4 +226,26 @@ func (p NetworkPolicy) transport(cert *tls.Certificate, lookup func(context.Cont
 		return nil, ErrDenied
 	}
 	return &http.Transport{Proxy: nil, DialContext: dial, TLSClientConfig: tc, TLSHandshakeTimeout: 5 * time.Second, ResponseHeaderTimeout: 15 * time.Second, MaxResponseHeaderBytes: 32 << 10, DisableKeepAlives: true}, nil
+}
+
+var sharedAddressSpace = netip.MustParsePrefix("100.64.0.0/10")
+
+func validPolicyHostname(host string) bool {
+	if len(host) > 253 || !strings.Contains(host, ".") {
+		return false
+	}
+	if _, err := netip.ParseAddr(host); err == nil {
+		return false
+	}
+	for label := range strings.SplitSeq(host, ".") {
+		if len(label) == 0 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return false
+		}
+		for _, c := range label {
+			if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-') {
+				return false
+			}
+		}
+	}
+	return true
 }

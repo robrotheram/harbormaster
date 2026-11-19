@@ -6,6 +6,13 @@ After=local-fs.target
 Type=simple
 User=root
 UMask=0077
+ProtectSystem=strict
+ProtectHome=yes
+NoNewPrivileges=yes
+StateDirectory=agent-workbench/firecracker
+StateDirectoryMode=0700
+# ip netns creates /run/netns on demand. The jailer manages a delegated cgroup subtree.
+ReadWritePaths=/srv/agent-workbench-jailer /run /sys/fs/cgroup
 Environment=CONTROLLER_TOKEN_FILE=/etc/agent-workbench/firecracker/controller_token
 Environment=GATEWAY_SERVICE_TOKEN_FILE=/etc/agent-workbench/firecracker/gateway_service_token
 Environment=GRANT_SECRET_FILE=/etc/agent-workbench/firecracker/grant_secret

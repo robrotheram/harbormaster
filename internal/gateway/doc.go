@@ -23,7 +23,7 @@ and upstream requests to thirty seconds. No prompts, tokens, keys, upstream
 errors, or responses are logged. Non-success upstream responses are replaced
 with sanitized 503 errors.
 
-Network policies require allowed_cidrs. Private, loopback and link-local IPs
+Network policies require allowed_cidrs or exact allowed_hosts. Private, loopback and link-local IPs
 additionally require allow_private:true. DNS answers outside the policy are skipped;
 the transport connects only to a checked IP while retaining original TLS hostname
 verification. Redirects and environment proxies are disabled. ca_file optionally

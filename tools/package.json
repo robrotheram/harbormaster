@@ -1,0 +1,9 @@
+{
+  "name": "harbormaster-workspace-tools",
+  "private": true,
+  "dependencies": {
+    "@anthropic-ai/claude-code": "2.1.238",
+    "@openai/codex": "0.164.0",
+    "t3": "0.1.3"
+  }
+}

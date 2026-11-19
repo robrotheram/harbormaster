@@ -45,7 +45,7 @@ source fixture's request field, then run:
 
 The digest publishes an outward request; it never consumes an incoming request.
 
-Copy deploy/hermes/fixtures/consumer-task.md to jobs/consumer-task.md in the
+Copy `integrations/hermes/examples/consumer-task.md` to `jobs/consumer-task.md` in the
 destination Hermes workspace. Replace project/workspace IDs and run_at in
 consumer-schedule.json, and POST it to /v1/schedules with the destination
 credential. This uses the existing Workbench schedule owner; no Hermes cron.

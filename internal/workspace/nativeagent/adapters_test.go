@@ -11,7 +11,7 @@ func TestAdapterPlansUseOnlyExplicitWorkspaceAuthority(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "host-secret-must-not-cross")
 	t.Setenv("ANTHROPIC_API_KEY", "host-secret-must-not-cross")
 	root := t.TempDir()
-	cfg := Config{DataDir: root, HomeDir: root, AgentKind: "hermes", Token: "workspace-generation-grant", InferenceURL: "http://10.43.180.206:8080", EgressURL: "http://egress.internal", CodexModel: "approved-codex", ClaudeModel: "approved-claude", HermesModel: "approved-hermes"}
+	cfg := Config{DataDir: root, HomeDir: root, AgentKind: "hermes", Token: "workspace-generation-grant", InferenceURL: "http://192.0.2.42:8080", EgressURL: "http://egress.internal", CodexModel: "approved-codex", ClaudeModel: "approved-claude", HermesModel: "approved-hermes"}
 	for _, provider := range []string{"codex", "claude", "hermes"} {
 		plan, code := prepare(cfg, provider)
 		if code != "" {
@@ -21,7 +21,7 @@ func TestAdapterPlansUseOnlyExplicitWorkspaceAuthority(t *testing.T) {
 			defer os.Remove(plan.resultFile)
 		}
 		joined := strings.Join(plan.env, "\n")
-		if !strings.Contains(joined, "NO_PROXY=127.0.0.1,localhost,inference-gateway,credential-broker,10.43.180.206\n") {
+		if !strings.Contains(joined, "NO_PROXY=127.0.0.1,localhost,inference-gateway,credential-broker,192.0.2.42\n") {
 			t.Fatal("adapter proxies the configured inference gateway", provider)
 		}
 		if strings.Contains(joined, "host-secret") || !strings.Contains(joined, cfg.Token) {

@@ -1,10 +1,11 @@
 # Container publishing
 
-The [GitHub workflow](../.github/workflows/check.yml) runs on pushes to `main`,
-`v*` tags, pull requests, and manual dispatch from the Actions page. The existing
-Go/PostgreSQL, frontend/browser, Python and Compose checks must pass before any
-container job starts. Pull requests build but never log in or publish. Manual
-runs on other branches build only.
+[GitHub Actions](../.github/workflows/check.yml) runs source and deployment
+checks on pushes to `main`, version tags, pull requests and manual dispatch.
+Documentation, deployment pin updates and other changes outside the image inputs
+skip container work. Version tags and manual runs always check the full image
+matrix. Pull requests and manual runs on feature branches build and scan locally
+on the CI runner. Registry publishing is limited to `main` and version tags.
 
 ## Images and tags
 
@@ -18,46 +19,38 @@ All images use `ghcr.io/robrotheram/harbormaster/<image>`:
 - `egress-gateway`
 - `credential-broker`
 - `workspace`
+- `workspace-hermes`
 
-Builds currently target **Linux AMD64**. ARM64 support requires acceptance of
-bundled native T3/provider binaries and workspace images before adding it to
-the matrix. PostgreSQL and Vault remain upstream images. Firecracker guest/rootfs
-artifacts and the optional Kubernetes Hermes overlay retain their separate
-provisioning workflows; this pipeline builds the root Dockerfile targets only.
+Images target Linux AMD64. The Firecracker guest filesystem is built separately.
+Registry builds include provenance and SBOM attestations. The matrix scans each
+image with Trivy and reports high and critical findings in its Actions log.
+Review findings before deploying a release. The workflow fails when a scan
+cannot run successfully.
 
-Each published build has `sha-<full-40-character-commit>` tags. Successful `main`
-builds also update `edge`. Pushing a version tag such as `v1.0.0` publishes that
-exact image tag for all eight images. There is deliberately no implicit `latest`.
-Re-running a commit can rebuild mutable upstream base tags, so use the resulting
-**image digest** for immutable deployments.
+Each scanned registry build has a `sha-<full-40-character-commit>` tag. The
+workflow reuses existing commit images and scans them before promotion.
+An eligible successful `main` run advances `edge` after the full image set
+is available. Releases publish the exact version tag for all nine images,
+along with the compatibility tag `workspace:hermes-vX.Y.Z` for the Hermes image.
 
-For example, after a successful main build:
+Authenticate Docker to GHCR for private packages. The workflow publishes with
+the repository's short-lived GitHub token and package write permission.
 
-```sh
-docker pull ghcr.io/robrotheram/harbormaster/dashboard:edge
-docker pull ghcr.io/robrotheram/harbormaster/workspace:edge
-```
+## Releasing and deploying
 
-Package visibility is controlled by GitHub. If packages are private, authenticate
-Docker to GHCR with an account/token permitted to read those packages, or set the
-packages' visibility to public in GitHub if anonymous pulls are intended. The
-workflow itself uses its short-lived `GITHUB_TOKEN` with `packages: write`; no
-Docker Hub password or separate publishing secret is needed.
+Once the desired commit has passed checks, push a version tag such as
+`v0.3.0`. The workflow publishes a GitHub Release with these assets:
 
-## Operation and deployment
+- `images.json` records the source revision and immutable image references.
+- `kubernetes-base.yaml` renders the Kubernetes base with release digests.
+- `kubernetes-hermes.yaml` adds the Hermes MCP component and selects the Hermes
+  workspace digest.
 
-Jobs use separate BuildKit caches per image, pinned action revisions, SBOM and
-provenance attestations. At most three image jobs run concurrently. Each job has
-a 45-minute limit. Open its build summary for the published tags, digest and
-build diagnostics. A failed image does not cancel the remaining matrix jobs;
-require the whole workflow to pass before treating a commit as a complete set.
+The rendered manifests still require environment configuration such as storage,
+runtime and secrets. Use the release inventory when updating a Kustomize
+environment overlay and submit the change for review. Use the release digests
+for Compose overrides as well, including the runtime controller's
+`WORKSPACE_IMAGE`. Pull the selected workspace image on the runtime host before
+allocating workspaces.
 
-Publishing does not deploy. The default Compose file continues to build local
-development images. For a deployment, supply a reviewed Compose override setting
-each service's `image` to its registry digest, plus `WORKSPACE_IMAGE` on the runtime
-controller to the published workspace digest, and run with `--no-build`. Pull the
-workspace image onto the Docker runtime host before allocating workspaces. The
-controller does not gain registry credentials from GitHub Actions. For other
-backends, configure image access using that backend's supported mechanism.
-
-Keep runtime-specific acceptance and backups in the [release checklist](operations.md).
+See the [release checklist](operations.md) for acceptance and backup steps.

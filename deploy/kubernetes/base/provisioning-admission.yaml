@@ -1,0 +1,152 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: harbormaster-runtime-secrets
+  annotations:
+    argocd.argoproj.io/sync-wave: '-10'
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+    - apiGroups: ['']
+      apiVersions: [v1]
+      operations: [CREATE, UPDATE]
+      resources: [secrets]
+  matchConditions:
+  - name: runtime-controller-only
+    expression: "request.userInfo.username == 'system:serviceaccount:harbormaster:runtime-controller'"
+  variables:
+  - name: labels
+    expression: "has(namespaceObject.metadata.labels) ? namespaceObject.metadata.labels : {}"
+  - name: applicationNamespace
+    expression: >-
+      request.namespace.matches('^hm-prj-[a-f0-9]{32}$') &&
+      variables.labels['harbormaster.io/purpose'] == 'application'
+  - name: workspaceNamespace
+    expression: >-
+      request.namespace.matches('^hm-wrk-[a-f0-9]{32}$') &&
+      variables.labels['harbormaster.io/purpose'] == 'workspace' &&
+      variables.labels['workbench.security'] == 'enforced'
+  validations:
+  - expression: >-
+      request.namespace == 'harbormaster'
+      ? object.type == 'Opaque' &&
+        object.metadata.name in ['harbormaster-ws-shared-grant', 'harbormaster-ws-shared-network']
+      : 'app.kubernetes.io/managed-by' in variables.labels &&
+        variables.labels['app.kubernetes.io/managed-by'] == 'harbormaster' &&
+        variables.labels['harbormaster.io/deployment'] == 'harbormaster' &&
+        variables.labels['harbormaster.io/project'] == 'prj_' + request.namespace.substring(7) &&
+        ((object.type == 'kubernetes.io/dockerconfigjson' && object.metadata.name == 'harbormaster-registry' &&
+          (variables.applicationNamespace || variables.workspaceNamespace)) ||
+         (object.type == 'Opaque' && variables.workspaceNamespace &&
+          object.metadata.name.matches('^harbormaster-ws-[a-z0-9-]+-(grant|network)$')))
+    message: The runtime controller can only write workspace credentials and managed registry pull secrets.
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: harbormaster-runtime-secrets
+  annotations:
+    argocd.argoproj.io/sync-wave: '-10'
+spec:
+  policyName: harbormaster-runtime-secrets
+  validationActions: [Deny]
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: harbormaster-runtime-namespaces
+  annotations:
+    argocd.argoproj.io/sync-wave: '-10'
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+    - apiGroups: ['']
+      apiVersions: [v1]
+      operations: [CREATE, UPDATE]
+      resources: [namespaces]
+  matchConditions:
+  - name: runtime-controller-only
+    expression: "request.userInfo.username == 'system:serviceaccount:harbormaster:runtime-controller'"
+  variables:
+  - name: labels
+    expression: object.metadata.labels
+  validations:
+  - expression: >-
+      object.metadata.name.matches('^hm-(prj|wrk)-[a-f0-9]{32}$') &&
+      variables.labels['app.kubernetes.io/managed-by'] == 'harbormaster' &&
+      variables.labels['harbormaster.io/deployment'] == 'harbormaster' &&
+      variables.labels['harbormaster.io/project'] == 'prj_' + object.metadata.name.substring(7) &&
+      variables.labels['pod-security.kubernetes.io/enforce'] == 'restricted' &&
+      variables.labels['pod-security.kubernetes.io/enforce-version'] == 'latest' &&
+      (object.metadata.name.startsWith('hm-prj-')
+        ? variables.labels['harbormaster.io/purpose'] == 'application'
+        : variables.labels['harbormaster.io/purpose'] == 'workspace' &&
+          variables.labels['workbench.project'] == variables.labels['harbormaster.io/project'] &&
+          variables.labels['workbench.security'] == 'enforced')
+    message: The runtime controller can only provision restricted project and worker namespaces with matching ownership labels.
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: harbormaster-runtime-namespaces
+  annotations:
+    argocd.argoproj.io/sync-wave: '-10'
+spec:
+  policyName: harbormaster-runtime-namespaces
+  validationActions: [Deny]
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: harbormaster-runtime-provisioning
+  annotations:
+    argocd.argoproj.io/sync-wave: '-10'
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+    - apiGroups: ['']
+      apiVersions: [v1]
+      operations: [CREATE, UPDATE]
+      resources: [serviceaccounts, resourcequotas, limitranges]
+    - apiGroups: [networking.k8s.io]
+      apiVersions: [v1]
+      operations: [CREATE, UPDATE]
+      resources: [networkpolicies]
+  matchConditions:
+  - name: runtime-controller-only
+    expression: "request.userInfo.username == 'system:serviceaccount:harbormaster:runtime-controller'"
+  variables:
+  - name: owner
+    expression: namespaceObject.metadata.labels
+  - name: labels
+    expression: object.metadata.labels
+  validations:
+  - expression: >-
+      request.namespace.matches('^hm-(prj|wrk)-[a-f0-9]{32}$') &&
+      variables.owner['app.kubernetes.io/managed-by'] == 'harbormaster' &&
+      variables.owner['harbormaster.io/deployment'] == 'harbormaster' &&
+      variables.owner['harbormaster.io/project'] == 'prj_' + request.namespace.substring(7) &&
+      variables.labels['app.kubernetes.io/managed-by'] == variables.owner['app.kubernetes.io/managed-by'] &&
+      variables.labels['harbormaster.io/deployment'] == variables.owner['harbormaster.io/deployment'] &&
+      variables.labels['harbormaster.io/project'] == variables.owner['harbormaster.io/project'] &&
+      variables.labels['harbormaster.io/purpose'] == variables.owner['harbormaster.io/purpose'] &&
+      (request.namespace.startsWith('hm-prj-')
+        ? variables.owner['harbormaster.io/purpose'] == 'application' &&
+          object.metadata.name in ['application', 'application-defaults', 'application-quota', 'application-isolation']
+        : variables.owner['harbormaster.io/purpose'] == 'workspace' &&
+          variables.owner['workbench.security'] == 'enforced' &&
+          object.metadata.name in ['workspace', 'workspace-quota', 'workspace-default-deny', 'workspace-controller-ingress', 'workspace-project-egress'])
+    message: The runtime controller can only create provisioning resources within its project and worker namespaces.
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: harbormaster-runtime-provisioning
+  annotations:
+    argocd.argoproj.io/sync-wave: '-10'
+spec:
+  policyName: harbormaster-runtime-provisioning
+  validationActions: [Deny]

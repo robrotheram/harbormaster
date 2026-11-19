@@ -3,6 +3,8 @@ name: ${COMPOSE_PROJECT_NAME:-agent-workbench}
 x-app: &app
   restart: unless-stopped
   stop_grace_period: 30s
+  mem_limit: 1g
+  pids_limit: 256
   read_only: true
   cap_drop: [ALL]
   security_opt: [no-new-privileges:true]
@@ -14,7 +16,9 @@ x-app: &app
 
 services:
   postgres:
-    image: postgres:17-alpine
+    mem_limit: 1g
+    pids_limit: 256
+    image: postgres:17-alpine@sha256:526f86d93c6ea08fd3f1fe5605650cacc781b2c6013169a0ad8f42c7d3d84f32
     restart: unless-stopped
     environment:
       POSTGRES_DB: workbench
@@ -150,7 +154,9 @@ services:
     networks: [management, credentials, upstream]
 
   vault:
-    image: hashicorp/vault:1.21
+    mem_limit: 1g
+    pids_limit: 256
+    image: hashicorp/vault:1.21@sha256:4e33b126a59c0c333b76fb4e894722462659a6bec7c48c9ee8cea56fccfd2569
     user: vault
     restart: unless-stopped
     # The image entrypoint already loads /vault/config. Do not load it twice.

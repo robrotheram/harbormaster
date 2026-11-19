@@ -3,6 +3,7 @@ package kubernetes_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -88,9 +89,9 @@ func env(o object) map[string]string {
 	return result
 }
 
-func TestPlatformSecurityAndReferenceContract(t *testing.T) {
+func TestPlatformSecurityAndExampleContract(t *testing.T) {
 	digest := regexp.MustCompile(`^.+@sha256:[a-f0-9]{64}$`)
-	for _, path := range []string{"base", "overlays/reference"} {
+	for _, path := range []string{"base", "overlays/example"} {
 		t.Run(path, func(t *testing.T) {
 			objects := build(t, path)
 			deployments := 0
@@ -121,8 +122,8 @@ func TestPlatformSecurityAndReferenceContract(t *testing.T) {
 					}
 					for _, c := range list(field(pod, "containers")) {
 						image, _ := field(c, "image").(string)
-						if !digest.MatchString(image) {
-							t.Fatalf("mutable image: %s", image)
+						if !digest.MatchString(image) && image != "ghcr.io/robrotheram/harbormaster/"+fmt.Sprint(name) {
+							t.Fatalf("invalid image reference: %s", image)
 						}
 						if field(c, "securityContext", "allowPrivilegeEscalation") != false || field(c, "securityContext", "readOnlyRootFilesystem") != true {
 							t.Fatalf("unrestricted container: %v", name)
@@ -135,22 +136,17 @@ func TestPlatformSecurityAndReferenceContract(t *testing.T) {
 					}
 				}
 			}
-			wantDeployments := 8
-			if path == "overlays/reference" {
-				wantDeployments++
+			if deployments != 8 {
+				t.Fatalf("expected 8 platform deployments, got %d", deployments)
 			}
-			if deployments != wantDeployments {
-				t.Fatalf("expected %d platform deployments, got %d", wantDeployments, deployments)
-			}
-			runtime := find(t, objects, "Deployment", "runtime-controller")
-			values := env(runtime)
-			if values["RUNTIME_BACKEND"] != "kubernetes" || !digest.MatchString(values["WORKSPACE_IMAGE"]) {
+			values := env(find(t, objects, "Deployment", "runtime-controller"))
+			if values["RUNTIME_BACKEND"] != "kubernetes" || values["KUBERNETES_DISCOVER_GATEWAYS"] != "true" {
 				t.Fatal("invalid runtime configuration")
 			}
+			if values["REQUIRE_VERIFIED_ISOLATION"] != "true" || values["WORKSPACE_IMAGE"] != "ghcr.io/robrotheram/harbormaster/workspace" {
+				t.Fatal("deployment source must fail closed until configured with a pinned workspace image")
+			}
 			if path == "base" {
-				if values["REQUIRE_VERIFIED_ISOLATION"] != "true" {
-					t.Fatal("base must fail closed")
-				}
 				for _, o := range objects {
 					if o["kind"] == "Ingress" {
 						t.Fatal("base must not expose an unauthenticated dashboard")
@@ -158,35 +154,24 @@ func TestPlatformSecurityAndReferenceContract(t *testing.T) {
 				}
 				return
 			}
-			if values["REQUIRE_VERIFIED_ISOLATION"] != "false" {
-				t.Fatal("reference opt-in missing")
+			dashboard := find(t, objects, "Deployment", "dashboard")
+			origin := env(dashboard)["DASHBOARD_PUBLIC_ORIGIN"]
+			ingress := find(t, objects, "Ingress", "workbench")
+			rules := list(field(map[string]any(ingress), "spec", "rules"))
+			if len(rules) != 1 || "https://"+fmt.Sprint(field(rules[0], "host")) != origin || env(dashboard)["WORKOS_REDIRECT_URI"] != origin+"/auth/callback" {
+				t.Fatal("example HTTPS origin, ingress and authentication callback must agree")
 			}
-			hermes := find(t, objects, "Service", "hermes-mcp")
-			hermesIP, _ := field(map[string]any(hermes), "spec", "clusterIP").(string)
-			if hermesIP == "" || values["KUBERNETES_HERMES_MCP_IP"] != hermesIP ||
-				values["KUBERNETES_HERMES_V023_APPROVED_IMAGE"] != values["WORKSPACE_IMAGE"] || values["HERMES_MODEL"] == "" {
-				t.Fatal("reference Hermes image approval, model, or private MCP mapping missing")
-			}
-			dashboard := env(find(t, objects, "Deployment", "dashboard"))
-			if dashboard["DASHBOARD_PUBLIC_ORIGIN"] != "https://harbormaster.exceptionerror.io" || dashboard["OAUTH2_PROXY_AUTH_URL"] == "" {
-				t.Fatal("reference authentication missing")
-			}
-			for service, variable := range map[string]string{"inference-gateway": "KUBERNETES_INFERENCE_URL", "credential-broker": "KUBERNETES_BROKER_URL", "egress-gateway": "KUBERNETES_EGRESS_URL"} {
-				expectedMode := "fixture"
-				if service == "inference-gateway" {
-					expectedMode = "subscription"
-				}
-				if env(find(t, objects, "Deployment", service))["GATEWAY_MODE"] != expectedMode {
-					t.Fatalf("unexpected gateway mode: %s", service)
-				}
-				for _, o := range objects {
-					if o["kind"] == "Service" && field(map[string]any(o), "metadata", "name") == service && field(map[string]any(o), "metadata", "namespace") == "harbormaster" {
-						ip, _ := field(map[string]any(o), "spec", "clusterIP").(string)
-						if ip == "" || values[variable] != "http://"+ip+":8080" {
-							t.Fatalf("gateway IP and runtime endpoint differ: %s", service)
-						}
+			pod := field(map[string]any(dashboard), "spec", "template", "spec")
+			authEnv := map[string]bool{}
+			for _, container := range list(field(pod, "containers")) {
+				for _, entry := range list(field(container, "env")) {
+					if field(entry, "valueFrom", "secretKeyRef", "name") == "dashboard-secrets" {
+						authEnv[fmt.Sprint(field(entry, "name"))] = true
 					}
 				}
+			}
+			if !authEnv["WORKOS_CLIENT_ID"] || !authEnv["WORKOS_API_KEY"] || !authEnv["WORKOS_ALLOWED_EMAILS"] {
+				t.Fatal("example dashboard must require its WorkOS configuration")
 			}
 			role := find(t, objects, "Role", "workbench-runtime")
 			for _, rule := range list(role["rules"]) {
@@ -200,31 +185,7 @@ func TestPlatformSecurityAndReferenceContract(t *testing.T) {
 			if field(list(binding["subjects"])[0], "namespace") != "harbormaster" {
 				t.Fatal("runtime service account binding was rewritten")
 			}
-			deny := find(t, objects, "NetworkPolicy", "workspace-default-deny")
-			if !reflect.DeepEqual(field(map[string]any(deny), "spec", "podSelector"), map[string]any{"matchExpressions": []any{map[string]any{"key": "workbench.workspace", "operator": "Exists"}}}) || len(list(field(map[string]any(deny), "spec", "ingress"))) != 0 || len(list(field(map[string]any(deny), "spec", "egress"))) != 0 {
-				t.Fatal("default deny weakened")
-			}
-			ingress := find(t, objects, "Ingress", "workbench")
-			annotations := field(map[string]any(ingress), "metadata", "annotations")
-			auth, _ := field(annotations, "traefik.ingress.kubernetes.io/router.middlewares").(string)
-			if !strings.Contains(auth, "harbormaster-auth") {
-				t.Fatal("ingress authentication missing")
-			}
-			if field(list(field(map[string]any(ingress), "spec", "rules"))[0], "host") != dashboard["DASHBOARD_PUBLIC_ORIGIN"][8:] {
-				t.Fatal("public origin and ingress host differ")
-			}
 		})
-	}
-}
-
-func TestArgoAdoptionIsManualAndNonCascading(t *testing.T) {
-	app := find(t, build(t, "argocd"), "Application", "harbormaster-reference")
-	raw := map[string]any(app)
-	if field(raw, "spec", "syncPolicy", "automated") != nil || field(raw, "metadata", "finalizers") != nil {
-		t.Fatal("future adoption must be manual and retain resources on deletion")
-	}
-	if field(raw, "spec", "source", "path") != "deploy/kubernetes/overlays/reference" {
-		t.Fatal("wrong Argo source path")
 	}
 }
 
@@ -247,21 +208,6 @@ func TestDeploymentContainsNoScripts(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
-	}
-}
-
-func TestBootstrapSharesTheCompleteOverlaysFoundation(t *testing.T) {
-	complete := map[string]object{}
-	for _, o := range build(t, "overlays/reference") {
-		complete[key(map[string]any(o))] = o
-	}
-	for _, o := range build(t, "overlays/reference/bootstrap") {
-		if o["kind"] == "Deployment" || o["kind"] == "Secret" {
-			t.Fatal("bootstrap must not start applications or own credentials")
-		}
-		if !reflect.DeepEqual(o, complete[key(map[string]any(o))]) {
-			t.Fatalf("bootstrap resource differs from full overlay: %s", key(map[string]any(o)))
-		}
 	}
 }
 
@@ -302,7 +248,7 @@ func TestHermesIsAnOptInComponent(t *testing.T) {
 }
 
 func TestConsolidatedCoreRetainsWorkspaceBoundary(t *testing.T) {
-	for _, path := range []string{"base", "overlays/reference"} {
+	for _, path := range []string{"base", "overlays/example"} {
 		t.Run(path, func(t *testing.T) {
 			objects := build(t, path)
 			namespaces := map[string]bool{}
@@ -358,8 +304,8 @@ func TestConsolidatedCoreRetainsWorkspaceBoundary(t *testing.T) {
 	}
 }
 
-func TestReferenceUsesIsolatedProjectWorkers(t *testing.T) {
-	objects := build(t, "overlays/reference")
+func TestExampleUsesIsolatedProjectWorkers(t *testing.T) {
+	objects := build(t, "overlays/example")
 	if env(find(t, objects, "Deployment", "controlplane"))["SHARED_WORKSPACE_ID"] != "" {
 		t.Fatal("shared worker must be disabled")
 	}
@@ -373,7 +319,7 @@ func TestReferenceUsesIsolatedProjectWorkers(t *testing.T) {
 }
 
 func TestSharedNamespaceKeepsWorkspacePoliciesOffCoreServices(t *testing.T) {
-	objects := build(t, "overlays/reference")
+	objects := build(t, "overlays/example")
 	for _, name := range []string{"workspace-default-deny", "workspace-controller-ingress", "workspace-project-egress"} {
 		policy := find(t, objects, "NetworkPolicy", name)
 		expressions := list(field(map[string]any(policy), "spec", "podSelector", "matchExpressions"))

@@ -20,7 +20,7 @@ do not run another controller installation with a separate leader-election names
 ## Kata
 
 Kata is installed using the official `kata-deploy-4.3.1.tgz` release chart and the
-committed `kata/values.yaml`. Release `harbormaster-kata` in `kata-system` owns the
+operator-maintained values from the [reference environment repository](https://github.com/robrotheram/harbormaster-reference). Release `harbormaster-kata` in `kata-system` owns the
 `kata` and `kata-qemu` RuntimeClasses. The values target the one approved k3s node,
 use QEMU and preserve the default container runtime.
 
@@ -30,8 +30,8 @@ After reviewing/verifying the official chart archive:
 
 ```sh
 helm upgrade --install harbormaster-kata ./kata-deploy-4.3.1.tgz \
-  --kube-context default --namespace kata-system --create-namespace \
-  -f deploy/kubernetes/infrastructure/kata/values.yaml --timeout 15m
+  --kube-context YOUR_CONTEXT --namespace kata-system --create-namespace \
+  -f /path/to/runtime-values.yaml --timeout 15m
 ```
 
 The chart owns both RuntimeClasses. Do not replace them with application manifests

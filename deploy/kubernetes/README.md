@@ -1,103 +1,62 @@
 # Kubernetes deployment
 
-Harbormaster uses native Kustomize resources. No manifest generator, Python,
-Helm inflation, exec plugin, or cluster lookup is needed to render the application.
-
-```sh
-kubectl kustomize deploy/kubernetes/overlays/reference
-kubectl --context default apply --server-side --dry-run=server -k deploy/kubernetes/overlays/reference
-kubectl --context default diff -k deploy/kubernetes/overlays/reference
-kubectl --context default apply --server-side -k deploy/kubernetes/overlays/reference
-```
-
-`kubectl diff` returns 1 when a difference exists; review that output before apply.
-The reference overlay preserves the existing deployment's object names and image
-digests. Its [runbook](overlays/reference/README.md) records dependencies,
-credentials, acceptance evidence and remaining limitations.
-
-## Layout
+Harbormaster ships native Kustomize resources for Agent Sandbox and Kata.
+Production isolation acceptance is pending. Workspace starts fail closed by
+default while verified isolation is required.
 
 | Path | Purpose |
 | --- | --- |
-| `base/` | Platform services plus the sandbox controller, shared workspace policy, runtime bindings and Sandbox admission policy. Workspace execution defaults to blocked; no public ingress. |
-| `overlays/reference/` | The existing single-node k3s environment: project policy, CNPG, retained Longhorn storage, TLS, Traefik/Entra integration, fixed gateway IPs and fixture gateways. |
-| `overlays/reference/bootstrap/` | Namespace/database foundation for an empty environment, before credentials are provisioned. Also included in the complete reference overlay. |
-| `components/hermes/` | Optional dedicated Hermes MCP service; not enabled in the reference overlay. See [Hermes](../../docs/k3s-hermes.md). |
-| `infrastructure/` | Vendored Agent Sandbox controller included in the application; cluster prerequisites. Kata remains a Helm release requiring host maintenance; its RuntimeClasses are not application-owned. |
-| `argocd/` | Future manual-adoption Application pointing directly to the reference overlay. It is not installed by applying the application. |
+| `base/` | Platform services, the Agent Sandbox controller, admission policies, default workspace bindings and core NetworkPolicies. |
+| `overlays/example/` | A portable starting point with a placeholder HTTPS host, WorkOS sign-in and isolated workspace namespaces. |
+| `components/isolated-workers/` | Scoped provisioning for dynamically created `hm-wrk-*` worker namespaces. |
+| `components/hermes/` | Optional dedicated Hermes MCP service. See [Hermes](../../docs/k3s-hermes.md). |
+| `infrastructure/` | The bundled Sandbox controller and prerequisites for the separately managed Kata runtime. |
 
-The base is reusable configuration, not a standalone production installation.
-Create another overlay to select project bindings, storage, gateway endpoints,
-image pull credentials and authenticated ingress. Use standard `patches` and
-`images`; do not edit generated build output. The reference's explicit
-`REQUIRE_VERIFIED_ISOLATION=false` is for the accepted test environment only.
+The live k3s reference overlay, host-specific Kata values, Argo CD application
+and operating history live in the private [reference environment repository](https://github.com/robrotheram/harbormaster-reference).
 
-## Images and credentials
+## Configure an environment
 
-Platform image digests live in `base/kustomization.yaml`; environment-specific
-updates belong in the consuming overlay's `images` entries. The workspace image
-is the `WORKSPACE_IMAGE` environment value on the runtime controller and must be
-changed explicitly in a reviewed Deployment patch. Existing retained Sandboxes
-reject image drift; updating a dashboard does not upgrade workspace images.
+Start from a copy of the example overlay and pin its remote base and components
+to a product release tag. Replace the example HTTPS host, OAuth callback,
+IngressClass and ingress controller selectors. Supply the named TLS and WorkOS
+Secrets and register the callback with WorkOS. Configure a CSI StorageClass that
+supports ReadWriteOncePod and replace `KUBERNETES_STORAGE_CLASS`. Set the
+project bindings, PostgreSQL endpoint and registry credentials for the cluster.
+The selected example Secret keys are listed in its Deployment patches and base
+manifests.
 
-Secrets are pre-provisioned outside Git. Kustomize references their names and
-keys; it does not generate, rotate, export or commit credentials. For future
-Argo CD adoption, supply those same Secret contracts through an approved secret
-manager or provision them beforehand. The [secret contract](overlays/reference/README.md#secret-contract)
-includes database CA verification and registry credentials.
+Pin each platform image by digest using the release image inventory and Kustomize
+`images`. Set `WORKSPACE_IMAGE` to the matching workspace digest in a runtime
+Deployment patch. Existing retained Sandboxes reject image drift. Coordinate
+workspace recreation with data retention and rollback before an image change.
+For Hermes, use the Hermes workspace digest for both `WORKSPACE_IMAGE` and
+`KUBERNETES_HERMES_V023_APPROVED_IMAGE`, set a model, and include the MCP component.
 
-## Projects and isolation
+The runtime controller reads named gateway Service ClusterIPs from the API at
+startup. Restart it if a gateway Service is recreated with a new address. Existing
+Sandboxes retain their pod configuration, so recover or recreate those workers
+through the environment's workspace maintenance procedure after a Service IP change.
+Worker DNS remains restricted. The base defaults to fixture inference, and real
+provider access needs an explicit gateway policy and environment acceptance.
 
-The reference has one core namespace, `harbormaster`, including one shared agent
-and its sandbox controller. New logical projects get application namespaces named
-`hm-prj-<immutable project ID suffix>`. They do not get additional agent workspaces.
-Project settings expose the namespace and provisioning status. Resource limits,
-network isolation, registry pull credentials and an unprivileged `application`
-ServiceAccount are installed idempotently by the runtime controller. Use that
-ServiceAccount in application manifests deployed through normal Helm/Kustomize/CI.
-Namespace provisioning is separate from building and deploying applications.
+Secrets are provisioned outside Git. Platform ingress policies allow named
+service-to-service flows. Restrict any additional dashboard, database or MCP
+ingress to the required source pods. Use `workbench.workspace DoesNotExist` on
+core-service policy selectors so workspace policy drift checks remain independent.
 
-The runtime ServiceAccount has namespace/resource provisioning permissions, scoped
-registry reads and Sandbox/grant management. It has no direct Pod creation or exec
-permission and does not delete project namespaces. Project deletion retains deployed
-applications and storage. Agent Sandbox owns worker Pod/PVC/Service reconciliation.
-The shared worker uses Kata and private RWOP storage, with no Kubernetes credentials.
+## Validate
 
-Workspace policies select only workspace-labelled Pods within the core namespace.
-The one-worker quota is scoped to the `harbormaster-workspace` PriorityClass so core
-services are unaffected. The namespace labels and Sandbox admission policy enforce
-project/Pod label agreement and the quota class. Unknown network policy drift still
-fails closed. See the [reference runbook](overlays/reference/README.md) for details.
+```sh
+make kubernetes-check
+kubectl kustomize /path/to/environment
+kubectl --context YOUR_CONTEXT apply --server-side --dry-run=server -k /path/to/environment
+kubectl --context YOUR_CONTEXT diff --server-side -k /path/to/environment
+```
 
-Isolation and network status remain `unverified`: readiness and a RuntimeClass
-are not continuous VM/CNI attestation. Branch seeding and automatic dirty-workspace
-reuse remain unsupported. Hermes workspace support requires separate image and
-native integration acceptance. See [operations](../../docs/k3s.md).
-
-## Validation and future Argo CD adoption
-
-`make kubernetes-check` requires Go, installs Kustomize v5.8.1 into ignored `.local/tools`,
-builds the manifests offline, and checks pinned images, secret exclusion,
-credential boundaries, default execution gating, gateway IP consistency and
-manual Argo adoption. GitHub's `make check` and GitLab's Go job both run it.
-Server dry-run additionally requires the real cluster's CRDs and admission rules.
-
-The [Argo Application](argocd/application.yaml) uses the private GitHub repository,
-`main`, and `deploy/kubernetes/overlays/reference`. Register repository credentials
-and verify the Argo project permits the namespaces and cluster-scoped resources.
-Review the initial adoption diff before syncing. Automated sync and cascading
-delete are absent. Namespaces, CNPG and the StorageClass carry
-`Prune=false,Delete=false`; generated workspace state and Secrets are outside this
-Application. Do not add host-install jobs to its sync lifecycle.
-
-[Kubernetes Kustomize documentation](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/kustomization/)
-and [Argo sync options](https://argo-cd.readthedocs.io/en/stable/user-guide/sync-options/)
-describe the native mechanisms used here.
-
-## Core namespace migration
-
-Core services and gateways share `harbormaster`; agent project namespaces remain
-separate. The legacy pinned runtime/workspace images must be updated to builds
-from the namespace-consolidation change before deploying this layout. See the
-[reference cutover procedure](overlays/reference/namespace-migration.md) for
-database, identity, Service IP and retained-workspace migration requirements.
+The server dry run requires the cluster's operators, server APIs and admission
+rules. Review the diff before applying the overlay. Application deployments live
+in `hm-prj-*` namespaces and isolated Kata workers use separate `hm-wrk-*`
+namespaces with private RWOP storage. Workspace policies and admission enforce
+restricted pods, scoped gateway access and project ownership. See the
+[Kubernetes operations guide](../../docs/k3s.md) for acceptance and recovery.
