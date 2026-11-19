@@ -49,7 +49,11 @@ credential. Do not give those credentials to a workspace.
 After native integration acceptance, add a strategic-merge Deployment patch for
 `runtime-controller` setting `WORKSPACE_IMAGE`,
 `KUBERNETES_HERMES_V023_APPROVED_IMAGE` to the **same reviewed immutable digest**,
-and `HERMES_MODEL` to the operator-selected model. Keep the verified-isolation gate
+and `HERMES_MODEL` to the operator-selected model. Where workspace DNS is
+blocked, pin the private Hermes MCP Service's ClusterIP in the overlay and set
+`KUBERNETES_HERMES_MCP_IP` to that address. Hermes workspace Pods map only the
+fixed MCP hostname to this address and continue to use the existing gateway
+network policy. Keep the verified-isolation gate
 unless explicitly using an approved unverified test environment. Changing the
 workspace image also requires a plan for existing retained Sandboxes.
 

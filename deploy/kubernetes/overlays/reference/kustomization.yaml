@@ -6,6 +6,8 @@ resources:
 - ingress.yaml
 - user-subscriptions.yaml
 - isolated-workers.yaml
+components:
+- ../../components/hermes
 patches:
 - target:
     group: apps
@@ -16,6 +18,14 @@ patches:
       path: /spec/template/spec/imagePullSecrets
       value:
         - name: harbormaster-registry
+- target:
+    version: v1
+    kind: Service
+    name: hermes-mcp
+  patch: |-
+    - op: add
+      path: /spec/clusterIP
+      value: 10.43.244.19
 - path: controlplane-patch.yaml
 - path: subscription-access-patch.yaml
 - path: runtime-controller-patch.yaml
@@ -30,7 +40,7 @@ images:
 - name: ghcr.io/robrotheram/harbormaster/controlplane
   digest: sha256:5bf8fb7e0f4b87cf81eaef9781dfe27790b6adbb180ced3a3baa805c63c64f32
 - name: ghcr.io/robrotheram/harbormaster/runtime-controller
-  digest: sha256:84ff7d368f7409f9c0c24bea74b498dc28206dbe3ee31eec1b5f3ced8ffdb5d4
+  digest: sha256:d40b6fd3bee061d9f8cb6000ed60274bad2546142b5f89e0f8f87bfc2602e36d
 - name: ghcr.io/robrotheram/harbormaster/dashboard
   digest: sha256:77dea8106a73e5fa373388814fc898b075faaa4dc9be599eb32e31ff708298ae
 - name: ghcr.io/robrotheram/harbormaster/mcp

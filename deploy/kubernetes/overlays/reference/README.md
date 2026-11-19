@@ -200,6 +200,15 @@ The reference cutover uses a fresh `workbench_v021` database with schema
 version 1. Existing workspaces were suspended. The old database and PVCs
 are separate from the clean instance.
 
+Reference enables Hermes v0.23.0 in workspace mode using the reviewed
+Hermes-enabled workspace image built on `v0.2.1`, a controller with the
+private MCP hostname mapping, and `gpt-6.1-sol`. The private `hermes-mcp`
+Service uses a pinned ClusterIP so Kata workers can reach it through the
+existing gateway policy with DNS blocked. The smoke test started a Kata
+workspace and completed a generation-authenticated, project-scoped MCP
+call. Model inference and Matrix were outside that check. See
+[the Kubernetes Hermes guide](../../../../docs/k3s-hermes.md).
+
 After a successful GitHub build, obtain the immutable digest from its build output
 or authenticated registry inspection. Add an `images` override to this overlay
 (or use `kustomize edit set image` in this directory). For example, with a real

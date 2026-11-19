@@ -30,4 +30,10 @@ spec:
         - name: KUBERNETES_EGRESS_URL
           value: http://10.43.51.35:8080
         - name: WORKSPACE_IMAGE
-          value: ghcr.io/robrotheram/harbormaster/workspace@sha256:d4cad5b2dd3f2a92af87d534664301773a665e2853b5c4cf915d4140eb641f52
+          value: ghcr.io/robrotheram/harbormaster/workspace@sha256:c02d828b566bf6abf660947ca079b3c4c69271fb8dd44958792543474002f334
+        - name: KUBERNETES_HERMES_V023_APPROVED_IMAGE
+          value: ghcr.io/robrotheram/harbormaster/workspace@sha256:c02d828b566bf6abf660947ca079b3c4c69271fb8dd44958792543474002f334
+        - name: KUBERNETES_HERMES_MCP_IP
+          value: 10.43.244.19
+        - name: HERMES_MODEL
+          value: gpt-6.1-sol
