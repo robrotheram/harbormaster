@@ -35,6 +35,9 @@ func SafeActivityEvent(e ActivityEvent) bool {
 	default:
 		return false
 	}
+	if e.Kind == "agent.failed" && e.Status != "" && SanitizedTaskError(e.Status) == e.Status {
+		return true
+	}
 	switch e.Status {
 	case "", "STOPPED", "STARTING", "READY", "BUSY", "UNKNOWN", "ERROR", "idle", "running", "waiting", "failed", "connected", "disconnected", "starting", "queued", "cancelled", "succeeded":
 	default:

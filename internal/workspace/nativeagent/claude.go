@@ -26,5 +26,9 @@ func prepareClaude(cfg Config, home string, env []string) (invocation, string) {
 		}
 	}
 
+	if cfg.ReasoningEffort != "" {
+		args = append(args, "--effort", cfg.ReasoningEffort)
+	}
+
 	return invocation{executable: "claude", args: args, env: env, resultFile: ""}, ""
 }

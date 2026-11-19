@@ -17,6 +17,10 @@ func (r Repository) Attempts(ctx context.Context, project, id string) ([]shared.
 	}
 	return jsonmetadata.Query[shared.WorkAttempt](ctx, r.DB, `SELECT metadata FROM work_attempts WHERE project_id=$1 AND work_item_id=$2 ORDER BY id`, project, id)
 }
+func (r Repository) AttemptByDeliveryKey(ctx context.Context, project, id, key string) (shared.WorkAttempt, error) {
+	return jsonmetadata.Get[shared.WorkAttempt](ctx, r.DB, `SELECT metadata FROM work_attempts WHERE project_id=$1 AND work_item_id=$2 AND delivery_key=$3`, project, id, key)
+}
+
 func (r Repository) RunWork(ctx context.Context, project, id, key string, now time.Time) (shared.WorkAttempt, error) {
 	return r.runWork(ctx, project, id, key, nil, now)
 }
@@ -28,7 +32,7 @@ type WorkRevision struct {
 }
 
 func (r Repository) ContinueWork(ctx context.Context, project, id, key string, revision WorkRevision, now time.Time) (shared.WorkAttempt, error) {
-	if (revision.Selection != nil && !shared.ValidWorkSelection(revision.Selection.Provider, revision.Selection.Model)) || !shared.ValidID(revision.ExpectedAttemptID) || !shared.ValidProjectFile(revision.Path) || len(revision.Digest) != 64 {
+	if (revision.Selection != nil && (!shared.ValidWorkSelection(revision.Selection.Provider, revision.Selection.Model) || !shared.ValidReasoningEffort(revision.Selection.Provider, revision.Selection.ReasoningEffort))) || !shared.ValidID(revision.ExpectedAttemptID) || !shared.ValidProjectFile(revision.Path) || len(revision.Digest) != 64 {
 		return shared.WorkAttempt{}, ErrInvalidWork
 	}
 	return r.runWork(ctx, project, id, key, &revision, now)
@@ -45,7 +49,7 @@ func (r Repository) runWork(ctx context.Context, project, id, key string, revisi
 	defer tx.Rollback()
 	a, err := jsonmetadata.Get[shared.WorkAttempt](ctx, tx, `SELECT metadata FROM work_attempts WHERE project_id=$1 AND work_item_id=$2 AND delivery_key=$3`, project, id, key)
 	if err == nil {
-		if revision != nil && (a.ParentAttemptID != revision.ExpectedAttemptID || a.SpecificationPath != revision.Path || a.SpecificationDigest != revision.Digest || (revision.Selection != nil && (a.Provider != revision.Selection.Provider || a.Model != revision.Selection.Model))) {
+		if revision != nil && (a.ParentAttemptID != revision.ExpectedAttemptID || a.SpecificationPath != revision.Path || a.SpecificationDigest != revision.Digest || (revision.Selection != nil && (a.Provider != revision.Selection.Provider || a.Model != revision.Selection.Model || a.ReasoningEffort != revision.Selection.ReasoningEffort))) {
 			return a, ErrConflict
 		}
 		return a, err
@@ -96,7 +100,7 @@ func (r Repository) runWork(ctx context.Context, project, id, key string, revisi
 			prior.ReviewState = "changes_requested"
 		}
 		if !prior.SelectionRecorded {
-			prior.Provider, prior.Model, prior.SelectionRecorded = item.Provider, item.Model, true
+			prior.Provider, prior.Model, prior.ReasoningEffort, prior.SelectionRecorded = item.Provider, item.Model, item.ReasoningEffort, true
 		}
 		pb, _ := json.Marshal(prior)
 		if _, err = tx.ExecContext(ctx, `UPDATE work_attempts SET metadata=$1 WHERE id=$2 AND project_id=$3`, string(pb), prior.ID, project); err != nil {
@@ -104,10 +108,10 @@ func (r Repository) runWork(ctx context.Context, project, id, key string, revisi
 		}
 		item.SpecificationPath, item.SpecificationDigest = revision.Path, revision.Digest
 		if revision.Selection != nil {
-			item.Provider, item.Model = revision.Selection.Provider, revision.Selection.Model
+			item.Provider, item.Model, item.ReasoningEffort = revision.Selection.Provider, revision.Selection.Model, revision.Selection.ReasoningEffort
 		}
 	}
-	a = shared.WorkAttempt{Provider: item.Provider, Model: item.Model, SelectionRecorded: true, ID: shared.NewID("attempt_"), WorkItemID: id, WorkspaceID: item.WorkspaceID, SpecificationPath: item.SpecificationPath, SpecificationDigest: item.SpecificationDigest, State: "queued", Artifacts: []shared.WorkArtifact{}, CreatedAt: now.UTC(), UpdatedAt: now.UTC()}
+	a = shared.WorkAttempt{Provider: item.Provider, Model: item.Model, ReasoningEffort: item.ReasoningEffort, SelectionRecorded: true, ID: shared.NewID("attempt_"), WorkItemID: id, WorkspaceID: item.WorkspaceID, SpecificationPath: item.SpecificationPath, SpecificationDigest: item.SpecificationDigest, State: "queued", Artifacts: []shared.WorkArtifact{}, CreatedAt: now.UTC(), UpdatedAt: now.UTC()}
 	if revision != nil {
 		a.ParentAttemptID = revision.ExpectedAttemptID
 	}

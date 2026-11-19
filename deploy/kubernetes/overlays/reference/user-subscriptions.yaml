@@ -15,6 +15,7 @@ data:
             "network": {"allowed_cidrs": ["160.79.104.10/32"]}
           },
           "codex": {
+            "discover_models": true,
             "models": ["gpt-6.1-sol"],
             "network": {"allowed_cidrs": ["104.18.32.47/32", "172.64.155.209/32"]}
           }

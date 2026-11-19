@@ -204,14 +204,16 @@ const messages: Record<string, string> = {
     "Another user has a subscription loaded for this provider in this worker. Its owner must unload it before you can load yours.",
   SUBSCRIPTION_NOT_CONFIGURED:
     "User subscriptions are not enabled on this deployment. Ask an administrator to configure the subscription gateway.",
+  MODEL_NOT_ALLOWED:
+    "This account cannot use the selected model. Refresh the model list and choose an available model.",
   PROVIDER_LOGIN_REQUIRED:
-    "Save a current login in Connections → Agent subscriptions, then choose it in the worker’s Subscription settings.",
+    "Load a current account in Worker settings → Subscriptions, or save a default account in Connections, then retry.",
   PROVIDER_NOT_CONFIGURED:
     "Codex or the selected provider is not configured for this worker. Ask an administrator to configure its model and subscription connection before retrying. Worker readiness only confirms that compute is running.",
   AGENT_EXECUTABLE_UNAVAILABLE:
     "The native agent could not start. Ask an administrator to check the worker image and installed provider executable.",
   NATIVE_AGENT_FAILED:
-    "The native agent exited unsuccessfully. Check this worker’s activity logs before retrying.",
+    "The native agent stopped before completing this task. Check worker subscriptions and the selected model before retrying.",
   INVALID_AGENT_RESPONSE:
     "The native agent returned an unreadable result. Check this worker’s activity logs before retrying.",
   CREDENTIAL_UNAVAILABLE:

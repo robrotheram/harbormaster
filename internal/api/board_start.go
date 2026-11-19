@@ -80,6 +80,10 @@ func (s *Server) registerBoardStart(mux *http.ServeMux) {
 			}
 			item.WorkspaceID = ws.ID
 		}
+		if err = s.prepareWorkSubscription(r, item.WorkspaceID, item.Provider); err != nil {
+			workError(w, err)
+			return
+		}
 		if b.Description != nil || item.SpecificationPath == "" {
 			content := "# " + b.Title + "\n\n"
 			if b.Description != nil {

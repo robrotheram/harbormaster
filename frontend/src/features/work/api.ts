@@ -15,6 +15,7 @@ export type WorkItem = {
   control_history?: { from: string; to: string; actor: string; at: string }[];
   provider?: string;
   model?: string;
+  reasoning_effort?: string;
   id: string;
   project_id: string;
   workspace_id: string;
@@ -46,6 +47,7 @@ export type Attempt = {
 export type WorkCreate = {
   provider?: string;
   model?: string;
+  reasoning_effort?: string;
   project_id: string;
   workspace_id?: string;
   instruction?: string;
@@ -91,7 +93,7 @@ export const workApi = {
     instruction: string,
     expected_attempt_id: string,
     idempotency_key: string,
-    selection?: { provider: string; model: string },
+    selection?: { provider: string; model: string; reasoning_effort?: string },
     screenshots?: { content: string; note: string }[],
   ) =>
     request<Attempt>(path(id) + "/continue", {

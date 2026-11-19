@@ -34,6 +34,9 @@ func prepareCodex(cfg Config, home string, env []string) (invocation, string) {
 	for _, entry := range toolconfig.Bundled() {
 		args = append(args, "-c", "mcp_servers."+entry.Name+".command="+tomlString(toolconfig.Command), "-c", "mcp_servers."+entry.Name+".args=[\"--mode\","+tomlString(entry.Mode)+"]")
 	}
+	if cfg.ReasoningEffort != "" {
+		args = append(args, "-c", "model_reasoning_effort="+tomlString(cfg.ReasoningEffort))
+	}
 	args = append(args, "-")
 
 	return invocation{executable: "codex", args: args, env: env, resultFile: resultFile}, ""

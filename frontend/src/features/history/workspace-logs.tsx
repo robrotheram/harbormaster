@@ -44,7 +44,7 @@ export function eventText(
   return (
     (text[e.kind] || "Activity") +
     (e.tool ? ` · ${e.tool}` : "") +
-    (e.status ? ` · ${e.status}` : "")
+    (e.status ? ` · ${label(e.status)}` : "")
   );
 }
 export function WorkspaceLogs({

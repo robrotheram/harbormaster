@@ -4,12 +4,14 @@ package nativeagent
 
 import (
 	"agent-workbench/internal/shared"
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -26,6 +28,7 @@ const OutputLimit = 1 << 20
 type Config struct {
 	HermesMCPTransport MCPTransport
 	Display            string
+	ReasoningEffort    string
 
 	DataDir, HomeDir, AgentKind, Token, InferenceURL, ProjectID, WorkspaceID, TaskID string
 	CodexModel, ClaudeModel, HermesModel                                             string
@@ -67,7 +70,8 @@ func Run(ctx context.Context, cfg Config, provider, instruction string, stdoutEv
 	}
 	stdout := shared.NewCappedOutput(OutputLimit)
 	cmd.Stdout = io.MultiWriter(stdout, stdoutEvents)
-	cmd.Stderr = stderrEvents
+	stderr := shared.NewCappedOutput(OutputLimit)
+	cmd.Stderr = io.MultiWriter(stderr, stderrEvents)
 	if err := cmd.Start(); err != nil {
 		return "", "AGENT_EXECUTABLE_UNAVAILABLE"
 	}
@@ -77,7 +81,7 @@ func Run(ctx context.Context, cfg Config, provider, instruction string, stdoutEv
 		return "", "EXECUTION_INTERRUPTED"
 	}
 	if err != nil {
-		return "", "NATIVE_AGENT_FAILED"
+		return "", nativeFailureCode(stdout.Data, stderr.Data)
 	}
 	if provider == "codex" {
 		file, err := os.Open(plan.resultFile)
@@ -105,3 +109,17 @@ func Run(ctx context.Context, cfg Config, provider, instruction string, stdoutEv
 }
 
 func tomlString(s string) string { b, _ := json.Marshal(s); return string(b) }
+
+// Only gateway codes cross the task boundary. Native CLI errors can contain
+// prompts, credentials, or provider bodies and must never be returned wholesale.
+var gatewayFailure = regexp.MustCompile(`"code"\s*:\s*"(PROVIDER_LOGIN_REQUIRED|MODEL_NOT_ALLOWED|CREDENTIAL_UNAVAILABLE|PROVIDER_NOT_CONFIGURED)"`)
+
+func nativeFailureCode(output ...[]byte) string {
+	for _, stream := range output {
+		stream = bytes.ReplaceAll(stream, []byte(`\"`), []byte(`"`))
+		if match := gatewayFailure.FindSubmatch(stream); match != nil {
+			return string(match[1])
+		}
+	}
+	return "NATIVE_AGENT_FAILED"
+}

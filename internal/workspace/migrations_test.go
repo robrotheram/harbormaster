@@ -18,8 +18,8 @@ func TestWorkspaceStartupUsesVersionOne(t *testing.T) {
 		var count, version int
 		err = m.db.QueryRow(`SELECT count(*), max(version) FROM schema_migrations`).Scan(&count, &version)
 		m.Close()
-		if err != nil || count != 1 || version != 1 {
-			t.Fatal("expected workspace baseline version 1", count, version, err)
+		if err != nil || count != 2 || version != 2 {
+			t.Fatal("expected workspace schema version 2", count, version, err)
 		}
 	}
 }

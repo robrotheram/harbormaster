@@ -1,3 +1,4 @@
+import { WorkspaceSettings } from "@/features/workspaces/settings";
 import { Responsibility } from "./responsibility";
 import { usePersonalWork, useLayoutPreference } from "./personal-work";
 import { AgentSelection, type AgentModel } from "./agent-selection";
@@ -185,7 +186,27 @@ export function WorkConversation({
   const running =
     !!item && (actions?.cancel || (!!latest && activeAttempt(latest.state)));
   const worker = workers.data?.find((w) => w.id === item?.workspace_id);
+  const [subscriptionSettings, setSubscriptionSettings] = useState(false);
   const [selection, setSelection] = useState<AgentModel>();
+  const subscriptionAction = (error: unknown) => {
+    if (
+      !worker ||
+      !error ||
+      typeof error !== "object" ||
+      !("code" in error) ||
+      error.code !== "PROVIDER_LOGIN_REQUIRED"
+    )
+      return null;
+    return (
+      <Button
+        type="button"
+        variant="outline"
+        onClick={() => setSubscriptionSettings(true)}
+      >
+        Open worker subscription settings
+      </Button>
+    );
+  };
   const [actionSequence, setActionSequence] = useState(0);
   const mutation = useMutation({
     mutationFn: (action: "run" | "cancel" | "accept" | "continue" | "wake") => {
@@ -305,10 +326,16 @@ export function WorkConversation({
         {retry ? "Retry task" : "Start task"}
       </Button>
       {mutation.isError && mutation.variables === "run" && (
-        <ErrorNotice error={mutation.error} />
+        <>
+          <ErrorNotice error={mutation.error} />
+          {subscriptionAction(mutation.error)}
+        </>
       )}
       {!!startError && item.state === "draft" && (
-        <ErrorNotice error={startError} />
+        <>
+          <ErrorNotice error={startError} />
+          {subscriptionAction(startError)}
+        </>
       )}
     </div>
   ) : null;
@@ -317,6 +344,14 @@ export function WorkConversation({
       className={`conversation-session visual-session unified-thread ${workspaceOpen ? "is-workspace-open" : ""}`}
       aria-label="Work conversation"
     >
+      {subscriptionSettings && worker && (
+        <WorkspaceSettings
+          workspace={worker}
+          initialSection="subscriptions"
+          onClose={() => setSubscriptionSettings(false)}
+          onSaved={() => setSubscriptionSettings(false)}
+        />
+      )}
       <div className="conversation-main">
         <header className="conversation-thread-heading">
           <div className="conversation-heading-title">
@@ -616,7 +651,10 @@ export function WorkConversation({
         )}
         <div className="conversation-composer">
           {mutation.isError && mutation.variables !== "run" && (
-            <ErrorNotice error={mutation.error} />
+            <>
+              <ErrorNotice error={mutation.error} />
+              {subscriptionAction(mutation.error)}
+            </>
           )}
           <Form
             onSubmit={() => {
@@ -655,6 +693,14 @@ export function WorkConversation({
                   workspace={item.workspace_id}
                   provider={selection?.provider ?? item.provider ?? ""}
                   model={selection?.model ?? item.model ?? ""}
+                  reasoning={
+                    selection
+                      ? selection.reasoning_effort || ""
+                      : item.reasoning_effort || ""
+                  }
+                  onReasoning={(effort, provider, model) =>
+                    setSelection({ provider, model, reasoning_effort: effort })
+                  }
                   disabled={running || mutation.isPending}
                   onProvider={(provider) =>
                     setSelection(provider ? { provider, model: "" } : undefined)

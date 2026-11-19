@@ -67,7 +67,7 @@ func (s *Store) migrate(ctx context.Context) error {
 		}
 	}
 
-	steps := []func(context.Context, *sql.Tx) error{s.initMetadata}
+	steps := []func(context.Context, *sql.Tx) error{s.initMetadata, initSubscriptionDefaults}
 	if version > len(steps) {
 		return fmt.Errorf("metadata schema version %d is newer than this binary supports (%d)", version, len(steps))
 	}

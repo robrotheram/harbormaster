@@ -102,17 +102,18 @@ func (s *Server) registerWork(mux *http.ServeMux) {
 }
 
 type workItemCreate struct {
-	Provider      string   `json:"provider,omitempty"`
-	Model         string   `json:"model,omitempty"`
-	Instruction   *string  `json:"instruction,omitempty"`
-	Presentation  string   `json:"presentation,omitempty"`
-	ArtifactPaths []string `json:"artifact_paths"`
-	ProjectID     string   `json:"project_id"`
-	WorkspaceID   string   `json:"workspace_id"`
-	Path          string   `json:"specification_path"`
-	Digest        string   `json:"specification_digest"`
-	Kind          string   `json:"kind"`
-	Key           string   `json:"idempotency_key"`
+	Provider        string   `json:"provider,omitempty"`
+	Model           string   `json:"model,omitempty"`
+	ReasoningEffort string   `json:"reasoning_effort,omitempty"`
+	Instruction     *string  `json:"instruction,omitempty"`
+	Presentation    string   `json:"presentation,omitempty"`
+	ArtifactPaths   []string `json:"artifact_paths"`
+	ProjectID       string   `json:"project_id"`
+	WorkspaceID     string   `json:"workspace_id"`
+	Path            string   `json:"specification_path"`
+	Digest          string   `json:"specification_digest"`
+	Kind            string   `json:"kind"`
+	Key             string   `json:"idempotency_key"`
 }
 
 func (s *Server) createWorkItem(ctx context.Context, actor principal, input workItemCreate) (shared.WorkItem, bool, error) {
@@ -120,7 +121,7 @@ func (s *Server) createWorkItem(ctx context.Context, actor principal, input work
 		return shared.WorkItem{}, false, err
 	}
 	repo := orchestration.Repository{DB: s.Store.DB}
-	if !shared.ValidWorkSelection(input.Provider, input.Model) || !shared.ValidKey(input.Key) || !shared.ValidID(input.ProjectID) || (input.Presentation != "" && input.Presentation != "interactive-v1") {
+	if !shared.ValidWorkSelection(input.Provider, input.Model) || !shared.ValidReasoningEffort(input.Provider, input.ReasoningEffort) || !shared.ValidKey(input.Key) || !shared.ValidID(input.ProjectID) || (input.Presentation != "" && input.Presentation != "interactive-v1") {
 		return shared.WorkItem{}, false, shared.CodedError{Status: http.StatusBadRequest, Code: "INVALID_REQUEST"}
 	}
 	unlock := s.operations.Lock("work-create:" + input.ProjectID + ":" + input.Key)
@@ -216,7 +217,7 @@ func (s *Server) createWorkItem(ctx context.Context, actor principal, input work
 			}
 		}
 	}
-	item, created, err := repo.CreateWork(ctx, shared.WorkItem{ControllerID: actor.human.ID, Provider: input.Provider, Model: input.Model, ArtifactPaths: input.ArtifactPaths, ProjectID: input.ProjectID, WorkspaceID: input.WorkspaceID, SpecificationPath: input.Path, SpecificationDigest: input.Digest, Kind: input.Kind, CreatedAt: s.now()}, input.Key)
+	item, created, err := repo.CreateWork(ctx, shared.WorkItem{ControllerID: actor.human.ID, Provider: input.Provider, Model: input.Model, ReasoningEffort: input.ReasoningEffort, ArtifactPaths: input.ArtifactPaths, ProjectID: input.ProjectID, WorkspaceID: input.WorkspaceID, SpecificationPath: input.Path, SpecificationDigest: input.Digest, Kind: input.Kind, CreatedAt: s.now()}, input.Key)
 	if errors.Is(err, orchestration.ErrConflict) {
 		return shared.WorkItem{}, false, shared.CodedError{Status: http.StatusConflict, Code: "IDEMPOTENCY_CONFLICT"}
 	}

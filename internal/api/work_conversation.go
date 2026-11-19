@@ -71,7 +71,7 @@ func (s *Server) registerWorkConversation(mux *http.ServeMux, repo orchestration
 		if !decodeRouteBody(w, r, &in) || !s.AuthorizeProject(w, r, in.ProjectID) {
 			return
 		}
-		if (in.Selection != nil && !shared.ValidWorkSelection(in.Selection.Provider, in.Selection.Model)) || (in.Presentation != "" && in.Presentation != "interactive-v1") || !shared.ValidID(in.ProjectID) || !shared.ValidID(in.ExpectedAttemptID) || !shared.ValidKey(in.Key) || strings.TrimSpace(in.Instruction) == "" || len(in.Instruction) > 16000 || !utf8.ValidString(in.Instruction) {
+		if (in.Selection != nil && (!shared.ValidWorkSelection(in.Selection.Provider, in.Selection.Model) || !shared.ValidReasoningEffort(in.Selection.Provider, in.Selection.ReasoningEffort))) || (in.Presentation != "" && in.Presentation != "interactive-v1") || !shared.ValidID(in.ProjectID) || !shared.ValidID(in.ExpectedAttemptID) || !shared.ValidKey(in.Key) || strings.TrimSpace(in.Instruction) == "" || len(in.Instruction) > 16000 || !utf8.ValidString(in.Instruction) {
 			shared.Error(w, 400, "INVALID_REQUEST")
 			return
 		}
@@ -134,6 +134,14 @@ func (s *Server) registerWorkConversation(mux *http.ServeMux, repo orchestration
 			shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
 			return
 		}
+		provider := item.Provider
+		if in.Selection != nil {
+			provider = in.Selection.Provider
+		}
+		if err = s.prepareWorkSubscription(r, ws.ID, provider); err != nil {
+			workError(w, err)
+			return
+		}
 		if err = s.start(r.Context(), &ws); err != nil {
 			apiError(w, err)
 			return
@@ -146,7 +154,9 @@ func (s *Server) registerWorkConversation(mux *http.ServeMux, repo orchestration
 				shared.Error(w, 503, "MODEL_CATALOG_UNAVAILABLE")
 				return
 			}
-			if !slices.Contains(catalog.Items, *in.Selection) {
+			if !slices.ContainsFunc(catalog.Items, func(model shared.AgentModel) bool {
+				return model.Provider == in.Selection.Provider && model.Model == in.Selection.Model
+			}) {
 				shared.Error(w, 400, "MODEL_NOT_AVAILABLE")
 				return
 			}

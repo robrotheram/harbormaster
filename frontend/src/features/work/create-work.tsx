@@ -21,6 +21,7 @@ export function CreateWork({
   const workspaces = useQuery(workspaceOptions(project));
   const [provider, setProvider] = useState("");
   const [model, setModel] = useState("");
+  const [reasoning, setReasoning] = useState("");
   const [workspace, setWorkspace] = useState("");
   const [mode, setMode] = useState("inline");
   const [instruction, setInstruction] = useState("");
@@ -44,6 +45,7 @@ export function CreateWork({
         workspace_id: workspace,
         ...(provider ? { provider } : {}),
         ...(provider && model ? { model } : {}),
+        ...(reasoning ? { reasoning_effort: reasoning } : {}),
         ...(mode === "inline"
           ? { instruction }
           : {
@@ -136,6 +138,12 @@ export function CreateWork({
             model={model}
             onProvider={setProvider}
             onModel={setModel}
+            reasoning={reasoning}
+            onReasoning={(effort, nextProvider, nextModel) => {
+              setReasoning(effort);
+              setProvider(nextProvider);
+              setModel(nextModel);
+            }}
             disabled={mutation.isPending}
           />
           <label>

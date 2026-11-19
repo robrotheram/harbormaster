@@ -20,7 +20,7 @@ func repository(t *testing.T) (*Repository, *sql.DB) {
 	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { db.Close() })
 	r := New(db, "workspace_one")
-	if _, err := db.Exec(Schema); err != nil {
+	if _, err := db.Exec(Schema + ReasoningSchema); err != nil {
 		t.Fatal(err)
 	}
 	return r, db
@@ -61,7 +61,7 @@ func TestFileAcceptanceFailureRollsBackTaskReservation(t *testing.T) {
 	if err != nil || !accepted.Created {
 		t.Fatal("retry after storage repair failed", err)
 	}
-	if _, err := r.FileAcceptance(ctx, s.Key, "other.md", s.Provider, "", ""); !errors.Is(err, ErrConflict) {
+	if _, err := r.FileAcceptance(ctx, s.Key, "other.md", s.Provider, "", "", ""); !errors.Is(err, ErrConflict) {
 		t.Fatal("changed file identity accepted", err)
 	}
 }
@@ -83,7 +83,7 @@ func TestRestartPreservesAcceptanceAndInterruptsWithoutReplay(t *testing.T) {
 	if err != nil || replay.Created || replay.Task.ID != first.Task.ID || replay.Task.State != "failed" || replay.Task.ErrorCode != "INTERRUPTED" {
 		t.Fatal("restart replayed execution or lost acceptance", replay, err)
 	}
-	byFile, err := restarted.FileAcceptance(ctx, s.Key, s.SourcePath, s.Provider, "", "")
+	byFile, err := restarted.FileAcceptance(ctx, s.Key, s.SourcePath, s.Provider, "", "", "")
 	if err != nil || byFile.ID != first.Task.ID {
 		t.Fatal("restart lost file acceptance", byFile, err)
 	}
@@ -97,14 +97,14 @@ func TestDigestReceipt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	receipt, err := r.FileAcceptance(ctx, s.Key, s.SourcePath, s.Provider, "abc", "")
+	receipt, err := r.FileAcceptance(ctx, s.Key, s.SourcePath, s.Provider, "abc", "", "")
 	if err != nil || receipt.ID != a.Task.ID {
 		t.Fatalf("%+v %v", receipt, err)
 	}
-	if _, err = r.FileAcceptance(ctx, s.Key, s.SourcePath, s.Provider, "def", ""); !errors.Is(err, ErrConflict) {
+	if _, err = r.FileAcceptance(ctx, s.Key, s.SourcePath, s.Provider, "def", "", ""); !errors.Is(err, ErrConflict) {
 		t.Fatal(err)
 	}
-	if _, err = r.FileAcceptance(ctx, s.Key, s.SourcePath, s.Provider, "", ""); !errors.Is(err, ErrConflict) {
+	if _, err = r.FileAcceptance(ctx, s.Key, s.SourcePath, s.Provider, "", "", ""); !errors.Is(err, ErrConflict) {
 		t.Fatal(err)
 	}
 }
@@ -112,19 +112,22 @@ func TestDigestReceipt(t *testing.T) {
 func TestSelectedModelSurvivesRestartAndConflictsOnReplay(t *testing.T) {
 	r, db := repository(t)
 	ctx := context.Background()
-	s := Submission{Key: "model-choice", Instruction: "hello", Provider: "codex", Model: "chosen-model", SourcePath: "request.md", SpecificationDigest: "abc"}
+	s := Submission{Key: "model-choice", Instruction: "hello", Provider: "codex", Model: "chosen-model", ReasoningEffort: "high", SourcePath: "request.md", SpecificationDigest: "abc"}
 	first, err := r.Accept(ctx, s, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
 	restarted := New(db, "workspace_one")
 	recoverTasks(t, ctx, db)
-	receipt, err := restarted.FileAcceptance(ctx, s.Key, s.SourcePath, s.Provider, s.SpecificationDigest, s.Model)
+	receipt, err := restarted.FileAcceptance(ctx, s.Key, s.SourcePath, s.Provider, s.SpecificationDigest, s.Model, s.ReasoningEffort)
 	if err != nil || receipt.ID != first.Task.ID {
 		t.Fatal(receipt, err)
 	}
+	if _, err = restarted.FileAcceptance(ctx, s.Key, s.SourcePath, s.Provider, s.SpecificationDigest, s.Model, "low"); !errors.Is(err, ErrConflict) {
+		t.Fatal("changed reasoning reused the receipt", err)
+	}
 	for _, model := range []string{"", "other-model"} {
-		if _, err := restarted.FileAcceptance(ctx, s.Key, s.SourcePath, s.Provider, s.SpecificationDigest, model); !errors.Is(err, ErrConflict) {
+		if _, err := restarted.FileAcceptance(ctx, s.Key, s.SourcePath, s.Provider, s.SpecificationDigest, model, ""); !errors.Is(err, ErrConflict) {
 			t.Fatal("changed receipt accepted", err)
 		}
 		s.Model = model

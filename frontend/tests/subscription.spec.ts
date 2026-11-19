@@ -10,6 +10,7 @@ test("manage multiple personal accounts and independently select worker provider
     expires_at: number;
     expired: boolean;
     workers: string[];
+    default?: boolean;
   };
   let items: Saved[] = [];
   const imports: Record<string, unknown>[] = [];
@@ -38,10 +39,19 @@ test("manage multiple personal accounts and independently select worker provider
       if (path.endsWith("/delete")) items = items.filter((s) => s.id !== id);
       else {
         const input = route.request().postDataJSON();
-        imports.push(input);
-        items = items.map((s) =>
-          s.id === id ? { ...s, name: input.name } : s,
-        );
+        if (typeof input.default === "boolean") {
+          const account = items.find((s) => s.id === id);
+          items = items.map((s) =>
+            s.provider === account?.provider
+              ? { ...s, default: s.id === id && input.default }
+              : s,
+          );
+        } else {
+          imports.push(input);
+          items = items.map((s) =>
+            s.id === id ? { ...s, name: input.name } : s,
+          );
+        }
       }
       return route.fulfill({ json: { saved: true } });
     }
@@ -169,6 +179,14 @@ test("manage multiple personal accounts and independently select worker provider
     page.getByRole("article", { name: "Company ChatGPT", exact: true }),
   ).toBeVisible();
   expect(imports[4]).not.toHaveProperty("auth");
+  const defaultAccount = page.getByRole("article", {
+    name: "Personal ChatGPT",
+    exact: true,
+  });
+  await defaultAccount.getByRole("button", { name: "Set as default" }).click();
+  await expect(
+    defaultAccount.getByRole("button", { name: "Remove default" }),
+  ).toBeVisible();
   await page
     .getByRole("tablist", { name: "Connection categories" })
     .getByRole("tab", { name: "Repositories" })
@@ -182,10 +200,12 @@ test("manage multiple personal accounts and independently select worker provider
   await page
     .getByRole("button", { name: "Actions for Shared workspace", exact: true })
     .click();
-  await page
-    .getByRole("menuitem", { name: "Subscriptions", exact: true })
+  await page.getByRole("menuitem", { name: "Settings", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Worker settings" });
+  await dialog
+    .getByRole("button", { name: "Subscriptions", exact: true })
     .click();
-  const dialog = page.getByRole("dialog", { name: "Worker subscriptions" });
+  const provider = dialog.getByLabel("Subscription provider");
   const chatgpt = dialog.getByRole("region", { name: "ChatGPT / Codex" });
   const anthropic = dialog.getByRole("region", { name: "Claude", exact: true });
   await expect(
@@ -193,24 +213,28 @@ test("manage multiple personal accounts and independently select worker provider
   ).toBeDisabled();
   await chatgpt
     .getByLabel("Saved account")
-    .selectOption({ label: "Personal ChatGPT" });
+    .selectOption({ label: "Personal ChatGPT (default)" });
   await chatgpt.getByRole("button", { name: "Load into worker" }).click();
   await expect(chatgpt.getByText("Loaded: Personal ChatGPT")).toBeVisible();
+  await provider.selectOption("claude");
   await anthropic
     .getByLabel("Saved account")
     .selectOption({ label: "Work Claude" });
   await anthropic.getByRole("button", { name: "Load into worker" }).click();
   await expect(anthropic.getByText("Loaded: Work Claude")).toBeVisible();
+  await provider.selectOption("codex");
   await chatgpt
     .getByLabel("Saved account")
     .selectOption({ label: "Company ChatGPT" });
   await chatgpt.getByRole("button", { name: "Switch account" }).click();
   await expect(chatgpt.getByText("Loaded: Company ChatGPT")).toBeVisible();
+  await provider.selectOption("claude");
   await expect(anthropic.getByText("Loaded: Work Claude")).toBeVisible();
   await anthropic.getByRole("button", { name: "Unload", exact: true }).click();
   await expect(anthropic.getByText("Subscription unloaded.")).toBeVisible();
+  await provider.selectOption("codex");
   await expect(chatgpt.getByText("Loaded: Company ChatGPT")).toBeVisible();
-  await dialog.getByRole("link", { name: "Manage subscriptions" }).click();
+  await dialog.getByRole("link", { name: "Manage saved accounts" }).click();
   await page
     .getByRole("article", { name: "Company ChatGPT", exact: true })
     .getByRole("button", { name: "Delete" })

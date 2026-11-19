@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-func registerModels(mux *http.ServeMux, c Config) {
+func registerModels(mux *http.ServeMux, c Config, catalog *codexCatalog) {
 	var vault *http.Client
 	if c.Subscriptions != nil && !c.Subscriptions.UserAccounts {
 		// Configuration validation in registerSubscriptions rejects invalid TLS.
@@ -23,13 +23,15 @@ func registerModels(mux *http.ServeMux, c Config) {
 			shared.Error(w, 401, "UNAUTHORIZED")
 			return
 		}
-		out := shared.AgentModels{Items: []shared.AgentModel{}}
+		out := shared.AgentModels{Items: []shared.AgentModel{}, ReasoningEfforts: map[string][]string{}}
 		if c.Subscriptions != nil && safeSubscriptionPart(id.PrincipalID) {
 			for provider, policy := range c.Subscriptions.Providers {
 				allowed := false
+				var cred subscriptionCredential
 				if c.Subscriptions.UserAccounts {
 					ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-					cred, err := c.ResolveSubscription(ctx, id.WorkspaceID, provider)
+					var err error
+					cred, err = c.ResolveSubscription(ctx, id.WorkspaceID, provider)
 					cancel()
 					allowed = err == nil && cred.AccessToken != "" && !strings.ContainsAny(cred.AccessToken, " \r\n\t") && cred.ExpiresAt > time.Now().Add(30*time.Second).Unix()
 				} else {
@@ -39,7 +41,17 @@ func registerModels(mux *http.ServeMux, c Config) {
 					allowed = catalogCredentialAvailable(r.Context(), vault, c, id.PrincipalID, provider)
 				}
 				if allowed {
+					available := map[string]bool{}
 					for _, model := range policy.Models {
+						available[model] = true
+					}
+					if provider == "codex" {
+						for model, efforts := range catalog.models(r.Context(), cred) {
+							available[model] = true
+							out.ReasoningEfforts[provider+"/"+model] = efforts
+						}
+					}
+					for model := range available {
 						if shared.ValidWorkSelection(provider, model) {
 							out.Items = append(out.Items, shared.AgentModel{Provider: provider, Model: model})
 						}

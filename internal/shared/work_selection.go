@@ -21,3 +21,23 @@ func ValidWorkSelection(provider, model string) bool {
 	}
 	return true
 }
+
+// ValidReasoningEffort accepts native CLI settings. Empty uses the agent default.
+func ValidReasoningEffort(provider, effort string) bool {
+	if effort == "" {
+		return true
+	}
+	switch provider {
+	case "codex":
+		switch effort {
+		case "minimal", "low", "medium", "high", "xhigh", "max":
+			return true
+		}
+	case "claude":
+		switch effort {
+		case "low", "medium", "high", "xhigh", "max":
+			return true
+		}
+	}
+	return false
+}

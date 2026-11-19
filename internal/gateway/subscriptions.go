@@ -19,8 +19,9 @@ import (
 )
 
 type SubscriptionProvider struct {
-	Models  []string      `json:"models"`
-	Network NetworkPolicy `json:"network"`
+	Models         []string      `json:"models"`
+	DiscoverModels bool          `json:"discover_models,omitempty"`
+	Network        NetworkPolicy `json:"network"`
 }
 type SubscriptionConfig struct {
 	UserAccounts bool                            `json:"user_accounts,omitempty"`
@@ -49,7 +50,7 @@ func subscriptionVaultClient(address, caFile string) (*http.Client, error) {
 	return &http.Client{Timeout: 5 * time.Second, CheckRedirect: NoRedirect, Transport: &http.Transport{Proxy: nil, TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: pool}}}, nil
 }
 
-func registerSubscriptions(mux *http.ServeMux, c Config) error {
+func registerSubscriptions(mux *http.ServeMux, c Config, catalog *codexCatalog) error {
 	if c.Subscriptions == nil {
 		return nil
 	}
@@ -148,7 +149,7 @@ func registerSubscriptions(mux *http.ServeMux, c Config) error {
 			var fields struct {
 				Model string `json:"model"`
 			}
-			if err != nil || json.Unmarshal(body, &fields) != nil || !models[fields.Model] {
+			if err != nil || json.Unmarshal(body, &fields) != nil || fields.Model == "" || (!models[fields.Model] && (provider != "codex" || catalog == nil)) {
 				shared.Error(w, 400, "MODEL_NOT_ALLOWED")
 				return
 			}
@@ -196,6 +197,12 @@ func registerSubscriptions(mux *http.ServeMux, c Config) error {
 			if cred.AccessToken == "" || strings.ContainsAny(cred.AccessToken, " \r\n\t") || cred.ExpiresAt <= time.Now().Add(30*time.Second).Unix() {
 				shared.Error(w, 503, "PROVIDER_LOGIN_REQUIRED")
 				return
+			}
+			if !models[fields.Model] {
+				if _, available := catalog.models(ctx, cred)[fields.Model]; !available {
+					shared.Error(w, 400, "MODEL_NOT_ALLOWED")
+					return
+				}
 			}
 			upstreamCtx, stop := context.WithDeadline(ctx, time.Unix(cred.ExpiresAt, 0))
 			defer stop()

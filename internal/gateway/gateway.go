@@ -91,8 +91,12 @@ func NewHandler(c Config) (http.Handler, error) {
 		client = &http.Client{Transport: tr, Timeout: 30 * time.Second, CheckRedirect: NoRedirect}
 	}
 	mux := http.NewServeMux()
-	registerModels(mux, c)
-	if err := registerSubscriptions(mux, c); err != nil {
+	catalog, err := newCodexCatalog(c)
+	if err != nil {
+		return nil, err
+	}
+	registerModels(mux, c, catalog)
+	if err := registerSubscriptions(mux, c, catalog); err != nil {
 		return nil, err
 	}
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { shared.JSON(w, 200, map[string]string{"status": "ok"}) })

@@ -122,3 +122,37 @@ jobs:
           cache-to: type=gha,scope=${{ matrix.image }}-amd64,mode=max
           provenance: mode=min
           sbom: true
+
+  hermes-workspace:
+    name: Container (workspace Hermes)
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: containers
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish Hermes-enabled workspace
+        shell: bash
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}/workspace"
+          digest="$(docker buildx imagetools inspect "$image:$GITHUB_REF_NAME" --format '{{.Manifest.Digest}}')"
+          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]] || exit 1
+          docker buildx build --platform linux/amd64 --push \
+            --metadata-file /tmp/hermes-image.json \
+            --build-arg "WORKSPACE_BASE=$image@$digest" \
+            --build-arg "HERMES_COMMIT=$(jq -r .commit deploy/hermes/runtime.json)" \
+            --build-arg "HERMES_SOURCE_SHA256=$(jq -r .source_sha256 deploy/hermes/runtime.json)" \
+            --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+            -f deploy/kubernetes/Dockerfile.hermes -t "$image:hermes-$GITHUB_REF_NAME" .
+          jq -r '."containerimage.digest"' /tmp/hermes-image.json

@@ -42,7 +42,7 @@ fi
 	}
 	defer m.Close()
 	for _, provider := range []string{"codex", "claude"} {
-		result, code := m.runNativeTask(context.Background(), provider, "implement sample", "", "selected-model")
+		result, code := m.runNativeTask(context.Background(), provider, "implement sample", "", "selected-model", "high")
 		if code != "" || result != provider+" result" {
 			t.Fatalf("%s runner: %s %q", provider, code, result)
 		}
@@ -78,7 +78,7 @@ func TestNativeCancellationKillsProcess(t *testing.T) {
 	defer m.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
-	if _, code := m.runNativeTask(ctx, "claude", "wait", "", ""); code != "EXECUTION_INTERRUPTED" {
+	if _, code := m.runNativeTask(ctx, "claude", "wait", "", "", ""); code != "EXECUTION_INTERRUPTED" {
 		t.Fatal("native cancellation failed")
 	}
 }

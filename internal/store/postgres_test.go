@@ -55,8 +55,8 @@ func TestPostgresMetadataContract(t *testing.T) {
 		}
 	}()
 	var count, version int
-	if err := s.DB.QueryRowContext(ctx, `SELECT count(*), max(version) FROM schema_migrations`).Scan(&count, &version); err != nil || count != 1 || version != 1 {
-		t.Fatal("expected PostgreSQL baseline version 1", count, version, err)
+	if err := s.DB.QueryRowContext(ctx, `SELECT count(*), max(version) FROM schema_migrations`).Scan(&count, &version); err != nil || count != 2 || version != 2 {
+		t.Fatal("expected PostgreSQL schema version 2", count, version, err)
 	}
 
 	now := time.Now().UTC()

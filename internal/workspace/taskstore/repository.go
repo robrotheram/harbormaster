@@ -29,13 +29,15 @@ func New(db *sql.DB, workspace string) *Repository { return &Repository{db: db, 
 const Schema = `CREATE TABLE tasks(id TEXT PRIMARY KEY,idem_key TEXT UNIQUE NOT NULL,fingerprint TEXT NOT NULL,instruction TEXT NOT NULL,state TEXT NOT NULL,result TEXT NOT NULL DEFAULT '',messages TEXT NOT NULL DEFAULT '[]',error_code TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
 CREATE TABLE file_acceptances(idem_key TEXT PRIMARY KEY,instruction_path TEXT NOT NULL,provider TEXT NOT NULL,task_id TEXT NOT NULL,specification_digest TEXT NOT NULL DEFAULT '',model TEXT NOT NULL DEFAULT '');`
 
+const ReasoningSchema = `ALTER TABLE file_acceptances ADD COLUMN reasoning_effort TEXT NOT NULL DEFAULT ''`
+
 // RecoverInterrupted fails in-flight tasks without replaying them.
 func RecoverInterrupted(ctx context.Context, tx *sql.Tx) error {
 	_, err := tx.ExecContext(ctx, `UPDATE tasks SET state='failed',error_code='INTERRUPTED',updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE state IN ('queued','running','cancel_requested')`)
 	return err
 }
 
-type Submission struct{ Instruction, Key, Provider, Model, SourcePath, SpecificationDigest string }
+type Submission struct{ Instruction, Key, Provider, Model, ReasoningEffort, SourcePath, SpecificationDigest string }
 type Acceptance struct {
 	Task    shared.Task
 	Created bool
@@ -60,12 +62,12 @@ func (r *Repository) scan(row scanner) (shared.Task, error) {
 func (r *Repository) Get(ctx context.Context, id string) (shared.Task, error) {
 	return r.scan(r.db.QueryRowContext(ctx, `SELECT id,state,error_code,created_at,updated_at FROM tasks WHERE id=?`, id))
 }
-func (r *Repository) FileAcceptance(ctx context.Context, key, path, provider, digest, model string) (shared.Task, error) {
-	var oldPath, oldProvider, id, oldDigest, oldModel string
-	if err := r.db.QueryRowContext(ctx, `SELECT instruction_path,provider,task_id,specification_digest,model FROM file_acceptances WHERE idem_key=?`, key).Scan(&oldPath, &oldProvider, &id, &oldDigest, &oldModel); err != nil {
+func (r *Repository) FileAcceptance(ctx context.Context, key, path, provider, digest, model, effort string) (shared.Task, error) {
+	var oldPath, oldProvider, id, oldDigest, oldModel, oldEffort string
+	if err := r.db.QueryRowContext(ctx, `SELECT instruction_path,provider,task_id,specification_digest,model,reasoning_effort FROM file_acceptances WHERE idem_key=?`, key).Scan(&oldPath, &oldProvider, &id, &oldDigest, &oldModel, &oldEffort); err != nil {
 		return shared.Task{}, err
 	}
-	if model != oldModel || path != oldPath || provider != oldProvider || digest != oldDigest {
+	if effort != oldEffort || model != oldModel || path != oldPath || provider != oldProvider || digest != oldDigest {
 		return shared.Task{}, ErrConflict
 	}
 	return r.Get(ctx, id)
@@ -83,6 +85,9 @@ func (r *Repository) Accept(ctx context.Context, s Submission, now time.Time) (A
 	}
 	if s.Model != "" {
 		input += "\x00model:" + s.Model
+	}
+	if s.ReasoningEffort != "" {
+		input += "\x00effort:" + s.ReasoningEffort
 	}
 	sum := sha256.Sum256([]byte(input))
 	fingerprint := hex.EncodeToString(sum[:])
@@ -115,7 +120,7 @@ func (r *Repository) Accept(ctx context.Context, s Submission, now time.Time) (A
 		return Acceptance{}, err
 	}
 	if s.SourcePath != "" {
-		if _, err = tx.ExecContext(ctx, `INSERT INTO file_acceptances(idem_key,instruction_path,provider,task_id,specification_digest,model) VALUES(?,?,?,?,?,?)`, s.Key, s.SourcePath, s.Provider, id, s.SpecificationDigest, s.Model); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO file_acceptances(idem_key,instruction_path,provider,task_id,specification_digest,model,reasoning_effort) VALUES(?,?,?,?,?,?,?)`, s.Key, s.SourcePath, s.Provider, id, s.SpecificationDigest, s.Model, s.ReasoningEffort); err != nil {
 			return Acceptance{}, err
 		}
 	}

@@ -43,6 +43,7 @@ func (m *Manager) agentModels(ctx context.Context) (shared.AgentModels, error) {
 	if err = json.NewDecoder(io.LimitReader(res.Body, 256<<10)).Decode(&catalog); err != nil {
 		return out, err
 	}
+	out.ReasoningEfforts = catalog.ReasoningEfforts
 	for _, selection := range catalog.Items {
 		if !shared.ValidWorkSelection(selection.Provider, selection.Model) || selection.Model == "" {
 			continue

@@ -37,7 +37,7 @@ func initWorkspaceDB(ctx context.Context, db *sql.DB) error {
 		return err
 	}
 
-	steps := []func(context.Context, *sql.Tx) error{initWorkspaceSchema}
+	steps := []func(context.Context, *sql.Tx) error{initWorkspaceSchema, addReasoningEffort}
 	if version > len(steps) {
 		return fmt.Errorf("workspace schema version %d is newer than this binary supports (%d)", version, len(steps))
 	}
@@ -82,4 +82,9 @@ func initWorkspaceSchema(ctx context.Context, tx *sql.Tx) error {
 		}
 	}
 	return nil
+}
+
+func addReasoningEffort(ctx context.Context, tx *sql.Tx) error {
+	_, err := tx.ExecContext(ctx, taskstore.ReasoningSchema)
+	return err
 }

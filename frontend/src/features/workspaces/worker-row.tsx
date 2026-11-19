@@ -1,6 +1,4 @@
-import { useState } from "react";
 import { WorkerCheckbox } from "@/features/platform/worker-actions";
-import { SubscriptionDialog } from "./subscription";
 import {
   GitBranch,
   Globe,
@@ -65,7 +63,6 @@ export function WorkerRow({
   setMessage: (message: string) => void;
   setActionError: (error: unknown) => void;
 }) {
-  const [subscription, setSubscription] = useState(false);
   const console = workspace.console_enabled || workspace.agent_kind === "t3";
   const kind = workspace.agent_kind || "codex";
   const stopped = ["STOPPED", "ERROR", "UNKNOWN"].includes(workspace.state);
@@ -222,11 +219,6 @@ export function WorkerRow({
                   Connect T3 desktop
                 </DropdownMenuItem>
               )}
-              {kind !== "hermes" && (
-                <DropdownMenuItem onSelect={() => setSubscription(true)}>
-                  Subscriptions
-                </DropdownMenuItem>
-              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={() => setLogs(workspace)}>
                 <TerminalSquare />
@@ -293,12 +285,6 @@ export function WorkerRow({
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-        {subscription && (
-          <SubscriptionDialog
-            workspace={workspace}
-            onClose={() => setSubscription(false)}
-          />
-        )}
         {workspace.ready && (
           <div className="mt-1.5 truncate text-right text-[10px] text-muted-foreground max-md:text-left">
             {workspace.idle_timeout_minutes === 0

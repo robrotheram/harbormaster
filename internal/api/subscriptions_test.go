@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -8,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"agent-workbench/internal/shared"
 )
 
 func TestMultipleSubscriptionsArePrivateAndProviderScoped(t *testing.T) {
@@ -47,6 +50,24 @@ func TestMultipleSubscriptionsArePrivateAndProviderScoped(t *testing.T) {
 	c := create("user_alice", "Claude", "claude", claude)
 	d := create("user_alice", "Claude Work", "claude", claude)
 	other := create("user_bob", "Other", "codex", codex)
+	if res := call("POST", "/v1/subscriptions/"+a, "user_bob", `{"default":true}`); res.Code != 404 {
+		t.Fatal("foreign default accepted", res.Code)
+	}
+	probe := httptest.NewRequest("POST", "/", nil)
+	probe = probe.WithContext(context.WithValue(probe.Context(), principalKey{}, principal{human: shared.HumanIdentity{ID: "user_alice"}}))
+	if err := s.prepareWorkSubscription(probe, worker.ID, "codex"); err != subscriptionRequired {
+		t.Fatal("unconfigured worker should require a login", err)
+	}
+	if res := call("POST", "/v1/subscriptions/"+a, "user_alice", `{"default":true}`); res.Code != 200 {
+		t.Fatal("default selection failed", res.Code)
+	}
+	if err := s.prepareWorkSubscription(probe, worker.ID, "codex"); err != nil {
+		t.Fatal("default was not loaded", err)
+	}
+	owner, account, err := s.Store.WorkerAgentSubscription(probe.Context(), worker.ID, "codex")
+	if err != nil || owner != "user_alice" || account != a {
+		t.Fatal("wrong default binding", owner, account, err)
+	}
 	for _, id := range []string{a, b, c, d} {
 		res := call("POST", "/v1/subscriptions/"+id, "user_bob", `{"name":"stolen"}`)
 		if res.Code != 404 {

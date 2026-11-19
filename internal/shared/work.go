@@ -16,6 +16,7 @@ type WorkItem struct {
 	ControlHistory      []ControlHandoff `json:"control_history,omitempty"`
 	Provider            string           `json:"provider,omitempty"`
 	Model               string           `json:"model,omitempty"`
+	ReasoningEffort     string           `json:"reasoning_effort,omitempty"`
 	ArtifactPaths       []string         `json:"artifact_paths,omitempty"`
 	LatestAttemptID     string           `json:"latest_attempt_id,omitempty"`
 	ID                  string           `json:"id"`
@@ -34,6 +35,7 @@ type WorkAttempt struct {
 	ReviewedBy          string         `json:"reviewed_by,omitempty"`
 	Provider            string         `json:"provider,omitempty"`
 	Model               string         `json:"model,omitempty"`
+	ReasoningEffort     string         `json:"reasoning_effort,omitempty"`
 	SelectionRecorded   bool           `json:"selection_recorded,omitempty"`
 	SpecificationPath   string         `json:"specification_path,omitempty"`
 	SpecificationDigest string         `json:"specification_digest,omitempty"`

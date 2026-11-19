@@ -466,6 +466,7 @@ function NewConversation({
 }) {
   const [provider, setProvider] = useState("");
   const [model, setModel] = useState("");
+  const [reasoning, setReasoning] = useState("");
   const [workspace, setWorkspace] = useState("");
   const [kind, setKind] = useState<WorkCreate["kind"]>("software");
   const [outputs, setOutputs] = useState("");
@@ -495,6 +496,7 @@ function NewConversation({
         workspace_id: selectedWorkspace,
         ...(provider ? { provider } : {}),
         ...(provider && model ? { model } : {}),
+        ...(reasoning ? { reasoning_effort: reasoning } : {}),
         instruction,
         kind,
         artifact_paths: outputPaths,
@@ -561,6 +563,12 @@ function NewConversation({
           model={model}
           onProvider={setProvider}
           onModel={setModel}
+          reasoning={reasoning}
+          onReasoning={(effort, nextProvider, nextModel) => {
+            setReasoning(effort);
+            setProvider(nextProvider);
+            setModel(nextModel);
+          }}
           disabled={mutation.isPending}
         />
         <div className="conversation-new-options">
@@ -573,6 +581,7 @@ function NewConversation({
                 setWorkspace(e.target.value);
                 setProvider("");
                 setModel("");
+                setReasoning("");
               }}
               disabled={mutation.isPending}
             >

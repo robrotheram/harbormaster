@@ -15,6 +15,7 @@ export type AgentSubscription = {
   expires_at: number;
   expired: boolean;
   workers: string[];
+  default?: boolean;
 };
 export const subscriptionKey = ["my-subscriptions"];
 export const providerNames = { codex: "ChatGPT / Codex", claude: "Claude" };
@@ -41,6 +42,25 @@ export function AgentSubscriptions() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>();
   const [message, setMessage] = useState("");
+  async function toggleDefault(item: AgentSubscription) {
+    setBusy(true);
+    setError(undefined);
+    try {
+      await request(`/subscriptions/${encodeURIComponent(item.id)}`, {
+        default: !item.default,
+      });
+      await client.invalidateQueries({ queryKey: subscriptionKey });
+      setMessage(
+        item.default
+          ? "Default removed."
+          : `${item.name} is now your default for ${providerNames[item.provider]}.`,
+      );
+    } catch (failure) {
+      setError(failure);
+    } finally {
+      setBusy(false);
+    }
+  }
   async function remove() {
     if (!deleting) return;
     setBusy(true);
@@ -79,10 +99,11 @@ export function AgentSubscriptions() {
         </Button>
       </div>
       <p className="form-note">
-        Save multiple accounts for either provider, then choose a subscription
-        from a worker’s Subscription menu. A worker can use one ChatGPT account
-        and one Claude account at a time.
+        Choose a default for each provider to load it automatically when you
+        send work to an unconfigured worker. Use Worker settings to load a
+        different account.
       </p>
+      {!!error && !deleting && <ErrorNotice error={error} />}
       {query.isPending && <p role="status">Loading subscriptions…</p>}
       {query.error && (
         <ErrorNotice error={query.error} onRetry={() => void query.refetch()} />
@@ -126,12 +147,21 @@ export function AgentSubscriptions() {
                 </span>
               </p>
               <p className="text-xs text-muted-foreground">
+                {item.default && "Default · "}
                 {item.workers.length
                   ? `Loaded into ${item.workers.length} worker${item.workers.length === 1 ? "" : "s"}`
                   : "Not loaded into any worker"}
               </p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={busy || (item.expired && !item.default)}
+                onClick={() => void toggleDefault(item)}
+              >
+                {item.default ? "Remove default" : "Set as default"}
+              </Button>
               <Button
                 variant="outline"
                 size="sm"

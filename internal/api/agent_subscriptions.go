@@ -26,6 +26,11 @@ func (s *Server) registerAgentSubscriptions(mux *http.ServeMux) {
 			shared.Error(w, 503, "STORAGE_UNAVAILABLE")
 			return
 		}
+		defaults, err := s.Store.AgentSubscriptionDefaults(r.Context(), owner)
+		if err != nil {
+			shared.Error(w, 503, "STORAGE_UNAVAILABLE")
+			return
+		}
 		items := []map[string]any{}
 		for _, v := range saved {
 			c, err := subscriptions.Open(s.cfg.Token, subscriptions.Binding(owner, v.ID), v.Credential)
@@ -38,7 +43,7 @@ func (s *Server) registerAgentSubscriptions(mux *http.ServeMux) {
 				shared.Error(w, 503, "STORAGE_UNAVAILABLE")
 				return
 			}
-			items = append(items, map[string]any{"id": v.ID, "name": v.Name, "provider": v.Provider, "account_id": c.AccountID, "expires_at": c.ExpiresAt, "expired": c.ExpiresAt <= s.now().Add(time.Minute).Unix(), "workers": workers})
+			items = append(items, map[string]any{"id": v.ID, "name": v.Name, "provider": v.Provider, "account_id": c.AccountID, "expires_at": c.ExpiresAt, "expired": c.ExpiresAt <= s.now().Add(time.Minute).Unix(), "workers": workers, "default": defaults[v.Provider] == v.ID})
 		}
 		shared.JSON(w, 200, map[string]any{"items": items})
 	})
@@ -51,13 +56,9 @@ func (s *Server) registerAgentSubscriptions(mux *http.ServeMux) {
 			Name     string          `json:"name"`
 			Provider string          `json:"provider"`
 			Auth     json.RawMessage `json:"auth"`
+			Default  *bool           `json:"default,omitempty"`
 		}
 		if !decodeRouteBody(w, r, &input) {
-			return
-		}
-		input.Name = strings.TrimSpace(input.Name)
-		if len(input.Name) == 0 || len(input.Name) > 80 || strings.ContainsFunc(input.Name, unicode.IsControl) {
-			shared.Error(w, 400, "INVALID_REQUEST")
 			return
 		}
 		unlock := s.operations.Lock("subscription:" + owner)
@@ -99,6 +100,30 @@ func (s *Server) registerAgentSubscriptions(mux *http.ServeMux) {
 				shared.Error(w, 400, "INVALID_REQUEST")
 				return
 			}
+		}
+		if input.Default != nil {
+			if create || input.Name != "" || len(input.Auth) != 0 {
+				shared.Error(w, 400, "INVALID_REQUEST")
+				return
+			}
+			if *input.Default {
+				cred, err := subscriptions.Open(s.cfg.Token, subscriptions.Binding(owner, v.ID), v.Credential)
+				if err != nil || cred.ExpiresAt <= s.now().Add(time.Minute).Unix() {
+					shared.Error(w, 409, "PROVIDER_LOGIN_REQUIRED")
+					return
+				}
+			}
+			if err := s.Store.SetAgentSubscriptionDefault(r.Context(), owner, v, *input.Default); err != nil {
+				shared.Error(w, 503, "STORAGE_UNAVAILABLE")
+				return
+			}
+			shared.JSON(w, 200, map[string]bool{"default": *input.Default})
+			return
+		}
+		input.Name = strings.TrimSpace(input.Name)
+		if len(input.Name) == 0 || len(input.Name) > 80 || strings.ContainsFunc(input.Name, unicode.IsControl) {
+			shared.Error(w, 400, "INVALID_REQUEST")
+			return
 		}
 		v.Name = input.Name
 		if create || len(input.Auth) > 0 {

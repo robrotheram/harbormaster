@@ -6,12 +6,17 @@ import { Button } from "@/components/ui/button";
 import { request } from "@/shared/http";
 import { label } from "@/shared/format";
 
-export type AgentModel = { provider: string; model: string };
+export type AgentModel = {
+  provider: string;
+  model: string;
+  reasoning_effort?: string;
+};
 type Catalog = {
   workspace_id: string;
   default_provider?: string;
   default_model?: string;
   items: AgentModel[];
+  reasoning_efforts?: Record<string, string[]>;
 };
 export function AgentSelection({
   workspace,
@@ -19,6 +24,8 @@ export function AgentSelection({
   model,
   onProvider,
   onModel,
+  reasoning = "",
+  onReasoning,
   disabled = false,
   compact = false,
 }: {
@@ -27,6 +34,8 @@ export function AgentSelection({
   model: string;
   onProvider: (value: string) => void;
   onModel: (value: string) => void;
+  reasoning?: string;
+  onReasoning: (effort: string, provider: string, model: string) => void;
   disabled?: boolean;
   compact?: boolean;
 }) {
@@ -56,6 +65,15 @@ export function AgentSelection({
   const known = options.some(
     (s) => s.provider === provider && s.model === model,
   );
+  const activeProvider = provider || query.data?.default_provider || "";
+  const activeModel = model || query.data?.default_model || "";
+  const reasoningLevels =
+    query.data?.reasoning_efforts?.[`${activeProvider}/${activeModel}`] ??
+    (activeProvider === "codex"
+      ? ["low", "medium", "high", "xhigh"]
+      : activeProvider === "claude"
+        ? ["low", "medium", "high", "xhigh", "max"]
+        : []);
   const picker = (
     <div className="conversation-model-picker">
       <NativeSelect
@@ -80,6 +98,7 @@ export function AgentSelection({
                 query.data?.default_provider || "",
                 query.data?.default_model || "",
               ];
+          onReasoning("", nextProvider, nextModel);
           onProvider(nextProvider);
           onModel(nextModel);
         }}
@@ -109,6 +128,28 @@ export function AgentSelection({
           </option>
         ))}
       </NativeSelect>
+      {activeModel && reasoningLevels.length > 0 && (
+        <NativeSelect
+          aria-label="Reasoning effort"
+          value={reasoning}
+          disabled={disabled || (!defaultAvailable && !known)}
+          onChange={(event) =>
+            onReasoning(event.target.value, activeProvider, activeModel)
+          }
+        >
+          <option value="">Default reasoning</option>
+          {reasoning && !reasoningLevels.includes(reasoning) && (
+            <option value={reasoning} disabled>
+              {label(reasoning)}
+            </option>
+          )}
+          {reasoningLevels.map((level) => (
+            <option key={level} value={level}>
+              {label(level)} reasoning
+            </option>
+          ))}
+        </NativeSelect>
+      )}
       {query.isError && (
         <Button
           type="button"

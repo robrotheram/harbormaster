@@ -1,7 +1,9 @@
 package api
 
 import (
+	"context"
 	"crypto/subtle"
+	"database/sql"
 	"errors"
 	"net/http"
 	"strings"
@@ -45,10 +47,6 @@ func (s *Server) registerSubscriptions(mux *http.ServeMux) {
 			if !ok {
 				return
 			}
-			if ws.AgentKind == "hermes" {
-				shared.Error(w, 409, "PROVIDER_NOT_CONFIGURED")
-				return
-			}
 			var input struct {
 				ID       string `json:"subscription_id"`
 				Provider string `json:"provider"`
@@ -67,6 +65,10 @@ func (s *Server) registerSubscriptions(mux *http.ServeMux) {
 				if input.Provider == "" {
 					input.Provider = "codex"
 				}
+				if ws.AgentKind == "hermes" && input.Provider != "codex" {
+					shared.Error(w, 409, "PROVIDER_NOT_CONFIGURED")
+					return
+				}
 				if err := s.Store.UnloadAgentSubscription(r.Context(), owner, input.Provider, ws.ID); err != nil {
 					shared.Error(w, 503, "STORAGE_UNAVAILABLE")
 					return
@@ -83,6 +85,10 @@ func (s *Server) registerSubscriptions(mux *http.ServeMux) {
 				}
 				if input.Provider != "" && input.Provider != saved.Provider {
 					shared.Error(w, 400, "INVALID_REQUEST")
+					return
+				}
+				if ws.AgentKind == "hermes" && saved.Provider != "codex" {
+					shared.Error(w, 409, "PROVIDER_NOT_CONFIGURED")
 					return
 				}
 				c, err := subscriptions.Open(s.cfg.Token, subscriptions.Binding(owner, saved.ID), saved.Credential)
@@ -131,20 +137,74 @@ func (s *Server) resolveSubscription(w http.ResponseWriter, r *http.Request) {
 		shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
 		return
 	}
-	owner, id, err := s.Store.WorkerAgentSubscription(r.Context(), input.WorkspaceID, input.Provider)
+	c, err := s.workerSubscription(r.Context(), input.WorkspaceID, input.Provider)
 	if err != nil {
 		shared.Error(w, 503, "PROVIDER_LOGIN_REQUIRED")
 		return
 	}
-	saved, err := s.Store.AgentSubscription(r.Context(), owner, id)
-	if err != nil || saved.Provider != input.Provider {
-		shared.Error(w, 503, "PROVIDER_LOGIN_REQUIRED")
-		return
+	shared.JSON(w, 200, c)
+}
+
+func (s *Server) workerSubscription(ctx context.Context, workspace, provider string) (subscriptions.Credential, error) {
+	owner, id, err := s.Store.WorkerAgentSubscription(ctx, workspace, provider)
+	if err != nil {
+		return subscriptions.Credential{}, err
+	}
+	return s.validSubscription(ctx, owner, id, provider)
+}
+
+var subscriptionRequired = shared.CodedError{Status: http.StatusConflict, Code: "PROVIDER_LOGIN_REQUIRED"}
+
+func (s *Server) validSubscription(ctx context.Context, owner, id, provider string) (subscriptions.Credential, error) {
+	saved, err := s.Store.AgentSubscription(ctx, owner, id)
+	if err != nil || saved.Provider != provider {
+		return subscriptions.Credential{}, subscriptionRequired
 	}
 	c, err := subscriptions.Open(s.cfg.Token, subscriptions.Binding(owner, id), saved.Credential)
-	if err != nil || c.ExpiresAt <= s.now().Add(30*time.Second).Unix() {
-		shared.Error(w, 503, "PROVIDER_LOGIN_REQUIRED")
-		return
+	if err != nil || c.ExpiresAt <= s.now().Add(time.Minute).Unix() {
+		return subscriptions.Credential{}, subscriptionRequired
 	}
-	shared.JSON(w, 200, c)
+	return c, nil
+}
+
+// An explicit worker binding wins. A personal default only fills an empty slot
+// during an authorized human run, so background work never borrows a credential.
+func (s *Server) prepareWorkSubscription(r *http.Request, workspace, provider string) error {
+	if s.cfg.SubscriptionGatewayToken == "" || workspace == "" {
+		return nil
+	}
+	if provider == "" || provider == "hermes" {
+		provider = "codex"
+	}
+	ctx := r.Context()
+	if _, err := s.workerSubscription(ctx, workspace, provider); err == nil {
+		return nil
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, subscriptionRequired) {
+			return subscriptionRequired
+		}
+		return err
+	}
+	actor, _ := ctx.Value(principalKey{}).(principal)
+	if actor.human.ID == "" {
+		return subscriptionRequired
+	}
+	defaults, err := s.Store.AgentSubscriptionDefaults(ctx, actor.human.ID)
+	if err != nil {
+		return err
+	}
+	id := defaults[provider]
+	if id == "" {
+		return subscriptionRequired
+	}
+	if _, err = s.validSubscription(ctx, actor.human.ID, id, provider); err != nil {
+		return err
+	}
+	if err = s.Store.LoadDefaultAgentSubscription(ctx, actor.human.ID, id, provider, workspace); err != nil {
+		return err
+	}
+	if _, err = s.workerSubscription(ctx, workspace, provider); err != nil {
+		return subscriptionRequired
+	}
+	return nil
 }

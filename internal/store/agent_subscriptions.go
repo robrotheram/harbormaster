@@ -87,6 +87,9 @@ func (s *Store) DeleteAgentSubscription(ctx context.Context, owner, id string) e
 	if _, err = tx.ExecContext(ctx, `DELETE FROM worker_agent_subscriptions WHERE owner=$1 AND subscription_id=$2`, owner, id); err != nil {
 		return err
 	}
+	if _, err = tx.ExecContext(ctx, `DELETE FROM agent_subscription_defaults WHERE owner=$1 AND subscription_id=$2`, owner, id); err != nil {
+		return err
+	}
 	res, err := tx.ExecContext(ctx, `DELETE FROM agent_subscriptions WHERE owner=$1 AND id=$2`, owner, id)
 	if err != nil {
 		return err
@@ -115,4 +118,47 @@ func (s *Store) AgentSubscriptionWorkers(ctx context.Context, owner, id string) 
 		out = append(out, workspace)
 	}
 	return out, rows.Err()
+}
+
+func initSubscriptionDefaults(ctx context.Context, tx *sql.Tx) error {
+	_, err := tx.ExecContext(ctx, `CREATE TABLE agent_subscription_defaults (
+		owner TEXT NOT NULL, provider TEXT NOT NULL, subscription_id TEXT NOT NULL,
+		PRIMARY KEY(owner,provider),
+		FOREIGN KEY(owner,subscription_id) REFERENCES agent_subscriptions(owner,id) ON DELETE CASCADE
+	)`)
+	return err
+}
+
+func (s *Store) AgentSubscriptionDefaults(ctx context.Context, owner string) (map[string]string, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT provider,subscription_id FROM agent_subscription_defaults WHERE owner=$1`, owner)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]string{}
+	for rows.Next() {
+		var provider, id string
+		if err := rows.Scan(&provider, &id); err != nil {
+			return nil, err
+		}
+		out[provider] = id
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) SetAgentSubscriptionDefault(ctx context.Context, owner string, v AgentSubscription, enabled bool) error {
+	if !enabled {
+		_, err := s.DB.ExecContext(ctx, `DELETE FROM agent_subscription_defaults WHERE owner=$1 AND provider=$2 AND subscription_id=$3`, owner, v.Provider, v.ID)
+		return err
+	}
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO agent_subscription_defaults(owner,provider,subscription_id) VALUES($1,$2,$3)
+		ON CONFLICT(owner,provider) DO UPDATE SET subscription_id=excluded.subscription_id`, owner, v.Provider, v.ID)
+	return err
+}
+
+func (s *Store) LoadDefaultAgentSubscription(ctx context.Context, owner, id, provider, workspace string) error {
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO worker_agent_subscriptions(workspace_id,provider,owner,subscription_id)
+		SELECT $1,provider,owner,id FROM agent_subscriptions WHERE owner=$2 AND id=$3 AND provider=$4
+		ON CONFLICT(workspace_id,provider) DO NOTHING`, workspace, owner, id, provider)
+	return err
 }

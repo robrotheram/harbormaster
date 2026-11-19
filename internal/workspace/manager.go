@@ -71,6 +71,7 @@ type Manager struct {
 }
 type submit struct {
 	Model               string `json:"model,omitempty"`
+	ReasoningEffort     string `json:"reasoning_effort,omitempty"`
 	SpecificationDigest string `json:"-"`
 	SourcePath          string `json:"-"`
 	Instruction         string `json:"instruction"`
@@ -209,7 +210,7 @@ func (m *Manager) submit(s submit) (shared.Task, int, error) {
 }
 
 func (m *Manager) submitLocked(s submit) (shared.Task, int, error) {
-	if s.Model != "" && !shared.ValidWorkSelection(s.Provider, s.Model) {
+	if (s.Model != "" && !shared.ValidWorkSelection(s.Provider, s.Model)) || !shared.ValidReasoningEffort(s.Provider, s.ReasoningEffort) {
 		return shared.Task{}, 400, shared.CodedError{Status: http.StatusBadRequest, Code: "INVALID_REQUEST"}
 	}
 	if m.closed || m.quiescing {
@@ -222,7 +223,7 @@ func (m *Manager) submitLocked(s submit) (shared.Task, int, error) {
 		return shared.Task{}, 400, shared.CodedError{Status: http.StatusBadRequest, Code: "INVALID_REQUEST"}
 	}
 	now := time.Now().UTC()
-	accepted, err := m.tasks.Accept(context.Background(), taskstore.Submission{Instruction: s.Instruction, Key: s.Key, Provider: s.Provider, Model: s.Model, SourcePath: s.SourcePath, SpecificationDigest: s.SpecificationDigest}, now)
+	accepted, err := m.tasks.Accept(context.Background(), taskstore.Submission{Instruction: s.Instruction, Key: s.Key, Provider: s.Provider, Model: s.Model, ReasoningEffort: s.ReasoningEffort, SourcePath: s.SourcePath, SpecificationDigest: s.SpecificationDigest}, now)
 	if err != nil {
 		if errors.Is(err, taskstore.ErrConflict) {
 			return shared.Task{}, 409, err
@@ -246,10 +247,10 @@ func (m *Manager) submitLocked(s submit) (shared.Task, int, error) {
 	}
 	m.history(shared.HistoryRecord{ID: stableHistoryID(id, "user.message", "prompt"), EpisodeID: id, Source: source, Kind: "user.message", Role: "user", Content: s.Instruction})
 	m.event("workspace", "task.queued", id, "", "")
-	go m.execute(ctx, id, s.Instruction, s.Provider, s.Model)
+	go m.execute(ctx, id, s.Instruction, s.Provider, s.Model, s.ReasoningEffort)
 	return accepted.Task, 202, nil
 }
-func (m *Manager) execute(ctx context.Context, id, instruction, provider, model string) {
+func (m *Manager) execute(ctx context.Context, id, instruction, provider, model, effort string) {
 	defer m.wg.Done()
 	m.serial.Lock()
 	defer m.serial.Unlock()
@@ -267,7 +268,7 @@ func (m *Manager) execute(ctx context.Context, id, instruction, provider, model 
 	if provider == "" {
 		result, code = m.run(ctx, id, instruction)
 	} else {
-		result, code = m.runNativeTask(ctx, provider, instruction, id, model)
+		result, code = m.runNativeTask(ctx, provider, instruction, id, model, effort)
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()

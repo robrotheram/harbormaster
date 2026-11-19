@@ -1747,6 +1747,7 @@ test("worker catalog supplies models and restores the worker default", async ({
   ]);
   await model.selectOption(JSON.stringify(["claude", "chosen-model"]));
   await model.selectOption("");
+  await page.getByLabel("Reasoning effort").selectOption("high");
   await page
     .getByLabel("Message to your agent")
     .fill("Use the worker configuration.");
@@ -1758,6 +1759,7 @@ test("worker catalog supplies models and restores the worker default", async ({
     workspace_id: "ws_one",
     provider: "codex",
     model: "worker-model",
+    reasoning_effort: "high",
   });
 });
 

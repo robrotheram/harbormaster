@@ -1,10 +1,9 @@
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/native-select";
-import { Modal, ErrorNotice } from "@/shared/components";
+import { ErrorNotice } from "@/shared/components";
 import { request } from "@/shared/http";
 import type { Workspace } from "@/shared/types";
 import {
@@ -14,64 +13,56 @@ import {
   type AgentSubscription,
 } from "@/features/connections/subscriptions";
 
-export function SubscriptionButton({ workspace }: { workspace: Workspace }) {
-  const [open, setOpen] = useState(false);
+export function WorkerSubscriptions({ workspace }: { workspace: Workspace }) {
+  const query = useSubscriptions();
+  const providers = (
+    Object.keys(providerNames) as (keyof typeof providerNames)[]
+  ).filter(
+    (provider) => workspace.agent_kind !== "hermes" || provider === "codex",
+  );
+  const [provider, setProvider] = useState<keyof typeof providerNames>(
+    workspace.agent_kind === "hermes" ? "codex" : providers[0],
+  );
   return (
-    <>
-      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
-        <KeyRound className="size-3.5" />
-        Subscription
-      </Button>
-      {open && (
-        <SubscriptionDialog
-          workspace={workspace}
-          onClose={() => setOpen(false)}
+    <div className="space-y-4">
+      <p className="form-note">
+        Choose an account for {workspace.name || workspace.id}. Your default is
+        loaded when you run work for a provider with an empty slot.
+      </p>
+      <label className="grid gap-2 text-sm">
+        Provider
+        <NativeSelect
+          aria-label="Subscription provider"
+          value={provider}
+          onChange={(event) =>
+            setProvider(event.target.value as keyof typeof providerNames)
+          }
+        >
+          {providers.map((value) => (
+            <option key={value} value={value}>
+              {providerNames[value]}
+            </option>
+          ))}
+        </NativeSelect>
+      </label>
+      {query.isPending && <p role="status">Loading subscriptions…</p>}
+      {query.error && (
+        <ErrorNotice error={query.error} onRetry={() => void query.refetch()} />
+      )}
+      {query.data && (
+        <ProviderSelection
+          key={provider}
+          provider={provider}
+          workspace={workspace.id}
+          items={query.data.items.filter((item) => item.provider === provider)}
         />
       )}
-    </>
-  );
-}
-export function SubscriptionDialog({
-  workspace,
-  onClose,
-}: {
-  workspace: Workspace;
-  onClose: () => void;
-}) {
-  const query = useSubscriptions();
-  return (
-    <Modal title="Worker subscriptions" onClose={onClose}>
-      <p className="form-note">
-        Choose a saved account for each provider. All work on{" "}
-        <strong>{workspace.name || workspace.id}</strong> can use the loaded
-        accounts until you unload them. Other users cannot replace your
-        selections.
-      </p>
-      {query.isPending && <p role="status">Loading subscriptions…</p>}
-      {query.error && <ErrorNotice error={query.error} />}
-      {query.data &&
-        (["codex", "claude"] as const).map((provider) => (
-          <ProviderSelection
-            key={provider}
-            provider={provider}
-            workspace={workspace.id}
-            items={query.data.items.filter((s) => s.provider === provider)}
-          />
-        ))}
-      <p className="form-note">
-        Unloading ends active inference requests for that provider.
-      </p>
-      <div className="form-actions">
-        <Button variant="outline" onClick={onClose}>
-          Close
-        </Button>
-        <Button asChild variant="outline">
-          <Link to="/connections" search={{ tab: "agents" }}>
-            Manage subscriptions
-          </Link>
-        </Button>
-      </div>
-    </Modal>
+      <Button asChild variant="outline">
+        <Link to="/connections" search={{ tab: "agents" }}>
+          Manage saved accounts
+        </Link>
+      </Button>
+    </div>
   );
 }
 function ProviderSelection({
@@ -79,7 +70,7 @@ function ProviderSelection({
   workspace,
   items,
 }: {
-  provider: "codex" | "claude";
+  provider: keyof typeof providerNames;
   workspace: string;
   items: AgentSubscription[];
 }) {
@@ -99,7 +90,10 @@ function ProviderSelection({
         `/workspaces/${encodeURIComponent(workspace)}/subscription/${unload ? "unload" : "load"}`,
         { provider, subscription_id: selected },
       );
-      await client.invalidateQueries({ queryKey: subscriptionKey });
+      await Promise.all([
+        client.invalidateQueries({ queryKey: subscriptionKey }),
+        client.invalidateQueries({ queryKey: ["worker-models", workspace] }),
+      ]);
       setSelection("");
       setMessage(
         unload ? "Subscription unloaded." : "Subscription loaded into worker.",
@@ -138,6 +132,7 @@ function ProviderSelection({
             {items.map((s) => (
               <option key={s.id} value={s.id} disabled={s.expired}>
                 {s.name}
+                {s.default ? " (default)" : ""}
                 {s.expired ? " (expired)" : ""}
               </option>
             ))}

@@ -15,6 +15,8 @@ func workError(w http.ResponseWriter, err error) {
 		response = shared.CodedError{Status: http.StatusNotFound, Code: "NOT_FOUND_OR_FORBIDDEN"}
 	case errors.Is(err, orchestration.ErrConflict):
 		response = shared.CodedError{Status: http.StatusConflict, Code: "WORK_STATE_CONFLICT"}
+	case errors.Is(err, subscriptionRequired):
+		response = subscriptionRequired
 	case errors.Is(err, orchestration.ErrInvalidWork):
 		response = orchestration.ErrInvalidWork
 	}
@@ -33,6 +35,26 @@ func (s *Server) registerWorkExecution(mux *http.ServeMux, repo orchestration.Re
 		unlock := s.operations.Lock("work:" + r.PathValue("id"))
 		defer unlock()
 		if !s.authorizeWorkController(w, r, in.ProjectID, r.PathValue("id"), repo) {
+			return
+		}
+		if !shared.ValidKey(in.Key) {
+			workError(w, orchestration.ErrInvalidWork)
+			return
+		}
+		id := r.PathValue("id")
+		if existing, err := repo.AttemptByDeliveryKey(r.Context(), in.ProjectID, id, in.Key); err == nil {
+			shared.JSON(w, 202, existing)
+			return
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			workError(w, err)
+			return
+		}
+		item, err := repo.Work(r.Context(), in.ProjectID, id)
+		if err == nil {
+			err = s.prepareWorkSubscription(r, item.WorkspaceID, item.Provider)
+		}
+		if err != nil {
+			workError(w, err)
 			return
 		}
 		a, err := repo.RunWork(r.Context(), in.ProjectID, r.PathValue("id"), in.Key, s.now())
