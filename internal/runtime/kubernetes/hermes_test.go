@@ -24,6 +24,7 @@ func TestHermesApprovalAndGenerationMCP(t *testing.T) {
 	}
 	k.cfg.HermesApprovedImage = k.cfg.Image
 	k.cfg.HermesModel = "approved-model"
+	k.cfg.HermesMCPIP = "10.43.0.21"
 	if !k.hermesEnabled() {
 		t.Fatal("approved image unavailable")
 	}
@@ -36,6 +37,9 @@ func TestHermesApprovalAndGenerationMCP(t *testing.T) {
 	body := k.sandbox("ws_one", spec, "project-one", labels, "grant")
 	// Roundtrip matches the API's unstructured representation.
 	raw, _ := json.Marshal(body)
+	if !strings.Contains(string(raw), `"hostAliases":[{"hostnames":["hermes-mcp.harbormaster.svc"],"ip":"10.43.0.21"}]`) {
+		t.Fatal("Hermes MCP service address missing from the sandbox template")
+	}
 	json.Unmarshal(raw, &body)
 	body["metadata"].(map[string]any)["generation"] = float64(1)
 	body["status"] = map[string]any{"conditions": []any{map[string]any{"type": "Ready", "status": "True", "observedGeneration": float64(1)}}}

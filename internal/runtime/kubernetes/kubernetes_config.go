@@ -18,6 +18,7 @@ func KubernetesConfigFromEnv() (KubernetesConfig, error) {
 	c.CoreNamespace = shared.Env("KUBERNETES_CORE_NAMESPACE", "harbormaster")
 	c.HermesApprovedImage = os.Getenv("KUBERNETES_HERMES_V023_APPROVED_IMAGE")
 	c.HermesModel = os.Getenv("HERMES_MODEL")
+	c.HermesMCPIP = os.Getenv("KUBERNETES_HERMES_MCP_IP")
 	c.EgressURL = shared.Env("KUBERNETES_EGRESS_URL", "http://egress-gateway.harbormaster.svc:8080")
 	if path := os.Getenv("KUBERNETES_ALLOWLISTS_FILE"); path != "" {
 		b, e := os.ReadFile(path)
