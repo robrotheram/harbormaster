@@ -1,0 +1,22 @@
+version: '2'
+run:
+  relative-path-mode: gomod
+linters:
+  default: none
+  enable:
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+  settings:
+    staticcheck:
+      checks:
+        - SA*
+  exclusions:
+    rules:
+      # This lock pair is the quiesce barrier for in-flight history collection.
+      - path: internal/workspace/manager\.go$
+        source: m\.historyCollectMu\.Unlock\(\)
+        text: 'SA2001: empty critical section'
+        linters:
+          - staticcheck

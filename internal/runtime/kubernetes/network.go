@@ -26,11 +26,11 @@ func (k *Kubernetes) networkEvidence(ctx context.Context, namespace, project str
 		return err
 	}
 	expected := k.workspacePolicies(project)
-	if len(list.Items) != len(expected) {
-		return errors.New("network policy set drift")
-	}
 	for _, item := range list.Items {
 		want, ok := expected[item.Metadata.Name]
+		if !ok && excludesWorkspacePods(item.Spec) {
+			continue
+		}
 		if !ok || !reflect.DeepEqual(item.Spec, want) {
 			return errors.New("network policy drift")
 		}
@@ -41,18 +41,32 @@ func (k *Kubernetes) networkEvidence(ctx context.Context, namespace, project str
 	}
 	return nil
 }
-func projectPolicies(project, gatewayProject string) map[string]map[string]any {
+
+func excludesWorkspacePods(spec map[string]any) bool {
+	selector, _ := spec["podSelector"].(map[string]any)
+	expressions, _ := selector["matchExpressions"].([]any)
+	for _, expression := range expressions {
+		requirement, _ := expression.(map[string]any)
+		if requirement["key"] == "workbench.workspace" && requirement["operator"] == "DoesNotExist" {
+			return true
+		}
+	}
+	return false
+}
+
+func projectPolicies(project, gatewayProject, coreNamespace string) map[string]map[string]any {
 	// Decode canonical JSON to match Kubernetes' unstructured numeric types.
 	workspaceSelector := map[string]any{"matchExpressions": []any{map[string]any{"key": "workbench.workspace", "operator": "Exists"}}}
 	selector := map[string]any{"matchLabels": map[string]string{"workbench.project": project}, "matchExpressions": workspaceSelector["matchExpressions"]}
+	coreSelector := map[string]any{"matchLabels": map[string]string{"kubernetes.io/metadata.name": coreNamespace}}
 	gateway := map[string]any{
-		"namespaceSelector": map[string]any{"matchLabels": map[string]string{"kubernetes.io/metadata.name": "harbormaster"}},
+		"namespaceSelector": coreSelector,
 		"podSelector":       map[string]any{"matchLabels": map[string]string{"workbench.project": gatewayProject, "workbench.role": "gateway"}},
 	}
 	rules := []any{map[string]any{"to": []any{gateway}, "ports": []any{map[string]any{"protocol": "TCP", "port": 8080}}}}
 	raw := map[string]any{
 		"workspace-default-deny":       map[string]any{"podSelector": workspaceSelector, "policyTypes": []string{"Ingress", "Egress"}},
-		"workspace-controller-ingress": map[string]any{"podSelector": selector, "policyTypes": []string{"Ingress"}, "ingress": []any{map[string]any{"from": []any{map[string]any{"namespaceSelector": map[string]any{"matchLabels": map[string]string{"kubernetes.io/metadata.name": "harbormaster"}}, "podSelector": map[string]any{"matchLabels": map[string]string{"app": "runtime-controller"}}}}, "ports": []any{map[string]any{"protocol": "TCP", "port": 8080}}}}},
+		"workspace-controller-ingress": map[string]any{"podSelector": selector, "policyTypes": []string{"Ingress"}, "ingress": []any{map[string]any{"from": []any{map[string]any{"namespaceSelector": coreSelector, "podSelector": map[string]any{"matchLabels": map[string]string{"app": "runtime-controller"}}}}, "ports": []any{map[string]any{"protocol": "TCP", "port": 8080}}}}},
 		"workspace-project-egress":     map[string]any{"podSelector": selector, "policyTypes": []string{"Egress"}, "egress": rules},
 	}
 	b, _ := json.Marshal(raw)
@@ -68,7 +82,7 @@ func (k *Kubernetes) workspacePolicies(project string) map[string]map[string]any
 	if gatewayProject == "" {
 		gatewayProject = project
 	}
-	return projectPolicies(project, gatewayProject)
+	return projectPolicies(project, gatewayProject, k.cfg.CoreNamespace)
 }
 
 func (k *Kubernetes) policyPath(r kubeResource) string {

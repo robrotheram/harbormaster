@@ -1,8 +1,8 @@
-# k3s production operations (M5)
+# Kubernetes deployment and isolation acceptance (M5)
 
 Compose remains development. This package implements production operations but
 **does not constitute M5 acceptance**. The initial implementation used simulated infrastructure. A fresh
-[k3s reference environment](../deploy/kubernetes/overlays/reference/README.md) now has live
+[k3s reference environment](https://github.com/robrotheram/harbormaster-reference) now has live
 Kata, Longhorn, network-policy and application lifecycle checks. The default verified-isolation gate continues
 to reject starts: neither Pod readiness nor a configured RuntimeClass proves a VM.
 Do not expose an unverified test install as production.
@@ -19,15 +19,15 @@ Kata Helm release owns RuntimeClasses. See the
 [infrastructure](../deploy/kubernetes/infrastructure/README.md).
 
 ```sh
-kubectl kustomize deploy/kubernetes/overlays/reference
-kubectl --context default apply --server-side --dry-run=server -k deploy/kubernetes/overlays/reference
-kubectl --context default diff -k deploy/kubernetes/overlays/reference
-kubectl --context default apply --server-side -k deploy/kubernetes/overlays/reference
+kubectl kustomize /path/to/environment
+kubectl --context YOUR_CONTEXT apply --server-side --dry-run=server -k /path/to/environment
+kubectl --context YOUR_CONTEXT diff -k /path/to/environment
+kubectl --context YOUR_CONTEXT apply --server-side -k /path/to/environment
 ```
 
 Create new environment overlays with native `images` and `patches`. They must
 select project workspace bindings or automatic namespace provisioning, a tested
-RWOP storage class, gateway endpoints, authenticated ingress/TLS and immutable image digests. Keep secrets outside Git.
+RWOP storage class, authenticated ingress/TLS and immutable image digests. The runtime controller discovers gateway Service IPs from the API. Keep secrets outside Git.
 `make kubernetes-check` builds with pinned Kustomize and checks the deployment
 contract in CI. There are no Python rendering or bootstrap steps.
 
@@ -44,10 +44,10 @@ keys matching the TOKEN_FILE names in the rendered environment (for example
 controller_token). Gateway SERVICE-config Secrets supply inference-gateway.json
 and credential-broker.json plus required CA files at /etc/workbench. No provider
 credential belongs in workspace manifests. Keep Vault external and backed up.
-The database is external PostgreSQL; configure its TLS connection URL in the
-controlplane database_url Secret. No dashboard or workspace receives it.
+Supply a PostgreSQL endpoint and configure its TLS connection URL in the
+controlplane database_url Secret. The reference runs CloudNativePG. No dashboard or workspace receives it.
 
-Only dashboard HTTPS ingress is exposed. MCP/controlplane remain cluster-private.
+The reference exposes dashboard, shared-worker and wildcard preview HTTPS ingress. MCP and the control plane remain cluster-private.
 The existing platform token is a service credential, not human authentication or
 project membership. An ingress login alone does not implement per-user project
 membership. The reference verifies signed-in identity and enforces explicit project

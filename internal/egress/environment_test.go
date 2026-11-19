@@ -19,7 +19,7 @@ func TestEnvironmentBypassesOnlyConfiguredPlatformHosts(t *testing.T) {
 		return
 	}
 
-	env := Environment([]string{"HOME=/workspace"}, "http://10.43.180.206:8080", "https://broker.internal:8443", "http://[2001:db8::1]:8080", "http://*.example.com", "http://one,two", "https://user:secret@example.com")
+	env := Environment([]string{"HOME=/workspace"}, "http://192.0.2.42:8080", "https://broker.internal:8443", "http://[2001:db8::1]:8080", "http://*.example.com", "http://one,two", "https://user:secret@example.com")
 	values := map[string]string{}
 	for _, entry := range env {
 		k, v, _ := strings.Cut(entry, "=")
@@ -35,7 +35,7 @@ func TestEnvironmentBypassesOnlyConfiguredPlatformHosts(t *testing.T) {
 		url    string
 		direct bool
 	}{
-		{"http://10.43.180.206:8080/codex/responses", true},
+		{"http://192.0.2.42:8080/codex/responses", true},
 		{"https://broker.internal:8443/operations", true},
 		{"http://[2001:db8::1]:8080", true},
 		{"http://localhost:8080", true},

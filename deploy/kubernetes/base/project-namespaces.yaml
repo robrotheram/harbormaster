@@ -2,6 +2,8 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: harbormaster-project-provisioner
+  annotations:
+    argocd.argoproj.io/sync-wave: '-5'
 rules:
 - apiGroups: ['']
   resources: [namespaces, resourcequotas, limitranges, serviceaccounts]
@@ -21,6 +23,8 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: harbormaster-project-provisioner
+  annotations:
+    argocd.argoproj.io/sync-wave: '-5'
 subjects:
 - kind: ServiceAccount
   name: runtime-controller

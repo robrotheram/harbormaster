@@ -9,14 +9,13 @@ Use `false` only in an explicitly approved unverified acceptance installation.
 Matrix requests are rejected: Kubernetes has no room/token broker.
 Codex/T3 continue using the same workspace image and policies.
 
-Build the optional overlay from repository root, with a reviewed Debian
-Bookworm-compatible workspace base containing the current workspace binary:
+GitHub Actions publishes the Hermes-enabled workspace alongside the standard
+workspace. To build it locally from the same source revision as your platform,
+run from the repository root:
 
 ```sh
-export WORKSPACE_BASE='registry.example/workspace@sha256:REPLACE_WITH_REAL_DIGEST'
 export HERMES_IMAGE='registry.example/workspace-hermes:acceptance'
-docker build -f deploy/kubernetes/Dockerfile.hermes \
-  --build-arg WORKSPACE_BASE="$WORKSPACE_BASE" \
+docker build --target workspace-hermes \
   --build-arg HERMES_COMMIT="$(jq -r .commit deploy/hermes/runtime.json)" \
   --build-arg HERMES_SOURCE_SHA256="$(jq -r .source_sha256 deploy/hermes/runtime.json)" \
   -t "$HERMES_IMAGE" .
@@ -41,8 +40,8 @@ components:
 ```
 
 Provision `hermes-mcp-secrets` in `harbormaster` outside Git with
-`control_token`, `mcp_token` and `gateway_service_token`. Override the component's
-pinned MCP image and project label in your overlay when needed. It has no service
+`control_token`, `mcp_token` and `gateway_service_token`. Pin the MCP image and
+set the project label in your overlay. It has no service
 account token and reaches the controller verifier through its trusted service
 credential. Do not give those credentials to a workspace.
 

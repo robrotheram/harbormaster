@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard
+  namespace: harbormaster
+spec:
+  template:
+    spec:
+      containers:
+      - name: dashboard
+        env:
+        - name: DASHBOARD_PUBLIC_ORIGIN
+          value: https://harbormaster.example.com
+        - name: WORKOS_REDIRECT_URI
+          value: https://harbormaster.example.com/auth/callback
+        - name: WORKOS_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: dashboard-secrets
+              key: workos_client_id
+        - name: WORKOS_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: dashboard-secrets
+              key: workos_api_key
+        - name: WORKOS_ALLOWED_EMAILS
+          valueFrom:
+            secretKeyRef:
+              name: dashboard-secrets
+              key: workos_allowed_emails

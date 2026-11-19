@@ -104,8 +104,16 @@ rules:
   resources:
   - secrets
   verbs:
-  - get
   - create
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  resourceNames:
+  - harbormaster-ws-shared-grant
+  - harbormaster-ws-shared-network
+  verbs:
+  - get
   - patch
 - apiGroups:
   - ''

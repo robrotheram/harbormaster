@@ -19,11 +19,12 @@ import (
 )
 
 type fakeKubernetes struct {
-	mu        sync.Mutex
-	resources map[string]map[string]any
-	secrets   map[string]map[string]any
-	creates   int
-	requests  []string
+	mu                 sync.Mutex
+	resources          map[string]map[string]any
+	secrets            map[string]map[string]any
+	creates            int
+	requests           []string
+	extraNetworkPolicy map[string]any
 }
 
 func (f *fakeKubernetes) serve(w http.ResponseWriter, r *http.Request) {
@@ -64,8 +65,11 @@ func (f *fakeKubernetes) serve(w http.ResponseWriter, r *http.Request) {
 			project = "proj_two"
 		}
 		items := []any{}
-		for name, spec := range projectPolicies(project, project) {
+		for name, spec := range projectPolicies(project, project, "harbormaster") {
 			items = append(items, map[string]any{"metadata": map[string]string{"name": name}, "spec": spec})
+		}
+		if f.extraNetworkPolicy != nil {
+			items = append(items, map[string]any{"metadata": map[string]string{"name": "additional-policy"}, "spec": f.extraNetworkPolicy})
 		}
 		shared.JSON(w, 200, map[string]any{"items": items})
 		return

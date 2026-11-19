@@ -16,3 +16,28 @@ metadata:
 data:
   projects.json: '{"default":"harbormaster"}'
   allowlists.json: '{"default": []}'
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: runtime-gateway-discovery
+  namespace: harbormaster
+rules:
+- apiGroups: [""]
+  resources: ["services"]
+  resourceNames: ["inference-gateway", "credential-broker", "egress-gateway", "hermes-mcp"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: runtime-gateway-discovery
+  namespace: harbormaster
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: runtime-gateway-discovery
+subjects:
+- kind: ServiceAccount
+  name: runtime-controller
+  namespace: harbormaster

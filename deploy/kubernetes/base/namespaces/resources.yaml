@@ -4,6 +4,7 @@ metadata:
   name: harbormaster
   labels:
     app.kubernetes.io/part-of: harbormaster
+    pod-security.kubernetes.io/enforce: restricted
     workbench.project: default
     workbench.security: enforced
   annotations:

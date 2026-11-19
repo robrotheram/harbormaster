@@ -20,7 +20,7 @@ require changes to unrelated providers or screens.
 | `internal/store` | Platform metadata, immutable ownership checks, profile revisions, startup migrations | SQL drivers and shared metadata types |
 | `internal/runtime/protocol` | Provider-neutral request/capability types, generation grants, bounded workspace routing | Shared value types and standard library |
 | `internal/runtime/docker` | Managed development containers, volumes and network policy | Docker API and neutral protocol |
-| `internal/runtime/kubernetes` | Experimental pinned Agent Sandbox resources | Kubernetes API and neutral protocol |
+| `internal/runtime/kubernetes` | Pinned Agent Sandbox resources | Kubernetes API and neutral protocol |
 | `internal/runtime/firecracker` | Host-owned jailed VMs, artifact checks and fixed guest channels | Linux host facilities and neutral protocol |
 | `internal/workspace/filetools` | Confined filesystem operations | An owned `os.Root`, no supervisor or task database |
 | `internal/workspace/taskstore` | Private task schema, recovery, durable acceptance and task persistence | Private SQLite and shared task metadata |
@@ -110,8 +110,8 @@ shutdown path.
 | Backend | Status | Networking and acceptance |
 | --- | --- | --- |
 | Docker | Development implementation | Blocked, allowlist proxy, or explicit open networking; does not establish VM isolation |
-| Kubernetes Agent Sandbox | Production-target adapter, acceptance pending | Persisted blocked/allowlist policies, destination ceilings, NetworkPolicy drift checks and retained PVC ownership checks; exact-image Hermes with generation-scoped MCP. Real CNI/Kata enforcement and recovery acceptance are required; verified isolation remains fail-closed |
-| Firecracker | Host-installed sandbox implementation | No guest NIC; blocked/allowlist channels only. Requires root-owned pinned artifacts and real host/VM acceptance; no Docker fallback |
+| Kubernetes Agent Sandbox | Production isolation acceptance pending | Persisted blocked/allowlist policies, destination ceilings, NetworkPolicy drift checks and retained PVC ownership checks; exact-image Hermes with generation-scoped MCP. Real CNI/Kata enforcement and recovery acceptance are required; verified isolation remains fail-closed |
+| Firecracker | Experimental, unsupported host-installed backend | No guest NIC; blocked/allowlist channels only. Requires root-owned pinned artifacts and real host/VM acceptance; no Docker fallback |
 
 Capabilities are a typed, versioned contract decoded through the real runtime
 client. The fixed approved template advertises CPU/memory limits. Workspace

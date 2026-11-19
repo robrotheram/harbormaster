@@ -1,0 +1,150 @@
+# Core ingress policies explicitly exclude workspace Pods so their policy set
+# remains isolated and can be verified independently by the runtime controller.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: core-default-deny
+  namespace: harbormaster
+  annotations:
+    argocd.argoproj.io/sync-wave: '-5'
+spec:
+  podSelector:
+    matchExpressions:
+    - key: workbench.workspace
+      operator: DoesNotExist
+  policyTypes: [Ingress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: core-controlplane-ingress
+  namespace: harbormaster
+  annotations:
+    argocd.argoproj.io/sync-wave: '-5'
+spec:
+  podSelector:
+    matchLabels:
+      app: controlplane
+    matchExpressions:
+    - key: workbench.workspace
+      operator: DoesNotExist
+  policyTypes: [Ingress]
+  ingress:
+  - from:
+    - podSelector:
+        matchExpressions:
+        - key: app
+          operator: In
+          values: [dashboard, mcp, hermes-mcp, runtime-controller, inference-gateway]
+        - key: workbench.workspace
+          operator: DoesNotExist
+    ports:
+    - protocol: TCP
+      port: 8080
+  - from:
+    - podSelector:
+        matchExpressions:
+        - key: app
+          operator: In
+          values: [dashboard, mcp, runtime-controller]
+        - key: workbench.workspace
+          operator: DoesNotExist
+    ports:
+    - protocol: TCP
+      port: 8081
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: core-runtime-controller-ingress
+  namespace: harbormaster
+  annotations:
+    argocd.argoproj.io/sync-wave: '-5'
+spec:
+  podSelector:
+    matchLabels:
+      app: runtime-controller
+    matchExpressions:
+    - key: workbench.workspace
+      operator: DoesNotExist
+  policyTypes: [Ingress]
+  ingress:
+  - from:
+    - podSelector:
+        matchExpressions:
+        - key: app
+          operator: In
+          values: [controlplane, inference-gateway, credential-broker, egress-gateway, hermes-mcp]
+        - key: workbench.workspace
+          operator: DoesNotExist
+    ports:
+    - protocol: TCP
+      port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: core-gateway-ingress
+  namespace: harbormaster
+  annotations:
+    argocd.argoproj.io/sync-wave: '-5'
+spec:
+  podSelector:
+    matchLabels:
+      workbench.role: gateway
+    matchExpressions:
+    - key: workbench.workspace
+      operator: DoesNotExist
+  policyTypes: [Ingress]
+  ingress:
+  - from:
+    - podSelector:
+        matchExpressions:
+        - key: workbench.workspace
+          operator: Exists
+    - namespaceSelector:
+        matchLabels:
+          app.kubernetes.io/managed-by: harbormaster
+          harbormaster.io/deployment: harbormaster
+          harbormaster.io/purpose: workspace
+          workbench.security: enforced
+      podSelector:
+        matchExpressions:
+        - key: workbench.workspace
+          operator: Exists
+    - podSelector:
+        matchLabels:
+          app: controlplane
+        matchExpressions:
+        - key: workbench.workspace
+          operator: DoesNotExist
+    ports:
+    - protocol: TCP
+      port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: core-mcp-health-ingress
+  namespace: harbormaster
+  annotations:
+    argocd.argoproj.io/sync-wave: '-5'
+spec:
+  podSelector:
+    matchLabels:
+      app: mcp
+    matchExpressions:
+    - key: workbench.workspace
+      operator: DoesNotExist
+  policyTypes: [Ingress]
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: controlplane
+        matchExpressions:
+        - key: workbench.workspace
+          operator: DoesNotExist
+    ports:
+    - protocol: TCP
+      port: 8080

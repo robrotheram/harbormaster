@@ -20,16 +20,16 @@ covers starting the runtime and saving the host-held bot credential.
 
 **Use T3 desktop or share files:** select **Connect desktop** and paste its one-use URL into desktop **Settings → Environments → Add environment**. The launcher also has **Share a file between workspaces** for explicit copies into another workspace. [Connection and sharing guide](docs/interactive-workspaces.md#connect-t3-code-desktop).
 
-**Development only:** the development deployment uses synthetic inference/data fixtures and ordinary Docker containers. VM isolation and complete host-level egress containment remain unverified. See [security boundaries](docs/security.md). Kubernetes is an experimental Agent Sandbox adapter; unsupported network policy fails closed before allocation. See [backend support](docs/architecture.md#backend-support).
+**Development only:** the development deployment uses synthetic inference/data fixtures and ordinary Docker containers. VM isolation and complete host-level egress containment remain unverified. See [security boundaries](docs/security.md). Kubernetes uses Agent Sandbox and is pending production isolation acceptance; unsupported network policy fails closed before allocation. See [backend support](docs/architecture.md#backend-support).
 
-**Firecracker sandbox:** [installation and acceptance checks](docs/firecracker.md)
+**Firecracker sandbox (experimental, unsupported):** [installation and acceptance checks](docs/firecracker.md)
 cover jailed microVMs with no network card and fixed gateway channels. This mode
 refuses Fully open networking and Docker fallback. Host installation and real VM
 acceptance must pass before restarting the workbench.
 
 ## Start locally
 
-Requires Docker Engine with Compose, access to its daemon, Python 3 and OpenSSL for bootstrap, and free localhost ports 8080, 8082 and 8090. Go 1.27.4 is required for native development/tests.
+Requires Docker Engine with Compose, access to its daemon, Go for bootstrap, and free localhost ports 8080, 8082 and 8090. Go 1.27.4 is required for native development/tests.
 
 ```sh
 make up
@@ -94,7 +94,7 @@ after checks pass. See [image names, tags and pulling instructions](docs/contain
 
 ## Development and checks
 
-See [operations and release gates](docs/operations.md) for GitLab CI, upgrades, backups and support diagnostics.
+See [operations and release gates](docs/operations.md) for GitHub Actions, upgrades, backups and support diagnostics.
 
 See [CONTRIBUTING](CONTRIBUTING.md) for reproducible checks and [architecture](docs/architecture.md) for module boundaries. The project uses the [MIT license](LICENSE).
 

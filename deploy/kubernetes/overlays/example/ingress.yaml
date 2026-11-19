@@ -1,0 +1,21 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: workbench
+  namespace: harbormaster
+spec:
+  ingressClassName: replace-with-ingress-class
+  tls:
+  - hosts: [harbormaster.example.com]
+    secretName: harbormaster-tls
+  rules:
+  - host: harbormaster.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: dashboard
+            port:
+              number: 8080
