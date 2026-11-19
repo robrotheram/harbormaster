@@ -1,0 +1,41 @@
+name: Reference Hermes images
+on:
+  push:
+    branches: [build/ref-hermes-v021]
+permissions:
+  contents: read
+  packages: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        image: [workspace, runtime-controller]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and publish immutable image
+        env:
+          IMAGE: ${{ matrix.image }}
+          BASE: ghcr.io/robrotheram/harbormaster/workspace@sha256:d4cad5b2dd3f2a92af87d534664301773a665e2853b5c4cf915d4140eb641f52
+        run: |
+          repo="ghcr.io/${GITHUB_REPOSITORY,,}/$IMAGE"
+          if [[ "$IMAGE" == workspace ]]; then
+            args=(-f deploy/kubernetes/Dockerfile.hermes
+              --build-arg "WORKSPACE_BASE=$BASE"
+              --build-arg "HERMES_COMMIT=$(jq -r .commit deploy/hermes/runtime.json)"
+              --build-arg "HERMES_SOURCE_SHA256=$(jq -r .source_sha256 deploy/hermes/runtime.json)")
+          else
+            args=(--target platform --build-arg SERVICE=runtime-controller)
+          fi
+          docker buildx build --platform linux/amd64 --push --metadata-file /tmp/image.json \
+            --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+            -t "$repo:ref-hermes-v0.2.1" "${args[@]}" .
+          jq -r '."containerimage.digest"' /tmp/image.json
