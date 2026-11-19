@@ -135,8 +135,12 @@ func TestPlatformSecurityAndReferenceContract(t *testing.T) {
 					}
 				}
 			}
-			if deployments != 8 {
-				t.Fatalf("expected eight platform deployments, got %d", deployments)
+			wantDeployments := 8
+			if path == "overlays/reference" {
+				wantDeployments++
+			}
+			if deployments != wantDeployments {
+				t.Fatalf("expected %d platform deployments, got %d", wantDeployments, deployments)
 			}
 			runtime := find(t, objects, "Deployment", "runtime-controller")
 			values := env(runtime)
@@ -156,6 +160,12 @@ func TestPlatformSecurityAndReferenceContract(t *testing.T) {
 			}
 			if values["REQUIRE_VERIFIED_ISOLATION"] != "false" {
 				t.Fatal("reference opt-in missing")
+			}
+			hermes := find(t, objects, "Service", "hermes-mcp")
+			hermesIP, _ := field(map[string]any(hermes), "spec", "clusterIP").(string)
+			if hermesIP == "" || values["KUBERNETES_HERMES_MCP_IP"] != hermesIP ||
+				values["KUBERNETES_HERMES_V023_APPROVED_IMAGE"] != values["WORKSPACE_IMAGE"] || values["HERMES_MODEL"] == "" {
+				t.Fatal("reference Hermes image approval, model, or private MCP mapping missing")
 			}
 			dashboard := env(find(t, objects, "Deployment", "dashboard"))
 			if dashboard["DASHBOARD_PUBLIC_ORIGIN"] != "https://harbormaster.exceptionerror.io" || dashboard["OAUTH2_PROXY_AUTH_URL"] == "" {
