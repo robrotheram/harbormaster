@@ -190,18 +190,19 @@ application Secret values and restart controlplane after CNPG credential/CA rota
 ## Images and updates
 
 The reference platform and workspace images are pinned to Harbormaster
-`v0.2.1` (source `c61052d`). The platform digests are in
+`v0.2.2` (source `69a1c1f`). The platform digests are in
 `kustomization.yaml` and the workspace digest is in
 `runtime-controller-patch.yaml`. The Codex policy and worker default
 continue to select `gpt-6.1-sol`. The base retains its independently
 pinned default release.
 
-The reference cutover uses a fresh `workbench_v021` database with schema
-version 1. Existing workspaces were suspended. The old database and PVCs
-are separate from the clean instance.
+The v0.2.2 upgrade migrated the existing `workbench_v021` database and
+workspace databases to schema version 2 in place. Both current workers
+resumed on their existing volumes. Worker restarts interrupt running previews
+and background processes.
 
 Reference enables Hermes v0.23.0 in workspace mode using the reviewed
-Hermes-enabled workspace image built on `v0.2.1`, a controller with the
+Hermes-enabled workspace image built on `v0.2.2`, a controller with the
 private MCP hostname mapping, and `gpt-6.1-sol`. The private `hermes-mcp`
 Service uses a pinned ClusterIP so Kata workers can reach it through the
 existing gateway policy with DNS blocked. The smoke test started a Kata

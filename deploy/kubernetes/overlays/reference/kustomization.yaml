@@ -38,16 +38,16 @@ patches:
 - path: gateway-services-patch.yaml
 images:
 - name: ghcr.io/robrotheram/harbormaster/controlplane
-  digest: sha256:5bf8fb7e0f4b87cf81eaef9781dfe27790b6adbb180ced3a3baa805c63c64f32
+  digest: sha256:3947267509e7e6013dc9fbd6cbd17f1e3e7245f1789e502b5edab22963b644c9
 - name: ghcr.io/robrotheram/harbormaster/runtime-controller
-  digest: sha256:d40b6fd3bee061d9f8cb6000ed60274bad2546142b5f89e0f8f87bfc2602e36d
+  digest: sha256:d79170f578f84a41bd0e03fa5423a1d57f653514b6d96cd4f6aeaf36eb18c9ae
 - name: ghcr.io/robrotheram/harbormaster/dashboard
-  digest: sha256:77dea8106a73e5fa373388814fc898b075faaa4dc9be599eb32e31ff708298ae
+  digest: sha256:5b469135eea99891407e5633fd6b0f1b47b26de686f07f01976243d092b1cd8f
 - name: ghcr.io/robrotheram/harbormaster/mcp
-  digest: sha256:6805e3c174d74fa4fca1886b9288619a64168fe9e11251b379b9dd71be55032d
+  digest: sha256:a9598507668fbb803f7b8fdd46bffdcdc6ba6a13afd33f6a5b9a0ae1dfb1ca34
 - name: ghcr.io/robrotheram/harbormaster/inference-gateway
-  digest: sha256:423b398d5fac9a4c6cb5ba9362ab0c0997d2f6add2a11b9f9d178d12b6e50a8f
+  digest: sha256:2a925cebb72eb6ee8397e8ef8002970a517004a39b9793921d750e2de5649d9a
 - name: ghcr.io/robrotheram/harbormaster/credential-broker
-  digest: sha256:c9a4b7330ba5ecf5b2b339d6934304b24e663077b2cb3601be597d7a567d0632
+  digest: sha256:7029d5f37533c0e5909590c38d181bdb6f71c990cc68df171391570a27bb9d4f
 - name: ghcr.io/robrotheram/harbormaster/egress-gateway
-  digest: sha256:ff8572e323123ce81ea8aaebce7f0526ed34f156cb866b25bdef88277fb08266
+  digest: sha256:d1307a2fe817ee4ebd55dd69808571826dfca9f50a23f155532a09db8c005135
