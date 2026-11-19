@@ -189,19 +189,16 @@ application Secret values and restart controlplane after CNPG credential/CA rota
 
 ## Images and updates
 
-The reference image overrides are pinned in this overlay's `kustomization.yaml`;
-the matching workspace digest is in `runtime-controller-patch.yaml`. Platform
-services other than controlplane/runtime-controller, and the workspace image, use source
-`284b3370f574f28d21c893228f4f3c9e91dfcc3c`. This release consolidates the workbench
-navigation, project membership, task coordination, review evidence and hosted
-preview origins. It also fixes task-list error messaging, narrow worker controls,
-and focus when drafting a debugging request from application logs.
-Controlplane and runtime-controller use source
-`b75f8feef0fa485a4b6575cffba70789e52e01f0`, which provisions project-isolated
-workers, discovers their grants after restart, and preserves owner-scoped
-subscription management. It includes the read-only model catalog proxy fix.
-The Codex policy and worker default continue to select `gpt-6.1-sol`.
-The base retains its independently pinned default release.
+The reference platform and workspace images are pinned to Harbormaster
+`v0.2.1` (source `c61052d`). The platform digests are in
+`kustomization.yaml` and the workspace digest is in
+`runtime-controller-patch.yaml`. The Codex policy and worker default
+continue to select `gpt-6.1-sol`. The base retains its independently
+pinned default release.
+
+The reference cutover uses a fresh `workbench_v021` database with schema
+version 1. Existing workspaces were suspended. The old database and PVCs
+are separate from the clean instance.
 
 After a successful GitHub build, obtain the immutable digest from its build output
 or authenticated registry inspection. Add an `images` override to this overlay
