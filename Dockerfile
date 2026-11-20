@@ -80,6 +80,8 @@ ARG HERMES_COMMIT
 ARG HERMES_SOURCE_SHA256
 ADD --checksum=sha256:${HERMES_SOURCE_SHA256} https://codeload.github.com/NousResearch/hermes-agent/tar.gz/${HERMES_COMMIT} /tmp/hermes.tgz
 WORKDIR /opt/hermes
+# Keep uv-managed interpreters with the virtualenv copied into the runtime image.
+ENV UV_PYTHON_INSTALL_DIR=/opt/hermes/.python
 RUN tar -xzf /tmp/hermes.tgz --strip-components=1 && rm /tmp/hermes.tgz && \
     python -m pip install --no-cache-dir uv==0.13.7 && uv sync --frozen --no-dev --extra matrix --extra mcp
 COPY integrations/hermes /tmp/workbench-hermes
