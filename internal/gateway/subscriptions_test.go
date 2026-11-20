@@ -180,7 +180,7 @@ func TestUserSubscriptionUsesVerifiedWorkerBinding(t *testing.T) {
 					return Identity{}, ErrDenied
 				}
 				return Identity{WorkspaceID: "ws_verified", ProjectID: "default", PrincipalID: "operator"}, nil
-			}, ResolveSubscription: func(_ context.Context, workspace, selectedProvider string) (subscriptionCredential, error) {
+			}, ResolveSubscription: func(_ context.Context, workspace, selectedProvider, _ string) (subscriptionCredential, error) {
 				if workspace != "ws_verified" || selectedProvider != provider {
 					t.Error("unverified workspace")
 				}

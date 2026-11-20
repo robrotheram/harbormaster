@@ -53,7 +53,7 @@ func TestHostedPreviewConnection(t *testing.T) {
 		w.WriteHeader(202)
 	}))
 	defer auth.Close()
-	h, err := NewOAuthProxyHandler(interactive, OAuthProxyConfig{"https://reference.example", auth.URL + "/oauth2/auth", "https://login.example"})
+	h, err := NewOAuthProxyHandler(interactive, OAuthProxyConfig{"https://reference.example", auth.URL + "/oauth2/auth", "https://login.example", []string{"alice@example.com"}})
 	if err != nil {
 		t.Fatal(err)
 	}

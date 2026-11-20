@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"regexp"
 	"strings"
@@ -26,6 +27,23 @@ func publicWorkerLabel(host, dashboardHost string) string {
 	}
 	return label
 }
+func requestHostname(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.Host)
+	if err != nil {
+		host = r.Host
+	}
+	return strings.ToLower(host)
+}
+
+func localWorkerHost(r *http.Request) bool {
+	host := requestHostname(r)
+	if !strings.HasSuffix(host, ".localhost") {
+		return false
+	}
+	label := strings.TrimSuffix(host, ".localhost")
+	return workerDNSLabel.MatchString(label) || previewDNSLabel.MatchString(label)
+}
+
 func workerSecure(r *http.Request) bool {
 	_, ok := r.Context().Value(publicWorkerIngressKey{}).(string)
 	return ok
@@ -36,10 +54,13 @@ func servePublicWorker(next http.Handler, w http.ResponseWriter, r *http.Request
 	if label == "" {
 		return false
 	}
+	if strings.HasPrefix(label, "desktop-") {
+		writeError(w, 404, "NOT_FOUND")
+		return true
+	}
 	workerOrigin := "https://" + r.Host
 	incoming := r.Header.Get("Origin")
-	native := strings.HasPrefix(label, "desktop-") && (incoming == "t3code://app" || incoming == "t3code-dev://app")
-	if incoming != "" && incoming != workerOrigin && !native {
+	if incoming != "" && incoming != workerOrigin {
 		writeError(w, 403, "ORIGIN_REJECTED")
 		return true
 	}

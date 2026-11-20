@@ -54,20 +54,17 @@ func generationMCP(c Config, next http.Handler) (http.Handler, error) {
 			http.Error(w, "invalid body", 400)
 			return
 		}
-		var rpc struct {
-			Method string `json:"method"`
-			Params struct {
-				Name string `json:"name"`
-			} `json:"params"`
-		}
-		if json.Unmarshal(body, &rpc) != nil {
+		rpc, err := shared.PolicyJSON(body)
+		if err != nil {
 			http.Error(w, "invalid RPC", 400)
 			return
 		}
-		switch rpc.Method {
+		switch method, _ := rpc["method"].(string); method {
 		case "initialize", "notifications/initialized", "ping", "tools/list":
 		case "tools/call":
-			if !shared.ProjectToolAllowed(rpc.Params.Name) {
+			params, _ := rpc["params"].(map[string]any)
+			name, _ := params["name"].(string)
+			if !shared.ProjectToolAllowed(name) {
 				http.Error(w, "forbidden tool", 403)
 				return
 			}
@@ -78,6 +75,11 @@ func generationMCP(c Config, next http.Handler) (http.Handler, error) {
 		token, e := shared.IssueProjectAccess(c.ControlToken, identity.Project, time.Now().Add(time.Minute))
 		if e != nil {
 			http.Error(w, "unavailable", 503)
+			return
+		}
+		body, err = json.Marshal(rpc)
+		if err != nil {
+			http.Error(w, "invalid RPC", 400)
 			return
 		}
 		forwarded := r.Clone(r.Context())

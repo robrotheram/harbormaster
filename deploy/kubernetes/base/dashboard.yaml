@@ -64,6 +64,9 @@ spec:
       - name: secrets
         secret:
           secretName: dashboard-secrets
+          items:
+          - key: dashboard_read_token
+            path: dashboard_read_token
       - name: tmp
         emptyDir:
           sizeLimit: 64Mi

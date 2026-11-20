@@ -7,6 +7,7 @@ import (
 	"maps"
 	"net/http"
 	"net/url"
+	pathpkg "path"
 	"strings"
 	"sync"
 	"time"
@@ -20,7 +21,14 @@ import (
 )
 
 type Config struct {
+	DashboardReadToken         string
+	HumanSigningKey            string
+	ProjectSigningKey          string
+	ProjectCreatorEmails       map[string]bool
+	MaxProjectsPerUser         int
+	CredentialKeys             CredentialKeys
 	SubscriptionGatewayToken   string
+	VerifySubscriptionGrant    func(context.Context, string, string, string) bool
 	ProvisionProjectNamespaces bool
 	SharedWorkspaceID          string
 	Token                      string
@@ -52,6 +60,15 @@ type Server struct {
 func New(s *store.Store, rt protocol.Runtime, c Config) *Server {
 	if c.IdleTimeout == 0 {
 		c.IdleTimeout = 60 * time.Minute
+	}
+	if c.DashboardReadToken == "" {
+		c.DashboardReadToken = shared.DashboardReadToken(c.Token)
+	}
+	if c.HumanSigningKey == "" {
+		c.HumanSigningKey = c.Token
+	}
+	if c.ProjectSigningKey == "" {
+		c.ProjectSigningKey = c.Token
 	}
 	if c.MaxRunning == 0 {
 		c.MaxRunning = 4
@@ -185,7 +202,13 @@ func (s *Server) Handler() http.Handler {
 	s.registerTerminals(secured)
 	secured.HandleFunc("POST /v1/file-handoffs", s.shareFile)
 	secured.HandleFunc("/v1/workspaces/{id}/desktop/{path...}", workspaceProxy(s, s.Runtime.Desktop))
-	secured.HandleFunc("/v1/workspaces/{id}/console/{path...}", workspaceProxy(s, s.Runtime.Console))
+	secured.HandleFunc("/v1/workspaces/{id}/console/{path...}", workspaceProxy(s, func(w http.ResponseWriter, r *http.Request, id, path string) {
+		route := strings.ToLower(strings.TrimPrefix(pathpkg.Clean("/"+path), "/"))
+		if (route == "api/auth" || strings.HasPrefix(route, "api/auth/")) && !(route == "api/auth/session" && r.Method == http.MethodGet) && !s.admin(w, r) {
+			return
+		}
+		s.Runtime.Console(w, r, id, path)
+	}))
 	secured.HandleFunc("POST /v1/workspaces", func(w http.ResponseWriter, r *http.Request) {
 		var req workspaceCreate
 		if !decodeRouteBody(w, r, &req) {
@@ -282,6 +305,22 @@ func (s *Server) Handler() http.Handler {
 		}
 		if e := s.stop(r.Context(), &ws); e != nil {
 			apiError(w, e)
+			return
+		}
+		shared.JSON(w, 200, ws)
+	})
+	secured.HandleFunc("POST /v1/workspaces/{id}/force-stop", func(w http.ResponseWriter, r *http.Request) {
+		if !s.admin(w, r) || !mutationKey(w, r) {
+			return
+		}
+		unlock := s.operations.Lock(r.PathValue("id"))
+		defer unlock()
+		ws, ok := s.workspace(w, r)
+		if !ok {
+			return
+		}
+		if err := s.lifecycle().ForceStop(r.Context(), &ws); err != nil {
+			apiError(w, err)
 			return
 		}
 		shared.JSON(w, 200, ws)
@@ -609,7 +648,7 @@ func (s *Server) DashboardHandler() http.Handler {
 		safeItems := snapshotWorkspaces(items)
 		shared.JSON(w, 200, map[string]any{"schema_version": 1, "generated_at": now, "mode": "development", "workspaces": map[string]any{"observed_at": observed, "status": status, "items": safeItems}, "active_tasks": map[string]any{"observed_at": observed, "status": status, "items": active}, "usage": usage, "services": map[string]any{"observed_at": now, "status": serviceStatus, "items": services}})
 	})
-	return shared.RequireToken(shared.DashboardReadToken(s.cfg.Token), mux)
+	return shared.RequireToken(s.cfg.DashboardReadToken, mux)
 }
 
 type workspaceCreate struct {

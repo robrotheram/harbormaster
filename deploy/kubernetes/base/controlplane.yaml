@@ -30,6 +30,30 @@ spec:
           value: http://controlplane:8081
         - name: CONTROL_TOKEN_FILE
           value: /run/secrets/control_token
+        - name: DASHBOARD_READ_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: controlplane-secrets
+              key: dashboard_read_token
+              optional: true
+        - name: DASHBOARD_HUMAN_SIGNING_KEY
+          valueFrom:
+            secretKeyRef:
+              name: controlplane-secrets
+              key: dashboard_human_signing_key
+              optional: true
+        - name: PROJECT_SIGNING_KEY
+          valueFrom:
+            secretKeyRef:
+              name: controlplane-secrets
+              key: project_signing_key
+              optional: true
+        - name: CREDENTIAL_ENCRYPTION_KEY
+          valueFrom:
+            secretKeyRef:
+              name: controlplane-secrets
+              key: credential_encryption_key
+              optional: true
         - name: CONTROLLER_TOKEN_FILE
           value: /run/secrets/controller_token
         - name: DATABASE_URL_FILE

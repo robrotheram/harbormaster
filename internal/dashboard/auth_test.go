@@ -238,7 +238,7 @@ func TestAuthKitRejectsCallbackAttacks(t *testing.T) {
 		}
 	}
 	cookie, state = startAuth(t, a)
-	a.attempts[state] = authAttempt{verifier: "expired", expires: time.Now().Add(-time.Minute)}
+	cookie.Value = a.sealAttempt(authAttempt{State: state, Verifier: "expired", Expires: time.Now().Add(-time.Minute)})
 	if w := authRequest(a, "GET", "/auth/callback?code=valid&state="+state, cookie); !strings.Contains(w.Header().Get("Location"), "invalid_state") {
 		t.Fatal("expired callback")
 	}

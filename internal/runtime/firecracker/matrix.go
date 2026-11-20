@@ -312,6 +312,12 @@ func (f *Firecracker) matrixProxy(v *fcVM) http.Handler {
 			shared.Error(w, 403, "MATRIX_OPERATION_DENIED")
 			return
 		}
+		// Filter and send the same route. The allowlist already rejects dot segments.
+		route := strings.TrimRight(r.URL.Path, "/")
+		if strings.Contains(route, "//") {
+			shared.Error(w, 403, "MATRIX_OPERATION_DENIED")
+			return
+		}
 		b, err := os.ReadFile(filepath.Join(matrixSecrets, v.Spec.ProjectID+".json"))
 		var credential matrixCredential
 		if err != nil || json.Unmarshal(b, &credential) != nil || credential.Config.Homeserver != config.Homeserver || credential.Config.BotUserID != config.BotUserID {
@@ -326,34 +332,49 @@ func (f *Firecracker) matrixProxy(v *fcVM) http.Handler {
 		defer c.CloseIdleConnections()
 		query := r.URL.Query()
 		query.Del("access_token")
-		if strings.HasSuffix(r.URL.Path, "/sync") {
+		if strings.HasSuffix(route, "/sync") {
 			filter, _ := json.Marshal(map[string]any{"room": map[string]any{"rooms": config.RoomIDs}})
 			query.Set("filter", string(filter))
 			query.Set("timeout", "25000")
 		}
-		var body io.Reader = http.MaxBytesReader(w, r.Body, 2<<20)
-		if strings.Contains(r.URL.Path, "/sendToDevice/") {
-			b, err := io.ReadAll(body)
-			var payload struct {
-				Messages map[string]json.RawMessage `json:"messages"`
-			}
-			if err != nil || json.Unmarshal(b, &payload) != nil {
+		var body io.Reader
+		if r.Method == http.MethodPost || r.Method == http.MethodPut {
+			raw, readErr := io.ReadAll(http.MaxBytesReader(w, r.Body, 2<<20))
+			payload, parseErr := shared.PolicyJSON(raw)
+			if readErr != nil || parseErr != nil {
 				shared.Error(w, 400, "INVALID_REQUEST")
 				return
 			}
-			allowed := map[string]bool{config.BotUserID: true}
-			for _, id := range config.SenderIDs {
-				allowed[id] = true
+			recipientField := ""
+			switch {
+			case strings.Contains(route, "/sendToDevice/"):
+				recipientField = "messages"
+			case strings.HasSuffix(route, "/keys/query"):
+				recipientField = "device_keys"
+			case strings.HasSuffix(route, "/keys/claim"):
+				recipientField = "one_time_keys"
 			}
-			for recipient := range payload.Messages {
-				if !allowed[recipient] {
-					shared.Error(w, 403, "MATRIX_OPERATION_DENIED")
+			if recipientField != "" {
+				recipients, ok := payload[recipientField].(map[string]any)
+				if !ok {
+					shared.Error(w, 400, "INVALID_REQUEST")
 					return
 				}
+				for recipient := range recipients {
+					if recipient != config.BotUserID && !slices.Contains(config.SenderIDs, recipient) {
+						shared.Error(w, 403, "MATRIX_OPERATION_DENIED")
+						return
+					}
+				}
 			}
-			body = bytes.NewReader(b)
+			canonical, err := json.Marshal(payload)
+			if err != nil {
+				shared.Error(w, 400, "INVALID_REQUEST")
+				return
+			}
+			body = bytes.NewReader(canonical)
 		}
-		res, err := matrixOriginRequest(r.Context(), c, u, credential.Token, r.Method, r.URL.Path, query.Encode(), body)
+		res, err := matrixOriginRequest(r.Context(), c, u, credential.Token, r.Method, route, query.Encode(), body)
 		if err != nil {
 			shared.Error(w, 503, "MATRIX_UNAVAILABLE")
 			return
@@ -364,14 +385,14 @@ func (f *Firecracker) matrixProxy(v *fcVM) http.Handler {
 			shared.Error(w, 503, "MATRIX_UNAVAILABLE")
 			return
 		}
-		if res.StatusCode == 200 && strings.HasSuffix(r.URL.Path, "/sync") {
+		if res.StatusCode == 200 && strings.HasSuffix(route, "/sync") {
 			response, err = filterMatrixSync(response, config)
 			if err != nil {
 				shared.Error(w, 503, "MATRIX_UNAVAILABLE")
 				return
 			}
 		}
-		if res.StatusCode == 200 && strings.HasSuffix(r.URL.Path, "/joined_rooms") {
+		if res.StatusCode == 200 && strings.HasSuffix(route, "/joined_rooms") {
 			// Membership may have changed since activation. Never expose another
 			// project's room even if the bot was joined outside this application.
 			var joined struct {

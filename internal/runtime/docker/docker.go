@@ -11,8 +11,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"slices"
-	"strings"
 	"sync"
 	"time"
 
@@ -87,6 +85,7 @@ type ControllerConfig struct {
 }
 type Controller struct {
 	policies  sync.Map
+	revoked   sync.Map
 	Docker    *Docker
 	cfg       ControllerConfig
 	mu        sync.Mutex
@@ -105,6 +104,21 @@ func NewController(d *Docker, c ControllerConfig) (*Controller, error) {
 	}
 	return &Controller{Docker: d, cfg: c, agentHTTP: &http.Client{Timeout: 32 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}, nil
 }
+
+// ManagementListenAddress selects the controller's address on its trusted
+// management bridge. The controller still dials workspace-network addresses.
+func (c *Controller) ManagementListenAddress(ctx context.Context, network, port string) (string, error) {
+	var info containerInfo
+	if err := c.Docker.call(ctx, "GET", "/containers/"+url.PathEscape(c.cfg.SelfContainer)+"/json", nil, &info); err != nil {
+		return "", err
+	}
+	endpoint, ok := info.NetworkSettings.Networks[network]
+	if !ok || net.ParseIP(endpoint.IPAddress) == nil {
+		return "", errors.New("controller management bridge address unavailable")
+	}
+	return net.JoinHostPort(endpoint.IPAddress, port), nil
+}
+
 func (c *Controller) name(id string) string { return c.cfg.Deployment + "-" + id }
 func (c *Controller) labels(id string) map[string]string {
 	return map[string]string{"workbench.deployment": c.cfg.Deployment, "workbench.workspace": id}
@@ -198,12 +212,15 @@ func (c *Controller) ensure(ctx context.Context, id string, spec protocol.Worksp
 			return info, e
 		}
 
-		// Replace stopped containers when their configuration requires recreation.
-		// Never replace a running container or request Docker volume removal.
-		if !info.State.Running && (legacyToolSelection(info) || (connectionMode(info) == "open") != (spec.ConnectionMode == "open")) {
+		// New starts get new grants. Keep named workspace volumes and leave a
+		// running generation intact on idempotent start requests.
+		if !info.State.Running {
 			if e = c.Docker.call(ctx, "DELETE", "/containers/"+info.ID, nil, nil); e != nil {
 				return info, e
 			}
+			generation := info.Config.Labels["workbench.generation"]
+			c.revoked.Delete(generation)
+			c.policies.Delete(generation)
 			return c.ensure(ctx, id, spec)
 		}
 		return info, nil
@@ -347,7 +364,7 @@ func (c *Controller) Handler() http.Handler {
 	return protocol.NewControllerHandler(protocol.Backend{
 		Token: c.cfg.Token, GatewayServiceToken: c.cfg.GatewayServiceToken,
 		Health: c.health, VerifyGrant: c.verify,
-		Start: c.start, Stop: c.stop, Inspect: c.inspectWorkspace,
+		Start: c.start, Stop: c.stop, ForceStop: c.forceStop, Inspect: c.inspectWorkspace,
 		BindNetworkPolicy: protocol.BindNetworkPolicy(c.applyNetwork), Reconcile: c.reconcileNetwork, Capabilities: c.capabilities,
 		Proxy: c.proxy, Agent: protocol.BufferedAgent(c.proxyAgent),
 		StartBodyLimit: 2048, AllowEmptyStart: true, ValidateAgentID: true, AgentNoStore: true,
@@ -439,6 +456,33 @@ func (c *Controller) stop(ctx context.Context, id string) *protocol.ControllerEr
 			return protocol.Failure(503, "RUNTIME_UNAVAILABLE")
 		}
 	}
+	return nil
+}
+
+func (c *Controller) forceStop(ctx context.Context, id string) *protocol.ControllerError {
+	if !shared.ValidID(id) {
+		return protocol.Failure(400, "INVALID_REQUEST")
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	info, err := c.inspect(ctx, id)
+	var status protocol.APIError
+	if errors.As(err, &status) && status.Status == http.StatusNotFound {
+		return nil
+	}
+	if err != nil {
+		return protocol.Failure(503, "RUNTIME_UNAVAILABLE")
+	}
+	generation := info.Config.Labels["workbench.generation"]
+	c.revoked.Store(generation, true)
+	if info.State.Running {
+		err := c.Docker.call(ctx, "POST", "/containers/"+info.ID+"/stop?t=3", nil, nil)
+		if err != nil && (!errors.As(err, &status) || status.Status != http.StatusNotModified) {
+			return protocol.Failure(503, "RUNTIME_UNAVAILABLE")
+		}
+	}
+	c.policies.Delete(generation)
+	c.revoked.Delete(generation)
 	return nil
 }
 
@@ -555,6 +599,9 @@ func (c *Controller) verify(w http.ResponseWriter, r *http.Request) {
 		id := info.Labels["workbench.workspace"]
 		generation := info.Labels["workbench.generation"]
 		if info.Labels["workbench.deployment"] == c.cfg.Deployment && protocol.HasOwnershipLabels(info.Labels) && shared.ValidID(id) && generation != "" && subtle.ConstantTimeCompare([]byte(c.token(id, generation)), []byte(req.Token)) == 1 {
+			if _, revoked := c.revoked.Load(generation); revoked {
+				break
+			}
 			identity := map[string]any{"workspace_id": id, "project_id": info.Labels["workbench.project"], "principal_id": "local-operator"}
 			if req.Audience == "egress" {
 				v, _ := c.policies.Load(generation)
@@ -570,12 +617,4 @@ func (c *Controller) verify(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	shared.Error(w, 403, "GRANT_REJECTED")
-}
-
-// Presence marks a stopped container built with the retired selectable-tool
-// configuration. Running containers are preserved; replacement keeps its volume.
-func legacyToolSelection(info containerInfo) bool {
-	return slices.ContainsFunc(info.Config.Env, func(value string) bool {
-		return strings.HasPrefix(value, "WORKSPACE_MCPS=")
-	})
 }

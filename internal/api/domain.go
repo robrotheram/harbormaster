@@ -30,10 +30,10 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 		valid := s.cfg.Token != "" && subtle.ConstantTimeCompare([]byte(got), []byte(s.cfg.Token)) == 1
 		if valid {
 			p.admin = true
-		} else if human, err := shared.VerifyHumanAccess(s.cfg.Token, got, s.now()); err == nil {
+		} else if human, err := shared.VerifyHumanAccess(s.cfg.HumanSigningKey, got, s.now()); err == nil {
 			p.human = human
 			valid = true
-		} else if project, err := shared.VerifyProjectAccess(s.cfg.Token, got, s.now()); err == nil {
+		} else if project, err := shared.VerifyProjectAccess(s.cfg.ProjectSigningKey, got, s.now()); err == nil {
 			p.projectID = project
 			valid = true
 		} else {
@@ -161,7 +161,7 @@ func (s *Server) registerDomains(mux *http.ServeMux) {
 			return
 		}
 		expires := s.now().Add(time.Duration(input.TTL) * time.Second)
-		token, err := shared.IssueProjectAccess(s.cfg.Token, r.PathValue("id"), expires)
+		token, err := shared.IssueProjectAccess(s.cfg.ProjectSigningKey, r.PathValue("id"), expires)
 		if err != nil {
 			shared.Error(w, 503, "CREDENTIAL_UNAVAILABLE")
 			return
@@ -213,6 +213,10 @@ func (s *Server) registerDomains(mux *http.ServeMux) {
 			return
 		}
 		if p.human.ID != "" {
+			if s.cfg.ProjectCreatorEmails != nil && !s.cfg.ProjectCreatorEmails[p.human.Email] {
+				shared.Error(w, 403, "PROJECT_CREATION_NOT_APPROVED")
+				return
+			}
 			input.Key = p.human.ID + ":" + input.Key
 		}
 		s.createMu.Lock()
@@ -235,6 +239,17 @@ func (s *Server) registerDomains(mux *http.ServeMux) {
 		if err != sql.ErrNoRows {
 			shared.Error(w, 503, "STORAGE_UNAVAILABLE")
 			return
+		}
+		if p.human.ID != "" && s.cfg.MaxProjectsPerUser > 0 {
+			count, err := s.Store.CreatedProjectCount(r.Context(), p.human.ID)
+			if err != nil {
+				shared.Error(w, 503, "STORAGE_UNAVAILABLE")
+				return
+			}
+			if count >= s.cfg.MaxProjectsPerUser {
+				shared.Error(w, 429, "QUOTA_EXCEEDED")
+				return
+			}
 		}
 		projects, err := s.Store.Projects(r.Context())
 		if err != nil {

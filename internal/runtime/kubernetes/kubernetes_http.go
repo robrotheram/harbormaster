@@ -13,7 +13,7 @@ func (k *Kubernetes) Handler() http.Handler {
 	return protocol.NewControllerHandler(protocol.Backend{
 		Token: k.cfg.Token, GatewayServiceToken: k.cfg.GatewayServiceToken,
 		Health: k.health, VerifyGrant: k.verify, RegisterManagement: k.registerManagement,
-		Start: k.startWorkspace, Stop: k.stopWorkspace, Inspect: k.inspectWorkspace,
+		Start: k.startWorkspace, Stop: k.stopWorkspace, ForceStop: k.forceStopWorkspace, Inspect: k.inspectWorkspace,
 		BindNetworkPolicy: protocol.BindNetworkPolicy(k.applyWorkspaceNetwork), Reconcile: k.reconcileWorkspaceNetwork,
 		Capabilities: k.capabilities, Proxy: k.proxy, Agent: protocol.BufferedAgent(k.proxyAgent),
 		StartBodyLimit: 2048, AgentNoStore: true,
@@ -66,6 +66,13 @@ func (k *Kubernetes) inspectWorkspace(ctx context.Context, id string) (shared.Ob
 func (k *Kubernetes) stopWorkspace(ctx context.Context, id string) *protocol.ControllerError {
 	if k.Stop(ctx, id) != nil {
 		return protocol.Failure(409, "WORKSPACE_BUSY")
+	}
+	return nil
+}
+
+func (k *Kubernetes) forceStopWorkspace(ctx context.Context, id string) *protocol.ControllerError {
+	if k.stop(ctx, id, true) != nil {
+		return protocol.Failure(503, "STOP_UNCONFIRMED")
 	}
 	return nil
 }

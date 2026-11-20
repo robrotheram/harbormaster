@@ -5,8 +5,11 @@ import (
 	"agent-workbench/internal/runtime/firecracker"
 	"agent-workbench/internal/runtime/kubernetes"
 	"agent-workbench/internal/shared"
+	"context"
 	"log/slog"
+	"net"
 	"os"
+	"time"
 )
 
 func main() {
@@ -59,7 +62,22 @@ func main() {
 		slog.Error("invalid runtime controller configuration")
 		os.Exit(1)
 	}
-	if shared.Serve(shared.Env("LISTEN_ADDR", ":8080"), c.Handler()) != nil {
+	address := shared.Env("LISTEN_ADDR", ":8080")
+	if network := os.Getenv("DOCKER_MANAGEMENT_NETWORK"); network != "" {
+		_, port, err := net.SplitHostPort(address)
+		if err != nil {
+			slog.Error("invalid Docker controller listen address")
+			os.Exit(1)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		address, err = c.ManagementListenAddress(ctx, network, port)
+		cancel()
+		if err != nil {
+			slog.Error("Docker controller management bridge unavailable")
+			os.Exit(1)
+		}
+	}
+	if shared.Serve(address, c.Handler()) != nil {
 		slog.Error("runtime controller stopped")
 		os.Exit(1)
 	}

@@ -128,6 +128,7 @@ func registerSubscriptions(mux *http.ServeMux, c Config, catalog *codexCatalog) 
 			client = c.subscriptionHTTP
 		}
 		handler := func(w http.ResponseWriter, r *http.Request) {
+			grant := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 			id, err := Authenticate(r, c.Verify, "inference")
 			if err != nil {
 				shared.Error(w, 401, "UNAUTHORIZED")
@@ -146,11 +147,15 @@ func registerSubscriptions(mux *http.ServeMux, c Config, catalog *codexCatalog) 
 				}
 			}
 			body, err := ReadBounded(r.Body, 4<<20)
-			var fields struct {
-				Model string `json:"model"`
-			}
-			if err != nil || json.Unmarshal(body, &fields) != nil || fields.Model == "" || (!models[fields.Model] && (provider != "codex" || catalog == nil)) {
+			fields, parseErr := shared.PolicyJSON(body)
+			model, ok := fields["model"].(string)
+			if err != nil || parseErr != nil || !ok || model == "" || (!models[model] && (provider != "codex" || catalog == nil)) {
 				shared.Error(w, 400, "MODEL_NOT_ALLOWED")
+				return
+			}
+			body, err = json.Marshal(fields)
+			if err != nil {
+				shared.Error(w, 400, "INVALID_REQUEST")
 				return
 			}
 			// The path is selected by a registered handler; no caller URL, Vault
@@ -160,7 +165,7 @@ func registerSubscriptions(mux *http.ServeMux, c Config, catalog *codexCatalog) 
 			var cred subscriptionCredential
 			if c.Subscriptions.UserAccounts {
 				var resolveErr error
-				cred, resolveErr = c.ResolveSubscription(ctx, id.WorkspaceID, provider)
+				cred, resolveErr = c.ResolveSubscription(ctx, id.WorkspaceID, provider, grant)
 				if resolveErr != nil {
 					shared.Error(w, 503, "PROVIDER_LOGIN_REQUIRED")
 					return
@@ -198,8 +203,8 @@ func registerSubscriptions(mux *http.ServeMux, c Config, catalog *codexCatalog) 
 				shared.Error(w, 503, "PROVIDER_LOGIN_REQUIRED")
 				return
 			}
-			if !models[fields.Model] {
-				if _, available := catalog.models(ctx, cred)[fields.Model]; !available {
+			if !models[model] {
+				if _, available := catalog.models(ctx, cred)[model]; !available {
 					shared.Error(w, 400, "MODEL_NOT_ALLOWED")
 					return
 				}
@@ -224,13 +229,14 @@ func registerSubscriptions(mux *http.ServeMux, c Config, catalog *codexCatalog) 
 						return
 					case <-ticker.C:
 						if c.Subscriptions.UserAccounts {
-							current, err := c.ResolveSubscription(upstreamCtx, id.WorkspaceID, provider)
+							current, err := c.ResolveSubscription(upstreamCtx, id.WorkspaceID, provider, grant)
 							if err != nil || current.AccessToken != cred.AccessToken || current.AccountID != cred.AccountID {
 								stop()
 								return
 							}
+							continue
 						}
-						if _, err := c.Verify(upstreamCtx, strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "), "inference"); err != nil {
+						if _, err := c.Verify(upstreamCtx, grant, "inference"); err != nil {
 							stop()
 							return
 						}

@@ -48,17 +48,26 @@ User-subscription endpoints are unavailable to project/MCP credentials.
 Migration 14 preserves existing saved Codex credentials as a named default account,
 with their existing worker bindings and encryption context intact.
 
-The reference overlay configures `subscriptions.user_accounts`, `gpt-5.4` for
-Codex, and `claude-sonnet-5-5` for Claude. The dedicated internal resolver uses the
-gateway service credential, mounted read-only into controlplane through
-`SUBSCRIPTION_GATEWAY_TOKEN_FILE`; the normal control credential cannot call it.
-The gateway policy bounds allowed model IDs and destination CIDRs. Review
-`user-subscriptions.yaml` when provider DNS changes. No API-billing fallback exists.
+Enable `subscriptions.user_accounts` and configure provider models and network
+policy in inference-gateway. Set the gateway's `CONTROLPLANE_URL` and the
+runtime controller's `CODEX_MODEL` and `CLAUDE_MODEL`. There is no API-billing
+fallback.
 
-For other deployments, configure the gateway's `CONTROLPLANE_URL`, enable
-`subscriptions.user_accounts`, provide policies for each enabled provider, set
-`CODEX_MODEL` and `CLAUDE_MODEL` on the runtime controller, and supply the same
-gateway service token through `SUBSCRIPTION_GATEWAY_TOKEN_FILE` on controlplane.
+Provision a random resolver credential of at least 32 characters as
+`SUBSCRIPTION_GATEWAY_TOKEN_FILE` on inference-gateway and controlplane only.
+It must differ from the runtime gateway, controller and admin tokens.
+Controlplane also needs `GATEWAY_SERVICE_TOKEN_FILE` to verify the forwarded
+inference grant with the controller. The resolver matches the verified workspace
+and project to the stored worker before returning its credential. Roll out
+controlplane and inference-gateway together after mounting the new token.
+
+New imports use the controlplane-only encryption key when configured. Set
+`CREDENTIAL_ENCRYPTION_KEY_FILE` for a single persistent key, or set
+`CREDENTIAL_ENCRYPTION_KEYRING_FILE` with a JSON object containing `active`
+and `keys` to retain old key IDs during rotation. Keep the legacy control token
+available until untagged credentials have been re-imported. Compose provisions
+a dedicated key on bootstrap.
+
 New T3 consoles enable Claude when `CLAUDE_MODEL` is configured; existing explicit
 provider settings are preserved, so enable the Claude provider in T3 if previously
 disabled. Both native agents use the worker grant and provider-specific gateway
@@ -133,7 +142,7 @@ of `config/inference.json`; see its `subscriptions` schema and
 CIDRs. Apply configuration with:
 
 ```sh
-docker compose up -d --build --wait inference-gateway runtime-controller controlplane mcp
+DOCKER_SOCKET_GID="$(stat -c %g /var/run/docker.sock)" docker compose up -d --build --wait inference-gateway runtime-controller controlplane mcp
 ```
 
 Create new workspaces to receive changed agent defaults. After recreating a gateway,

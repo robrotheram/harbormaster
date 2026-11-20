@@ -2,9 +2,15 @@ package dashboard
 
 import (
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
+	"hash/maphash"
 	"log/slog"
 	"net"
 	"net/http"
@@ -17,6 +23,7 @@ import (
 
 	"agent-workbench/internal/shared"
 	workos "github.com/workos/workos-go/v10"
+	"golang.org/x/time/rate"
 )
 
 // AuthConfig gates login. Verified human identity is forwarded to the API,
@@ -38,12 +45,13 @@ func AuthConfigFromEnv() (AuthConfig, error) {
 
 type authenticatedOriginKey struct{}
 type authAttempt struct {
-	verifier string
-	expires  time.Time
+	State, Verifier string
+	Expires         time.Time
 }
 type operatorSession struct {
 	mu                sync.Mutex // Serializes refresh-token rotation and logout for this session.
 	sealed, sessionID string
+	userID, authState string
 	expires           time.Time
 	revoked           bool
 }
@@ -55,7 +63,8 @@ type authHandler struct {
 	secure                 bool
 	allowed                map[string]bool
 	mu                     sync.Mutex
-	attempts               map[string]authAttempt
+	attemptCipher          cipher.AEAD
+	loginLimits            [256]*rate.Limiter
 	sessions               map[string]*operatorSession
 }
 
@@ -96,7 +105,21 @@ func NewAuthKitHandler(next http.Handler, cfg AuthConfig) (http.Handler, error) 
 		return nil, errors.New("WORKOS_ALLOWED_EMAILS is required for operator access")
 	}
 	client := workos.NewClient(cfg.APIKey, workos.WithClientID(cfg.ClientID), workos.WithMaxRetries(0), workos.WithHTTPClient(&http.Client{Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}))
-	return &authHandler{next: next, client: client, cfg: cfg, origin: u.Scheme + "://" + u.Host, host: u.Host, secure: u.Scheme == "https", password: rand.Text() + rand.Text(), allowed: allowed, attempts: map[string]authAttempt{}, sessions: map[string]*operatorSession{}}, nil
+	password := rand.Text() + rand.Text()
+	key := sha256.Sum256([]byte("authkit-pkce:" + password))
+	block, err := aes.NewCipher(key[:])
+	if err != nil {
+		return nil, err
+	}
+	attemptCipher, err := cipher.NewGCMWithRandomNonce(block)
+	if err != nil {
+		return nil, err
+	}
+	handler := &authHandler{next: next, client: client, cfg: cfg, origin: u.Scheme + "://" + u.Host, host: u.Host, secure: u.Scheme == "https", password: password, allowed: allowed, attemptCipher: attemptCipher, sessions: map[string]*operatorSession{}}
+	for i := range handler.loginLimits {
+		handler.loginLimits[i] = rate.NewLimiter(8, 32)
+	}
+	return handler, nil
 }
 
 func (a *authHandler) cookie(w http.ResponseWriter, name, value string, age int) {
@@ -110,13 +133,12 @@ func (a *authHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if a.secure && servePublicWorker(a.next, w, r, a.host) {
 		return
 	}
-	// These are separate capability-authenticated worker surfaces, never the
-	// operator console. Keep native desktop bearer auth and preview tickets intact.
-	host := r.Host
-	if h, _, err := net.SplitHostPort(host); err == nil {
-		host = h
-	}
-	if strings.HasSuffix(host, ".localhost") && (strings.HasPrefix(host, "ws-") || strings.HasPrefix(host, "desktop-ws-") || strings.HasPrefix(host, "preview-")) {
+	if !a.secure && localWorkerHost(r) {
+		// A loopback AuthKit login can still issue worker console and preview tickets.
+		if strings.HasPrefix(requestHostname(r), "desktop-") {
+			writeError(w, 404, "NOT_FOUND")
+			return
+		}
 		a.next.ServeHTTP(w, r)
 		return
 	}
@@ -219,56 +241,68 @@ func (a *authHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	a.next.ServeHTTP(w, withHumanIdentity(r, "workos:"+a.cfg.ClientID, result.User.ID, result.User.Email))
 }
 
+var loginBucketSeed = maphash.MakeSeed()
+
 func (a *authHandler) login(w http.ResponseWriter, r *http.Request) {
+	// Use the transport peer, never a caller-controlled forwarded address.
+	peer, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		peer = r.RemoteAddr
+	}
+	if !a.loginLimits[maphash.String(loginBucketSeed, peer)%uint64(len(a.loginLimits))].Allow() {
+		writeError(w, 429, "RATE_LIMITED")
+		return
+	}
 	provider := "authkit"
 	auth, err := a.client.GetAuthKitPKCEAuthorizationURL(workos.AuthKitAuthorizationURLParams{RedirectURI: a.cfg.RedirectURI, Provider: &provider})
 	if err != nil {
 		writeError(w, 503, "AUTH_UNAVAILABLE")
 		return
 	}
-	a.mu.Lock()
-	for key, attempt := range a.attempts {
-		if time.Now().After(attempt.expires) {
-			delete(a.attempts, key)
-		}
-	}
-	// Replacing this browser's pending flow also prevents accumulation on retries.
-	if old, err := uniqueCookie(r, hostCookieName("awb_auth_state", a.secure)); err == nil {
-		delete(a.attempts, old.Value)
-	}
-	if len(a.attempts) >= 256 {
-		a.mu.Unlock()
-		writeError(w, 429, "RATE_LIMITED")
-		return
-	}
-	a.attempts[auth.State] = authAttempt{auth.CodeVerifier, time.Now().Add(10 * time.Minute)}
-	a.mu.Unlock()
-	a.cookie(w, "awb_auth_state", auth.State, 600)
+	a.cookie(w, "awb_auth_state", a.sealAttempt(authAttempt{State: auth.State, Verifier: auth.CodeVerifier, Expires: time.Now().Add(10 * time.Minute)}), 600)
 	http.Redirect(w, r, auth.URL, http.StatusFound)
 }
+func (a *authHandler) sealAttempt(attempt authAttempt) string {
+	raw, _ := json.Marshal(attempt)
+	return base64.RawURLEncoding.EncodeToString(a.attemptCipher.Seal(nil, nil, raw, []byte(a.origin)))
+}
+
 func (a *authHandler) callback(w http.ResponseWriter, r *http.Request) {
 	cookie, err := uniqueCookie(r, hostCookieName("awb_auth_state", a.secure))
 	state := r.URL.Query().Get("state")
-	if err != nil || state == "" || subtle.ConstantTimeCompare([]byte(state), []byte(cookie.Value)) != 1 {
+	if err != nil || state == "" {
 		a.failLogin(w, r, "invalid_state")
 		return
 	}
 	a.cookie(w, "awb_auth_state", "", -1)
-	a.mu.Lock()
-	attempt, ok := a.attempts[state]
-	delete(a.attempts, state)
-	a.mu.Unlock()
-	if !ok || time.Now().After(attempt.expires) {
+	attemptBlob, err := base64.RawURLEncoding.DecodeString(cookie.Value)
+	if err != nil || len(attemptBlob) > 2048 {
 		a.failLogin(w, r, "invalid_state")
 		return
 	}
+	raw, err := a.attemptCipher.Open(nil, nil, attemptBlob, []byte(a.origin))
+	var attempt authAttempt
+	if err != nil || json.Unmarshal(raw, &attempt) != nil || !time.Now().Before(attempt.Expires) ||
+		subtle.ConstantTimeCompare([]byte(state), []byte(attempt.State)) != 1 {
+		a.failLogin(w, r, "invalid_state")
+		return
+	}
+	a.mu.Lock()
+	for _, session := range a.sessions {
+		if session.authState == state {
+			a.mu.Unlock()
+			a.failLogin(w, r, "invalid_state")
+			return
+		}
+	}
+	a.mu.Unlock()
 	code := r.URL.Query().Get("code")
 	if code == "" || r.URL.Query().Get("error") != "" {
 		logAuthFailure("provider_callback", nil, "")
 		a.failLogin(w, r, "sign_in_failed")
 		return
 	}
-	response, err := a.client.AuthKitPKCECodeExchange(r.Context(), workos.AuthKitPKCECodeExchangeParams{Code: code, CodeVerifier: attempt.verifier})
+	response, err := a.client.AuthKitPKCECodeExchange(r.Context(), workos.AuthKitPKCECodeExchangeParams{Code: code, CodeVerifier: attempt.Verifier})
 	if err != nil {
 		logAuthFailure("code_exchange", err, "")
 		a.failLogin(w, r, "sign_in_failed")
@@ -296,20 +330,35 @@ func (a *authHandler) callback(w http.ResponseWriter, r *http.Request) {
 	}
 	key := rand.Text() + rand.Text()
 	a.mu.Lock()
+	now := time.Now()
+	var oldestID string
+	var oldest time.Time
+	count := 0
 	for id, session := range a.sessions {
-		if time.Now().After(session.expires) {
+		if !now.Before(session.expires) {
 			delete(a.sessions, id)
+		} else if session.userID == result.User.ID {
+			count++
+			if oldestID == "" || session.expires.Before(oldest) {
+				oldestID, oldest = id, session.expires
+			}
 		}
+	}
+	if old, err := uniqueCookie(r, hostCookieName("awb_session", a.secure)); err == nil {
+		if session := a.sessions[old.Value]; session != nil && session.userID == result.User.ID {
+			delete(a.sessions, old.Value)
+			count--
+		}
+	}
+	if count >= 8 {
+		delete(a.sessions, oldestID)
 	}
 	if len(a.sessions) >= 1024 {
 		a.mu.Unlock()
 		a.failLogin(w, r, "sign_in_failed")
 		return
 	}
-	if old, err := uniqueCookie(r, hostCookieName("awb_session", a.secure)); err == nil {
-		delete(a.sessions, old.Value)
-	}
-	a.sessions[key] = &operatorSession{sealed: sealed, sessionID: result.SessionID, expires: time.Now().Add(7 * 24 * time.Hour)}
+	a.sessions[key] = &operatorSession{sealed: sealed, sessionID: result.SessionID, userID: result.User.ID, authState: state, expires: now.Add(7 * 24 * time.Hour)}
 	a.mu.Unlock()
 	a.cookie(w, "awb_session", key, 7*24*60*60)
 	http.Redirect(w, r, "/app/", http.StatusSeeOther)

@@ -28,6 +28,7 @@ type Backend struct {
 
 	Start             func(context.Context, string, WorkspaceSpec) (shared.Observation, *ControllerError)
 	Stop              func(context.Context, string) *ControllerError
+	ForceStop         func(context.Context, string) *ControllerError
 	Inspect           func(context.Context, string) (shared.Observation, *ControllerError)
 	BindNetworkPolicy func(context.Context, string) func(*shared.ConnectionPolicy) *ControllerError
 	Reconcile         func(context.Context, string) *ControllerError
@@ -89,6 +90,11 @@ func NewControllerHandler(b Backend) http.Handler {
 		"reconcile-network": func(w http.ResponseWriter, r *http.Request) {
 			controllerResult(w, map[string]bool{"reconciled": true}, b.Reconcile(r.Context(), r.PathValue("id")))
 		},
+	}
+	if b.ForceStop != nil {
+		actions["force-stop"] = func(w http.ResponseWriter, r *http.Request) {
+			controllerResult(w, map[string]bool{"stopped": true}, b.ForceStop(r.Context(), r.PathValue("id")))
+		}
 	}
 	streams := map[string]http.HandlerFunc{
 		"agent": b.serveAgent,

@@ -30,6 +30,7 @@ type terminalSession struct {
 	exited   bool
 	lastSeen time.Time
 	done     chan struct{}
+	home     string
 	stopOnce sync.Once
 }
 
@@ -72,18 +73,25 @@ func (m *Manager) createTerminal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	shell := "/bin/bash"
+	args := []string{"--noprofile", "--norc", "-i"}
 	if _, err := os.Stat(shell); err != nil {
-		shell = "/bin/sh"
+		shell, args = "/bin/sh", []string{"-i"}
 	}
-	cmd := exec.Command(shell, "-i")
+	home, err := os.MkdirTemp("", "workbench-terminal-")
+	if err != nil {
+		shared.Error(w, 503, "TERMINAL_UNAVAILABLE")
+		return
+	}
+	cmd := exec.Command(shell, args...)
 	cmd.Dir = filepath.Join(m.cfg.DataDir, "files")
 	// Do not inherit management credentials from the workspace service process.
-	cmd.Env = []string{"PATH=/usr/local/bin:/usr/bin:/bin", "HOME=" + m.homePath(), "TERM=xterm-256color", "LANG=C.UTF-8", "SHELL=" + shell}
+	cmd.Env = []string{"PATH=/usr/local/bin:/usr/bin:/bin", "HOME=" + home, "TERM=xterm-256color", "LANG=C.UTF-8", "SHELL=" + shell}
 	if m.cfg.EgressURL != "" {
 		cmd.Env = egress.Environment(cmd.Env, m.cfg.InferenceURL, m.cfg.BrokerURL)
 	}
 	tty, err := pty.StartWithSize(cmd, &pty.Winsize{Cols: in.Cols, Rows: in.Rows})
 	if err != nil {
+		_ = os.Remove(home)
 		shared.Error(w, 503, "TERMINAL_UNAVAILABLE")
 		return
 	}
@@ -92,10 +100,11 @@ func (m *Manager) createTerminal(w http.ResponseWriter, r *http.Request) {
 		_ = cmd.Process.Kill()
 		_ = tty.Close()
 		_ = cmd.Wait()
+		_ = os.Remove(home)
 		shared.Error(w, 503, "TERMINAL_UNAVAILABLE")
 		return
 	}
-	session := &terminalSession{cmd: cmd, tty: tty, lastSeen: time.Now(), done: make(chan struct{})}
+	session := &terminalSession{cmd: cmd, tty: tty, lastSeen: time.Now(), done: make(chan struct{}), home: home}
 	m.terminals[in.ID] = session
 	m.lastActivity = time.Now().UTC()
 	m.wg.Add(1)
@@ -105,6 +114,7 @@ func (m *Manager) createTerminal(w http.ResponseWriter, r *http.Request) {
 
 func (m *Manager) runTerminal(id string, s *terminalSession) {
 	defer m.wg.Done()
+	defer os.RemoveAll(s.home)
 	readDone := make(chan struct{})
 	go func() {
 		defer close(readDone)

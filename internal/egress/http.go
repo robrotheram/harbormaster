@@ -13,11 +13,16 @@ import (
 )
 
 func authorize(r *http.Request, verify gateway.Verifier, target string) error {
+	_, err := authorizedWorkspace(r, verify, target)
+	return err
+}
+
+func authorizedWorkspace(r *http.Request, verify gateway.Verifier, target string) (string, error) {
 	id, err := gateway.Authenticate(r, verify, "egress")
 	if err != nil || id.Connections == nil || !id.Connections.Valid() || !id.Connections.Allows(target) {
-		return gateway.ErrDenied
+		return "", gateway.ErrDenied
 	}
-	return nil
+	return id.WorkspaceID, nil
 }
 func stripHop(h http.Header) {
 	for _, name := range strings.Split(h.Get("Connection"), ",") {
@@ -27,7 +32,7 @@ func stripHop(h http.Header) {
 		h.Del(name)
 	}
 }
-func forwardHTTP(w http.ResponseWriter, r *http.Request, verify gateway.Verifier, upstream, token string) {
+func forwardHTTP(w http.ResponseWriter, r *http.Request, verify, cached gateway.Verifier, limits *admission, upstream, token string) {
 	if r.URL.Scheme != "http" || r.URL.User != nil || r.URL.Host == "" || r.Host != r.URL.Host {
 		http.Error(w, "HTTP proxy request required", 403)
 		return
@@ -46,10 +51,17 @@ func forwardHTTP(w http.ResponseWriter, r *http.Request, verify gateway.Verifier
 	authRequest.Header.Set("Authorization", r.Header.Get("Proxy-Authorization"))
 	if upstream == "" { // only verifier context uses this header
 		// Keep origin credentials separate from workspace authority.
-		if err := authorize(authRequest, verify, target); err != nil {
+		workspace, err := authorizedWorkspace(authRequest, cached, target)
+		if err != nil {
 			http.Error(w, "connection denied", 403)
 			return
 		}
+		release, ok := limits.acquire(workspace)
+		if !ok {
+			http.Error(w, "workspace connection limit reached", 429)
+			return
+		}
+		defer release()
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
 	defer cancel()

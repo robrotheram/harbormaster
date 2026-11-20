@@ -13,17 +13,17 @@ import (
 )
 
 type Config struct {
-	ResolveSubscription    func(context.Context, string, string) (subscriptionCredential, error) `json:"-"`
-	Mode                   string                                                                `json:"-"`
-	Models                 []string                                                              `json:"models"`
-	Origin                 string                                                                `json:"origin,omitempty"`
-	Network                NetworkPolicy                                                         `json:"network,omitempty"`
-	APIKey                 string                                                                `json:"-"`
-	Verify                 Verifier                                                              `json:"-"`
-	Subscriptions          *SubscriptionConfig                                                   `json:"subscriptions,omitempty"`
-	SubscriptionVaultAddr  string                                                                `json:"-"`
-	SubscriptionVaultCA    string                                                                `json:"-"`
-	SubscriptionVaultToken string                                                                `json:"-"`
+	ResolveSubscription    func(context.Context, string, string, string) (subscriptionCredential, error) `json:"-"`
+	Mode                   string                                                                        `json:"-"`
+	Models                 []string                                                                      `json:"models"`
+	Origin                 string                                                                        `json:"origin,omitempty"`
+	Network                NetworkPolicy                                                                 `json:"network,omitempty"`
+	APIKey                 string                                                                        `json:"-"`
+	Verify                 Verifier                                                                      `json:"-"`
+	Subscriptions          *SubscriptionConfig                                                           `json:"subscriptions,omitempty"`
+	SubscriptionVaultAddr  string                                                                        `json:"-"`
+	SubscriptionVaultCA    string                                                                        `json:"-"`
+	SubscriptionVaultToken string                                                                        `json:"-"`
 	subscriptionHTTP       *http.Client
 }
 
@@ -46,7 +46,11 @@ func ConfigFromEnv() (Config, error) {
 		return c, err
 	}
 	if c.Subscriptions != nil && c.Subscriptions.UserAccounts {
-		c.ResolveSubscription, err = newSubscriptionResolver(os.Getenv("CONTROLPLANE_URL"), token)
+		resolverToken, secretErr := shared.Secret("SUBSCRIPTION_GATEWAY_TOKEN")
+		if secretErr != nil || len(resolverToken) < 32 || resolverToken == token {
+			return c, ErrDenied
+		}
+		c.ResolveSubscription, err = newSubscriptionResolver(os.Getenv("CONTROLPLANE_URL"), resolverToken)
 		if err != nil {
 			return c, err
 		}
@@ -114,8 +118,8 @@ func NewHandler(c Config) (http.Handler, error) {
 			shared.Error(w, 400, "INVALID_REQUEST")
 			return
 		}
-		var fields map[string]json.RawMessage
-		if json.Unmarshal(b, &fields) != nil || fields == nil {
+		fields, err := shared.PolicyJSON(b)
+		if err != nil {
 			shared.Error(w, 400, "INVALID_REQUEST")
 			return
 		}
@@ -127,36 +131,43 @@ func NewHandler(c Config) (http.Handler, error) {
 				return
 			}
 		}
-		var model string
-		var stream bool
-		var messages []map[string]json.RawMessage
-		if json.Unmarshal(fields["model"], &model) != nil || !models[model] {
+		model, ok := fields["model"].(string)
+		if !ok || !models[model] {
 			shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
 			return
 		}
-		if v, ok := fields["stream"]; ok {
-			if json.Unmarshal(v, &stream) != nil {
+		if value, present := fields["stream"]; present {
+			stream, ok := value.(bool)
+			if !ok {
 				shared.Error(w, 400, "INVALID_REQUEST")
 				return
 			}
+			if stream {
+				shared.Error(w, 400, "STREAMING_UNSUPPORTED")
+				return
+			}
 		}
-		if stream {
-			shared.Error(w, 400, "STREAMING_UNSUPPORTED")
-			return
-		}
-		if json.Unmarshal(fields["messages"], &messages) != nil || len(messages) == 0 || len(messages) > 256 {
+		messages, ok := fields["messages"].([]any)
+		if !ok || len(messages) == 0 || len(messages) > 256 {
 			shared.Error(w, 400, "INVALID_REQUEST")
 			return
 		}
-		for _, m := range messages {
-			var role string
-			if json.Unmarshal(m["role"], &role) != nil || (role != "system" && role != "developer" && role != "user" && role != "assistant" && role != "tool") {
+		for _, message := range messages {
+			object, _ := message.(map[string]any)
+			role, _ := object["role"].(string)
+			if role != "system" && role != "developer" && role != "user" && role != "assistant" && role != "tool" {
 				shared.Error(w, 400, "INVALID_REQUEST")
 				return
 			}
 		}
+		b, err = json.Marshal(fields)
+		if err != nil {
+			shared.Error(w, 400, "INVALID_REQUEST")
+			return
+		}
 		if c.Mode == "fixture" {
-			sum := sha256.Sum256(fields["messages"])
+			canonicalMessages, _ := json.Marshal(messages)
+			sum := sha256.Sum256(canonicalMessages)
 			shared.JSON(w, 200, map[string]any{"id": "chatcmpl-fixture-" + hex.EncodeToString(sum[:8]), "object": "chat.completion", "created": 0, "model": "fixture", "choices": []any{map[string]any{"index": 0, "message": map[string]string{"role": "assistant", "content": "[SYNTHETIC FIXTURE] messages_sha256=" + hex.EncodeToString(sum[:])}, "finish_reason": "stop"}}, "usage": map[string]int{"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}})
 			return
 		}

@@ -42,9 +42,11 @@ services:
       MEMORY_QUOTA_BYTES: ${MEMORY_QUOTA_BYTES:-4294967296}
       CONTROL_TOKEN_FILE: /run/secrets/control_token
       CONTROLLER_TOKEN_FILE: /run/secrets/controller_token
+      CREDENTIAL_ENCRYPTION_KEY_FILE: /run/secrets/credential_encryption_key
+      PROJECT_SIGNING_KEY_FILE: /run/secrets/project_signing_key
       DATABASE_URL_FILE: /run/secrets/database_url
       CONTROLLER_URL: http://runtime-controller:8080
-    secrets: [control_token, controller_token, database_url]
+    secrets: [control_token, controller_token, database_url, credential_encryption_key, project_signing_key]
     networks: [metadata, management, dashboard, ingress, host-access]
     ports: ["127.0.0.1:${CONTROL_PORT:-8090}:8080"]
     depends_on:
@@ -57,9 +59,11 @@ services:
     build: {context: ., target: platform, args: {SERVICE: runtime-controller}}
     # This trusted service owns the root-equivalent Docker socket. No agent,
     # dashboard, MCP process, gateway or broker receives it.
-    user: "0:0"
+    user: "10001:10001"
+    group_add: ["${DOCKER_SOCKET_GID:-0}"]
     volumes: [/var/run/docker.sock:/var/run/docker.sock]
     environment:
+      DOCKER_MANAGEMENT_NETWORK: ${COMPOSE_PROJECT_NAME:-agent-workbench}_management
       CONTROLLER_TOKEN_FILE: /run/secrets/controller_token
       GATEWAY_SERVICE_TOKEN_FILE: /run/secrets/gateway_service_token
       GRANT_SECRET_FILE: /run/secrets/grant_secret
@@ -80,12 +84,17 @@ services:
       CODEX_MODEL: ${CODEX_MODEL:-gpt-6.1-sol}
       CLAUDE_MODEL: ${CLAUDE_MODEL:-}
     secrets: [controller_token, gateway_service_token, grant_secret]
+    healthcheck:
+      test: [CMD, /usr/local/bin/healthcheck, "http://runtime-controller:8080/healthz"]
     networks: [management]
 
   dashboard:
     <<: *app
     build: {context: ., target: dashboard, args: {SERVICE: dashboard}}
     environment:
+      DASHBOARD_AUTH: local
+      DASHBOARD_LISTEN_ADDR: ":8080"
+      DASHBOARD_LOCAL_PASSWORD_FILE: /run/secrets/dashboard_local_password
       WORKOS_CLIENT_ID: ${WORKOS_CLIENT_ID:-}
       WORKOS_API_KEY: ${WORKOS_API_KEY:-}
       WORKOS_REDIRECT_URI: ${WORKOS_REDIRECT_URI:-}
@@ -93,7 +102,7 @@ services:
       CONTROLPLANE_READ_URL: http://controlplane:8081
       CONTROLPLANE_URL: http://controlplane:8080
       CONTROL_TOKEN_FILE: /run/secrets/control_token
-    secrets: [control_token]
+    secrets: [control_token, dashboard_local_password]
     networks: [dashboard, ingress, host-access]
     ports: ["127.0.0.1:${DASHBOARD_PORT:-8080}:8080"]
     depends_on:
@@ -104,10 +113,10 @@ services:
     build: {context: ., target: platform, args: {SERVICE: mcp}}
     environment:
       CONTROLPLANE_URL: http://controlplane:8080
-      CONTROL_TOKEN_FILE: /run/secrets/control_token
+      PROJECT_SIGNING_KEY_FILE: /run/secrets/project_signing_key
       MCP_TOKEN_FILE: /run/secrets/mcp_token
       MCP_ALLOWED_HOSTS: localhost,127.0.0.1,mcp
-    secrets: [control_token, mcp_token]
+    secrets: [project_signing_key, mcp_token]
     networks: [ingress, host-access]
     ports: ["127.0.0.1:${MCP_PORT:-8082}:8080"]
     depends_on:
@@ -210,3 +219,6 @@ secrets:
   database_url: {file: ./.local/secrets/database_url}
   subscription_vault_token: {file: ./.local/secrets/subscription_vault_token}
   vault_tls_key: {file: ./.local/secrets/vault_tls_key}
+  dashboard_local_password: {file: ./.local/secrets/dashboard_local_password}
+  credential_encryption_key: {file: ./.local/secrets/credential_encryption_key}
+  project_signing_key: {file: ./.local/secrets/project_signing_key}

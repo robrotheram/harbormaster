@@ -47,7 +47,7 @@ func FirecrackerSelfTest(f *Firecracker, token, service string) error {
 		return errors.New("guest bypass checks did not complete")
 	}
 	grant := f.grant(v)
-	if f.hermes {
+	if f.hermes && projectMCPEnabled() {
 		status, b, err := f.agent(context.Background(), v, "GET", "/v1/runtime-capabilities", nil)
 		var c struct {
 			Hermes bool `json:"hermes"`

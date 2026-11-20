@@ -77,6 +77,10 @@ func TestProjectCredentialsFenceEveryWorkspaceRoute(t *testing.T) {
 			t.Fatalf("cross-project %s %s: %d", tt.method, tt.path, w.Code)
 		}
 	}
+	force := domainRequest(t, s, "project-a-credential", "POST", "/v1/workspaces/"+wa.ID+"/force-stop", `{"idempotency_key":"deny"}`)
+	if force.Code != 403 {
+		t.Fatalf("project credential forced a workspace stop: %d", force.Code)
+	}
 	settings := domainRequest(t, s, "project-a-credential", "POST", "/v1/workspaces/"+wa.ID+"/settings", `{"idle_timeout_minutes":60,"connections":{"mode":"open","destinations":[]}}`)
 	if settings.Code != 403 {
 		t.Fatalf("project credential changed inline policy: %d", settings.Code)

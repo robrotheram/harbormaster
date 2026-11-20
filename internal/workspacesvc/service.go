@@ -254,17 +254,32 @@ func (s *Service) Stop(ctx context.Context, w *shared.Workspace) error {
 	if w.State != "READY" || w.ActiveRuns > 0 || w.BackgroundJobs > 0 {
 		return shared.CodedError{Status: shared.StatusConflict, Code: "WORKSPACE_BUSY"}
 	}
+	return s.stop(ctx, w, s.Runtime.Stop)
+}
+
+func (s *Service) ForceStop(ctx context.Context, w *shared.Workspace) error {
+	runtime, ok := s.Runtime.(interface {
+		ForceStop(context.Context, string) error
+	})
+	if !ok {
+		return shared.CodedError{Status: shared.StatusServiceUnavailable, Code: "FORCE_STOP_UNAVAILABLE"}
+	}
+	return s.stop(ctx, w, runtime.ForceStop)
+}
+
+func (s *Service) stop(ctx context.Context, w *shared.Workspace, stop func(context.Context, string) error) error {
 	w.State = "STOPPING"
 	w.Ready = false
 	if e := s.Store.Save(ctx, *w); e != nil {
 		return e
 	}
-	if e := s.Runtime.Stop(ctx, w.ID); e != nil {
+	if e := stop(ctx, w.ID); e != nil {
 		w.State = "UNKNOWN"
 		s.report("lifecycle", *w, s.Store.Save(ctx, *w))
 		return e
 	}
 	w.State = "STOPPED"
+	w.ActiveRuns, w.BackgroundJobs = 0, 0
 	w.IdleStopAt = nil
 	w.UpdatedAt = s.Now()
 	return s.Store.Save(ctx, *w)

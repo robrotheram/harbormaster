@@ -18,13 +18,15 @@ import (
 )
 
 func Handler(verify gateway.Verifier, upstream, token string) http.Handler {
+	limits := &admission{grants: make(map[[32]byte]cachedGrant), active: make(map[string]int)}
+	cached := limits.verifier(verify)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "GET" && r.URL.Path == "/healthz" {
 			w.Write([]byte("ok"))
 			return
 		}
 		if r.Method != "CONNECT" {
-			forwardHTTP(w, r, verify, upstream, token)
+			forwardHTTP(w, r, verify, cached, limits, upstream, token)
 			return
 		}
 		if !shared.ValidDestination(r.Host) {
@@ -61,10 +63,17 @@ func Handler(verify gateway.Verifier, upstream, token string) http.Handler {
 			}
 		} else {
 			r.Header.Set("Authorization", r.Header.Get("Proxy-Authorization"))
-			if err = authorize(r, verify, r.Host); err != nil {
+			workspace, authErr := authorizedWorkspace(r, cached, r.Host)
+			if authErr != nil {
 				http.Error(w, "Connection denied by workspace policy", 403)
 				return
 			}
+			release, ok := limits.acquire(workspace)
+			if !ok {
+				http.Error(w, "workspace connection limit reached", 429)
+				return
+			}
+			defer release()
 			transport, _ := (gateway.NetworkPolicy{AllowedCIDRs: []string{"0.0.0.0/0", "::/0"}}).Transport(nil)
 			remote, err = transport.DialContext(ctx, "tcp", r.Host)
 		}

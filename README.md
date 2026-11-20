@@ -35,7 +35,7 @@ Requires Docker Engine with Compose, access to its daemon, Go for bootstrap, and
 make up
 ```
 
-This provisions random local application credentials without printing them, builds every service plus the workspace image, and starts the platform. Existing credentials and persistent data are preserved. The dashboard is at **http://127.0.0.1:8080** and requires no login unless [WorkOS AuthKit](docs/authkit.md) is configured. MCP is at **http://127.0.0.1:8082/mcp**. The management API is at **http://127.0.0.1:8090**.
+This provisions random local application credentials without printing them, builds every service plus the workspace image, and starts the platform. Existing credentials and persistent data are preserved. The dashboard is at **http://127.0.0.1:8080** and prompts for the username `operator` and the launcher password in `.local/secrets/dashboard_local_password`. [WorkOS AuthKit](docs/authkit.md) also supports hosted sign-in. MCP is at **http://127.0.0.1:8082/mcp**. The management API is at **http://127.0.0.1:8090**.
 
 Only these loopback ports are published. PostgreSQL, Vault and the runtime controller have no published host ports. `make down` stops the platform without removing volumes. Dynamically created workspaces are managed separately; stop them before taking the platform down.
 
