@@ -45,7 +45,7 @@ func (s *Server) forgeHosts(ctx context.Context) ([]forge.Host, error) {
 		if e != nil {
 			return nil, shared.CodedError{Status: http.StatusServiceUnavailable, Code: "STORAGE_UNAVAILABLE"}
 		}
-		a.Token, e = forge.OpenToken(a.Host, s.cfg.Token, sealed)
+		a.Token, e = s.openForgeCredential(a.Host, sealed)
 		if e != nil {
 			return nil, e
 		}
@@ -96,7 +96,7 @@ func (s *Server) registerForgeAccounts(mux *http.ServeMux) {
 			writeForgeError(w, http.StatusBadGateway, err)
 			return
 		}
-		sealed, err := forge.SealToken(host, s.cfg.Token)
+		sealed, err := s.sealForgeCredential(host)
 		if err != nil {
 			shared.Error(w, 503, "FORGE_CREDENTIAL_UNAVAILABLE")
 			return

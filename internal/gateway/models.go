@@ -18,6 +18,7 @@ func registerModels(mux *http.ServeMux, c Config, catalog *codexCatalog) {
 		vault, _ = subscriptionVaultClient(c.SubscriptionVaultAddr, c.SubscriptionVaultCA)
 	}
 	mux.HandleFunc("GET /v1/models", func(w http.ResponseWriter, r *http.Request) {
+		grant := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 		id, err := Authenticate(r, c.Verify, "inference")
 		if err != nil {
 			shared.Error(w, 401, "UNAUTHORIZED")
@@ -31,7 +32,7 @@ func registerModels(mux *http.ServeMux, c Config, catalog *codexCatalog) {
 				if c.Subscriptions.UserAccounts {
 					ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 					var err error
-					cred, err = c.ResolveSubscription(ctx, id.WorkspaceID, provider)
+					cred, err = c.ResolveSubscription(ctx, id.WorkspaceID, provider, grant)
 					cancel()
 					allowed = err == nil && cred.AccessToken != "" && !strings.ContainsAny(cred.AccessToken, " \r\n\t") && cred.ExpiresAt > time.Now().Add(30*time.Second).Unix()
 				} else {

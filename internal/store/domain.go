@@ -22,6 +22,16 @@ func (s *Store) ProjectByKey(ctx context.Context, key string) (shared.Project, e
 func (s *Store) Projects(ctx context.Context) ([]shared.Project, error) {
 	return jsonmetadata.Query[shared.Project](ctx, s.DB, `SELECT metadata FROM projects WHERE id NOT IN (SELECT id FROM deleted_resources WHERE kind='project') ORDER BY id`)
 }
+
+// Count creation reservations as well as ready projects so retries cannot evade
+// quota while a project namespace is still provisioning.
+func (s *Store) CreatedProjectCount(ctx context.Context, userID string) (int, error) {
+	prefix := userID + ":"
+	var count int
+	err := s.DB.QueryRowContext(ctx, `SELECT count(*) FROM projects WHERE substr(create_key,1,$1)=$2 AND id NOT IN (SELECT id FROM deleted_resources WHERE kind='project')`, len(prefix), prefix).Scan(&count)
+	return count, err
+}
+
 func (s *Store) CreateProject(ctx context.Context, p shared.Project, key string) error {
 	b, err := json.Marshal(p)
 	if err != nil {

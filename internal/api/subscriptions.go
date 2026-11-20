@@ -91,7 +91,7 @@ func (s *Server) registerSubscriptions(mux *http.ServeMux) {
 					shared.Error(w, 409, "PROVIDER_NOT_CONFIGURED")
 					return
 				}
-				c, err := subscriptions.Open(s.cfg.Token, subscriptions.Binding(owner, saved.ID), saved.Credential)
+				c, err := s.openSubscription(owner, saved.ID, saved.Credential)
 				if err != nil || c.ExpiresAt <= s.now().Add(time.Minute).Unix() {
 					shared.Error(w, 409, "PROVIDER_LOGIN_REQUIRED")
 					return
@@ -122,6 +122,7 @@ func (s *Server) resolveSubscription(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		WorkspaceID string `json:"workspace_id"`
 		Provider    string `json:"provider"`
+		Grant       string `json:"grant"`
 	}
 	if !decodeRouteBody(w, r, &input) {
 		return
@@ -133,8 +134,14 @@ func (s *Server) resolveSubscription(w http.ResponseWriter, r *http.Request) {
 		shared.Error(w, 400, "INVALID_REQUEST")
 		return
 	}
-	if _, err := s.Store.Workspace(r.Context(), input.WorkspaceID); err != nil {
+	workspace, err := s.Store.Workspace(r.Context(), input.WorkspaceID)
+	if err != nil {
 		shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
+		return
+	}
+	if input.Grant == "" || strings.ContainsAny(input.Grant, " \r\n\t") || s.cfg.VerifySubscriptionGrant == nil ||
+		!s.cfg.VerifySubscriptionGrant(r.Context(), input.Grant, input.WorkspaceID, workspace.ProjectID) {
+		shared.Error(w, 401, "UNAUTHORIZED")
 		return
 	}
 	c, err := s.workerSubscription(r.Context(), input.WorkspaceID, input.Provider)
@@ -160,7 +167,7 @@ func (s *Server) validSubscription(ctx context.Context, owner, id, provider stri
 	if err != nil || saved.Provider != provider {
 		return subscriptions.Credential{}, subscriptionRequired
 	}
-	c, err := subscriptions.Open(s.cfg.Token, subscriptions.Binding(owner, id), saved.Credential)
+	c, err := s.openSubscription(owner, id, saved.Credential)
 	if err != nil || c.ExpiresAt <= s.now().Add(time.Minute).Unix() {
 		return subscriptions.Credential{}, subscriptionRequired
 	}

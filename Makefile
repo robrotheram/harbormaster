@@ -27,7 +27,7 @@ check: fmt-check build test frontend-check hermes-check kubernetes-check
 up: bootstrap
 	docker compose --profile build build
 	go run ./cmd/workbench check-runtime-host
-	docker compose up -d --wait
+	DOCKER_SOCKET_GID="$$(stat -c %g /var/run/docker.sock)" docker compose up -d --wait
 down:
 	docker compose down
 logs:

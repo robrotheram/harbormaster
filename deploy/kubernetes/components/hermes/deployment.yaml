@@ -1,5 +1,5 @@
 # Set the project label and pin the image in the consuming overlay. Provision the named
-# Secret out of band with control_token, mcp_token, gateway_service_token.
+# Secret out of band with project_signing_key, mcp_token, gateway_service_token.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -31,7 +31,7 @@ spec:
             - {name: CONTROLPLANE_URL, value: 'http://controlplane.harbormaster.svc:8080'}
             - {name: HERMES_CONTROLLER_URL, value: 'http://runtime-controller.harbormaster.svc:8080'}
             - {name: MCP_ALLOWED_HOSTS, value: 'hermes-mcp.harbormaster.svc:8080'}
-            - {name: CONTROL_TOKEN_FILE, value: /run/secrets/control_token}
+            - {name: PROJECT_SIGNING_KEY_FILE, value: /run/secrets/project_signing_key}
             - {name: MCP_TOKEN_FILE, value: /run/secrets/mcp_token}
             - {name: GATEWAY_SERVICE_TOKEN_FILE, value: /run/secrets/gateway_service_token}
           securityContext:
@@ -52,6 +52,12 @@ spec:
             - {name: tmp, mountPath: /tmp}
       volumes:
         - name: secrets
-          secret: {secretName: hermes-mcp-secrets, defaultMode: 288}
+          secret:
+            secretName: hermes-mcp-secrets
+            defaultMode: 288
+            items:
+              - {key: project_signing_key, path: project_signing_key}
+              - {key: mcp_token, path: mcp_token}
+              - {key: gateway_service_token, path: gateway_service_token}
         - name: tmp
           emptyDir: {sizeLimit: 64Mi}

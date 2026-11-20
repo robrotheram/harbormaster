@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/pem"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -330,5 +331,24 @@ func TestStorageEvidenceRejectsForeignHomeAndWeakenedFence(t *testing.T) {
 		if err := k.storageEvidence(context.Background(), r); err == nil {
 			t.Fatal("storage ownership/fence bypass")
 		}
+	}
+}
+
+func TestForceStopDoesNotCallGuest(t *testing.T) {
+	k, _ := kubeProvider(t)
+	spec := protocol.WorkspaceSpec{ProjectID: "proj_one", HomeID: "home_one", AgentKind: "t3"}
+	if _, err := k.StartConfigured(t.Context(), "ws_force", spec); err != nil {
+		t.Fatal(err)
+	}
+	k.agentHTTP = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		t.Errorf("forced stop contacted guest: %s", r.URL.Path)
+		return nil, fmt.Errorf("guest unresponsive")
+	})}
+	if failure := k.forceStopWorkspace(t.Context(), "ws_force"); failure != nil {
+		t.Fatalf("forced stop failed: %+v", failure)
+	}
+	resource, err := k.find(t.Context(), "ws_force")
+	if err != nil || !sandboxSuspended(resource) || sandboxReady(resource) {
+		t.Fatalf("sandbox suspension not confirmed: %v", err)
 	}
 }

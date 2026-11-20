@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -53,7 +54,7 @@ func ConfigFromEnv() (Config, error) {
 			return c, err
 		}
 	}
-	if c.ControlToken, err = read("CONTROL_TOKEN_FILE"); err != nil {
+	if c.ControlToken, err = read("PROJECT_SIGNING_KEY_FILE"); err != nil {
 		return c, err
 	}
 	if c.MCPToken, err = read("MCP_TOKEN_FILE"); err != nil {
@@ -97,6 +98,17 @@ func New(c Config) (http.Handler, error) {
 	registerWorkTools(projectServer, cp)
 	registerFactoryTools(projectServer, cp)
 	projectServer.RemoveTools("work_review")
+	projectServer.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
+		return func(ctx context.Context, method string, request mcp.Request) (mcp.Result, error) {
+			if method == "tools/call" {
+				call, ok := request.(*mcp.CallToolRequest)
+				if !ok || call.Params == nil || !shared.ProjectToolAllowed(call.Params.Name) {
+					return nil, &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: "tool not permitted for project access"}
+				}
+			}
+			return next(ctx, method, request)
+		}
+	})
 	stream := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
 		if r.URL.Path == "/project-mcp" {
 			return projectServer

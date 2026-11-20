@@ -30,8 +30,8 @@ spec:
           value: http://controlplane:8081
         - name: MCP_ALLOWED_HOSTS
           value: localhost,127.0.0.1,mcp,mcp.harbormaster.svc,mcp.harbormaster.svc.cluster.local
-        - name: CONTROL_TOKEN_FILE
-          value: /run/secrets/control_token
+        - name: PROJECT_SIGNING_KEY_FILE
+          value: /run/secrets/project_signing_key
         - name: MCP_TOKEN_FILE
           value: /run/secrets/mcp_token
         securityContext:
@@ -68,6 +68,11 @@ spec:
       - name: secrets
         secret:
           secretName: mcp-secrets
+          items:
+          - key: project_signing_key
+            path: project_signing_key
+          - key: mcp_token
+            path: mcp_token
       - name: tmp
         emptyDir:
           sizeLimit: 64Mi

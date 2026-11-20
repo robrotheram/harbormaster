@@ -23,7 +23,18 @@ import (
 // The local single-operator launcher is a separate surface from the read-only
 // operational snapshot. It has a control credential, but no runtime/Vault access.
 func NewInteractiveHandler(readURL, controlURL, token string) (http.Handler, error) {
-	read, err := NewHandler(readURL, shared.DashboardReadToken(token))
+	return newInteractiveHandler(readURL, controlURL, shared.DashboardReadToken(token), token)
+}
+
+func NewHostedInteractiveHandler(readURL, controlURL, readToken, signingKey string) (http.Handler, error) {
+	if len(readToken) < 32 || len(signingKey) < 32 || readToken == signingKey {
+		return nil, errors.New("hosted dashboard requires distinct snapshot and signing credentials")
+	}
+	return newInteractiveHandler(readURL, controlURL, readToken, signingKey)
+}
+
+func newInteractiveHandler(readURL, controlURL, readToken, token string) (http.Handler, error) {
+	read, err := NewHandler(readURL, readToken)
 	if err != nil {
 		return nil, err
 	}
@@ -36,6 +47,7 @@ func NewInteractiveHandler(readURL, controlURL, token string) (http.Handler, err
 		id      string
 		expires time.Time
 	}
+	binding := func(t ticket) (*shared.HumanIdentity, time.Time) { return t.human, t.expires }
 	var ticketsMu sync.Mutex
 	tickets := map[string]ticket{}
 	consoleSessions := map[string]ticket{}
@@ -120,11 +132,7 @@ func NewInteractiveHandler(readURL, controlURL, token string) (http.Handler, err
 				if issued.human != nil {
 					cookieValue = shared.NewID("session_")
 					ticketsMu.Lock()
-					for key, session := range consoleSessions {
-						if time.Now().After(session.expires) {
-							delete(consoleSessions, key)
-						}
-					}
+					limitConnections(consoleSessions, issued.human, 16, binding)
 					if len(consoleSessions) >= 256 {
 						ticketsMu.Unlock()
 						writeError(w, 429, "TOO_MANY_CONNECTIONS")
@@ -254,19 +262,15 @@ func NewInteractiveHandler(readURL, controlURL, token string) (http.Handler, err
 					}
 					key := shared.NewID("connect_")
 					ticketsMu.Lock()
-					for k, t := range tickets {
-						if time.Now().After(t.expires) {
-							delete(tickets, k)
-						}
+					var human *shared.HumanIdentity
+					if h, ok := r.Context().Value(humanIdentityKey{}).(shared.HumanIdentity); ok {
+						human = &h
 					}
+					limitConnections(tickets, human, 8, binding)
 					if len(tickets) >= 256 {
 						ticketsMu.Unlock()
 						writeError(w, 429, "TOO_MANY_CONNECTIONS")
 						return
-					}
-					var human *shared.HumanIdentity
-					if h, ok := r.Context().Value(humanIdentityKey{}).(shared.HumanIdentity); ok {
-						human = &h
 					}
 					tickets[key] = ticket{human: human, id: parts[1], expires: time.Now().Add(time.Minute)}
 					ticketsMu.Unlock()

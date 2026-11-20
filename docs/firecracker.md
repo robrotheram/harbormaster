@@ -91,7 +91,7 @@ configuration management with these inputs:
 5. Install the existing `controller_token`, `gateway_service_token` and
    `grant_secret` as root-owned mode 0600 files in mode 0700
    `/etc/agent-workbench/firecracker`. Copy the existing control-plane authority
-   (`.local/secrets/control_token`) there as `project_mcp_signing_key`; do not
+   (`.local/secrets/project_signing_key`) there as `project_mcp_signing_key`; do not
    generate a different signing key.
 6. Install `deploy/firecracker/agent-workbench-firecracker.service` into systemd
    and reload units. Run `controller --prepare-host`, then `controller --self-test`

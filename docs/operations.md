@@ -94,6 +94,38 @@ error. Leave the old databases and their migration records intact for recovery.
    deployment needs, including schedules and integration bindings. Preserve
    Vault and unrelated volumes.
 
+## Security release upgrade
+
+Rerun `make bootstrap` before restarting an existing Compose deployment so
+the local launcher and credential encryption key files are present. Direct
+Compose invocations must set `DOCKER_SOCKET_GID` to the group of the Docker
+socket when it differs from the default. The Docker controller listens on its
+management interface and retains outbound access to workspace networks.
+
+For OAuth2 Proxy deployments, set `OAUTH2_PROXY_ALLOWED_EMAILS` on the dashboard
+to the comma-separated list of permitted identities. The proxy must return the
+verified email in its auth response. On controlplane, set
+`PROJECT_CREATOR_EMAILS` for human accounts approved to create projects.
+`MAX_PROJECTS_PER_USER` defaults to five. Existing project membership and
+admin-bearer recovery remain available.
+
+Provision the same `DASHBOARD_READ_TOKEN` and
+`DASHBOARD_HUMAN_SIGNING_KEY` on controlplane and the hosted dashboard. The
+dashboard uses its snapshot credential and signs short-lived human claims.
+Remove its old control token mount. Provision a separate `PROJECT_SIGNING_KEY`
+on controlplane, MCP, and the optional Hermes MCP service. Reissue project tokens
+after the signing-key change. A Firecracker host that serves project MCP also
+needs the corresponding project signing key. Keep the admin token and credential
+encryption key out of the hosted dashboard and MCP Secrets.
+
+Hosted native desktop pairing is disabled. Browser-based worker consoles and
+previews continue to use workspace connection tickets.
+
+For an unresponsive guest, an administrator can call
+`POST /v1/workspaces/{id}/force-stop` with a normal idempotency key. This
+bypasses guest quiescing and preserves the workspace volume. Processes and
+unfinished tasks can be interrupted.
+
 ## Health, shutdown and diagnostics
 
 Start with `docker compose ps` and `docker compose logs --since=15m --tail=200`.

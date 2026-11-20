@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/maphash"
 	"io"
 	"log/slog"
 	"net"
@@ -45,7 +46,9 @@ type fcVM struct {
 type Firecracker struct {
 	token, service, secret string
 	mu                     sync.Mutex
-	lifecycle              sync.Mutex
+	lifecycle              sync.RWMutex
+	allocation             sync.Mutex
+	workspaceOps           [64]sync.Mutex
 	vms                    map[string]*fcVM
 	slots                  chan struct{}
 	artifacts              map[string]os.FileInfo
@@ -242,7 +245,7 @@ func (f *Firecracker) launch(ctx context.Context, id string, spec protocol.Works
 	}
 	isHermes := spec.AgentKind == "hermes"
 	if isHermes {
-		if !f.hermes || spec.HermesModel == "" || len(spec.HermesModel) > 128 || strings.ContainsAny(spec.HermesModel, " \r\n\t\x00") {
+		if !f.hermes || !projectMCPEnabled() || spec.HermesModel == "" || len(spec.HermesModel) > 128 || strings.ContainsAny(spec.HermesModel, " \r\n\t\x00") {
 			return nil, errors.New("Hermes runtime or configured model unavailable")
 		}
 	}
@@ -253,6 +256,13 @@ func (f *Firecracker) launch(ctx context.Context, id string, spec protocol.Works
 	if !shared.ValidID(id) || spec.ConnectionMode == "open" || spec.ParentID != "" {
 		return nil, errors.New("unsupported sandbox spec (open networking and parent seeding are refused)")
 	}
+	f.allocation.Lock()
+	allocatedSlot := true
+	defer func() {
+		if allocatedSlot {
+			f.allocation.Unlock()
+		}
+	}()
 	f.mu.Lock()
 	old := f.vms[id]
 	oldRunning := old != nil && old.running && !old.stopping
@@ -417,6 +427,8 @@ func (f *Firecracker) launch(ctx context.Context, id string, spec protocol.Works
 	v.running = true
 	f.vms[id] = v
 	f.mu.Unlock()
+	allocatedSlot = false
+	f.allocation.Unlock()
 	go func() { _ = cmd.Wait(); logFile.Close() }()
 	err = waitForFirecrackerResume(ctx, func() error {
 		return f.verifyVM(v)
@@ -738,7 +750,7 @@ func (f *Firecracker) Handler() http.Handler {
 	return protocol.NewControllerHandler(protocol.Backend{
 		Token: f.token, GatewayServiceToken: f.service, Health: f.health, VerifyGrant: f.verify,
 		RegisterManagement: f.registerManagement,
-		Start:              f.start, Stop: f.stop, Inspect: f.inspectWorkspace,
+		Start:              f.start, Stop: f.stop, ForceStop: f.forceStop, Inspect: f.inspectWorkspace,
 		BindNetworkPolicy: f.bindNetworkPolicy, Reconcile: f.reconcileNetwork, Capabilities: f.capabilities,
 		Proxy: f.proxy, Agent: f.proxyAgent,
 		StartBodyLimit: 32768, AllowEmptyStart: true, WorkspaceActionFallback: true,
@@ -805,7 +817,7 @@ func (f *Firecracker) capabilities() protocol.RuntimeCapability {
 	caps := protocol.DevelopmentCapability("firecracker", "firecracker-2", 1<<30)
 	caps.IsolationStatus = "jailed-vm"
 	caps.NetworkStatus = "no-nic-vsock"
-	if f.hermes && projectMCPSecret() != "" {
+	if f.hermes && projectMCPEnabled() && projectMCPSecret() != "" {
 		caps.AgentKinds = append(caps.AgentKinds, "hermes")
 	}
 	return caps
@@ -824,9 +836,20 @@ func (f *Firecracker) inspectWorkspace(ctx context.Context, id string) (shared.O
 	return f.observation(ctx, f.workspace(id)), nil
 }
 
+var workspaceLockSeed = maphash.MakeSeed()
+
+func (f *Firecracker) lockWorkspace(id string) func() {
+	f.lifecycle.RLock()
+	lock := &f.workspaceOps[maphash.String(workspaceLockSeed, id)%uint64(len(f.workspaceOps))]
+	lock.Lock()
+	return func() {
+		lock.Unlock()
+		f.lifecycle.RUnlock()
+	}
+}
+
 func (f *Firecracker) start(ctx context.Context, id string, spec protocol.WorkspaceSpec) (shared.Observation, *protocol.ControllerError) {
-	f.lifecycle.Lock()
-	defer f.lifecycle.Unlock()
+	defer f.lockWorkspace(id)()
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	v, err := f.launch(ctx, id, spec)
@@ -838,8 +861,9 @@ func (f *Firecracker) start(ctx context.Context, id string, spec protocol.Worksp
 }
 
 func (f *Firecracker) stop(ctx context.Context, id string) *protocol.ControllerError {
-	f.lifecycle.Lock()
-	defer f.lifecycle.Unlock()
+	defer f.lockWorkspace(id)()
+	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
 	f.mu.Lock()
 	v := f.vms[id]
 	running := v != nil && v.running && !v.stopping
@@ -865,6 +889,16 @@ func (f *Firecracker) stop(ctx context.Context, id string) *protocol.ControllerE
 		}
 	}
 	if v != nil {
+		if err := f.kill(v); err != nil {
+			return protocol.Failure(503, "SANDBOX_STOP_FAILED")
+		}
+	}
+	return nil
+}
+
+func (f *Firecracker) forceStop(_ context.Context, id string) *protocol.ControllerError {
+	defer f.lockWorkspace(id)()
+	if v := f.workspace(id); v != nil {
 		if err := f.kill(v); err != nil {
 			return protocol.Failure(503, "SANDBOX_STOP_FAILED")
 		}

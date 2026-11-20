@@ -112,12 +112,15 @@ generation grant. The host forwards only MCP initialization, ping, discovery and
 nine tools: work_create, work_list, work_run, work_attempts, work_cancel, exchange_publish, exchange_read,
 exchange_submit, note_publish. The upstream target is compiled in:
 `http://127.0.0.1:18085/project-mcp`. No guest-selected host is accepted.
-The Compose Firecracker overlay publishes MCP there on host loopback.
+The Compose Firecracker overlay publishes MCP there on host loopback. Set
+`FIRECRACKER_HERMES_PROJECT_MCP=true` on the host controller (including during
+Hermes self-test) to activate the channel. Each VM gets an independent limit
+of 8 requests per second with a burst of 16.
 
-During Firecracker provisioning, copy `.local/secrets/control_token` to
+During Firecracker provisioning, copy `.local/secrets/project_signing_key` to
 `/etc/agent-workbench/firecracker/project_mcp_signing_key`.
 It is a root-owned 0600 file with root-owned non-writable ancestors. Its content must equal the MCP
-and control-plane `CONTROL_TOKEN_FILE` signing authority. This is deliberately a
+and control-plane `PROJECT_SIGNING_KEY_FILE` signing authority. This is deliberately a
 host-only file; neither that key nor a global MCP/operator credential enters the
 guest. Missing provisioning prevents Hermes admission and capability advertisement.
 A mismatch with upstream is rejected during discovery, before model execution.

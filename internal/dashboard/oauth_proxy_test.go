@@ -26,6 +26,7 @@ func TestOAuthProxyValidatesSessionRatherThanForwardedIdentity(t *testing.T) {
 					t.Error("noncanonical origin")
 				}
 				w.Header().Set("X-Auth-Request-User", "verified-operator")
+				w.Header().Set("X-Auth-Request-Email", "operator@example.test")
 				w.Header().Set("Location", "https://untrusted.invalid")
 				w.WriteHeader(status)
 			}))
@@ -37,7 +38,7 @@ func TestOAuthProxyValidatesSessionRatherThanForwardedIdentity(t *testing.T) {
 				}
 				w.WriteHeader(204)
 			})
-			handler, err := NewOAuthProxyHandler(next, OAuthProxyConfig{"https://reference.example", proxy.URL + "/oauth2/auth", "https://signin.example"})
+			handler, err := NewOAuthProxyHandler(next, OAuthProxyConfig{"https://reference.example", proxy.URL + "/oauth2/auth", "https://signin.example", []string{"operator@example.test"}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -81,7 +82,7 @@ func TestOAuthProxySessionOriginAndLogout(t *testing.T) {
 		w.WriteHeader(202)
 	}))
 	defer proxy.Close()
-	h, err := NewOAuthProxyHandler(http.NotFoundHandler(), OAuthProxyConfig{"https://reference.example", proxy.URL + "/oauth2/auth", "https://signin.example"})
+	h, err := NewOAuthProxyHandler(http.NotFoundHandler(), OAuthProxyConfig{"https://reference.example", proxy.URL + "/oauth2/auth", "https://signin.example", []string{"operator@example.test"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,10 +155,10 @@ func TestOAuthProxySessionOriginAndLogout(t *testing.T) {
 
 func TestOAuthProxyRequiresCompleteConfiguration(t *testing.T) {
 	for _, cfg := range []OAuthProxyConfig{
-		{}, {"https://reference.example", "", "https://signin.example"},
-		{"http://reference.example", "https://auth.example/oauth2/auth", "https://signin.example"},
-		{"https://reference.example/path", "https://auth.example/oauth2/auth", "https://signin.example"},
-		{"https://reference.example", "https://user:password@auth.example/oauth2/auth", "https://signin.example"},
+		{}, {"https://reference.example", "", "https://signin.example", []string{"operator@example.test"}},
+		{"http://reference.example", "https://auth.example/oauth2/auth", "https://signin.example", []string{"operator@example.test"}},
+		{"https://reference.example/path", "https://auth.example/oauth2/auth", "https://signin.example", []string{"operator@example.test"}},
+		{"https://reference.example", "https://user:password@auth.example/oauth2/auth", "https://signin.example", []string{"operator@example.test"}},
 	} {
 		if _, err := NewOAuthProxyHandler(http.NotFoundHandler(), cfg); err == nil {
 			t.Fatalf("accepted invalid config: %+v", cfg)

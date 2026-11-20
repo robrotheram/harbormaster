@@ -113,6 +113,9 @@ func ReadConfig(path string, dst any) error {
 	return Decode(b, dst)
 }
 func Decode(b []byte, dst any) error {
+	if _, err := shared.PolicyJSON(b); err != nil {
+		return ErrDenied
+	}
 	d := json.NewDecoder(strings.NewReader(string(b)))
 	d.DisallowUnknownFields()
 	if err := d.Decode(dst); err != nil {

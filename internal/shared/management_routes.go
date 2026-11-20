@@ -120,6 +120,7 @@ var managementRoutes = []managementRoute{
 	{http.MethodPost, "/v1/workspaces/{id}/delete", 4096, 1024, noSharedHuman},
 	{http.MethodPost, "/v1/workspaces/{id}/start", 4096, 1024, noSharedHuman},
 	{http.MethodPost, "/v1/workspaces/{id}/stop", 4096, 1024, noSharedHuman},
+	{http.MethodPost, "/v1/workspaces/{id}/force-stop", 0, 1024, noSharedHuman},
 	{http.MethodPost, "/v1/workspaces/{id}/desktop-pair", 4096, 0, noSharedHuman},
 	{http.MethodPost, "/v1/workspaces/{id}/enable-t3", 4096, 1024, noSharedHuman},
 	{http.MethodPost, "/v1/workspaces/{id}/settings", 32768, 32768, noSharedHuman},

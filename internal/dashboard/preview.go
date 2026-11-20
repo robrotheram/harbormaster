@@ -29,6 +29,11 @@ type previewBinding struct {
 	Workspace, Service, Host, Project string
 	Expiry                            time.Time
 }
+
+func previewConnectionBinding(p previewBinding) (*shared.HumanIdentity, time.Time) {
+	return p.Human, p.Expiry
+}
+
 type previewIngress struct {
 	mu                sync.Mutex
 	tickets, sessions map[string]previewBinding
@@ -107,25 +112,17 @@ func (p *previewIngress) issue(w http.ResponseWriter, r *http.Request, workspace
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	for k, v := range p.tickets {
-		if time.Now().After(v.Expiry) {
-			delete(p.tickets, k)
-		}
+	var human *shared.HumanIdentity
+	if h, ok := r.Context().Value(humanIdentityKey{}).(shared.HumanIdentity); ok {
+		human = &h
 	}
-	for k, v := range p.sessions {
-		if time.Now().After(v.Expiry) {
-			delete(p.sessions, k)
-		}
-	}
+	limitConnections(p.tickets, human, 8, previewConnectionBinding)
+	limitConnections(p.sessions, nil, 0, previewConnectionBinding)
 	if len(p.tickets)+len(p.sessions) >= 512 {
 		writeError(w, 429, "TOO_MANY_CONNECTIONS")
 		return
 	}
 	key := shared.NewID("ticket_")
-	var human *shared.HumanIdentity
-	if h, ok := r.Context().Value(humanIdentityKey{}).(shared.HumanIdentity); ok {
-		human = &h
-	}
 	p.tickets[key] = previewBinding{Human: human, Embedded: input.Embedded, ParentOrigin: parentOrigin, Application: state.Kind == "application", Workspace: workspace, Service: service, Host: host, Project: owner.Project, Expiry: time.Now().Add(time.Minute), ServiceExpiry: time.Unix(state.Expiry, 0)}
 	shared.JSON(w, 200, map[string]string{"preview_url": scheme + "://" + host + "/connect#ticket=" + url.QueryEscape(key)})
 }
@@ -165,6 +162,7 @@ func (p *previewIngress) serve(w http.ResponseWriter, r *http.Request) {
 			binding.Expiry = binding.ServiceExpiry
 		}
 		key := shared.NewID("session_")
+		limitConnections(p.sessions, binding.Human, 16, previewConnectionBinding)
 		p.sessions[key] = binding
 		p.mu.Unlock()
 		cookie := &http.Cookie{Name: hostCookieName("awb_preview", workerSecure(r)), Value: key, Path: "/", HttpOnly: true, Secure: workerSecure(r), SameSite: http.SameSiteStrictMode, Expires: binding.Expiry}

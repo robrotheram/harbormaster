@@ -40,7 +40,7 @@ components:
 ```
 
 Provision `hermes-mcp-secrets` in `harbormaster` outside Git with
-`control_token`, `mcp_token` and `gateway_service_token`. Pin the MCP image and
+`project_signing_key`, `mcp_token` and `gateway_service_token`. Pin the MCP image and
 set the project label in your overlay. It has no service
 account token and reaches the controller verifier through its trusted service
 credential. Do not give those credentials to a workspace.

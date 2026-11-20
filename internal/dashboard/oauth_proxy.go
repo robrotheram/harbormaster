@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/mail"
 	"net/url"
 	"strings"
 	"sync"
@@ -16,7 +17,10 @@ import (
 // OAuthProxyConfig integrates an operator-owned OAuth2 Proxy. The dashboard
 // checks the session itself; client-supplied identity headers grant no access.
 // This gates the shared operator console, not per-project authorization.
-type OAuthProxyConfig struct{ Origin, AuthURL, PublicURL string }
+type OAuthProxyConfig struct {
+	Origin, AuthURL, PublicURL string
+	AllowedEmails              []string
+}
 
 func NewOAuthProxyHandler(next http.Handler, cfg OAuthProxyConfig) (http.Handler, error) {
 	origin, err := url.Parse(cfg.Origin)
@@ -30,6 +34,18 @@ func NewOAuthProxyHandler(next http.Handler, cfg OAuthProxyConfig) (http.Handler
 	auth, err := url.Parse(cfg.AuthURL)
 	if err != nil || (auth.Scheme != "https" && auth.Scheme != "http") || auth.Host == "" || auth.User != nil || auth.Path != "/oauth2/auth" || auth.RawQuery != "" || auth.Fragment != "" || auth.ForceQuery {
 		return nil, errors.New("OAuth2 Proxy auth URL must end in /oauth2/auth")
+	}
+	allowedEmails := make(map[string]bool)
+	for _, email := range cfg.AllowedEmails {
+		email = strings.TrimSpace(email)
+		address, err := mail.ParseAddress(email)
+		if err != nil || address.Address != email {
+			return nil, errors.New("OAUTH2_PROXY_ALLOWED_EMAILS must contain plain email addresses")
+		}
+		allowedEmails[strings.ToLower(email)] = true
+	}
+	if len(allowedEmails) == 0 {
+		return nil, errors.New("OAUTH2_PROXY_ALLOWED_EMAILS is required")
 	}
 	client := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{Proxy: nil, MaxResponseHeaderBytes: 32 << 10}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	login := cfg.PublicURL + "/oauth2/start?" + url.Values{"rd": {cfg.Origin + "/app/"}}.Encode()
@@ -122,6 +138,10 @@ func NewOAuthProxyHandler(next http.Handler, cfg OAuthProxyConfig) (http.Handler
 		}
 		if id == "" {
 			writeError(w, 503, "AUTH_IDENTITY_UNAVAILABLE")
+			return
+		}
+		if len(response.Header.Values("X-Auth-Request-Email")) != 1 || !allowedEmails[strings.ToLower(email)] {
+			writeError(w, 403, "NOT_FOUND_OR_FORBIDDEN")
 			return
 		}
 		for _, cookie := range response.Header.Values("Set-Cookie") {

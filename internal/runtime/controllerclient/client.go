@@ -132,7 +132,15 @@ func (c *Client) Reconcile(ctx context.Context, id string) error {
 	return nil
 }
 func (c *Client) Stop(ctx context.Context, id string) error {
-	s, _, e := c.do(ctx, "POST", "/v1/workspaces/"+id+"/stop", nil)
+	return c.stop(ctx, id, "stop")
+}
+
+func (c *Client) ForceStop(ctx context.Context, id string) error {
+	return c.stop(ctx, id, "force-stop")
+}
+
+func (c *Client) stop(ctx context.Context, id, action string) error {
+	s, _, e := c.do(ctx, "POST", "/v1/workspaces/"+id+"/"+action, nil)
 	if e != nil {
 		return e
 	}

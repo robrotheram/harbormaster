@@ -2,6 +2,7 @@ package main
 
 import (
 	"agent-workbench/internal/api"
+	"agent-workbench/internal/gateway"
 	"agent-workbench/internal/runtime/controllerclient"
 	"agent-workbench/internal/shared"
 	"agent-workbench/internal/store"
@@ -71,7 +72,56 @@ func main() {
 		slog.Error("subscription gateway credential unavailable")
 		os.Exit(1)
 	}
-	server := api.New(db, controllerclient.NewClient(shared.Env("CONTROLLER_URL", "http://runtime-controller:8080"), runtimeToken), api.Config{SubscriptionGatewayToken: subscriptionToken, ProvisionProjectNamespaces: shared.Env("PROVISION_PROJECT_NAMESPACES", "false") == "true", SharedWorkspaceID: os.Getenv("SHARED_WORKSPACE_ID"), WorkspaceMemory: shared.IntEnv("WORKSPACE_MEMORY_BYTES", 1<<30), MemoryQuota: shared.IntEnv("MEMORY_QUOTA_BYTES", 4<<30), Token: token, ProjectTokens: projectTokens, HealthEndpoints: map[string]string{"Runtime controller": shared.Env("CONTROLLER_URL", "http://runtime-controller:8080") + "/healthz", "Inference gateway": "http://inference-gateway:8080/healthz", "Credential broker": "http://credential-broker:8080/healthz", "GitHub egress gateway": "http://egress-gateway:8080/healthz", "MCP": "http://mcp:8080/healthz"}})
+	controller := shared.Env("CONTROLLER_URL", "http://runtime-controller:8080")
+	var verifySubscriptionGrant func(context.Context, string, string, string) bool
+	if subscriptionToken != "" {
+		serviceToken, secretErr := shared.Secret("GATEWAY_SERVICE_TOKEN")
+		verify, verifierErr := gateway.NewVerifier(controller, serviceToken)
+		if secretErr != nil || verifierErr != nil || len(subscriptionToken) < 32 || subscriptionToken == serviceToken || subscriptionToken == token || subscriptionToken == runtimeToken {
+			slog.Error("subscription resolver requires its own credential and runtime verification")
+			os.Exit(1)
+		}
+		verifySubscriptionGrant = func(ctx context.Context, grant, workspace, project string) bool {
+			id, err := verify(ctx, grant, "inference")
+			return err == nil && id.WorkspaceID == workspace && id.ProjectID == project
+		}
+	}
+	var credentialKeys api.CredentialKeys
+	key, keyErr := shared.Secret("CREDENTIAL_ENCRYPTION_KEY")
+	keyring, ringErr := shared.Secret("CREDENTIAL_ENCRYPTION_KEYRING")
+	if keyErr != nil || ringErr != nil || (key != "" && keyring != "") {
+		slog.Error("credential encryption configuration unavailable")
+		os.Exit(1)
+	}
+	if key != "" {
+		credentialKeys = api.CredentialKeys{Active: "default", Keys: map[string]string{"default": key}}
+	}
+	if keyring != "" && gateway.Decode([]byte(keyring), &credentialKeys) != nil {
+		slog.Error("invalid credential encryption keyring")
+		os.Exit(1)
+	}
+	if (key != "" || keyring != "") && credentialKeys.Validate(token) != nil {
+		slog.Error("invalid credential encryption keyring")
+		os.Exit(1)
+	}
+	creators := make(map[string]bool)
+	for _, email := range strings.FieldsFunc(os.Getenv("PROJECT_CREATOR_EMAILS"), func(r rune) bool { return r == ',' || r == '\n' }) {
+		creators[strings.ToLower(strings.TrimSpace(email))] = true
+	}
+	keys := map[string]string{}
+	used := map[string]bool{token: true, runtimeToken: true}
+	for _, name := range []string{"DASHBOARD_READ_TOKEN", "DASHBOARD_HUMAN_SIGNING_KEY", "PROJECT_SIGNING_KEY"} {
+		value, err := shared.Secret(name)
+		if err != nil || (value != "" && (len(value) < 32 || used[value] || strings.ContainsAny(value, " \r\n\t"))) {
+			slog.Error("invalid scoped credential configuration", "name", name)
+			os.Exit(1)
+		}
+		keys[name] = value
+		if value != "" {
+			used[value] = true
+		}
+	}
+	server := api.New(db, controllerclient.NewClient(controller, runtimeToken), api.Config{DashboardReadToken: keys["DASHBOARD_READ_TOKEN"], HumanSigningKey: keys["DASHBOARD_HUMAN_SIGNING_KEY"], ProjectSigningKey: keys["PROJECT_SIGNING_KEY"], ProjectCreatorEmails: creators, MaxProjectsPerUser: int(shared.IntEnv("MAX_PROJECTS_PER_USER", 5)), CredentialKeys: credentialKeys, SubscriptionGatewayToken: subscriptionToken, VerifySubscriptionGrant: verifySubscriptionGrant, ProvisionProjectNamespaces: shared.Env("PROVISION_PROJECT_NAMESPACES", "false") == "true", SharedWorkspaceID: os.Getenv("SHARED_WORKSPACE_ID"), WorkspaceMemory: shared.IntEnv("WORKSPACE_MEMORY_BYTES", 1<<30), MemoryQuota: shared.IntEnv("MEMORY_QUOTA_BYTES", 4<<30), Token: token, ProjectTokens: projectTokens, HealthEndpoints: map[string]string{"Runtime controller": shared.Env("CONTROLLER_URL", "http://runtime-controller:8080") + "/healthz", "Inference gateway": "http://inference-gateway:8080/healthz", "Credential broker": "http://credential-broker:8080/healthz", "GitHub egress gateway": "http://egress-gateway:8080/healthz", "MCP": "http://mcp:8080/healthz"}})
 	if os.Getenv("SHARED_WORKSPACE_ID") != "" {
 		if _, err := server.EnsureSharedWorkspace(ctx); err != nil {
 			slog.Error("shared workspace provisioning failed")

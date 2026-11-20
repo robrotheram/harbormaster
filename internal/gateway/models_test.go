@@ -18,7 +18,7 @@ func TestModelCatalogUsesWorkspaceAuthorization(t *testing.T) {
 			return Identity{}, ErrDenied
 		}
 		return Identity{PrincipalID: "alice", ProjectID: "default", WorkspaceID: "ws_one"}, nil
-	}, ResolveSubscription: func(_ context.Context, workspace, provider string) (subscriptionCredential, error) {
+	}, ResolveSubscription: func(_ context.Context, workspace, provider, _ string) (subscriptionCredential, error) {
 		if workspace != "ws_one" {
 			t.Fatalf("wrong workspace: %s", workspace)
 		}

@@ -275,9 +275,10 @@ func TestRetiredToolConfigUpgradeRefreshesOnlyStoppedContainers(t *testing.T) {
 		}
 	}
 
+	previousGrant := engine.spec["Labels"].(map[string]any)["workbench.generation"]
 	request("stop")
 	request("start")
-	if engine.removed != 1 || engine.createCount != 2 {
-		t.Fatal("replaced a workspace with current configuration")
+	if engine.removed != 2 || engine.createCount != 3 || previousGrant == engine.spec["Labels"].(map[string]any)["workbench.generation"] {
+		t.Fatal("stopped workspace reused its previous grant")
 	}
 }

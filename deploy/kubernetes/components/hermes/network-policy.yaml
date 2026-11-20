@@ -1,0 +1,36 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: hermes-mcp-ingress
+  namespace: harbormaster
+spec:
+  podSelector:
+    matchLabels:
+      app: hermes-mcp
+    matchExpressions:
+    - key: workbench.workspace
+      operator: DoesNotExist
+  policyTypes: [Ingress]
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          workbench.agent: hermes
+        matchExpressions:
+        - key: workbench.workspace
+          operator: Exists
+    - namespaceSelector:
+        matchLabels:
+          app.kubernetes.io/managed-by: harbormaster
+          harbormaster.io/deployment: harbormaster
+          harbormaster.io/purpose: workspace
+          workbench.security: enforced
+      podSelector:
+        matchLabels:
+          workbench.agent: hermes
+        matchExpressions:
+        - key: workbench.workspace
+          operator: Exists
+    ports:
+    - protocol: TCP
+      port: 8080

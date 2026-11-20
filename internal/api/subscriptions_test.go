@@ -16,6 +16,7 @@ import (
 func TestMultipleSubscriptionsArePrivateAndProviderScoped(t *testing.T) {
 	s, _ := setup(t)
 	s.cfg.SubscriptionGatewayToken = "gateway-only"
+	s.cfg.VerifySubscriptionGrant = func(_ context.Context, grant, _, _ string) bool { return grant == "live" }
 	var worker struct {
 		ID string `json:"id"`
 	}
@@ -86,7 +87,10 @@ func TestMultipleSubscriptionsArePrivateAndProviderScoped(t *testing.T) {
 		t.Fatal("another user took over")
 	}
 	resolve := func(provider string) *httptest.ResponseRecorder {
-		return call("POST", "/internal/subscriptions/resolve", "", fmt.Sprintf(`{"workspace_id":%q,"provider":%q}`, worker.ID, provider))
+		return call("POST", "/internal/subscriptions/resolve", "", fmt.Sprintf(`{"workspace_id":%q,"provider":%q,"grant":"live"}`, worker.ID, provider))
+	}
+	if got := call("POST", "/internal/subscriptions/resolve", "", fmt.Sprintf(`{"workspace_id":%q,"provider":"codex","grant":"revoked"}`, worker.ID)); got.Code != 401 {
+		t.Fatal("resolver accepted a revoked workspace grant")
 	}
 	if resolve("codex").Code != 200 || resolve("claude").Code != 200 {
 		t.Fatal("provider resolution failed")

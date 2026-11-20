@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"crypto/subtle"
 	"encoding/json"
+	"golang.org/x/time/rate"
 	"io"
 	"net/http"
 	"os"
@@ -16,7 +17,12 @@ import (
 const projectMCPAddress = "http://127.0.0.1:18085/project-mcp"
 const projectMCPSigningFile = "/etc/agent-workbench/firecracker/project_mcp_signing_key"
 
+func projectMCPEnabled() bool {
+	return os.Getenv("FIRECRACKER_HERMES_PROJECT_MCP") == "true"
+}
+
 func (f *Firecracker) projectMCP(v *fcVM, secret string, client *http.Client) http.Handler {
+	requests := rate.NewLimiter(8, 16)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		f.mu.Lock()
@@ -24,6 +30,10 @@ func (f *Firecracker) projectMCP(v *fcVM, secret string, client *http.Client) ht
 		f.mu.Unlock()
 		if !current || v.Spec.AgentKind != "hermes" || subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+f.grant(v))) != 1 {
 			http.Error(w, "unauthorized", 401)
+			return
+		}
+		if !requests.Allow() {
+			http.Error(w, "request limit reached", http.StatusTooManyRequests)
 			return
 		}
 		if secret == "" {
@@ -39,25 +49,27 @@ func (f *Firecracker) projectMCP(v *fcVM, secret string, client *http.Client) ht
 			http.Error(w, "invalid body", 400)
 			return
 		}
-		var rpc struct {
-			Method string `json:"method"`
-			Params struct {
-				Name string `json:"name"`
-			} `json:"params"`
-		}
-		if json.Unmarshal(body, &rpc) != nil {
+		rpc, err := shared.PolicyJSON(body)
+		if err != nil {
 			http.Error(w, "invalid RPC", 400)
 			return
 		}
-		switch rpc.Method {
+		switch method, _ := rpc["method"].(string); method {
 		case "initialize", "notifications/initialized", "ping", "tools/list":
 		case "tools/call":
-			if !shared.ProjectToolAllowed(rpc.Params.Name) {
+			params, _ := rpc["params"].(map[string]any)
+			name, _ := params["name"].(string)
+			if !shared.ProjectToolAllowed(name) {
 				http.Error(w, "forbidden tool", 403)
 				return
 			}
 		default:
 			http.Error(w, "forbidden method", 403)
+			return
+		}
+		body, err = json.Marshal(rpc)
+		if err != nil {
+			http.Error(w, "invalid RPC", 400)
 			return
 		}
 		// Renew internally on every request. A guest never receives the signing key,

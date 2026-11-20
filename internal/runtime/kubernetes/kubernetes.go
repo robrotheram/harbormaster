@@ -269,14 +269,22 @@ func sandboxReady(r kubeResource) bool {
 	}
 	return false
 }
+func sandboxSuspended(r kubeResource) bool {
+	if r.Spec.OperatingMode != "Suspended" {
+		return false
+	}
+	for _, condition := range r.Status.Conditions {
+		if condition.Type == "Suspended" && condition.Status == "True" && condition.ObservedGeneration == r.Metadata.Generation {
+			return true
+		}
+	}
+	return false
+}
+
 func (k *Kubernetes) observe(ctx context.Context, r kubeResource) (shared.Observation, error) {
 	o := shared.Observation{RuntimeType: "kata", IsolationStatus: "unverified", NetworkStatus: "unverified", Running: true}
 	if r.Spec.OperatingMode == "Suspended" {
-		for _, condition := range r.Status.Conditions {
-			if condition.Type == "Suspended" && condition.Status == "True" && condition.ObservedGeneration == r.Metadata.Generation {
-				o.Running = false
-			}
-		}
+		o.Running = !sandboxSuspended(r)
 		return o, nil
 	}
 	if !sandboxReady(r) || k.cfg.RequireVerified {
@@ -424,23 +432,34 @@ func (k *Kubernetes) Inspect(ctx context.Context, id string) (shared.Observation
 	return k.observe(ctx, r)
 }
 func (k *Kubernetes) Stop(ctx context.Context, id string) error {
+	return k.stop(ctx, id, false)
+}
+
+func (k *Kubernetes) stop(ctx context.Context, id string, force bool) error {
 	k.mu.Lock()
 	defer k.mu.Unlock()
 	r, err := k.find(ctx, id)
 	if err != nil {
+		if force && isNotFound(err) {
+			return nil
+		}
 		return err
 	}
-	if r.Spec.OperatingMode == "Suspended" {
+	if r.Spec.OperatingMode == "Suspended" && !force {
 		return nil
 	}
-	status, _, err := k.agent(ctx, r, "POST", "/v1/quiesce", nil)
-	if err != nil || status != 200 {
-		return shared.CodedError{Status: http.StatusConflict, Code: "WORKSPACE_BUSY"}
+	if !force {
+		status, _, err := k.agent(ctx, r, "POST", "/v1/quiesce", nil)
+		if err != nil || status != 200 {
+			return shared.CodedError{Status: http.StatusConflict, Code: "WORKSPACE_BUSY"}
+		}
 	}
 	if err = k.call(ctx, "PATCH", k.collection(r.Metadata.Namespace)+"/"+r.Metadata.Name, map[string]any{"spec": map[string]string{"operatingMode": "Suspended"}}, nil); err != nil {
-		resume, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
-		_, _, _ = k.agent(resume, r, "POST", "/v1/resume", nil)
+		if !force {
+			resume, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			_, _, _ = k.agent(resume, r, "POST", "/v1/resume", nil)
+		}
 		return err
 	}
 	wait, cancel := context.WithTimeout(ctx, 25*time.Second)
@@ -450,8 +469,7 @@ func (k *Kubernetes) Stop(ctx context.Context, id string) error {
 		if err != nil {
 			return err
 		}
-		observation, _ := k.observe(wait, r)
-		if !observation.Running {
+		if sandboxSuspended(r) {
 			return nil
 		}
 		select {

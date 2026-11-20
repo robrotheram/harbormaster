@@ -2,6 +2,8 @@
 # authority is the host Unix service; the bridge never receives the Docker socket.
 services:
   runtime-controller:
+    user: "0:0"
+    group_add: !reset []
     volumes: !override
       - /run/agent-workbench:/run/agent-workbench:ro
     environment:

@@ -132,7 +132,7 @@ func (s *Server) registerAgentSubscriptions(mux *http.ServeMux) {
 				shared.Error(w, 400, "SUBSCRIPTION_INVALID")
 				return
 			}
-			v.Credential, err = subscriptions.Seal(s.cfg.Token, subscriptions.Binding(owner, v.ID), c)
+			v.Credential, err = s.sealSubscription(owner, v.ID, c)
 			if err != nil {
 				shared.Error(w, 503, "CREDENTIAL_UNAVAILABLE")
 				return
