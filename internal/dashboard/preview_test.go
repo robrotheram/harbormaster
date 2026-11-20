@@ -77,11 +77,15 @@ func TestApplicationPreviewForwardsHTTPWithoutManagementCredentials(t *testing.T
 		if r.URL.Path != "/v1/workspaces/ws_app/application-proxy/service_app/api" || r.Header.Get("Authorization") != "Bearer operator-only" {
 			t.Error("incorrect management authority")
 		}
+		if r.Header.Get("Cookie") != "app_session=test" {
+			t.Error("preview forwarded browser credentials or dropped the app cookie")
+		}
 		body, _ := io.ReadAll(r.Body)
 		if r.Method != "POST" || r.URL.RawQuery != "x=1" || string(body) != "hello" {
 			t.Error("lost application request")
 		}
 		w.Header().Set("Content-Type", "text/plain")
+		w.Header().Set("Set-Cookie", "app_session=next; Path=/; Domain=localhost; HttpOnly")
 		w.WriteHeader(201)
 		w.Write([]byte("ok"))
 	}))
@@ -93,14 +97,21 @@ func TestApplicationPreviewForwardsHTTPWithoutManagementCredentials(t *testing.T
 		req.Header.Set("Origin", origin)
 		req.Header.Set("Content-Type", "text/plain")
 		req.AddCookie(&http.Cookie{Name: "awb_preview", Value: "session"})
+		req.AddCookie(&http.Cookie{Name: "_oauth2_proxy", Value: "synthetic-sso"})
+		req.AddCookie(&http.Cookie{Name: "awbapp_app_session", Value: "test"})
 		out := httptest.NewRecorder()
 		p.serve(out, req)
 		if origin == "http://foreign.localhost" {
 			if out.Code != 403 {
 				t.Fatal("foreign mutation accepted", out.Code)
 			}
+			continue
 		} else if out.Code != 201 || out.Body.String() != "ok" {
 			t.Fatal(out.Code, out.Body.String())
+		}
+		cookies := out.Result().Cookies()
+		if len(cookies) != 1 || cookies[0].Name != "awbapp_app_session" || cookies[0].Domain != "" || !cookies[0].HttpOnly {
+			t.Fatalf("application cookie lost its preview scope: %v", cookies)
 		}
 	}
 }

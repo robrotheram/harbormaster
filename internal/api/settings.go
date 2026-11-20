@@ -26,6 +26,9 @@ func (s *Server) registerWorkspaceSettings(mux *http.ServeMux) {
 		if !ok {
 			return
 		}
+		if !hasProfile && !s.admin(w, r) {
+			return
+		}
 		if err := s.refresh(r.Context(), &ws); err != nil {
 			apiError(w, err)
 			return

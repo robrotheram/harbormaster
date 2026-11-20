@@ -3,7 +3,9 @@ package api
 import (
 	"agent-workbench/internal/orchestration"
 	"agent-workbench/internal/shared"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"net/http"
 )
@@ -164,6 +166,11 @@ func (s *Server) registerWorkExecution(mux *http.ServeMux, repo orchestration.Re
 				}
 				if status != 200 {
 					shared.Error(w, 503, "ARTIFACT_UNAVAILABLE")
+					return
+				}
+				digest := sha256.Sum256(b)
+				if artifact.SHA256 != hex.EncodeToString(digest[:]) {
+					shared.Error(w, http.StatusBadGateway, "ARTIFACT_DIGEST_MISMATCH")
 					return
 				}
 				w.Header().Set("Content-Type", "application/octet-stream")

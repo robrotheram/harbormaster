@@ -70,3 +70,7 @@ attached is refused. Fully open intentionally continues direct egress if platfor
 services fail; proxy modes fail closed when their grant verifier is unavailable.
 
 Fully open is never enabled by default or silently selected.
+
+Workspace supervisors run alongside agent code. Treat their activity, results,
+and artifact metadata as untrusted. The control plane checks work-item download
+bytes against the SHA-256 digest recorded for the artifact before serving them.

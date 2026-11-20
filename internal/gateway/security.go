@@ -189,11 +189,11 @@ func (p NetworkPolicy) transport(cert *tls.Certificate, lookup func(context.Cont
 		if ip.IsUnspecified() || ip.IsMulticast() {
 			return false
 		}
-		if !p.AllowPrivate && (ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast()) {
+		if !p.AllowPrivate && !publicDestination(ip) {
 			return false
 		}
 		if len(prefixes) == 0 {
-			return ip.IsGlobalUnicast() && !ip.IsPrivate() && !sharedAddressSpace.Contains(ip)
+			return publicDestination(ip)
 		}
 		return slices.ContainsFunc(prefixes, func(prefix netip.Prefix) bool {
 			return prefix.Contains(ip)
@@ -228,7 +228,39 @@ func (p NetworkPolicy) transport(cert *tls.Certificate, lookup func(context.Cont
 	return &http.Transport{Proxy: nil, DialContext: dial, TLSClientConfig: tc, TLSHandshakeTimeout: 5 * time.Second, ResponseHeaderTimeout: 15 * time.Second, MaxResponseHeaderBytes: 32 << 10, DisableKeepAlives: true}, nil
 }
 
-var sharedAddressSpace = netip.MustParsePrefix("100.64.0.0/10")
+// IPv6 outside the global unicast allocation includes translation and deprecated
+// address formats. The IANA special-purpose ranges within that allocation, and
+// the IPv4 special-purpose ranges, are excluded even if individually routable.
+var ipv6GlobalUnicast = netip.MustParsePrefix("2000::/3")
+
+var specialPurposeDestinations = []netip.Prefix{
+	netip.MustParsePrefix("0.0.0.0/8"),
+	netip.MustParsePrefix("100.64.0.0/10"),
+	netip.MustParsePrefix("192.0.0.0/24"),
+	netip.MustParsePrefix("192.0.2.0/24"),
+	netip.MustParsePrefix("192.31.196.0/24"),
+	netip.MustParsePrefix("192.52.193.0/24"),
+	netip.MustParsePrefix("192.88.99.0/24"),
+	netip.MustParsePrefix("192.175.48.0/24"),
+	netip.MustParsePrefix("198.18.0.0/15"),
+	netip.MustParsePrefix("198.51.100.0/24"),
+	netip.MustParsePrefix("203.0.113.0/24"),
+	netip.MustParsePrefix("240.0.0.0/4"),
+	netip.MustParsePrefix("2001::/23"),
+	netip.MustParsePrefix("2001:db8::/32"),
+	netip.MustParsePrefix("2002::/16"),
+	netip.MustParsePrefix("2620:4f:8000::/48"),
+	netip.MustParsePrefix("3fff::/20"),
+}
+
+func publicDestination(ip netip.Addr) bool {
+	if !ip.IsGlobalUnicast() || ip.IsPrivate() || (ip.Is6() && !ipv6GlobalUnicast.Contains(ip)) {
+		return false
+	}
+	return !slices.ContainsFunc(specialPurposeDestinations, func(prefix netip.Prefix) bool {
+		return prefix.Contains(ip)
+	})
+}
 
 func validPolicyHostname(host string) bool {
 	if len(host) > 253 || !strings.Contains(host, ".") {

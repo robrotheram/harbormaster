@@ -13,6 +13,8 @@ import (
 	"strings"
 )
 
+const previewAppCookiePrefix = "awbapp_"
+
 func previewOrigin(r *http.Request) string {
 	if workerSecure(r) {
 		return "https://" + r.Host
@@ -52,6 +54,14 @@ func (p *previewIngress) live(w http.ResponseWriter, r *http.Request, binding pr
 		pr.Out.URL.RawPath = ""
 		pr.Out.Header.Set("Authorization", "Bearer "+humanToken(r, p.token))
 		pr.Out.Header.Del("Accept-Encoding")
+		pr.Out.Header.Del("Cookie")
+		for _, cookie := range pr.In.Cookies() {
+			name, ok := strings.CutPrefix(cookie.Name, previewAppCookiePrefix)
+			if !ok || name == "" {
+				continue
+			}
+			pr.Out.AddCookie(&http.Cookie{Name: name, Value: cookie.Value, Quoted: cookie.Quoted})
+		}
 	}, ModifyResponse: func(res *http.Response) error {
 		res.Header.Set("Content-Security-Policy", previewPolicy(r))
 		res.Header.Del("X-Frame-Options")
@@ -79,16 +89,17 @@ func (p *previewIngress) live(w http.ResponseWriter, r *http.Request, binding pr
 				res.Header.Set("Content-Length", strconv.Itoa(len(data)))
 			}
 		}
-		if binding.Embedded {
-			cookies := res.Cookies()
-			res.Header.Del("Set-Cookie")
-			for _, cookie := range cookies {
-				cookie.Domain = ""
+		cookies := res.Cookies()
+		res.Header.Del("Set-Cookie")
+		for _, cookie := range cookies {
+			cookie.Name = previewAppCookiePrefix + cookie.Name
+			cookie.Domain = ""
+			if binding.Embedded {
 				cookie.Secure = true
 				cookie.SameSite = http.SameSiteNoneMode
 				cookie.Partitioned = true
-				res.Header.Add("Set-Cookie", cookie.String())
 			}
+			res.Header.Add("Set-Cookie", cookie.String())
 		}
 		return nil
 	}, ErrorHandler: func(w http.ResponseWriter, r *http.Request, _ error) {

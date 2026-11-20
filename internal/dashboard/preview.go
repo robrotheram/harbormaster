@@ -167,7 +167,7 @@ func (p *previewIngress) serve(w http.ResponseWriter, r *http.Request) {
 		key := shared.NewID("session_")
 		p.sessions[key] = binding
 		p.mu.Unlock()
-		cookie := &http.Cookie{Name: "awb_preview", Value: key, Path: "/", HttpOnly: true, Secure: workerSecure(r), SameSite: http.SameSiteStrictMode, Expires: binding.Expiry}
+		cookie := &http.Cookie{Name: hostCookieName("awb_preview", workerSecure(r)), Value: key, Path: "/", HttpOnly: true, Secure: workerSecure(r), SameSite: http.SameSiteStrictMode, Expires: binding.Expiry}
 		if binding.Embedded {
 			cookie.Secure = true
 			cookie.SameSite = http.SameSiteNoneMode
@@ -181,7 +181,7 @@ func (p *previewIngress) serve(w http.ResponseWriter, r *http.Request) {
 		writeConnectionError(w, r, 403, "ORIGIN_REJECTED", "preview")
 		return
 	}
-	cookie, err := r.Cookie("awb_preview")
+	cookie, err := uniqueCookie(r, hostCookieName("awb_preview", workerSecure(r)))
 	if err != nil {
 		writeConnectionError(w, r, 401, "OPEN_FROM_WORKBENCH", "preview")
 		return

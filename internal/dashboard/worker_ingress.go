@@ -48,3 +48,18 @@ func servePublicWorker(next http.Handler, w http.ResponseWriter, r *http.Request
 	next.ServeHTTP(w, r.WithContext(ctx))
 	return true
 }
+
+func hostCookieName(name string, secure bool) string {
+	if secure {
+		return "__Host-" + name
+	}
+	return name
+}
+
+func uniqueCookie(r *http.Request, name string) (*http.Cookie, error) {
+	cookies := r.CookiesNamed(name)
+	if len(cookies) != 1 {
+		return nil, http.ErrNoCookie
+	}
+	return cookies[0], nil
+}

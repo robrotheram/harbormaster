@@ -133,11 +133,11 @@ func NewInteractiveHandler(readURL, controlURL, token string) (http.Handler, err
 					consoleSessions[cookieValue] = ticket{human: issued.human, id: id, expires: expiry}
 					ticketsMu.Unlock()
 				}
-				http.SetCookie(w, &http.Cookie{Name: "awb_console", Value: cookieValue, Path: "/", HttpOnly: true, Secure: workerSecure(r), SameSite: http.SameSiteStrictMode, Expires: expiry})
+				http.SetCookie(w, &http.Cookie{Name: hostCookieName("awb_console", workerSecure(r)), Value: cookieValue, Path: "/", HttpOnly: true, Secure: workerSecure(r), SameSite: http.SameSiteStrictMode, Expires: expiry})
 				shared.JSON(w, 200, map[string]bool{"connected": true})
 				return
 			}
-			cookie, e := r.Cookie("awb_console")
+			cookie, e := uniqueCookie(r, hostCookieName("awb_console", workerSecure(r)))
 			valid := false
 			if e == nil {
 				ticketsMu.Lock()
