@@ -74,12 +74,14 @@ EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/service"]
 HEALTHCHECK --interval=10s --timeout=3s --start-period=20s CMD ["/usr/local/bin/healthcheck"]
 
-FROM python:3.14-slim-bookworm@sha256:3fe1a0b6c2d6b2ebb572906cdabeca75aeb558c0c17db5ffefbcf8094871c32b AS hermes-build
+FROM python:3.15-slim-bookworm@sha256:96599df822d0e1c6bb700014a05c7f3c8cabc6e0f7ff3c4f9f69cee033b4b5d9 AS hermes-build
 RUN apt-get update && apt-get install -y --no-install-recommends build-essential libolm-dev git && rm -rf /var/lib/apt/lists/*
 ARG HERMES_COMMIT
 ARG HERMES_SOURCE_SHA256
 ADD --checksum=sha256:${HERMES_SOURCE_SHA256} https://codeload.github.com/NousResearch/hermes-agent/tar.gz/${HERMES_COMMIT} /tmp/hermes.tgz
 WORKDIR /opt/hermes
+# Keep uv-managed interpreters with the virtualenv copied into the runtime image.
+ENV UV_PYTHON_INSTALL_DIR=/opt/hermes/.python
 RUN tar -xzf /tmp/hermes.tgz --strip-components=1 && rm /tmp/hermes.tgz && \
     python -m pip install --no-cache-dir uv==0.13.7 && uv sync --frozen --no-dev --extra matrix --extra mcp
 COPY integrations/hermes /tmp/workbench-hermes
