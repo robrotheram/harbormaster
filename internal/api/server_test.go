@@ -260,7 +260,7 @@ func TestTaskPersistenceAndMetadataBoundary(t *testing.T) {
 	}
 	rows.Close()
 	snapshot := httptest.NewRecorder()
-	restarted.DashboardHandler().ServeHTTP(snapshot, httptest.NewRequest("GET", "/dashboard-api/v1/snapshot", nil))
+	restarted.DashboardHandler().ServeHTTP(snapshot, snapshotRequest(restarted))
 	if strings.Contains(snapshot.Body.String(), "sensitive-") {
 		t.Fatal("content leaked to dashboard")
 	}

@@ -93,3 +93,19 @@ func TestTransportHostnamePolicy(t *testing.T) {
 		t.Fatalf("expected only the approved name to reach DNS, got %d lookups", calls)
 	}
 }
+
+func TestPublicDestinationExcludesSpecialUseAddresses(t *testing.T) {
+	for _, address := range []string{
+		"100.64.0.1", "192.0.0.1", "198.18.0.1", "::ffff:100.64.0.1",
+		"64:ff9b::a9fe:a9fe", "2002::1", "::192.0.2.1", "fec0::1", "3fff::1",
+	} {
+		if publicDestination(netip.MustParseAddr(address).Unmap()) {
+			t.Errorf("special-use address accepted: %s", address)
+		}
+	}
+	for _, address := range []string{"8.8.8.8", "2606:4700::1111", "::ffff:8.8.8.8"} {
+		if !publicDestination(netip.MustParseAddr(address).Unmap()) {
+			t.Errorf("public address rejected: %s", address)
+		}
+	}
+}

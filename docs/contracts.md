@@ -4,7 +4,7 @@ Implementation baseline; all JSON uses snake_case. The Go module is `agent-workb
 
 ## Control API
 
-All routes require `Authorization: Bearer <provisioned local control token>`. Initial deployment is one explicitly configured local principal (`local-operator`) and project (`default`), not multi-user OIDC. The token is file-provisioned, never a caller-supplied identity. Dashboard has a separate unauthenticated read-only listener.
+All routes require `Authorization: Bearer <provisioned local control token>`. Initial deployment is one explicitly configured local principal (`local-operator`) and project (`default`), not multi-user OIDC. The token is file-provisioned, never a caller-supplied identity. The control plane exposes a separate authenticated read-only listener for dashboard snapshots.
 
 - `GET /healthz`: `{"status":"ok"}` (public health only).
 - `GET /v1/workspaces`: `{"items":[Workspace]}`.
@@ -27,7 +27,7 @@ Errors: `{code,message,retryable}` with no internal details. HTTP 400 INVALID_RE
 
 ## Dashboard
 
-Separate container; no authentication; same-origin proxy for exactly `GET /dashboard-api/v1/snapshot` to `http://controlplane:8081/dashboard-api/v1/snapshot`. No generic proxy. Default host publication `127.0.0.1:8080`.
+The dashboard proxies same-origin `GET /dashboard-api/v1/snapshot` to the control plane read listener on port 8081. It authenticates that hop with a snapshot-only bearer derived from the provisioned control token. A standalone read-only dashboard can receive the derived bearer through `DASHBOARD_READ_TOKEN_FILE`. Default host publication is `127.0.0.1:8080`.
 
 Snapshot: `{schema_version:1,generated_at,mode:"development",workspaces:{observed_at,status,items:[Workspace]},active_tasks:{observed_at,status,items:[Task]},usage:{observed_at,status,cpu_allocated,memory_allocated_bytes,running_workspaces,max_running_workspaces,cpu_quota,memory_quota_bytes},services:{observed_at,status,items:[{name,status,reason_code?,observed_at}]}}`. Status ok/partial/unavailable; service healthy/degraded/unavailable/unknown/not_configured. Never expose instructions, results, labels, paths, URLs, secrets or raw error text.
 

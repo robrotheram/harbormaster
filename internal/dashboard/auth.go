@@ -100,7 +100,7 @@ func NewAuthKitHandler(next http.Handler, cfg AuthConfig) (http.Handler, error) 
 }
 
 func (a *authHandler) cookie(w http.ResponseWriter, name, value string, age int) {
-	c := &http.Cookie{Name: name, Value: value, Path: "/", MaxAge: age, HttpOnly: true, Secure: a.secure, SameSite: http.SameSiteLaxMode}
+	c := &http.Cookie{Name: hostCookieName(name, a.secure), Value: value, Path: "/", MaxAge: age, HttpOnly: true, Secure: a.secure, SameSite: http.SameSiteLaxMode}
 	if age < 0 {
 		c.Expires = time.Unix(1, 0)
 	}
@@ -233,7 +233,7 @@ func (a *authHandler) login(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	// Replacing this browser's pending flow also prevents accumulation on retries.
-	if old, err := r.Cookie("awb_auth_state"); err == nil {
+	if old, err := uniqueCookie(r, hostCookieName("awb_auth_state", a.secure)); err == nil {
 		delete(a.attempts, old.Value)
 	}
 	if len(a.attempts) >= 256 {
@@ -247,7 +247,7 @@ func (a *authHandler) login(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, auth.URL, http.StatusFound)
 }
 func (a *authHandler) callback(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie("awb_auth_state")
+	cookie, err := uniqueCookie(r, hostCookieName("awb_auth_state", a.secure))
 	state := r.URL.Query().Get("state")
 	if err != nil || state == "" || subtle.ConstantTimeCompare([]byte(state), []byte(cookie.Value)) != 1 {
 		a.failLogin(w, r, "invalid_state")
@@ -306,7 +306,7 @@ func (a *authHandler) callback(w http.ResponseWriter, r *http.Request) {
 		a.failLogin(w, r, "sign_in_failed")
 		return
 	}
-	if old, err := r.Cookie("awb_session"); err == nil {
+	if old, err := uniqueCookie(r, hostCookieName("awb_session", a.secure)); err == nil {
 		delete(a.sessions, old.Value)
 	}
 	a.sessions[key] = &operatorSession{sealed: sealed, sessionID: result.SessionID, expires: time.Now().Add(7 * 24 * time.Hour)}
@@ -331,7 +331,7 @@ func (a *authHandler) permitted(result *workos.AuthenticateSessionResult) bool {
 	return result.Authenticated && result.User != nil && result.User.ID != "" && result.User.EmailVerified && a.allowed[strings.ToLower(result.User.Email)] && result.Impersonator == nil
 }
 func (a *authHandler) lookup(r *http.Request) *operatorSession {
-	cookie, err := r.Cookie("awb_session")
+	cookie, err := uniqueCookie(r, hostCookieName("awb_session", a.secure))
 	if err != nil {
 		return nil
 	}
@@ -402,7 +402,7 @@ func (a *authHandler) logout(w http.ResponseWriter, r *http.Request) {
 		logoutURL = a.client.UserManagement().GetLogoutURL(&workos.UserManagementGetLogoutURLParams{SessionID: entry.sessionID, ReturnTo: &returnTo})
 		entry.mu.Unlock()
 	}
-	if cookie, err := r.Cookie("awb_session"); err == nil {
+	if cookie, err := uniqueCookie(r, hostCookieName("awb_session", a.secure)); err == nil {
 		a.mu.Lock()
 		delete(a.sessions, cookie.Value)
 		a.mu.Unlock()

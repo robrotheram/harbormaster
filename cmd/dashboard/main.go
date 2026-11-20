@@ -9,7 +9,12 @@ import (
 )
 
 func main() {
-	h, err := dashboard.NewHandler(shared.Env("CONTROLPLANE_READ_URL", "http://controlplane:8081"))
+	readToken, err := shared.Secret("DASHBOARD_READ_TOKEN")
+	if err != nil {
+		slog.Error("dashboard read credential unavailable")
+		os.Exit(1)
+	}
+	h, err := dashboard.NewHandler(shared.Env("CONTROLPLANE_READ_URL", "http://controlplane:8081"), readToken)
 	if token, e := shared.Secret("CONTROL_TOKEN"); e == nil && token != "" {
 		h, err = dashboard.NewInteractiveHandler(shared.Env("CONTROLPLANE_READ_URL", "http://controlplane:8081"), shared.Env("CONTROLPLANE_URL", "http://controlplane:8080"), token)
 	}

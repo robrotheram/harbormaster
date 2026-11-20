@@ -105,7 +105,7 @@ func TestHostedPreviewConnection(t *testing.T) {
 	}
 	connected := call("POST", origin+"/connect", origin, body, nil)
 	cookies := connected.Result().Cookies()
-	if connected.Code != 200 || len(cookies) != 1 || !cookies[0].Secure || !cookies[0].Partitioned || cookies[0].Domain != "" {
+	if connected.Code != 200 || len(cookies) != 1 || cookies[0].Name != "__Host-awb_preview" || !cookies[0].Secure || !cookies[0].Partitioned || cookies[0].Domain != "" {
 		t.Fatal("hosted exchange failed", connected.Code, connected.Body.String(), cookies)
 	}
 	if w := call("POST", origin+"/connect", origin, body, nil); w.Code != 403 {
@@ -129,5 +129,13 @@ func TestHostedPreviewConnection(t *testing.T) {
 		if w := call("GET", "https://"+host+"/connect", "", "", nil); w.Code != 403 {
 			t.Fatal("unrecognized host accepted", host, w.Code)
 		}
+	}
+}
+
+func TestDuplicateHostCookiesAreRejected(t *testing.T) {
+	req := httptest.NewRequest("GET", "https://preview.example/", nil)
+	req.Header.Set("Cookie", "__Host-awb_preview=first; __Host-awb_preview=second")
+	if _, err := uniqueCookie(req, "__Host-awb_preview"); err == nil {
+		t.Fatal("duplicate HTTPS session cookie accepted")
 	}
 }

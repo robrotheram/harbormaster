@@ -121,7 +121,7 @@ func TestSlowWorkspaceDoesNotBlockIndependentReadsAndStart(t *testing.T) {
 			return
 		}
 		snapshot := httptest.NewRecorder()
-		s.DashboardHandler().ServeHTTP(snapshot, httptest.NewRequest("GET", "/dashboard-api/v1/snapshot", nil))
+		s.DashboardHandler().ServeHTTP(snapshot, snapshotRequest(s))
 		if snapshot.Code != 200 {
 			independent <- fmt.Errorf("snapshot: %s", snapshot.Body)
 			return
@@ -189,7 +189,10 @@ func TestSnapshotUsesExplicitPublicWorkspaceFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	w := httptest.NewRecorder()
-	s.DashboardHandler().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/dashboard-api/v1/snapshot", nil))
+	s.DashboardHandler().ServeHTTP(w, snapshotRequest(s))
+	if w.Code != http.StatusOK {
+		t.Fatalf("snapshot returned %d", w.Code)
+	}
 	for _, private := range []string{"home_id", "agent_kind", "connection_profile_id", "connections", "console_enabled", "last_opened_at", "private.example"} {
 		if strings.Contains(w.Body.String(), private) {
 			t.Fatalf("snapshot published %s", private)
@@ -312,5 +315,24 @@ func TestProjectAssistantRefusesAmbiguousExistingWorkspaces(t *testing.T) {
 	}
 	if base.starts != 0 {
 		t.Fatal("ambiguous selection started a workspace")
+	}
+}
+
+func snapshotRequest(s *Server) *http.Request {
+	r := httptest.NewRequest(http.MethodGet, "/dashboard-api/v1/snapshot", nil)
+	r.Header.Set("Authorization", "Bearer "+shared.DashboardReadToken(s.cfg.Token))
+	return r
+}
+
+func TestDashboardListenerRequiresScopedReadToken(t *testing.T) {
+	s, _ := setup(t)
+	for _, token := range []string{"", s.cfg.Token} {
+		r := httptest.NewRequest(http.MethodGet, "/dashboard-api/v1/snapshot", nil)
+		r.Header.Set("Authorization", "Bearer "+token)
+		w := httptest.NewRecorder()
+		s.DashboardHandler().ServeHTTP(w, r)
+		if w.Code != http.StatusUnauthorized {
+			t.Fatalf("snapshot returned %d without the scoped credential", w.Code)
+		}
 	}
 }
