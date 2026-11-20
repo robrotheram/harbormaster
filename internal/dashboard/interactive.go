@@ -23,7 +23,7 @@ import (
 // The local single-operator launcher is a separate surface from the read-only
 // operational snapshot. It has a control credential, but no runtime/Vault access.
 func NewInteractiveHandler(readURL, controlURL, token string) (http.Handler, error) {
-	read, err := NewHandler(readURL)
+	read, err := NewHandler(readURL, shared.DashboardReadToken(token))
 	if err != nil {
 		return nil, err
 	}

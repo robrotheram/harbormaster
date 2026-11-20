@@ -609,7 +609,7 @@ func (s *Server) DashboardHandler() http.Handler {
 		safeItems := snapshotWorkspaces(items)
 		shared.JSON(w, 200, map[string]any{"schema_version": 1, "generated_at": now, "mode": "development", "workspaces": map[string]any{"observed_at": observed, "status": status, "items": safeItems}, "active_tasks": map[string]any{"observed_at": observed, "status": status, "items": active}, "usage": usage, "services": map[string]any{"observed_at": now, "status": serviceStatus, "items": services}})
 	})
-	return mux
+	return shared.RequireToken(shared.DashboardReadToken(s.cfg.Token), mux)
 }
 
 type workspaceCreate struct {

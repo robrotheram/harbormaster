@@ -15,7 +15,7 @@ const maxSnapshotBytes = 4 << 20
 
 // NewHandler fixes the upstream origin at startup. Incoming headers, queries and
 // paths never influence the upstream request; redirects are never followed.
-func NewHandler(controlplaneReadURL string) (http.Handler, error) {
+func NewHandler(controlplaneReadURL, readToken string) (http.Handler, error) {
 	u, err := url.Parse(controlplaneReadURL)
 	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
 		return nil, errors.New("CONTROLPLANE_READ_URL must be an HTTP origin without credentials, query or path")
@@ -49,6 +49,9 @@ func NewHandler(controlplaneReadURL string) (http.Handler, error) {
 				return
 			}
 			req.Header.Set("Accept", "application/json")
+			if readToken != "" {
+				req.Header.Set("Authorization", "Bearer "+readToken)
+			}
 			res, err := client.Do(req)
 			if err != nil {
 				writeError(w, 503, "SNAPSHOT_UNAVAILABLE")

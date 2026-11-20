@@ -109,7 +109,7 @@ func TestMCPToWorkspaceThroughInferenceGateway(t *testing.T) {
 	}
 	read := httptest.NewServer(core.DashboardHandler())
 	defer read.Close()
-	dh, e := dashboard.NewHandler(read.URL)
+	dh, e := dashboard.NewHandler(read.URL, shared.DashboardReadToken("internal-control-token"))
 	if e != nil {
 		t.Fatal(e)
 	}

@@ -11,7 +11,7 @@ import (
 
 func handler(t *testing.T, upstream string) http.Handler {
 	t.Helper()
-	h, err := NewHandler(upstream)
+	h, err := NewHandler(upstream, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +129,7 @@ func TestReactEntrypointRedirectsAndHealth(t *testing.T) {
 
 func TestOriginValidation(t *testing.T) {
 	for _, origin := range []string{"", "://bad", "file:///tmp/snapshot", "http://user:password@controlplane", "http://controlplane/path", "http://controlplane?token=x", "http://controlplane#x"} {
-		if _, err := NewHandler(origin); err == nil {
+		if _, err := NewHandler(origin, ""); err == nil {
 			t.Errorf("accepted invalid origin")
 		}
 	}
