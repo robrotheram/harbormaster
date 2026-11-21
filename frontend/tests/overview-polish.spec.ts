@@ -483,9 +483,18 @@ test("activity pills distinguish execution states in both themes", async ({
       .include(".overview-page")
       .analyze();
     expect(audit.violations).toEqual([]);
-    if (i === 0)
+    if (i === 0) {
       await page
         .getByRole("button", { name: "Switch to light theme", exact: true })
         .click();
+      await expect(page.locator("html")).not.toHaveClass(/\bdark\b/);
+      await page.locator(".team-scopes").evaluate(async (scopes) => {
+        await Promise.allSettled(
+          scopes
+            .getAnimations({ subtree: true })
+            .map((animation) => animation.finished),
+        );
+      });
+    }
   }
 });

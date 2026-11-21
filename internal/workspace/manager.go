@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -110,7 +111,8 @@ func New(cfg Config) (*Manager, error) {
 			lock.Close()
 		}
 	}()
-	if err := os.MkdirAll(filepath.Join(cfg.DataDir, "files"), 0700); err != nil {
+	files := filepath.Join(cfg.DataDir, "files")
+	if err := os.MkdirAll(files, 0700); err != nil {
 		return nil, err
 	}
 	home := homePath(cfg)
@@ -134,8 +136,12 @@ func New(cfg Config) (*Manager, error) {
 		db.Close()
 		return nil, e
 	}
+	if err := initProjectGit(files); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("initialize project Git repository: %w", err)
+	}
 	tasks := taskstore.New(db, cfg.ID)
-	root, e := os.OpenRoot(filepath.Join(cfg.DataDir, "files"))
+	root, e := os.OpenRoot(files)
 	if e != nil {
 		db.Close()
 		return nil, e
@@ -264,11 +270,33 @@ func (m *Manager) execute(ctx context.Context, id, instruction, provider, model,
 	}
 	m.history(shared.HistoryRecord{EpisodeID: id, Source: source, Kind: "run.started", Status: "running"})
 	m.event("workspace", "task.started", id, "", "")
+	var git taskGit
+	var before string
+	if ctx.Err() == nil {
+		var err error
+		git, before, err = m.startTaskSnapshot(ctx)
+		if err != nil && ctx.Err() == nil {
+			slog.Warn("could not capture task baseline", "task_id", id, "error", err)
+		}
+		defer func() {
+			if err := git.close(); err != nil {
+				slog.Warn("could not clean up task snapshots", "task_id", id, "error", err)
+			}
+		}()
+	}
 	var result, code string
 	if provider == "" {
 		result, code = m.run(ctx, id, instruction)
 	} else {
 		result, code = m.runNativeTask(ctx, provider, instruction, id, model, effort)
+	}
+	var changes *shared.TaskChanges
+	if before != "" {
+		var err error
+		changes, err = git.changes(before)
+		if err != nil {
+			slog.Warn("could not capture task file changes", "task_id", id, "error", err)
+		}
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -281,7 +309,7 @@ func (m *Manager) execute(ctx context.Context, id, instruction, provider, model,
 		code = ""
 	}
 	// If Finish fails, the non-terminal durable row prevents unsafe idle stop.
-	_ = m.tasks.Finish(context.Background(), id, state, result, code, time.Now().UTC())
+	_ = m.tasks.Finish(context.Background(), id, state, result, code, changes, time.Now().UTC())
 	if cancel := m.cancels[id]; cancel != nil {
 		cancel()
 		delete(m.cancels, id)
@@ -311,7 +339,14 @@ func (m *Manager) run(ctx context.Context, id, instruction string) (string, stri
 		}
 		body, e := io.ReadAll(io.LimitReader(resp.Body, (1<<20)+1))
 		resp.Body.Close()
-		if e != nil || len(body) > 1<<20 || resp.StatusCode != 200 {
+		if e != nil || len(body) > 1<<20 {
+			return "", "INFERENCE_REJECTED"
+		}
+		if resp.StatusCode != http.StatusOK {
+			var failure shared.APIError
+			if json.Unmarshal(body, &failure) == nil && failure.Code == "AGENT_SELECTION_REQUIRED" {
+				return "", failure.Code
+			}
 			return "", "INFERENCE_REJECTED"
 		}
 		var out struct {
@@ -593,6 +628,7 @@ func (m *Manager) Handler() http.Handler {
 		}
 		shared.JSON(w, 200, t)
 	})
+	api.HandleFunc("GET /v1/tasks/{id}/changes", m.taskChanges)
 	api.HandleFunc("POST /v1/tasks/{id}/cancel", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Key string `json:"idempotency_key"`

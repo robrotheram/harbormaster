@@ -37,10 +37,14 @@ const messages: Record<string, string> = {
     "This output could not be loaded. Check the worker's status and try again. If it was not retained, inspect the original work conversation.",
   OUTPUT_NOT_RETAINED:
     "This output was not saved with the run. Open the conversation to inspect available files or ask the agent to generate it again.",
+  TASK_CHANGES_UNAVAILABLE:
+    "The worker could not load the file changes for this attempt.",
   PRIVATE_PUBLICATION_FAILED:
     "The instructions could not be saved to the worker. Check its status before trying again.",
   PRIVATE_PUBLICATION_UNCONFIRMED:
     "Workbench could not confirm that the instructions were saved. Check the conversation's current state before submitting again.",
+  CONVERSATION_CONTEXT_UNAVAILABLE:
+    "Workbench could not save the previous run’s context, so it did not start a follow-up. Check that the worker is running, then retry your message.",
   SPECIFICATION_ACCEPTANCE_FAILED:
     "The worker could not accept these instructions. Check that its runtime version matches the server, then retry this task.",
   SPECIFICATION_DIGEST_MISMATCH:
@@ -158,6 +162,8 @@ const messages: Record<string, string> = {
     "The running worker quota is full. Stop an idle worker and retry.",
   PROJECT_NAMESPACE_UNAVAILABLE:
     "The deployment namespace could not be prepared. Retry the operation to complete setup.",
+  DEFAULT_PROJECT_DELETE_UNSUPPORTED:
+    "The default project owns the shared worker in this deployment.",
   SHARED_WORKSPACE_ONLY:
     "This environment uses one shared workspace. Open the existing worker; creating, branching or deleting workers is disabled.",
   PROJECT_MISMATCH:
@@ -203,11 +209,15 @@ const messages: Record<string, string> = {
   SUBSCRIPTION_IN_USE:
     "Another user has a subscription loaded for this provider in this worker. Its owner must unload it before you can load yours.",
   SUBSCRIPTION_NOT_CONFIGURED:
-    "User subscriptions are not enabled on this deployment. Ask an administrator to configure the subscription gateway.",
+    "This deployment cannot load saved subscriptions yet. Ask an administrator to enable personal subscriptions on the inference gateway and control plane.",
   MODEL_NOT_ALLOWED:
     "This account cannot use the selected model. Refresh the model list and choose an available model.",
   PROVIDER_LOGIN_REQUIRED:
-    "Load a current account in Worker settings → Subscriptions, or save a default account in Connections, then retry.",
+    "This worker needs a valid subscription for the selected provider. Load an account in Worker settings → Subscriptions. If the login expired, replace it in Connections, then retry.",
+  AGENT_SELECTION_REQUIRED:
+    "Choose a model in the message composer before sending. If the model list is empty, check Worker settings → Subscriptions.",
+  INFERENCE_REJECTED:
+    "The inference gateway rejected this run. Check that the worker has a loaded subscription and that you selected an agent and model before retrying.",
   PROVIDER_NOT_CONFIGURED:
     "Codex or the selected provider is not configured for this worker. Ask an administrator to configure its model and subscription connection before retrying. Worker readiness only confirms that compute is running.",
   AGENT_EXECUTABLE_UNAVAILABLE:
@@ -217,7 +227,7 @@ const messages: Record<string, string> = {
   INVALID_AGENT_RESPONSE:
     "The native agent returned an unreadable result. Check this worker’s activity logs before retrying.",
   CREDENTIAL_UNAVAILABLE:
-    "The provider credential is unavailable. Ask an administrator to check Vault connectivity and the provider access token.",
+    "The service could not read or use a saved credential. Ask an administrator to check the credential encryption configuration and, for deployments that use Vault, its connection.",
   IDEMPOTENCY_CONFLICT:
     "A previous request used this key with different settings. Change the form and submit a new request.",
   NOT_FOUND_OR_FORBIDDEN:

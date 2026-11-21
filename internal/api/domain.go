@@ -141,7 +141,7 @@ func (s *Server) registerDomains(mux *http.ServeMux) {
 			return
 		}
 		p, _ := r.Context().Value(principalKey{}).(principal)
-		shared.JSON(w, 200, map[string]any{"can_import": p.admin, "can_start": p.admin || s.cfg.SharedWorkspaceID == "", "import_reason": "Repository imports use platform-managed connections. Ask a platform operator to import issues into this project.", "start_reason": "Starting agents requires a project-isolated worker. Ask a platform operator to configure project isolation."})
+		shared.JSON(w, 200, map[string]any{"can_import": p.admin, "requires_agent_selection": s.cfg.RequireAgentSelection, "can_start": p.admin || s.cfg.SharedWorkspaceID == "", "import_reason": "Repository imports use platform-managed connections. Ask a platform operator to import issues into this project.", "start_reason": "Starting agents requires a project-isolated worker. Ask a platform operator to configure project isolation."})
 	})
 	mux.HandleFunc("POST /v1/projects/{id}/agent-access", func(w http.ResponseWriter, r *http.Request) {
 		if !s.admin(w, r) || !s.AuthorizeProject(w, r, r.PathValue("id")) {

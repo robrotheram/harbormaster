@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 
 	"time"
 
@@ -30,6 +31,7 @@ const Schema = `CREATE TABLE tasks(id TEXT PRIMARY KEY,idem_key TEXT UNIQUE NOT 
 CREATE TABLE file_acceptances(idem_key TEXT PRIMARY KEY,instruction_path TEXT NOT NULL,provider TEXT NOT NULL,task_id TEXT NOT NULL,specification_digest TEXT NOT NULL DEFAULT '',model TEXT NOT NULL DEFAULT '');`
 
 const ReasoningSchema = `ALTER TABLE file_acceptances ADD COLUMN reasoning_effort TEXT NOT NULL DEFAULT ''`
+const ChangesSchema = `ALTER TABLE tasks ADD COLUMN file_changes BLOB`
 
 // RecoverInterrupted fails in-flight tasks without replaying them.
 func RecoverInterrupted(ctx context.Context, tx *sql.Tx) error {
@@ -154,9 +156,23 @@ func (r *Repository) Start(ctx context.Context, id string, now time.Time) error 
 	_, err := r.db.ExecContext(ctx, `UPDATE tasks SET state='running',updated_at=? WHERE id=?`, now.Format(time.RFC3339Nano), id)
 	return err
 }
-func (r *Repository) Finish(ctx context.Context, id, state, result, code string, now time.Time) error {
-	_, err := r.db.ExecContext(ctx, `UPDATE tasks SET state=?,result=?,error_code=?,updated_at=? WHERE id=?`, state, result, code, now.Format(time.RFC3339Nano), id)
+func (r *Repository) Finish(ctx context.Context, id, state, result, code string, changes *shared.TaskChanges, now time.Time) error {
+	var data []byte
+	if changes != nil {
+		var err error
+		data, err = json.Marshal(changes)
+		if err != nil {
+			return err
+		}
+	}
+	_, err := r.db.ExecContext(ctx, `UPDATE tasks SET state=?,result=?,error_code=?,file_changes=?,updated_at=? WHERE id=?`, state, result, code, data, now.Format(time.RFC3339Nano), id)
 	return err
+}
+
+func (r *Repository) Changes(ctx context.Context, id string) ([]byte, error) {
+	var data []byte
+	err := r.db.QueryRowContext(ctx, `SELECT file_changes FROM tasks WHERE id=?`, id).Scan(&data)
+	return data, err
 }
 func (r *Repository) SaveMessages(ctx context.Context, id string, body []byte) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE tasks SET messages=? WHERE id=?`, string(body), id)

@@ -105,12 +105,12 @@ func NewHandler(c Config) (http.Handler, error) {
 	}
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { shared.JSON(w, 200, map[string]string{"status": "ok"}) })
 	mux.HandleFunc("POST /v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
-		if c.Mode == "subscription" {
-			shared.Error(w, 503, "PROVIDER_NOT_CONFIGURED")
-			return
-		}
 		if _, err := Authenticate(r, c.Verify, "inference"); err != nil {
 			shared.Error(w, 401, "UNAUTHORIZED")
+			return
+		}
+		if c.Mode == "subscription" {
+			shared.Error(w, 409, "AGENT_SELECTION_REQUIRED")
 			return
 		}
 		b, err := ReadBounded(r.Body, 1<<20)

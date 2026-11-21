@@ -136,8 +136,6 @@ export function CreateWork({
             workspace={workspace}
             provider={provider}
             model={model}
-            onProvider={setProvider}
-            onModel={setModel}
             reasoning={reasoning}
             onReasoning={(effort, nextProvider, nextModel) => {
               setReasoning(effort);

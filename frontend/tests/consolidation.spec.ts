@@ -33,7 +33,6 @@ test("Workspace keeps drafts through exact-revision review and Overview uses sav
     review_state: "",
     created_at: item.updated_at,
   };
-  let instructionReads = 0;
   await page.route("**/ui-api/**", async (route) => {
     const path = new URL(route.request().url()).pathname.replace("/ui-api", "");
     let json: unknown = { items: [] };
@@ -62,7 +61,6 @@ test("Workspace keeps drafts through exact-revision review and Overview uses sav
         ],
       };
     if (path.endsWith("/instruction")) {
-      instructionReads++;
       return route.fulfill({
         status: 409,
         json: { code: "HISTORY_WORKSPACE_STOPPED" },
@@ -95,15 +93,14 @@ test("Workspace keeps drafts through exact-revision review and Overview uses sav
   await page.getByRole("button", { name: "Conversation", exact: true }).click();
   await expect(composer).toHaveValue("Keep this unsent request");
 
-  await page.getByRole("link", { name: "Review output", exact: true }).click();
-  await expect(page).toHaveURL(/attempt=attempt_new/);
+  await page.getByRole("button", { name: "Workspace", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Workspace invitations" }),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Approve this revision" }),
   ).toBeVisible();
-  await page.getByRole("link", { name: "Open conversation" }).click();
+  await page.getByRole("button", { name: "Conversation", exact: true }).click();
   await expect(composer).toHaveValue("Keep this unsent request");
   await page.getByRole("link", { name: "Overview", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
@@ -111,13 +108,18 @@ test("Workspace keeps drafts through exact-revision review and Overview uses sav
     page.getByRole("cell", { name: "Maya", exact: true }),
   ).toBeVisible();
   await page.getByRole("link", { name: "Review", exact: true }).click();
-  await expect(page).toHaveURL(/attempt=attempt_new/);
+  await expect(page).toHaveURL(/view=workspace/);
   await page.goto("/app/projects/A/reviews?work=work_one&attempt=attempt_old");
+  await expect(page).toHaveURL(/\/work\?/);
+  await expect(page).toHaveURL(/attempt=attempt_old/);
+  await expect(page).toHaveURL(/view=workspace/);
+  await expect(
+    page.getByRole("link", { name: "Reviews", exact: true }),
+  ).toHaveCount(0);
   await expect(page.getByText("This revision was approved.")).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Approve this revision" }),
   ).toHaveCount(0);
-  expect(instructionReads).toBeGreaterThan(0); // descriptions can fail independently of shared titles
   await expect(
     page.getByRole("heading", { name: "Workspace invitations" }),
   ).toBeVisible();

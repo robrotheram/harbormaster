@@ -28,6 +28,7 @@ type Config struct {
 	MaxProjectsPerUser         int
 	CredentialKeys             CredentialKeys
 	SubscriptionGatewayToken   string
+	RequireAgentSelection      bool
 	VerifySubscriptionGrant    func(context.Context, string, string, string) bool
 	ProvisionProjectNamespaces bool
 	SharedWorkspaceID          string

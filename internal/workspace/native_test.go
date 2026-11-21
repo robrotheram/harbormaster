@@ -17,7 +17,7 @@ func TestNativeRunnerUsesOnlyWorkspaceGrant(t *testing.T) {
 		script := `#!/bin/sh
 test -z "$OPENAI_API_KEY$ANTHROPIC_API_KEY$VAULT_TOKEN$WORKSPACE_TOKEN" || exit 11
 input=$(cat)
-case "$input" in *workbench-preview*'implement sample') ;; *) exit 12;; esac
+case "$input" in *'If this task delivers or changes a runnable web app'*'workbench-preview start'*'check that workbench-preview status'*'implement sample') ;; *) exit 12;; esac
 test "$WORKBENCH_WORKSPACE_GRANT" = workspace-only-grant || exit 15
 case "$*" in *selected-model*) ;; *) exit 16;; esac
 printf 'native file\n' > native.txt

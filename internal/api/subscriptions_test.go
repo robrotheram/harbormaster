@@ -15,6 +15,10 @@ import (
 
 func TestMultipleSubscriptionsArePrivateAndProviderScoped(t *testing.T) {
 	s, _ := setup(t)
+	s.cfg.CredentialKeys = CredentialKeys{
+		Active: "test-key",
+		Keys:   map[string]string{"test-key": strings.Repeat("k", 32)},
+	}
 	s.cfg.SubscriptionGatewayToken = "gateway-only"
 	s.cfg.VerifySubscriptionGrant = func(_ context.Context, grant, _, _ string) bool { return grant == "live" }
 	var worker struct {
@@ -56,6 +60,10 @@ func TestMultipleSubscriptionsArePrivateAndProviderScoped(t *testing.T) {
 	}
 	probe := httptest.NewRequest("POST", "/", nil)
 	probe = probe.WithContext(context.WithValue(probe.Context(), principalKey{}, principal{human: shared.HumanIdentity{ID: "user_alice"}}))
+	s.cfg.RequireAgentSelection = true
+	if err := s.prepareWorkSubscription(probe, worker.ID, ""); err != (shared.CodedError{Status: 409, Code: "AGENT_SELECTION_REQUIRED"}) {
+		t.Fatal("subscription-only work should require an agent selection", err)
+	}
 	if err := s.prepareWorkSubscription(probe, worker.ID, "codex"); err != subscriptionRequired {
 		t.Fatal("unconfigured worker should require a login", err)
 	}

@@ -62,9 +62,13 @@ export function userMessage(
   // Follow-up requests have a platform-generated file-context preamble. Keep
   // that in the stored instruction, but show the user's message in the thread.
   const marker = "\n\nCurrent request:\n";
+  const followup = "Continue the same work in this workspace.";
+  const hasContextPreamble =
+    content.startsWith('Before acting, read "work-requests/context-') &&
+    content.split("\n\n", 2)[1]?.startsWith(followup);
   if (
     (attempt.parent_attempt_id &&
-      content.startsWith("Continue the same work in this workspace.")) ||
+      (content.startsWith(followup) || hasContextPreamble)) ||
     content.startsWith("Workbench presentation: interactive-v1.\n")
   ) {
     const at = content.indexOf(marker);

@@ -32,6 +32,32 @@ func call(h http.Handler, body, token string) *httptest.ResponseRecorder {
 
 const validRequest = `{"model":"allowed","messages":[{"role":"user","content":"hello"}]}`
 
+func TestSubscriptionGatewayRequiresAgentSelection(t *testing.T) {
+	h, err := NewHandler(Config{
+		Mode: "subscription", Models: []string{"fixture"}, Verify: verifier,
+		Subscriptions: &SubscriptionConfig{
+			UserAccounts: true,
+			Providers: map[string]SubscriptionProvider{
+				"codex": {Models: []string{"allowed"}, Network: NetworkPolicy{AllowedHosts: []string{"chatgpt.com"}}},
+			},
+		},
+		ResolveSubscription: func(context.Context, string, string, string) (subscriptionCredential, error) {
+			return subscriptionCredential{}, errors.New("no subscription")
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w := call(h, validRequest, "invalid"); w.Code != 401 {
+		t.Fatalf("unauthenticated request returned %d", w.Code)
+	}
+	w := call(h, validRequest, "workspace-token")
+	var failure shared.APIError
+	if w.Code != 409 || json.Unmarshal(w.Body.Bytes(), &failure) != nil || failure.Code != "AGENT_SELECTION_REQUIRED" {
+		t.Fatalf("expected a selection error, got %d %s", w.Code, w.Body.String())
+	}
+}
+
 func TestFixtureAndDenials(t *testing.T) {
 	h, err := NewHandler(Config{Mode: "fixture", Models: []string{"allowed"}, Verify: verifier})
 	if err != nil {

@@ -89,11 +89,4 @@ export interface Pairing {
   expires_at: string;
 }
 export type Section =
-  | "team"
-  | "board"
-  | "reviews"
-  | "work"
-  | "workspaces"
-  | "settings"
-  | "overview"
-  | "help";
+  "team" | "board" | "work" | "workspaces" | "settings" | "overview" | "help";

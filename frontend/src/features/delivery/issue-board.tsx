@@ -25,7 +25,12 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
-import { ErrorNotice } from "@/shared/components";
+import {
+  AgentSelection,
+  type AgentModel,
+} from "@/features/work/agent-selection";
+import { workspaceOptions } from "@/features/workspaces/api";
+import { ErrorNotice, Modal, Form } from "@/shared/components";
 import { request } from "@/shared/http";
 import { label } from "@/shared/format";
 import type { Project } from "@/shared/types";
@@ -135,13 +140,25 @@ function Board({ project }: { project: Project }) {
     }) => boardApi.sync(card, direction, discard),
     onSettled: refresh,
   });
+  const [startingCard, setStartingCard] = useState<BoardCard>();
   const start = useMutation({
-    mutationFn: (card: BoardCard) =>
+    mutationFn: ({
+      card,
+      workspace,
+      selection,
+    }: {
+      card: BoardCard;
+      workspace?: string;
+      selection?: AgentModel;
+    }) =>
       request(`/board/${encodeURIComponent(card.id)}/start`, {
         project_id: project.id,
         revision: card.revision,
+        workspace_id: workspace,
+        selection,
       }),
-    onSuccess: async (_, card) => {
+    onSuccess: async (_, { card }) => {
+      setStartingCard(undefined);
       await refresh();
       await navigate({
         to: "/projects/$projectId/$section",
@@ -151,6 +168,12 @@ function Board({ project }: { project: Project }) {
     },
     onError: refresh,
   });
+  const startWork = (card: BoardCard) => {
+    if (capabilities.data?.requires_agent_selection) {
+      start.reset();
+      setStartingCard(card);
+    } else start.mutate({ card });
+  };
   const current = cards.find((c) => c.id === selected);
   const priorityRank = (c: BoardCard) =>
     ({ high: 0, normal: 1, low: 2 })[c.priority || "normal"] ?? 1;
@@ -436,10 +459,10 @@ function Board({ project }: { project: Project }) {
                                   ? undefined
                                   : startReason(card)
                               }
-                              onClick={() => start.mutate(card)}
+                              onClick={() => startWork(card)}
                             >
                               {start.isPending &&
-                              start.variables?.id === card.id ? (
+                              start.variables?.card.id === card.id ? (
                                 <Loader2
                                   size={14}
                                   className="loading-spinner"
@@ -448,7 +471,7 @@ function Board({ project }: { project: Project }) {
                                 <Play size={14} />
                               )}
                               {start.isPending &&
-                              start.variables?.id === card.id
+                              start.variables?.card.id === card.id
                                 ? "Starting…"
                                 : "Start work"}
                             </Button>
@@ -458,16 +481,13 @@ function Board({ project }: { project: Project }) {
                                 to="/projects/$projectId/$section"
                                 params={{
                                   projectId: project.id,
-                                  section:
-                                    card.work.state === "awaiting_review"
-                                      ? "reviews"
-                                      : "work",
+                                  section: "work",
                                 }}
                                 search={{
                                   work: card.id,
-                                  attempt:
+                                  view:
                                     card.work.state === "awaiting_review"
-                                      ? card.work.latest_attempt_id
+                                      ? "workspace"
                                       : undefined,
                                 }}
                               >
@@ -561,11 +581,13 @@ function Board({ project }: { project: Project }) {
               card={current}
               cards={cards}
               busy={busy}
-              starting={start.isPending && start.variables?.id === current.id}
+              starting={
+                start.isPending && start.variables?.card.id === current.id
+              }
               canSync={capabilities.data?.can_import === true}
               canStart={canStartTask(current)}
               startReason={startReason(current)}
-              onStart={() => start.mutate(current)}
+              onStart={() => startWork(current)}
               onSave={(edit) => change.mutateAsync({ card: current, edit })}
               onSync={(direction, discard) =>
                 sync.mutate({ card: current, direction, discard })
@@ -574,6 +596,117 @@ function Board({ project }: { project: Project }) {
           )}
         </SheetContent>
       </Sheet>
+      {startingCard && (
+        <StartWorkDialog
+          project={project.id}
+          card={startingCard}
+          pending={start.isPending}
+          error={start.error}
+          onClose={() => {
+            start.reset();
+            setStartingCard(undefined);
+          }}
+          onStart={(workspace, selection) =>
+            start.mutate({ card: startingCard, workspace, selection })
+          }
+        />
+      )}
     </div>
+  );
+}
+
+function StartWorkDialog({
+  project,
+  card,
+  pending,
+  error,
+  onClose,
+  onStart,
+}: {
+  project: string;
+  card: BoardCard;
+  pending: boolean;
+  error: unknown;
+  onClose: () => void;
+  onStart: (workspace: string, selection: AgentModel) => void;
+}) {
+  const workers = useQuery(workspaceOptions(project));
+  const ready = (workers.data || []).filter(
+    (worker) =>
+      worker.ready &&
+      worker.agent_kind !== "hermes" &&
+      !worker.retained_preview &&
+      (!card.work.workspace_id || worker.id === card.work.workspace_id),
+  );
+  const [chosenWorker, setChosenWorker] = useState("");
+  const [selection, setSelection] = useState<AgentModel>();
+  const worker = ready.find((item) => item.id === chosenWorker) || ready[0];
+  return (
+    <Modal
+      title="Start work"
+      onClose={() => {
+        if (!pending) onClose();
+      }}
+      closeDisabled={pending}
+      closeOnEscape={!pending}
+    >
+      <Form
+        onSubmit={() => {
+          if (worker && selection?.model && !pending)
+            onStart(worker.id, selection);
+        }}
+      >
+        <label>
+          Worker
+          <NativeSelect
+            value={worker?.id || ""}
+            disabled={pending || ready.length < 2}
+            onChange={(event) => {
+              setChosenWorker(event.target.value);
+              setSelection(undefined);
+            }}
+          >
+            {!ready.length && (
+              <option value="">
+                {workers.isPending ? "Loading workers…" : "No ready workers"}
+              </option>
+            )}
+            {ready.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name || item.id}
+              </option>
+            ))}
+          </NativeSelect>
+        </label>
+        {worker ? (
+          <AgentSelection
+            key={worker.id}
+            workspace={worker.id}
+            provider={selection?.provider || ""}
+            model={selection?.model || ""}
+            reasoning={selection?.reasoning_effort}
+            disabled={pending}
+            onReasoning={(effort, provider, model) =>
+              setSelection({ provider, model, reasoning_effort: effort })
+            }
+          />
+        ) : (
+          !workers.isPending &&
+          !workers.isError && (
+            <p>Start a worker and load its subscription to choose a model.</p>
+          )
+        )}
+        {workers.isError && (
+          <ErrorNotice
+            error={workers.error}
+            onRetry={() => void workers.refetch()}
+          />
+        )}
+        {!!error && <ErrorNotice error={error} />}
+        <Button disabled={pending || !worker || !selection?.model}>
+          {pending ? "Starting…" : "Start work"}
+        </Button>
+      </Form>
+    </Modal>
   );
 }

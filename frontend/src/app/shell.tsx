@@ -20,7 +20,6 @@ import {
   Factory as FactoryIcon,
   Settings2,
   Layers3,
-  ClipboardCheck,
   ListChecks,
   X,
 } from "lucide-react";
@@ -102,7 +101,6 @@ const Connections = lazy(() =>
 const sections = [
   { id: "team", label: "Overview", icon: Layers3 },
   { id: "work", label: "Workspace", icon: ListChecks },
-  { id: "reviews", label: "Reviews", icon: ClipboardCheck },
   { id: "workspaces", label: "Workers", icon: Boxes },
   { id: "settings", label: "Settings", icon: Settings2 },
 ] as const;
@@ -193,11 +191,9 @@ export function ProjectShell({
       s.id ===
       (section === "homes"
         ? "workspaces"
-        : section === "factory"
-          ? "reviews"
-          : section === "board"
-            ? "team"
-            : section),
+        : section === "board"
+          ? "team"
+          : section),
   );
   const heading = globalSettings
     ? "Network profiles"
@@ -701,8 +697,7 @@ function ProjectView({
   project: Project;
   section: Section;
 }) {
-  if (section === "team" || section === "reviews")
-    return <Delivery project={project} review={section === "reviews"} />;
+  if (section === "team") return <Delivery project={project} />;
   if (section === "settings") return <ProjectSettings project={project} />;
   if (section === "work") return <Work project={project} />;
   return <Workspaces project={project} />;

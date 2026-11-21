@@ -161,6 +161,7 @@ func (s *Server) workerSubscription(ctx context.Context, workspace, provider str
 }
 
 var subscriptionRequired = shared.CodedError{Status: http.StatusConflict, Code: "PROVIDER_LOGIN_REQUIRED"}
+var agentSelectionRequired = shared.CodedError{Status: http.StatusConflict, Code: "AGENT_SELECTION_REQUIRED"}
 
 func (s *Server) validSubscription(ctx context.Context, owner, id, provider string) (subscriptions.Credential, error) {
 	saved, err := s.Store.AgentSubscription(ctx, owner, id)
@@ -177,6 +178,9 @@ func (s *Server) validSubscription(ctx context.Context, owner, id, provider stri
 // An explicit worker binding wins. A personal default only fills an empty slot
 // during an authorized human run, so background work never borrows a credential.
 func (s *Server) prepareWorkSubscription(r *http.Request, workspace, provider string) error {
+	if provider == "" && s.cfg.RequireAgentSelection {
+		return agentSelectionRequired
+	}
 	if s.cfg.SubscriptionGatewayToken == "" || workspace == "" {
 		return nil
 	}

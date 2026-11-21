@@ -82,8 +82,11 @@ export function AgentReview({
     resultOptions(project, attempt.workspace_id, latest?.task_id, !!finished),
   );
   return (
-    <details className="review-agent">
-      <summary>Agent review</summary>
+    <section
+      className="review-agent"
+      aria-labelledby="file-agent-review-heading"
+    >
+      <h3 id="file-agent-review-heading">Agent review</h3>
       <p>
         Run a separate review in this workspace. Findings are advisory; you
         choose which changes to send back.
@@ -165,6 +168,6 @@ export function AgentReview({
           </Button>
         </>
       )}
-    </details>
+    </section>
   );
 }

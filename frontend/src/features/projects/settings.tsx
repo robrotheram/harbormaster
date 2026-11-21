@@ -218,31 +218,23 @@ function GeneralSettings({ project }: { project: Project }) {
         <h2 id="delete-project" className="text-sm font-medium">
           Delete project
         </h2>
-        {project.id === "default" ? (
-          <p className="mt-2 text-sm text-muted-foreground">
-            The default project cannot be deleted.
-          </p>
-        ) : (
-          <>
-            <p className="mt-2 max-w-prose text-sm leading-6 text-muted-foreground">
-              {project.deployment_namespace
-                ? "Remove this project from Workbench. The shared agent, deployment namespace and deployed applications are retained."
-                : "Remove this project and all its workers from Workbench. Compute must stop successfully before deletion. Private disks and saved evidence remain on the host."}
-            </p>
-            <Button
-              className="mt-4"
-              variant="destructive"
-              disabled={!canManage || deletion.isPending}
-              onClick={() => {
-                setConfirmation("");
-                deletion.reset();
-                setConfirming(true);
-              }}
-            >
-              {deletion.isPending ? "Deleting project…" : "Delete project"}
-            </Button>
-          </>
-        )}
+        <p className="mt-2 max-w-prose text-sm leading-6 text-muted-foreground">
+          {project.deployment_namespace
+            ? "Remove this project from Workbench. The shared agent, deployment namespace and deployed applications are retained."
+            : "Remove this project and stop all its workers, including any active runs. Private disks and saved evidence remain on the host."}
+        </p>
+        <Button
+          className="mt-4"
+          variant="destructive"
+          disabled={!canManage || deletion.isPending}
+          onClick={() => {
+            setConfirmation("");
+            deletion.reset();
+            setConfirming(true);
+          }}
+        >
+          {deletion.isPending ? "Deleting project…" : "Delete project"}
+        </Button>
       </section>
       {confirming && (
         <Modal
@@ -257,7 +249,7 @@ function GeneralSettings({ project }: { project: Project }) {
             Remove <strong>{project.name}</strong> from Workbench.
             {project.deployment_namespace
               ? " The shared agent, deployment namespace and deployed applications are retained."
-              : " Its workers must stop successfully before deletion."}
+              : " All its workers will stop, including any active runs."}
           </p>
           <p className="text-sm text-muted-foreground">
             Private disks and saved evidence remain on the host. This action

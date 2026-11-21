@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestWorkspaceStartupUsesVersionOne(t *testing.T) {
+func TestWorkspaceStartupUsesCurrentSchema(t *testing.T) {
 	cfg := Config{ID: "ws_test", HomeID: "home_test", Token: "test-workspace-token", DataDir: t.TempDir()}
 	for i := 0; i < 2; i++ {
 		m, err := New(cfg)
@@ -18,8 +18,8 @@ func TestWorkspaceStartupUsesVersionOne(t *testing.T) {
 		var count, version int
 		err = m.db.QueryRow(`SELECT count(*), max(version) FROM schema_migrations`).Scan(&count, &version)
 		m.Close()
-		if err != nil || count != 2 || version != 2 {
-			t.Fatal("expected workspace schema version 2", count, version, err)
+		if err != nil || count != 3 || version != 3 {
+			t.Fatal("expected workspace schema version 3", count, version, err)
 		}
 	}
 }

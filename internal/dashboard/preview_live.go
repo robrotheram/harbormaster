@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"html"
 	"io"
 	"net"
 	"net/http"
@@ -43,6 +44,11 @@ func previewPolicy(r *http.Request) string {
 	return "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self' " + websocketScheme + host + "; font-src 'self' data:; media-src 'self' blob:; base-uri 'self'; form-action 'self'; frame-ancestors " + previewParents(r) + "; worker-src 'self' blob:"
 }
 func (p *previewIngress) live(w http.ResponseWriter, r *http.Request, binding previewBinding) {
+	if binding.Embedded && r.Method == http.MethodGet && r.URL.Path == "/.workbench/preview-review.js" {
+		w.Header().Set("Cache-Control", "no-store")
+		http.ServeFile(w, r, frontendDir()+"/preview-review.js")
+		return
+	}
 	// ReverseProxy adds response headers. Replace the connect-page policy, rather
 	// than applying two CSPs and accidentally disabling the application's scripts.
 	w.Header().Del("Content-Security-Policy")
@@ -83,7 +89,8 @@ func (p *previewIngress) live(w http.ResponseWriter, r *http.Request, binding pr
 				res.Body.Close()
 				parent, _ := json.Marshal(binding.ParentOrigin)
 				script := `<script>(()=>{const origin=` + string(parent) + `;let nonce='',selecting=false;window.addEventListener('message',e=>{if(e.source!==parent||e.origin!==origin||e.data?.type!=='workbench-select')return;nonce=String(e.data.nonce||'');selecting=!!e.data.enabled;document.documentElement.style.cursor=selecting?'crosshair':''});document.addEventListener('click',e=>{if(!selecting)return;e.preventDefault();e.stopImmediatePropagation();selecting=false;document.documentElement.style.cursor='';const el=e.target;let selector=el.id?'#'+CSS.escape(el.id):el.tagName.toLowerCase();parent.postMessage({type:'workbench-selection',nonce,selector,text:(el.innerText||el.getAttribute('aria-label')||'').slice(0,300),path:location.pathname},origin)},true)})()</script>`
-				data = append(data, []byte(script)...)
+				review := `<script defer src="/.workbench/preview-review.js" data-parent-origin="` + html.EscapeString(binding.ParentOrigin) + `"></script>`
+				data = append(data, []byte(script+review)...)
 				res.Body = io.NopCloser(bytes.NewReader(data))
 				res.ContentLength = int64(len(data))
 				res.Header.Set("Content-Length", strconv.Itoa(len(data)))

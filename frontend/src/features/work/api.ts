@@ -44,6 +44,11 @@ export type Attempt = {
   created_at: string;
   updated_at: string;
 };
+export type TaskChanges = {
+  files: { path: string; status: string; source?: string }[];
+  diff?: string;
+  truncated?: boolean;
+};
 export type WorkCreate = {
   provider?: string;
   model?: string;
@@ -66,6 +71,21 @@ export const workKeys = {
     ["project", project, "work", id, "attempts"] as const,
 };
 export const workApi = {
+  changes: (
+    project: string,
+    id: string,
+    attempt: string,
+    signal: AbortSignal,
+  ) =>
+    request<TaskChanges | null>(
+      path(id) +
+        "/attempts/" +
+        encodeURIComponent(attempt) +
+        "/changes" +
+        scope(project),
+      undefined,
+      signal,
+    ),
   instruction: async (project: string, id: string, signal?: AbortSignal) => {
     const value = await request<{
       project_id: string;
@@ -133,16 +153,19 @@ export const workApi = {
       presentation: "interactive-v1",
       idempotency_key,
     }),
-  run: (project: string, id: string, idempotency_key: string) =>
-    request(path(id) + "/run", { project_id: project, idempotency_key }),
+  run: (
+    project: string,
+    id: string,
+    idempotency_key: string,
+    selection?: { provider: string; model: string; reasoning_effort?: string },
+  ) =>
+    request(path(id) + "/run", {
+      project_id: project,
+      idempotency_key,
+      selection,
+    }),
   cancel: (project: string, id: string) =>
     request(path(id) + "/cancel", { project_id: project }),
-  close: (project: string, id: string, expected_attempt_id: string) =>
-    request(path(id) + "/review", {
-      project_id: project,
-      decision: "closed",
-      expected_attempt_id,
-    }),
   review: (
     project: string,
     id: string,

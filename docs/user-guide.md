@@ -9,8 +9,7 @@ Choose an existing project from **Projects**. If you can create projects, select
 | Project page | Use it to |
 | --- | --- |
 | **Overview** | Create, assign, prioritize, and track tasks. Import issues from a connected repository. |
-| **Workspace** | Send work to an agent, read its activity, inspect files, and open an application preview. |
-| **Reviews** | Check a completed revision, approve it, request changes, or close it. |
+| **Workspace** | Send work to an agent, inspect files, review a preview, and approve or close a task. |
 | **Workers** | Start and stop workers, open T3 Code, and inspect logs or message history. |
 | **Settings** | Manage project settings, membership when available, and Hermes setup. |
 
@@ -44,11 +43,11 @@ Closing the browser leaves accepted work running. A stopped worker's private con
 
 ## Review a result
 
-1. Open **Reviews** and select a pending task. Use **Review output** from the thread if the revision is ready.
-2. Inspect the retained files, the report, or the captured tool activity. For an application, open its preview. A live preview reflects the running application, so check the retained files when you need evidence tied to a specific revision.
-3. If you can decide the review, select **Approve this revision** when the result meets the task requirements. To return it, select **Request changes**. If you also control the agent, enter feedback and select **Send changes** to start a revision. Use **Close** to finish the review without approval.
+1. Open the task's thread and select **Workspace**.
+2. Read the agent reply in **Conversation**. Open **Output** to see generated charts and images. Open **Files** for retained reports and code changes. In the live web preview, select **Markup** to mark a change.
+3. Select **Approve this revision** to accept the output. To revise the result, send your feedback in the composer.
 
-Open **History** in **Reviews** to find completed decisions. For screenshot feedback, preview setup, and agent-assisted review, see [reviewing tasks](reviews.md).
+See [reviewing tasks in Workspace](reviews.md) for annotated images and agent review.
 
 ## Inspect an application
 

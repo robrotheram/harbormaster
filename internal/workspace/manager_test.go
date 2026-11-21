@@ -38,6 +38,19 @@ func waitTask(t *testing.T, m *Manager, id string) shared.Task {
 	t.Fatal("task did not finish")
 	return shared.Task{}
 }
+
+func TestRunReportsMissingAgentSelection(t *testing.T) {
+	inference := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		shared.Error(w, http.StatusConflict, "AGENT_SELECTION_REQUIRED")
+	}))
+	defer inference.Close()
+	manager := &Manager{cfg: Config{InferenceURL: inference.URL, HTTP: inference.Client()}}
+	result, code := manager.run(context.Background(), "task_test", "Build a landing page")
+	if result != "" || code != "AGENT_SELECTION_REQUIRED" {
+		t.Fatalf("expected a selection error, got result %q and code %q", result, code)
+	}
+}
+
 func TestDurableAcceptanceToolsAndRestart(t *testing.T) {
 	var calls atomic.Int32
 	inference := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

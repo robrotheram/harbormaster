@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"image"
 	"image/png"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -57,6 +58,32 @@ func TestReviewScreenshotsDeliveredAndRetried(t *testing.T) {
 	body, _ = json.Marshal(payload)
 	if got := request(t, s, "POST", root+"/continue", string(body)); got.Code != 409 {
 		t.Fatal("changed retry accepted", got.Code)
+	}
+
+	item = waitWorkReview(t, s, project.ID, item.ID)
+	payload["expected_attempt_id"] = item.LatestAttemptID
+	payload["idempotency_key"] = "second-feedback"
+	body, _ = json.Marshal(payload)
+	var latest shared.WorkAttempt
+	if got := request(t, s, "POST", root+"/continue", string(body)); got.Code != 202 || json.Unmarshal(got.Body.Bytes(), &latest) != nil {
+		t.Fatal(got.Code, got.Body.String())
+	}
+	imageRequest := func(attempt, path string) *httptest.ResponseRecorder {
+		t.Helper()
+		body, _ := json.Marshal(map[string]string{"project_id": project.ID, "attempt_id": attempt, "path": path})
+		return request(t, s, "POST", root+"/image", string(body))
+	}
+	historicalPath := "work-requests/" + filepath.Base(files[0])
+	got := imageRequest(next.ID, historicalPath)
+	var file shared.FileHandoff
+	if got.Code != 200 || json.Unmarshal(got.Body.Bytes(), &file) != nil || !bytes.Equal(file.Content, saved) {
+		t.Fatal("historical review image unavailable", got.Code, got.Body.String())
+	}
+	latestPath := strings.TrimSuffix(latest.SpecificationPath, ".md") + "-screenshot-1.png"
+	for _, path := range []string{latestPath, "outputs/ordinary.png"} {
+		if got := imageRequest(next.ID, path); got.Code != 404 || !strings.Contains(got.Body.String(), "OUTPUT_NOT_RETAINED") {
+			t.Fatal("unrelated historical image accepted", got.Code, got.Body.String())
+		}
 	}
 }
 

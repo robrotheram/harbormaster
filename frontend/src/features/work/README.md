@@ -76,16 +76,14 @@ The working view has a resizable conversation/preview split. History and retaine
 files are secondary controls rather than permanent stacked panels. `work-preview`
 owns project-scoped app state, isolated embedded preview tickets, Web/Desktop tabs,
 and selection-to-draft messages. Selection validates the frame window, exact
-origin, and one-use nonce. `work-visuals` charts CSV/JSON through a bounded reader;
-untrusted data never becomes markup. Layout falls back to a conversation/preview
-switch below 1200px.
+origin, and one-use nonce. The chart renderer reads bounded CSV and JSON data.
 
 Port discovery polls `/workspaces/{id}/ports`. Eligible HTTP listeners are attached
 through the existing application endpoint with `kind: forward` and a socket-bound
 listener identity. Automatic receipt keys are stable across tabs. Previously
 revoked listener identities are not automatically reattached. Collapsing preview
-keeps the iframe and its authenticated connection mounted. Visualizations render
-in the conversation rather than in a preview tab.
+keeps the iframe and its authenticated connection mounted. Agent charts appear
+in the conversation and in the workspace's Output view.
 
 The UI supplies `presentation: "interactive-v1"` when creating inline work or
 continuing it. The API adds chart guidance to the private instruction; the thread
@@ -95,7 +93,7 @@ settings and row data. `interactive-chart` loads `chart-engine` lazily, draws SV
 in the browser and provides exploration, table inspection, exports and drafts
 about selected rows. Agent-provided settings are never passed directly to the
 chart library. Missing values stay missing, and tooltips use rich text instead of
-HTML. The manual Visualize data action uses this same renderer.
+HTML.
 
 Linked data uses an immutable retained artifact when available, otherwise a
 project/work/attempt-scoped POST to `/work-items/{id}/data`. Unretained files are
@@ -156,14 +154,11 @@ conversation context across native agent invocations, rather than resuming a
 provider-specific hidden session. Updated gateway, control plane, dashboard and
 worker binaries must be deployed together for model discovery and context capture.
 
-The thread Workspace menu groups Preview, Files, and Visualize data.
-
-The thread header links to its assigned worker, using the `worker` search
-parameter to filter the Workers view. Files also lists image and data links from
-the latest agent reply, with inspection/download through the existing scoped
-output endpoints. Visualize data uses chart blocks and linked CSV/JSON from that
-reply before offering paste input. These private sources are kept in memory only.
-Expired application previews can restart their saved launch configuration.
+The Workspace tools row contains Preview, Files, and Settings. Preview shows the
+live web app by default when one is available. Output shows linked images and
+data, inline charts, and retained charts. Conversation shows the agent reply. Files uses scoped output endpoints
+for inspection and download. Settings links to the assigned worker using the
+`worker` search parameter. Expired previews can reuse their saved launch configuration.
 
 ## Consolidated project surfaces
 

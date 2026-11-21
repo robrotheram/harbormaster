@@ -80,7 +80,8 @@ func AllowedAgentPath(method, path string) bool {
 	if len(parts) == 3 {
 		return method == "GET"
 	}
-	return len(parts) == 4 && ((parts[3] == "result" && method == "GET") || (parts[3] == "cancel" && method == "POST"))
+	return len(parts) == 4 && (((parts[3] == "result" || parts[3] == "changes") && method == "GET") ||
+		((parts[3] == "cancel" || parts[3] == "context") && method == "POST"))
 }
 
 // AgentQuery validates parameters by endpoint before any request reaches a guest.

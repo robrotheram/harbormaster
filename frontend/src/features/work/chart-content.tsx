@@ -53,7 +53,7 @@ export function WorkspaceChart({
 }) {
   const path = dataPath(src);
   const artifact = attempt.artifacts?.find(
-    (a) => (a.source_path || a.name) === path,
+    (a) => !!path && dataPath(a.source_path || a.name || "") === path,
   );
   const url = evidenceURL(artifact?.content_url);
   const query = useQuery({

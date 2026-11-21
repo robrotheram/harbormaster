@@ -112,6 +112,12 @@ describe("work conversation boundaries", () => {
     expect(
       userMessage(message, { parent_attempt_id: "attempt_one" } as Attempt),
     ).toBe("Add tests.\n\nCurrent request:\nKeep this literal heading.");
+    const withContext =
+      'Before acting, read "work-requests/context-task_one-123.md" and follow its earlier context references.\n\n' +
+      message;
+    expect(userMessage(withContext, { parent_attempt_id: "attempt_one" })).toBe(
+      "Add tests.\n\nCurrent request:\nKeep this literal heading.",
+    );
     expect(
       userMessage("My own prompt\n\nCurrent request:\nLeave intact.", {
         parent_attempt_id: "attempt_one",

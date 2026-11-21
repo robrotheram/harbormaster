@@ -1,10 +1,27 @@
+import "@/features/delivery/review-feedback.css";
+import {
+  AreaComments,
+  ReviewPreviewMarkup,
+  renderReviewAreas,
+  type ReviewArea,
+} from "@/features/delivery/review-preview-markup";
+import { ReviewScreenshots } from "@/features/delivery/review-screenshots";
+import {
+  ReviewScreenshotEditor,
+  type ReviewScreenshot,
+} from "@/features/delivery/review-screenshot-editor";
+import {
+  maxReviewScreenshots,
+  readScreenshot,
+} from "@/features/delivery/review-screenshot-image";
+import { boardKey } from "@/features/delivery/board-api";
+import { useUserSession } from "@/features/auth/session";
 import { WorkspaceSettings } from "@/features/workspaces/settings";
-import { Responsibility } from "./responsibility";
+import { Responsibility, memberOptions } from "./responsibility";
 import { usePersonalWork, useLayoutPreference } from "./personal-work";
 import { AgentSelection, type AgentModel } from "./agent-selection";
 import { Link, useSearch, useNavigate } from "@tanstack/react-router";
 import { replyOutputs } from "./reply-outputs";
-import { LinkedOutputs } from "./linked-outputs";
 import { instructionOptions } from "./conversation-title";
 import { composerKeyDown } from "./composer-keydown";
 import {
@@ -28,23 +45,15 @@ import {
   Loader2,
   Square,
   Terminal,
-  Download,
   PanelRightOpen,
-  BarChart3,
   MessageSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  ErrorNotice,
-  Form,
-  Modal,
-  State,
-  useRequestKey,
-} from "@/shared/components";
+import { ErrorNotice, Form, State, useRequestKey } from "@/shared/components";
 import { APIError } from "@/shared/http";
 import { privateContentOptions } from "@/shared/private-content";
-import { date, label, bytes } from "@/shared/format";
+import { date, label } from "@/shared/format";
 import type { Project } from "@/shared/types";
 import { workspacesApi, workspaceOptions } from "@/features/workspaces/api";
 import type { HistoryRecord, Snapshot } from "@/features/history/history-api";
@@ -53,9 +62,7 @@ import {
   workActions,
   workApi,
   workKeys,
-  evidenceURL,
   type Attempt,
-  type Artifact,
   type WorkItem,
 } from "./api";
 import {
@@ -64,11 +71,16 @@ import {
   refreshRunHistory,
   userMessage,
 } from "./conversation-api";
-import { readOutput } from "./read-output";
-import { WorkVisuals } from "./work-visuals";
+import { WorkFiles } from "./work-files";
+import { WorkOutput, retainedVisuals } from "./work-output";
 import { workStatus } from "./stages";
-import { WorkPreview } from "./work-preview";
-import { MessageContent } from "./message-content";
+import {
+  reviewImageNote,
+  reviewMessageText,
+  submittedReviewImage,
+} from "./review-image";
+import { WorkPreview, type PreviewView } from "./work-preview";
+import { MessageContent, WorkspaceImage } from "./message-content";
 
 export function WorkConversation({
   project,
@@ -92,21 +104,20 @@ export function WorkConversation({
   const client = useQueryClient();
   const key = useRequestKey();
   const [earlier, setEarlier] = useState(false);
-  const [files, setFiles] = useState(false);
+  const [previewView, setPreviewView] = useState<PreviewView>();
   const personal = usePersonalWork();
   const route = useSearch({ strict: false });
   const navigate = useNavigate();
   const [layout, setLayout] = useLayoutPreference<string>("output", "closed");
-  // Existing split/output preferences now open the unified workspace.
-  const workspaceOpen = layout !== "closed";
+  const filesOpen = route.view === "files" && route.work === id;
+  useEffect(() => {
+    if (route.view) setLayout("workspace");
+  }, [route.view, id]);
+  const workspaceOpen = layout !== "closed" || !!route.view;
   const workspaceVisible = useRef(workspaceOpen);
   workspaceVisible.current = workspaceOpen;
   const [unreadReply, setUnreadReply] = useState(false);
   const observedReplies = useRef(new Map<string, string>());
-  const revealPreview = useCallback(() => {}, []);
-  const [visuals, setVisuals] = useState(false);
-  const [visualsOpen, setVisualsOpen] = useState(false);
-  const [visualRequest, setVisualRequest] = useState(0);
   const [reply, setReply] = useState({ attempt: "", content: "" });
   const recordReply = useCallback((attempt: string, content: string) => {
     const previous = observedReplies.current.get(attempt);
@@ -149,6 +160,13 @@ export function WorkConversation({
   }, []);
   const showConversation = (latestMessage = false) => {
     setLayout("closed");
+    if (route.view)
+      void navigate({
+        to: "/projects/$projectId/$section",
+        params: { projectId: project.id, section: "work" },
+        search: { work: id, attempt: route.attempt },
+        replace: true,
+      });
     setUnreadReply(false);
     if (latestMessage) follow.current = true;
     requestAnimationFrame(() => {
@@ -179,9 +197,15 @@ export function WorkConversation({
         a.created_at.localeCompare(b.created_at),
       );
   const latest = attempts.find((a) => a.id === item?.latest_attempt_id);
-  const outputSources = replyOutputs(
-    reply.attempt === latest?.id ? reply.content : "",
-  );
+  const fileAttempt = route.attempt
+    ? attempts.find((a) => a.id === route.attempt)
+    : latest;
+  const output = reply.attempt === fileAttempt?.id ? reply.content : "";
+  const outputSources = replyOutputs(output);
+  const visualFiles = fileAttempt
+    ? retainedVisuals(fileAttempt, outputSources)
+    : [];
+  const hasOutput = outputSources.length > 0 || visualFiles.length > 0;
   const actions = item && workActions(item.state);
   const running =
     !!item && (actions?.cancel || (!!latest && activeAttempt(latest.state)));
@@ -207,47 +231,156 @@ export function WorkConversation({
       </Button>
     );
   };
+  const session = useUserSession();
+  const roster = useQuery(memberOptions(project.id));
+  const local = session.status === "local";
+  const user = roster.data?.user_id;
+  const controlsAgent = local || (!!user && item?.controller_id === user);
+  const canDecide =
+    local || (!!user && (!item?.reviewer_id || item.reviewer_id === user));
+  const canReview =
+    !!actions?.review &&
+    !!latest &&
+    fileAttempt?.id === latest.id &&
+    !latest.review_state &&
+    !attemptQuery.isError &&
+    canDecide;
+  const draftID = `${project.id}:${id}:${item?.latest_attempt_id}`;
+  const areaDraft = personal.reviewAreas[draftID];
+  const screenshotDraft = personal.reviewScreenshots[draftID];
+  const areas = areaDraft?.areas || [];
+  const shots = screenshotDraft?.shots || [];
+  const screenshotLimit = maxReviewScreenshots - (areas.length ? 1 : 0);
+  const [capturingArea, setCapturingArea] = useState(false);
+  const [readingImage, setReadingImage] = useState(false);
+  const [imageError, setImageError] = useState("");
+  const [screenshotEditor, setScreenshotEditor] = useState<{
+    index: number;
+    trigger: HTMLElement;
+  }>();
+  const compiledImage = useRef<{ key: string; content: string }>(null);
+  const instructionText = [
+    message,
+    areas.length
+      ? "Apply the numbered changes in the attached annotated preview image.\n" +
+        areas
+          .map(
+            ({ comment, path }, i) =>
+              `${i + 1}. ${comment.trim()} (Preview page ${path})`,
+          )
+          .join("\n")
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  const messageTooLong =
+    new TextEncoder().encode(instructionText).length > 16000;
+  function updateAreas(next: ReviewArea[]) {
+    personal.setReviewAreas((old) => ({
+      ...old,
+      [draftID]: { areas: next, key: crypto.randomUUID() },
+    }));
+  }
+  function updateShots(next: ReviewScreenshot[]) {
+    personal.setReviewScreenshots((old) => ({
+      ...old,
+      [draftID]: { shots: next, key: crypto.randomUUID() },
+    }));
+  }
+  async function attachImage(file: File) {
+    setReadingImage(true);
+    setImageError("");
+    try {
+      const url = await readScreenshot(file);
+      updateShots([...shots, { url, note: "" }]);
+    } catch (e) {
+      setImageError(e instanceof Error ? e.message : "Unable to attach image.");
+    } finally {
+      setReadingImage(false);
+    }
+  }
   const [actionSequence, setActionSequence] = useState(0);
   const mutation = useMutation({
-    mutationFn: (action: "run" | "cancel" | "accept" | "continue" | "wake") => {
+    mutationFn: async (
+      action:
+        "run" | "cancel" | "accept" | "request-changes" | "continue" | "wake",
+    ) => {
       const delivery = key({
         action,
         actionSequence,
         id,
         message,
         selection,
+        areas: areaDraft?.key,
+        screenshots: screenshotDraft?.key,
         attempt: item?.latest_attempt_id,
       });
-      if (action === "run") return workApi.run(project.id, id, delivery);
+      if (action === "run")
+        return workApi.run(project.id, id, delivery, selection);
       if (action === "cancel") return workApi.cancel(project.id, id);
       if (action === "accept")
         return workApi.review(project.id, id, true, item?.latest_attempt_id);
+      if (action === "request-changes")
+        return workApi.review(project.id, id, false, item?.latest_attempt_id);
       if (action === "wake")
         return workspacesApi.start(item!.workspace_id, delivery);
+      const screenshots = shots.map(({ url, note }) => ({
+        content: url.split(",")[1],
+        note,
+      }));
+      if (areaDraft && areas.length) {
+        if (compiledImage.current?.key !== areaDraft.key) {
+          const image = await renderReviewAreas(areas);
+          compiledImage.current = {
+            key: areaDraft.key,
+            content: image.split(",")[1],
+          };
+        }
+        screenshots.unshift({
+          content: compiledImage.current.content,
+          note: reviewImageNote,
+        });
+      }
       return workApi.continue(
         project.id,
         id,
-        message,
+        instructionText,
         item!.latest_attempt_id!,
         delivery,
         selection,
+        screenshots,
       );
     },
-    onSuccess: async (_, action) => {
+    onMutate: () => draftID,
+    onSuccess: async (_, action, submittedDraft) => {
       setActionSequence((v) => v + 1);
       if (action === "continue") {
         setMessage("");
+        personal.setReviewAreas((old) => {
+          const next = { ...old };
+          delete next[submittedDraft];
+          return next;
+        });
+        personal.setReviewScreenshots((old) => {
+          const next = { ...old };
+          delete next[submittedDraft];
+          return next;
+        });
+        compiledImage.current = null;
         follow.current = true;
         if (route.attempt) {
           await navigate({
             to: "/projects/$projectId/$section",
             params: { projectId: project.id, section: "work" },
-            search: { work: id },
+            search: { work: id, view: route.view },
             replace: true,
           });
         }
       }
-      await client.invalidateQueries({ queryKey: workKeys.list(project.id) });
+      await Promise.all([
+        client.invalidateQueries({ queryKey: workKeys.list(project.id) }),
+        client.invalidateQueries({ queryKey: boardKey(project.id) }),
+      ]);
       if (action === "wake")
         await client.invalidateQueries({ queryKey: ["project", project.id] });
     },
@@ -305,8 +438,12 @@ export function WorkConversation({
     !running &&
     !mutation.isPending &&
     canContinue &&
-    !!message.trim() &&
-    new TextEncoder().encode(message).length <= 16000;
+    !capturingArea &&
+    !readingImage &&
+    !areas.some(({ comment }) => !comment.trim()) &&
+    shots.length <= screenshotLimit &&
+    !!instructionText.trim() &&
+    !messageTooLong;
   const retry = latest && !["planned", "in_progress"].includes(item.state);
   const runAction = actions?.run ? (
     <div className="conversation-message-actions">
@@ -360,34 +497,31 @@ export function WorkConversation({
               <h2 title={title} className="line-clamp-2">
                 {title || `${label(item.kind)} conversation`}
               </h2>
-              <div className="thread-heading-state">
-                <State value={workStatus(item.state)} />
-              </div>
+              {item.state !== "closed" && (
+                <div className="thread-heading-state">
+                  <State value={workStatus(item.state)} />
+                </div>
+              )}
             </div>
           </div>
+          {workspaceOpen &&
+            (fileAttempt?.review_state === "accepted" ||
+              fileAttempt?.review_state === "changes_requested") && (
+              <span className="text-xs text-muted-foreground">
+                {fileAttempt.review_state === "accepted"
+                  ? "This revision was approved."
+                  : "Changes requested. The controller can prepare the next revision."}
+              </span>
+            )}
           {latest &&
             attempts.some(
               (a) => a.id !== latest.id && a.review_state === "accepted",
             ) && (
               <span className="text-xs text-muted-foreground">
-                Previous output approved · Current work:{" "}
-                {workStatus(item.state)}
+                Previous output approved
               </span>
             )}
           <div className="conversation-heading-actions">
-            <Responsibility item={item} running={running}>
-              <Link
-                className="conversation-worker-link"
-                to="/projects/$projectId/$section"
-                params={{ projectId: project.id, section: "workspaces" }}
-                search={{ worker: item.workspace_id }}
-                title={item.workspace_id}
-              >
-                <Server size={14} /> Worker: {worker?.name || "Task worker"}
-              </Link>
-              <p>Created {date(item.created_at)}</p>
-              {owner && <p>Task assignee: {owner}</p>}
-            </Responsibility>
             <div
               className="thread-view-switch"
               role="group"
@@ -416,19 +550,87 @@ export function WorkConversation({
                 <PanelRightOpen size={15} /> Workspace
               </Button>
             </div>
-            {actions?.review && (
-              <Button asChild variant="outline" size="sm">
-                <Link
-                  to="/projects/$projectId/$section"
-                  params={{ projectId: project.id, section: "reviews" }}
-                  search={{ work: id, attempt: item.latest_attempt_id }}
+            {workspaceOpen && canReview && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={mutation.isPending}
+                  onClick={() => mutation.mutate("accept")}
                 >
-                  Review output
-                </Link>
-              </Button>
+                  Approve this revision
+                </Button>
+                {!controlsAgent && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={mutation.isPending}
+                    onClick={() => mutation.mutate("request-changes")}
+                  >
+                    Request changes
+                  </Button>
+                )}
+              </>
             )}
           </div>
         </header>
+        <div
+          className="thread-workspace-tools"
+          role="group"
+          aria-label={workspaceOpen ? "Workspace tools" : "Conversation tools"}
+        >
+          {workspaceOpen && (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-pressed={!filesOpen}
+                onClick={() => {
+                  if (filesOpen) {
+                    void navigate({
+                      to: "/projects/$projectId/$section",
+                      params: { projectId: project.id, section: "work" },
+                      search: {
+                        work: id,
+                        attempt: route.attempt,
+                        view: "workspace",
+                      },
+                    });
+                  } else setPreviewView("web");
+                }}
+              >
+                <PanelRightOpen size={15} /> Preview
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-pressed={filesOpen}
+                onClick={() =>
+                  void navigate({
+                    to: "/projects/$projectId/$section",
+                    params: { projectId: project.id, section: "work" },
+                    search: { work: id, attempt: route.attempt, view: "files" },
+                  })
+                }
+              >
+                <FileText size={15} /> Files
+              </Button>
+            </>
+          )}
+          <Responsibility item={item} running={running}>
+            <Link
+              className="conversation-worker-link"
+              to="/projects/$projectId/$section"
+              params={{ projectId: project.id, section: "workspaces" }}
+              search={{ worker: item.workspace_id }}
+              title={item.workspace_id}
+            >
+              <Server size={14} /> Worker: {worker?.name || "Task worker"}
+            </Link>
+            <p>Created {date(item.created_at)}</p>
+            {owner && <p>Task assignee: {owner}</p>}
+          </Responsibility>
+        </div>
         <div
           className="conversation-feed"
           hidden={workspaceOpen}
@@ -509,7 +711,7 @@ export function WorkConversation({
                 project={project.id}
                 attempt={a}
                 action={a.id === latest?.id ? runAction : null}
-                onReply={a.id === latest?.id ? recordReply : undefined}
+                onReply={a.id === fileAttempt?.id ? recordReply : undefined}
                 onAsk={selectElement}
                 onActivity={announceActivity}
                 onOlder={() => {
@@ -569,70 +771,72 @@ export function WorkConversation({
         <section
           className="thread-workspace"
           aria-label="Task workspace"
-          hidden={!workspaceOpen}
+          hidden={!workspaceOpen || filesOpen}
         >
-          <div
-            className="thread-workspace-tools"
-            role="group"
-            aria-label="Workspace tools"
-          >
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-pressed={!visualsOpen}
-              onClick={() => setVisualsOpen(false)}
-            >
-              <PanelRightOpen size={15} /> Preview
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => setFiles(true)}>
-              <FileText size={15} /> Files
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-pressed={visualsOpen}
-              onClick={() => {
-                setVisuals(true);
-                setVisualsOpen(true);
-                setVisualRequest((v) => v + 1);
-              }}
-            >
-              <BarChart3 size={15} /> Visualize data
-            </Button>
-          </div>
-          <div className="thread-workspace-preview" hidden={visualsOpen}>
-            <WorkPreview
+          <WorkPreview
+            project={project.id}
+            workspace={item.workspace_id}
+            revision={
+              latest && !activeAttempt(latest.state) ? latest.id : undefined
+            }
+            view={previewView}
+            onViewChange={setPreviewView}
+            onSelection={selectElement}
+            output={
+              workspaceOpen && hasOutput && fileAttempt ? (
+                <WorkOutput
+                  key={fileAttempt.id}
+                  project={project.id}
+                  attempt={fileAttempt}
+                  sources={outputSources}
+                  files={visualFiles}
+                  onAsk={selectElement}
+                />
+              ) : undefined
+            }
+            renderReview={
+              workspaceOpen &&
+              !filesOpen &&
+              controlsAgent &&
+              !!latest &&
+              fileAttempt?.id === latest.id &&
+              !running &&
+              !attemptQuery.isError
+                ? ({ frame, origin, service }) => (
+                    <ReviewPreviewMarkup
+                      key={origin + service}
+                      frame={frame}
+                      origin={origin}
+                      service={service}
+                      areas={areas}
+                      disabled={mutation.isPending}
+                      onArea={(area) => updateAreas([...areas, area])}
+                      onBusy={setCapturingArea}
+                    />
+                  )
+                : undefined
+            }
+          />
+        </section>
+        {filesOpen && (
+          <div className="thread-workspace">
+            <WorkFiles
+              key={fileAttempt?.id}
               project={project.id}
-              workspace={item.workspace_id}
-              revision={
-                latest && !activeAttempt(latest.state) ? latest.id : undefined
+              item={item}
+              attempt={fileAttempt}
+              sources={fileAttempt?.id === latest?.id ? outputSources : []}
+              canReview={canReview}
+              canRequest={
+                controlsAgent &&
+                canContinue &&
+                !mutation.isPending &&
+                !attemptQuery.isError
               }
-              collapsible={false}
-              onCollapse={() => showConversation()}
-              onReady={revealPreview}
-              onSelection={selectElement}
+              onAsk={selectElement}
             />
           </div>
-          {visuals && (
-            <section
-              className="conversation-visualization"
-              aria-label="Conversation visualization"
-              hidden={!visualsOpen}
-            >
-              <WorkVisuals
-                key={latest?.id || "draft"}
-                project={project.id}
-                onAsk={selectElement}
-                artifacts={latest?.artifacts || []}
-                initialEditing={visuals}
-                openRequest={visualRequest}
-                sources={outputSources}
-                attempt={latest}
-                onDismiss={() => setVisualsOpen(false)}
-              />
-            </section>
-          )}
-        </section>
+        )}
         {workspaceOpen && unreadReply && (
           <div className="thread-message-notice" role="status">
             <MessageSquare size={16} />
@@ -656,6 +860,47 @@ export function WorkConversation({
               {subscriptionAction(mutation.error)}
             </>
           )}
+          {(areas.length > 0 ||
+            (controlsAgent &&
+              !!latest &&
+              (workspaceOpen || shots.length > 0))) && (
+            <div className="workspace-feedback-draft">
+              {areas.length > 0 && (
+                <AreaComments
+                  areas={areas}
+                  disabled={running || capturingArea || mutation.isPending}
+                  onChange={updateAreas}
+                />
+              )}
+              {controlsAgent && (
+                <details>
+                  <summary>
+                    Attach screenshots{shots.length ? ` (${shots.length})` : ""}
+                  </summary>
+                  <ReviewScreenshots
+                    shots={shots}
+                    limit={screenshotLimit}
+                    disabled={running || mutation.isPending || readingImage}
+                    onChange={updateShots}
+                    onAttach={(file) => void attachImage(file)}
+                    onEdit={(index, trigger) =>
+                      setScreenshotEditor({ index, trigger })
+                    }
+                  />
+                </details>
+              )}
+              {imageError && (
+                <p role="alert" className="text-destructive">
+                  {imageError}
+                </p>
+              )}
+              {shots.length > screenshotLimit && (
+                <p role="alert">
+                  Remove a screenshot to make room for the annotated preview.
+                </p>
+              )}
+            </div>
+          )}
           <Form
             onSubmit={() => {
               if (canSend) mutation.mutate("continue");
@@ -668,13 +913,9 @@ export function WorkConversation({
               <Textarea
                 ref={composer}
                 id="work-followup"
-                aria-invalid={
-                  new TextEncoder().encode(message).length > 16000 || undefined
-                }
+                aria-invalid={messageTooLong || undefined}
                 aria-describedby={
-                  new TextEncoder().encode(message).length > 16000
-                    ? "work-followup-error"
-                    : undefined
+                  messageTooLong ? "work-followup-error" : undefined
                 }
                 rows={1}
                 value={message}
@@ -702,14 +943,6 @@ export function WorkConversation({
                     setSelection({ provider, model, reasoning_effort: effort })
                   }
                   disabled={running || mutation.isPending}
-                  onProvider={(provider) =>
-                    setSelection(provider ? { provider, model: "" } : undefined)
-                  }
-                  onModel={(model) =>
-                    setSelection((value) =>
-                      value ? { ...value, model } : undefined,
-                    )
-                  }
                 />
                 <div className="conversation-compose-actions">
                   {running ? (
@@ -751,7 +984,7 @@ export function WorkConversation({
                 Stop the run to send new instructions.
               </p>
             )}
-            {new TextEncoder().encode(message).length > 16000 && (
+            {messageTooLong && (
               <p
                 id="work-followup-error"
                 className="text-sm text-destructive"
@@ -764,54 +997,21 @@ export function WorkConversation({
           </Form>
         </div>
       </div>
-      {files && (
-        <Modal title="Task files" wide onClose={() => setFiles(false)}>
-          <div className="conversation-file-drawer">
-            {!!latest?.artifacts?.length && (
-              <div className="conversation-results-heading">
-                <h3>Saved files</h3>
-              </div>
-            )}
-            {latest &&
-            (latest.artifacts?.length || !outputSources.some((s) => s.path)) ? (
-              <Outputs
-                key={latest.id}
-                project={project.id}
-                work={id}
-                attempt={latest}
-              />
-            ) : !latest ? (
-              <p className="conversation-muted">No files yet.</p>
-            ) : null}
-            {latest && (
-              <LinkedOutputs
-                key={latest.id}
-                project={project.id}
-                attempt={latest}
-                sources={outputSources}
-              />
-            )}
-            <details className="conversation-technical">
-              <summary>Technical details</summary>
-              <dl>
-                <dt>Work</dt>
-                <dd>{item.id}</dd>
-                <dt>Worker</dt>
-                <dd>{item.workspace_id}</dd>
-                <dt>Agent</dt>
-                <dd>{item.provider || "Worker default"}</dd>
-                <dt>Model</dt>
-                <dd>{item.model || "Configured default"}</dd>
-                <dt>Attempt</dt>
-                <dd>{latest?.id || "Not started"}</dd>
-                <dt>Task</dt>
-                <dd>{latest?.task_id || "Not accepted yet"}</dd>
-                <dt>Specification</dt>
-                <dd>{latest?.specification_path || item.specification_path}</dd>
-              </dl>
-            </details>
-          </div>
-        </Modal>
+      {screenshotEditor && shots[screenshotEditor.index] && (
+        <ReviewScreenshotEditor
+          shot={shots[screenshotEditor.index]}
+          disabled={mutation.isPending}
+          returnFocus={screenshotEditor.trigger}
+          onClose={() => setScreenshotEditor(undefined)}
+          onSave={(shot) => {
+            updateShots(
+              shots.map((previous, index) =>
+                index === screenshotEditor.index ? shot : previous,
+              ),
+            );
+            setScreenshotEditor(undefined);
+          }}
+        />
       )}
     </section>
   );
@@ -938,7 +1138,7 @@ function RunConversation({
   );
   const replyContent =
     records
-      .filter((r) => r.kind === "assistant.message")
+      .filter((r) => r.kind === "assistant.message" && !r.redacted)
       .map((r) => r.content || "")
       .join("\n\n") ||
     result.data?.content ||
@@ -983,6 +1183,10 @@ function RunConversation({
           group.filter((record) => record.kind === "tool.call").length ||
           group.length;
         const renderRecord = (record: HistoryRecord) => {
+          const reviewImage =
+            record.kind === "user.message"
+              ? submittedReviewImage(record.content || "")
+              : undefined;
           if (
             record.kind === "user.message" ||
             record.kind === "assistant.message"
@@ -1005,7 +1209,20 @@ function RunConversation({
                 </div>
                 <div className="conversation-message-body">
                   {record.kind === "user.message" ? (
-                    userMessage(record.content || "", attempt)
+                    <>
+                      {reviewMessageText(
+                        userMessage(record.content || "", attempt),
+                      )}
+                      {reviewImage && (
+                        <WorkspaceImage
+                          src={reviewImage}
+                          alt="Sent annotated preview"
+                          project={project}
+                          attempt={attempt}
+                          availableWhileRunning
+                        />
+                      )}
+                    </>
                   ) : (
                     <MessageContent
                       content={record.content || ""}
@@ -1111,88 +1328,6 @@ function RunConversation({
           <article className="conversation-message is-agent">{action}</article>
         )}
     </section>
-  );
-}
-
-function Outputs({
-  project,
-  work,
-  attempt,
-}: {
-  project: string;
-  work: string;
-  attempt: Attempt;
-}) {
-  const [file, setFile] = useState<Artifact>();
-  const url = evidenceURL(file?.content_url);
-  const preview = useQuery({
-    ...privateContentOptions,
-    queryKey: [
-      "project",
-      project,
-      "work-output",
-      work,
-      attempt.id,
-      file?.id || file?.content_url,
-    ],
-    queryFn: ({ signal }) => readOutput(url!, signal),
-    enabled: !!file && !!url?.startsWith("/ui-api/"),
-  });
-  return (
-    <>
-      {!attempt.artifacts?.length && (
-        <p className="conversation-muted">
-          {activeAttempt(attempt.state)
-            ? "Saved outputs will appear when the task finishes."
-            : "No output files were retained for this task. The agent's reply is in the conversation."}
-        </p>
-      )}
-      <ul className="conversation-files">
-        {attempt.artifacts?.map((a, i) => {
-          const name = a.source_path || a.name || a.kind || "Output";
-          const link = evidenceURL(a.content_url);
-          const text =
-            /\.(md|txt|json|csv|py|go|js|jsx|ts|tsx|yaml|yml|html|css|log|toml)$/i.test(
-              name,
-            );
-          return (
-            <li key={a.id || i}>
-              <FileText size={15} />
-              <div>
-                <span>{name}</span>
-                <small>{bytes(a.size_bytes)}</small>
-                <div className="conversation-file-actions">
-                  {text &&
-                    link?.startsWith("/ui-api/") &&
-                    (a.size_bytes ?? 0) <= 262144 && (
-                      <button onClick={() => setFile(a)}>Inspect</button>
-                    )}
-                  {link && (
-                    <a href={link} download>
-                      <Download size={12} /> Download
-                    </a>
-                  )}
-                </div>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
-      {file && (
-        <section
-          className="conversation-output-preview"
-          aria-label="Output preview"
-        >
-          <div>
-            <strong>{file.source_path || file.name}</strong>
-            <button onClick={() => setFile(undefined)}>Close preview</button>
-          </div>
-          {preview.isPending && <p>Loading output…</p>}
-          {preview.isError && <p role="alert">{preview.error.message}</p>}
-          {preview.data !== undefined && <pre>{preview.data}</pre>}
-        </section>
-      )}
-    </>
   );
 }
 

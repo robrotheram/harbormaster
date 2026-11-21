@@ -30,7 +30,9 @@ export function WorkspaceImage({
   alt,
   project,
   attempt,
+  availableWhileRunning = false,
 }: {
+  availableWhileRunning?: boolean;
   src: string;
   alt: string;
   project: string;
@@ -38,7 +40,7 @@ export function WorkspaceImage({
 }) {
   const path = imagePath(src);
   const retained = attempt.artifacts?.find(
-    (a) => (a.source_path || a.name) === path,
+    (a) => !!path && imagePath(a.source_path || a.name || "") === path,
   );
   const retainedURL = evidenceURL(retained?.content_url);
   const [url, setURL] = useState("");
@@ -53,7 +55,7 @@ export function WorkspaceImage({
       path,
       retainedURL,
     ],
-    enabled: !!path && !activeAttempt(attempt.state),
+    enabled: !!path && (availableWhileRunning || !activeAttempt(attempt.state)),
     retry: false,
     queryFn: async ({ signal }) => {
       if (retainedURL?.startsWith("/ui-api/")) {
@@ -211,6 +213,20 @@ export function MessageContent({
       attempt.work_item_id,
     ],
   );
+  if (
+    /^\[SYNTHETIC FIXTURE\] messages_sha256=[a-f0-9]{64}$/.test(content.trim())
+  ) {
+    return (
+      <div className="message-markdown">
+        <p>
+          <strong>Test run only.</strong> The test gateway generated this
+          response without running an agent or creating a deliverable. To run
+          the task, load a subscription and resend it with an agent and model
+          selected.
+        </p>
+      </div>
+    );
+  }
   return (
     <div className="message-markdown">
       <Markdown remarkPlugins={[remarkGfm]} skipHtml components={components}>
