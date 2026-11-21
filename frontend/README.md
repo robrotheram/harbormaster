@@ -32,12 +32,7 @@ accessibility. It does not connect to live workers or provider accounts.
 
 ## Factory navigation
 
-`/app/` opens the project portfolio. Each project opens its work conversations, with recorded agent/tool activity, inline output inspection,
-review, and follow-up requests. Work tracking sits alongside each conversation;
-Hermes remains available through Project assistant. Worker lifecycle,
-outputs/previews, agent homes and project settings remain in its tabs.
-Hermes uses the existing assistant-start and native task APIs; the companion does
-not fabricate conversation history or bypass the backend workflow.
+`/app/` opens **Projects**. Project routes include **Overview** for tasks, **Workspace** for agent threads and previews, **Reviews** for decisions, **Workers** for lifecycle and history, and **Settings** for project configuration. **Project assistant** in **Workspace** uses the backend assistant-start and task APIs. See the [user guide](../docs/user-guide.md).
 
 `/app/infrastructure` is deployment-wide. It combines authorized project worker
 inventories with resource allocations from the platform snapshot, and displays
@@ -47,9 +42,7 @@ column and stays hidden during normal browsing. Done exits bulk mode; exiting or
 changing a filter clears the selection. Each batch
 confirms its targets, limits concurrent requests, reports results per worker, and
 retries only failures. The existing backend lifecycle rules still apply.
-`/app/platform-services` opens from System → Health in the sidebar and has
-its own refresh control. System also groups Infrastructure and Connection profiles.
-Docs beside the header theme switcher opens `/app/help` (Getting started).
+`/app/platform-services` opens from **Platform**, under **Health**. **Platform** also includes **Connections** and **Network profiles**. **Docs** opens `/app/help`.
 Unavailable project observations are explicitly partial; runtime names are not
 claims of verified isolation. The old project `/overview` bookmarks render the
 global infrastructure view as well.
@@ -68,7 +61,7 @@ gutters.
 - `src/app/`: bootstrap, routing, providers and application shell. Feature screens load lazily.
 - `src/features/workspaces/`: inventory, workspace creation/settings, native attachment, file handoffs and homes.
 - `src/features/tasks/`: task submission/status/cancellation/results.
-- `src/features/scheduling/`: schedules and scheduled runs.
+- `src/features/scheduling/`: schedule and run modules. The current router has no schedule page.
 - `src/features/history/`: private transcripts, activity and safe operational logs.
 - `src/features/connection-profiles/`: global profiles and pure connection-policy parsing/presentation.
 - `src/features/project-assistant/`: Hermes and Matrix configuration. Assistant startup is one backend operation.

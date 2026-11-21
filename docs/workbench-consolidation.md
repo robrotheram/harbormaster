@@ -1,5 +1,7 @@
 # Workbench consolidation — implementation status
 
+> Historical record. See the [documentation index](README.md) for current setup and workflows.
+
 17 November 2026. This describes the current checkout, including pre-existing
 uncommitted changes. Local dashboard/API and task execution were verified on 17 November; this is not a production deployment certification.
 

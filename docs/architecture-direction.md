@@ -1,5 +1,7 @@
 # Project-isolated agent workbench: proposed direction
 
+> Historical record. See the [documentation index](README.md) for current setup and workflows.
+
 Status: architecture proposal, 1 November 2026. This records requirements and proposed decisions; it does not change deployment behavior or establish compliance certification.
 
 The [software factory and research delivery plan](software-factory-plan.md), dated

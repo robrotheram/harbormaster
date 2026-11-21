@@ -1,5 +1,7 @@
 # Software factory and research platform delivery plan
 
+> Historical record. See the [documentation index](README.md) for current setup and workflows.
+
 > This original plan includes the demo recipe workloads and GoGallery image
 > retired in #57. See [implementation status](software-factory-implementation.md)
 > for current support.

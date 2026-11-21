@@ -1,9 +1,6 @@
-# Repository connections, issue board and reviews
+# Connect a repository and import issues
 
-Platform navigation includes **Connections** and **Network profiles**.
-Project navigation includes **Issue board** and **Reviews**. Repository connections
-are shared across the platform; existing project connections remain available.
-Existing work conversations, workers and outputs remain available.
+Repository connections are shared across the platform. Use the local operator console to manage provider accounts and connections. Use the project's **Overview** to manage imported tasks.
 
 ## Add an account in the UI
 
@@ -22,13 +19,7 @@ Project administrators and project-scoped agent credentials cannot manage these
 platform-wide connections. If the page requires local platform operator access,
 ask a platform operator to perform the setup from the local console.
 
-Tokens entered in the UI are encrypted with AES-256-GCM before persistence. The
-key is purpose-separated from the persistent control-plane authentication secret,
-which is mounted separately from the database. Account name, provider and API URL
-are authenticated with the ciphertext. Tokens are never returned by the API or
-saved to browser storage. Preserve the control-plane secret across deployments
-and database restores. If you rotate that secret, re-enter each account token
-through **Update token**; account listings remain available for recovery.
+The control plane encrypts account tokens before saving them. Back up its credential encryption key or keyring with the database. Retain the original control token for records encrypted with the legacy key. If a token can no longer be decrypted, re-enter it through **Update token**.
 
 Verification uses the authenticated-user endpoints documented by
 [GitHub](https://docs.github.com/en/rest/users/users) and
@@ -105,24 +96,10 @@ unchanged ticket on the same connection returns the same work item. Repeating an
 refresh title/description/status and continue the existing conversation with new requirements.
 A disconnected/recreated connection has a new identity.
 
-The issue board supports drag-and-drop planning, a hidden archive, highlighted
-work problems, and explicit two-way title/description/status sync for imported issues.
-See [Issue board](issue-board.md) for movement semantics and conflict handling.
+You can also import selected issues from **Overview**. Use the task details to sync or refresh imported fields. See [project task sync](issue-board.md#import-and-sync-repository-issues) for conflict handling.
 
-## Review deliveries
+## Review imported work
 
-Reviews provides a pending queue and completed/returned history. Select a delivery
-to inspect its request, latest attempt's artifacts (including size and digest),
-and attempt history. Open its title to inspect the complete conversation and
-previews. Confirm inspection before accepting; **Request changes** returns it for
-another attempt. Add revision guidance in the conversation. Each decision checks
-the latest attempt ID and persists its disposition atomically with work state.
+Open the local task from **Overview**. Start work when the task is ready, then use [Reviews](reviews.md) to check the result. A review changes the local work state. Update the provider issue through its explicit sync action.
 
-## Current boundaries
-
-This is token-based ticket integration with explicit title/description/status sync and a local Kanban board. Native GitHub
-Projects/GitLab board column sync, Scrum sprint planning, webhook/background sync,
-OAuth installation, repository cloning credentials, PR/MR review and multi-user
-reviewer identities/roles are not implemented here. Closing a provider ticket is
-an explicit action; accepting factory work does not close or merge anything
-remotely. Review feedback remains in the existing work conversation. Accounts need real credentials before live integration can be tested.
+The connection supports token-based issue access and explicit sync of title, description, and open or closed state. Git hosting project boards and webhook sync are outside that scope. Set up worker Git credentials separately if you need to clone a private repository.

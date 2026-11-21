@@ -1,53 +1,31 @@
 # WorkOS AuthKit operator sign-in
 
-The dashboard supports WorkOS hosted AuthKit through the official Go SDK. AuthKit
-protects the existing **shared operator console**: approved users can manage all
-projects. This does not add per-user or per-organization project tenancy. The
-control plane and MCP retain their existing service/project bearer credentials.
+Use WorkOS AuthKit to verify a hosted user's identity. The control plane checks project membership for project routes. Platform-wide operator functions use separate local authority.
 
-## Configure
+## Configure WorkOS
 
-Set these in the deployment's ignored `.env` file:
+1. Configure the [scoped dashboard credentials](../deploy/kubernetes/README.md#configure-hosted-dashboard-access) on the control plane and dashboard. Remove the dashboard's control token. If you adapt Compose for hosted sign-in, use an override that removes the inherited control-token setting and mount. The stock Compose deployment uses local Basic authentication.
+2. Set `WORKOS_CLIENT_ID`, `WORKOS_API_KEY` or `WORKOS_API_KEY_FILE`, and `WORKOS_ALLOWED_EMAILS` on the dashboard. Use a comma-separated list of approved verified emails.
+3. Set `WORKOS_REDIRECT_URI` to the dashboard origin followed by `/auth/callback`. Use HTTPS for a hosted deployment. HTTP is permitted on loopback.
+4. In WorkOS, register the redirect URI, the same origin followed by `/auth/login` as the sign-in URI, and the same origin followed by `/app/` as the sign-out URI.
+5. Route requests to the dashboard and preserve the public Host header. Use the same hostname in the browser and in WorkOS. Deploy one dashboard replica and verify an approved sign-in.
 
-```dotenv
-WORKOS_CLIENT_ID=client_...
-WORKOS_API_KEY=sk_...
-WORKOS_ALLOWED_EMAILS=operator@example.com
-WORKOS_REDIRECT_URI=http://127.0.0.1:8080/auth/callback
-```
+Incomplete WorkOS settings fail startup. Configure project membership separately. Set `PROJECT_CREATOR_EMAILS` on the control plane for approved accounts that need to create projects.
 
-`WORKOS_ALLOWED_EMAILS` is a comma-separated allowlist. Only verified emails are
-accepted; impersonated sessions are rejected. When running the dashboard directly,
-`WORKOS_API_KEY_FILE` can supply the key instead of `WORKOS_API_KEY`. Never put the
-key in frontend variables or commit it. Compose passes auth settings only to the
-dashboard service.
+## Configure OAuth2 Proxy instead of WorkOS
 
-In your WorkOS application's Redirects settings, register:
+Supply the same scoped dashboard credentials. Clear the WorkOS settings and configure these dashboard variables.
 
-- Redirect URI: `http://127.0.0.1:8080/auth/callback`
-- Sign-in URI: `http://127.0.0.1:8080/auth/login`
-- Sign-out URI: `http://127.0.0.1:8080/app/`
+| Variable | Value |
+| --- | --- |
+| `DASHBOARD_PUBLIC_ORIGIN` | Dashboard HTTPS origin with no path |
+| `OAUTH2_PROXY_PUBLIC_URL` | Public HTTPS origin for OAuth2 Proxy |
+| `OAUTH2_PROXY_AUTH_URL` | Dashboard-reachable URL ending in `/oauth2/auth` |
+| `OAUTH2_PROXY_ALLOWED_EMAILS` | Comma-separated list of approved verified emails |
 
-Use the same host consistently; `localhost` and `127.0.0.1` are different cookie
-origins. In HTTP loopback mode, entry pages on the other loopback name redirect
-to the configured origin on the same port. API and callback requests still require
-the configured host. For HTTPS hosting, use the public origin for all three URLs and preserve
-the Host header through the trusted reverse proxy. HTTP is accepted only for
-loopback development. Existing worker `.localhost` connection/preview URLs remain
-local-development features; this change does not make them remotely routable.
+Configure OAuth2 Proxy to return the verified email in its auth response. Check a real sign-in and verify that project access follows membership.
 
-Build and deploy the dashboard (the Go server changes as well as the UI):
-
-```sh
-docker compose build dashboard
-docker compose up -d --no-deps --no-build --wait dashboard
-```
-
-All auth settings empty preserves the existing loopback local mode. Any partial
-configuration fails startup; a configured deployment never falls back to local
-operator access if WorkOS is unavailable.
-
-## Session and access boundary
+## WorkOS session and access boundary
 
 Sign-in uses PKCE and ten-minute, one-use state bound to an HttpOnly browser
 cookie. The callback exchanges its code on the server, validates the signed token

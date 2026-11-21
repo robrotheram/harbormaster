@@ -1,21 +1,18 @@
 # Hermes workspace and Matrix connection
 
-The supported runtime is Hermes **v0.23.0**, pinned to upstream commit
-`2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19`. It runs inside the existing
-Firecracker microVM, with no network card. The guest build uses upstream's frozen
+The pinned runtime is Hermes **v0.23.0**, pinned to upstream commit
+`2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19`. This guide covers the Firecracker worker and its Matrix connection. For Kubernetes without Matrix, follow the [Kubernetes Hermes guide](../../docs/k3s-hermes.md). The guest build uses upstream's frozen
 `uv.lock`, including Matrix encryption dependencies. The host installation and a
 real VM import check must pass before Hermes appears as available in the UI.
 
 ## Use the workspace agent
 
-1. Open a project and select **Hermes setup** in the sidebar.
-2. Choose **Workspace agent and Matrix bot** (or workspace only), enter an approved
-   model, and select Blocked or an approved connection profile.
-3. Select **Save Hermes configuration**, then **Start Hermes workspace**.
-4. Open that workspace, select **Run task**, and submit an instruction. Hermes can
-   use its terminal, file and memory tools within that workspace.
+1. Open a project. Select **Settings**, then **Hermes setup**.
+2. In **Agent**, choose **Workspace agent**, enter an approved model, and choose an approved connection profile. To enable both workspace and Matrix use, choose **Workspace agent and Matrix bot** and complete the fields in **Matrix** before saving.
+3. Select **Save settings**, then **Start Hermes**.
+4. Open **Workspace**, then **Project assistant**. Select **Work with Hermes** and submit an instruction.
 
-Both mode can be saved before Matrix details are available. Provider requests use
+Provider requests use
 the existing Workbench Codex subscription gateway and its host-held native login.
 The VM receives a generation-bound workspace grant, never the provider credential.
 API-key and alternate-provider fallback are not configured. Account allowance and
@@ -33,7 +30,7 @@ to configured encrypted rooms, or have invitations to them for Workbench to acce
 Creating the account and sending its first invitations remain server/client actions;
 Workbench does not need Matrix administrator credentials.
 
-1. In **Hermes setup**, enter the HTTPS homeserver URL, bot user ID, exact room IDs
+1. In **Hermes setup**, open **Matrix**. Enter the HTTPS homeserver URL, bot user ID, exact room IDs
    (`!…`) and authorized sender IDs (`@…`), one ID per line.
 2. Save the configuration. Workbench discovers the Matrix homeserver from an
    Element address and checks the resulting endpoint before any token is sent.
@@ -109,8 +106,7 @@ pinned SDK.
 Firecracker Hermes guests use loopback port 18085, bridged over vsock to the
 VM-specific host listener. Only `POST /mcp` is accepted, with the current workspace
 generation grant. The host forwards only MCP initialization, ping, discovery and
-nine tools: work_create, work_list, work_run, work_attempts, work_cancel, exchange_publish, exchange_read,
-exchange_submit, note_publish. The upstream target is compiled in:
+the tools in the [shared project tool list](../../internal/shared/project-tools.json). The upstream target is compiled in:
 `http://127.0.0.1:18085/project-mcp`. No guest-selected host is accepted.
 The Compose Firecracker overlay publishes MCP there on host loopback. Set
 `FIRECRACKER_HERMES_PROJECT_MCP=true` on the host controller (including during

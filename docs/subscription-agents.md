@@ -21,15 +21,13 @@ and import a current login file:
 This is an expiring access-token import, not an automatic login/refresh flow.
 The browser sends only the current access token and required account/expiry/scope
 metadata, never refresh tokens or API keys. The server validates the import and
-encrypts it with owner-and-record binding using a purpose-separated key derived
-from the control secret. Retain that secret when restoring the database.
+encrypts it with owner-and-record binding. Retain the credential encryption key or keyring with database backups. Retain the original control token for imports encrypted with the legacy key.
 Credentials are never returned by the user-facing API or copied into the worker
 filesystem. Expired accounts remain editable but cannot be loaded until refreshed.
 Use **Edit** to rename an account or replace its login without changing its provider.
 Replacing a login updates workers already using that saved subscription.
 
-In **Workers → Subscription**, select an account independently for ChatGPT / Codex
-and Claude. A worker can load one account per provider. The same saved subscription
+In **Workers**, open the worker's **Settings**, then **Subscriptions**. Select an account for Codex, Claude, or both. A worker can load one account per provider. The same saved subscription
 can be used across multiple workers. Saving alone does not bind a worker.
 Switching accounts changes only that provider's binding. Deleting a subscription
 removes only that saved account and its bindings; unloading removes only the chosen

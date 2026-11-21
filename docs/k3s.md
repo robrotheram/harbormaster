@@ -1,11 +1,6 @@
-# Kubernetes deployment and isolation acceptance (M5)
+# Operate and verify the Kubernetes deployment
 
-Compose remains development. This package implements production operations but
-**does not constitute M5 acceptance**. The initial implementation used simulated infrastructure. A fresh
-[k3s reference environment](https://github.com/robrotheram/harbormaster-reference) now has live
-Kata, Longhorn, network-policy and application lifecycle checks. The default verified-isolation gate continues
-to reject starts: neither Pod readiness nor a configured RuntimeClass proves a VM.
-Do not expose an unverified test install as production.
+Use the [deployment guide](deployment.md#install-the-kubernetes-reference-deployment) to prepare the cluster and overlay. The default verified-isolation requirement blocks worker starts. Check the runtime and network enforcement on your installation before relying on those boundaries.
 
 ## Provisioning
 
@@ -78,15 +73,13 @@ Admission and RBAC must prevent other principals adding policies between reads.
 Resume checks retained PVC project/home/deployment/generation ownership, CSI class
 and RWOP fence. Stop quiesces the agent and waits for the current Sandbox generation's
 Suspended condition. Do not delete a retained Sandbox/PVC to recover capacity.
-Branch seeding remains unsupported. Hermes remains unadvertised pending native
-pinned-image integration acceptance; Hermes adapters are installed from `integrations/hermes`.
+Branch seeding is unsupported. For the approved image, model, and MCP setup required to enable Hermes, see [Kubernetes Hermes](k3s-hermes.md).
 
 ## Backup and recovery
 
 The deployment contains no custom backup or recovery scripts. Configure database
 backups through CloudNativePG and workspace-volume backups through the storage
-platform, with an independent backup destination. These policies are not yet
-configured for the reference environment. Retain reclaim policy and snapshots
+platform, with an independent backup destination. Retain reclaim policy and snapshots
 remaining on the same node do not provide disaster recovery.
 
 A consistent recovery point must cover metadata, workspace files and matching
@@ -133,8 +126,7 @@ Route `*.<dashboard-host>` to the dashboard Service and provision wildcard DNS
 and TLS for it. The reference overlay includes the wildcard ingress and a separate
 `harbormaster-previews-tls` Certificate. Its cluster-owned `letsencrypt-prod`
 issuer must support DNS-01 for this domain; an HTTP-01-only issuer cannot issue
-the wildcard certificate. Add `*.harbormaster.exceptionerror.io` DNS pointing to
-Traefik before using previews. Existing dashboard and worker certificates remain
+the wildcard certificate. Point your wildcard DNS record to the ingress controller before using previews. Existing dashboard and worker certificates remain
 separate.
 
 Do not attach operator OAuth middleware to preview ingress: each preview uses a

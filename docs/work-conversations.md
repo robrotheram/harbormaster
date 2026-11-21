@@ -5,9 +5,7 @@ synthetic fixture cannot create the files in this exercise. Allow a few minutes
 for each run. The conversation shows recorded messages and tool activity as they
 become available; it does not stream every generated token.
 
-1. Open `http://127.0.0.1:8080/app/`, choose a project, then **Work → New
-   conversation**. Select **Software** and an idle worker, or leave **Create a
-   private Codex worker** selected.
+1. Open the dashboard and choose a project. Select **Workspace**, then **New thread**. Select **Software** and an idle worker with native inference configured. Use **Automatic worker** if the deployment supports provisioning a worker for your configured agent.
 2. Enter this instruction:
 
    ```text
@@ -26,17 +24,14 @@ become available; it does not stream every generated token.
    ```
 
    Click **Start work**. The saved conversation opens and its URL includes
-   `?work=...`; bookmark it if desired.
+   `?work=...`. Bookmark the URL for the final step.
 4. Stay in the conversation. Expand a tool call or result to inspect the agent's
    commands and output. The status changes from preparing/running to awaiting
    review. If the run fails, its error appears inline and **Technical details** contains
    the attempt/task references. A failed run cannot be accepted; use **Retry
    task** or send corrected instructions.
-5. Open **Files**, then click **Inspect** on the report and tests. Verify that the
-   report describes the command and the tool output confirms four passing tests.
-   **Download** retrieves the retained file. A reply alone does not prove that
-   files or tests exist; inspect the evidence.
-6. Click **Request changes**, then send:
+5. Switch the thread to **Workspace** and open **Files**. Inspect the report and tests. Verify the command in the report and check the recorded tool output for four passing tests. Use **Download** to retrieve a retained file.
+6. Select **Review output**, then **Request changes**. Enter the following feedback and select **Send changes**.
 
    ```text
    Extend add(a, b) to reject non-numeric arguments with TypeError. Add tests
@@ -48,10 +43,7 @@ become available; it does not stream every generated token.
    **Files** shows the current result. **Show earlier conversation** opens
    previous messages. During execution you can draft a message or click
    **Stop task**; sending waits until the agent finishes.
-7. After checking the revised result, click **Accept result**. The work item
-   becomes **Accepted**. Reload the page: the conversation, run history, outputs
-   and accepted state should remain available. A later message starts another
-   run in the same work item, preserving the earlier acceptance.
+7. After checking the revised result, open **Reviews** and select **Approve this revision**. The work item becomes **Accepted**. Reload the page and open the conversation again. Its history, outputs, and accepted state should still be available.
 8. To check workspace persistence, let the worker become idle, stop it from
    **Workers**, and return to the bookmarked conversation. Click **Load
    conversation** to start the worker and read its private record. No task should
@@ -64,13 +56,9 @@ the control plane stores execution references and review state.
 
 ## Run and preview a web application
 
-In a work conversation, select **Web → Run application** in the visual pane.
-Enter the application's workspace directory and port (4173 by default). For a
-static site, keep `python3 -m http.server "$PORT" --bind 127.0.0.1`; for a framework,
-enter its start command and configure it to listen on the selected port. For the
-Agent-workpence landing page the directory is `agent-workpence`.
+In the thread, switch to **Workspace**, then choose **Preview** and **Web**. To start the app yourself, open **Preview options**, then **Preview settings**. Enter the app's directory relative to the worker's project root. Set the port, which defaults to 4173. For a static site, use `python3 -m http.server "$PORT" --bind 127.0.0.1`. For a framework, use its start command and configure it to listen on the selected port.
 
-Click **Start preview**; the preview appears in the pane when ready. HTTP
+Select **Start preview**. The pane opens the preview when the app is ready. HTTP
 requests are forwarded to the application inside the workspace through an
 isolated authenticated preview origin. The command, its output and files remain
 in that workspace. No arbitrary host address can be chosen as a forwarding target.
@@ -83,42 +71,19 @@ Use the refresh control for applications without automatic reload.
 
 ### Conversation and visual workspace
 
-Open a work item to use the split workspace. The latest activity is shown by default;
-**Show earlier conversation** restores previous messages, and **Files** opens
-the current retained outputs and technical details. Tool actions are collapsed into groups. Drag the divider (or
-focus it and use the arrow keys) to resize the conversation and visual pane.
-On narrow screens, switch between **Conversation** and **Preview**.
+Switch between **Conversation** and **Workspace** at the top of the thread. **Conversation** shows messages and recorded tool activity. Use **Show earlier conversation** to load earlier messages. The message composer stays open in either view.
 
-The preview pane has two modes; charts appear in the conversation:
+In **Workspace**, use **Preview** to open web or desktop content, **Files** to inspect retained outputs, and **Visualize data** to chart retained or pasted CSV or JSON. Agent-supplied charts appear in **Conversation**.
 
-- **Web** runs an application and embeds its preview. Use the toolbar to reload,
-  switch to a phone viewport, open a separate tab, or select an element. Selection
-  adds a description to the message draft; explain the desired change and send it.
-  Application commands, ports, logs, and stop controls are in **Preview settings
-  and logs**. After changing a command, stop the existing app before reusing its port.
-- **Desktop** starts a private X11 desktop in the workspace, viewed through noVNC.
-  Mouse and keyboard input work inside the pane. Native agent runs started while
-  the desktop is active receive `DISPLAY=:99`, so they can launch GUI applications.
-  The runtime image must include `workbench-desktop` and its packaged dependencies.
-- **Visualize data** in Conversation options opens retained or pasted CSV/JSON
-  data. Agent-supplied charts appear directly inside replies. The browser draws
-  them; no Python plotting library or application server is needed.
+- In **Web**, open **Preview options** to change the viewport, open a separate tab, or select an element. Element selection adds text to your message draft. Describe the change before sending.
+- In **Desktop**, select **Start worker desktop** when the image supports it. The view forwards mouse and keyboard input to a private X11 desktop. Agent runs started during the session receive `DISPLAY=:99`.
+- While you use **Workspace**, new replies continue to arrive. Select **View message** to return to **Conversation** without clearing the message draft.
 
-Application previews stream HTTP and WebSocket traffic through authenticated
-runtime hops. Apps are bound to registered workspace services and loopback ports;
-no operator credentials reach them. Embedded previews use isolated localhost
-origins and partitioned session cookies. Stop and expiry terminate application
-process groups. Preview sessions expire after one hour; reload to reconnect.
-
-Managed application services and their supervised process descendants can coexist
-with new conversation turns and private instruction-file handoffs. They still
-count as background activity for idle stopping. Other active tasks,
-and unrelated background processes continue to block conflicting work.
-
+Managed application services count as background activity for idle shutdown. You can continue the conversation while a managed app runs.
 
 ### Debug a preview application
 
-Click the terminal icon (**Application logs**) in the preview toolbar. The large
+Open **Preview options**, then **Application logs**. The large
 viewer includes stopped sessions, their commands and directories, and stdout/stderr.
 Use **Filter log lines** to find an error, **Pause** to freeze incoming updates,
 and **Follow latest** to jump to and follow new output. **Wrap** toggles long-line
@@ -132,7 +97,7 @@ not include browser JavaScript console errors or recover logs from a restarted
 workspace.
 
 
-### Automatic ports and optional preview
+### Open a detected HTTP service
 
 The work conversation detects HTTP listeners bound to workspace loopback or all
 interfaces (IPv4 and IPv6). An eligible server on port 3000, for example, appears
@@ -148,10 +113,7 @@ revokes forwarding without killing an application the agent started independentl
 Its process output stays in the conversation’s tool activity; only applications
 started through the preview launcher have captured application logs.
 
-**Collapse preview** leaves the running app connected and gives the conversation
-the full width. **Show preview** restores it. Charts stay in the conversation,
-including while preview is collapsed. Desktop mode still requires starting the
-workspace desktop and an installed desktop-enabled runtime image.
+Switching back to **Conversation** keeps the preview connected. Use **Disconnect preview** when you want to revoke forwarding.
 
 ### Agent-owned app startup
 
@@ -177,15 +139,7 @@ requiring the user to predeclare an output path. Older unretained images are not
 silently replaced with newer files. SVGs render as image resources, not executable
 HTML. External images and paths outside the workspace are not loaded.
 
-Web preview reconnects automatically after an agent run finishes, including static
-servers without hot reload. It keeps its session while the agent works and when
-the pane is collapsed. A stopped application removes the old frame. Files and
-manual chart entry are in Conversation options; preview tools and logs are in
-Preview options. Generated charts and images stay beside the agent's reply.
-When all previous app sessions stop, preview collapses to return the space to the
-conversation. A newly ready app opens the pane again. Manually hiding an active
-preview keeps its connection alive.
-
+Web preview refreshes after an agent run finishes. It keeps the preview session while the agent works and clears the frame when the application stops. Use **Files** or **Visualize data** in the thread's **Workspace** to open other outputs.
 
 ### Interactive charts from workspace data
 
@@ -210,7 +164,7 @@ contract in its private agent instructions. Small results can use a
 ````
 
 For larger results, write the same object to `outputs/experiments.chart.json` and
-link it in the reply: `[Explore results](outputs/experiments.chart.json)`. Raw CSV
+link to the file in the agent reply. Use `[Explore results](outputs/experiments.chart.json)` as the Markdown link. Raw CSV
 or JSON arrays of row objects also work; the UI chooses initial axes. Linked files
 are read from the latest attempt's private workspace, or from a retained artifact
 for a historical attempt. Retain the data file if it must remain available after

@@ -7,11 +7,7 @@ memory, vault or filesystem. Human grant administration is absent from MCP.
 
 ## Setup
 
-Start the current control plane (startup owns migrations 1–6). Configure the
-Personal and destination projects and a Hermes workspace in each, using the
-project IDs returned by the API. Follow deploy/hermes/README.md for the pinned
-Firecracker image, generation broker and project coordination configuration.
-Rebuild the guest image to install /usr/local/bin/hermes-consume.
+Start the control plane and create the source and destination projects. Configure a Hermes worker in each project. Use the project IDs returned by the API. Follow [Hermes installation](../deploy/hermes/README.md) for the guest image and host broker. The current image includes `hermes-consume`.
 
 With an administrator token, create and independently approve a request grant:
 
@@ -82,9 +78,7 @@ key; retries return the same attempt. It does not intentionally rerun completed
 work. Historical receipts remain discoverable, so scan cost grows with history.
 No automatic retention/deletion policy is implied.
 
-The fixed broker/project MCP exposes ten tools: work_create/list/run/attempts/
-cancel, exchange_publish/inbox/read/submit, note_publish. Human work_review stays
-excluded. Hermes uses the pinned MCP2 stream yielding exactly (read, write).
+The Firecracker broker and the generation-authenticated MCP endpoint use the [shared project tool list](../internal/shared/project-tools.json). Exchange tools authorize access through the grant. Human review and grant administration use separate routes.
 
 ## Checks
 

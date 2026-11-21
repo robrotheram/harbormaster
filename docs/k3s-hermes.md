@@ -31,8 +31,7 @@ No provider fallback is configured.
 
 For a Kustomize installation, add `components/hermes` to the consuming overlay's
 `components` list (relative to that overlay). It supplies the private Deployment
-and Service without enabling Hermes workspace execution. For example, from an
-overlay under `deploy/kubernetes/overlays`:
+and Service without enabling Hermes workspace execution. For an overlay at `deploy/kubernetes/overlays/example`, use this path.
 
 ```yaml
 components:
@@ -70,9 +69,7 @@ owned, Ready, approved-image Hermes sandbox supplies project identity. Caller
 project headers have no authority. Suspended, old-generation and foreign grants
 fail. Signing happens inside MCP; no global key is sent to a guest.
 
-The endpoint accepts POST JSON-RPC initialization, ping, discovery and only these
-calls: work_create/list/run/attempts/cancel, exchange_publish/inbox/read/submit,
-note_publish. Human review and administration remain absent. The canonical
+The endpoint accepts JSON-RPC initialization, ping, discovery, and calls from the [shared project tool list](../internal/shared/project-tools.json). Human review and administration use separate routes. The canonical
 network policies are unchanged: blocked still allows only platform gateways;
 allowlist internet traffic still requires the authenticated egress gateway.
 No guest-chosen upstream, host mount, privileged flag, or SA token is introduced.

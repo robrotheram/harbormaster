@@ -1,7 +1,6 @@
 # Private agent history and evaluation export
 
-Open **Workspaces → Message history**, or choose **Message history** in a
-workspace's actions menu. Choose a workspace, browse its newest/older records,
+Open **Workers**, then **Project actions**, then **Message history**. To open one worker's history, use its action menu. Choose a workspace, browse its newest/older records,
 and download **Export JSONL**.
 The view shows user messages and agent replies as a conversation. Tool calls,
 lifecycle events, delivery echoes and technical metadata are kept in JSONL

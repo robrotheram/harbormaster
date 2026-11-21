@@ -1,5 +1,7 @@
 # Software factory implementation status
 
+> Historical record. See the [documentation index](README.md) for current setup and workflows.
+
 Updated 18 November 2026. Tracks delivery against
 [the plan](software-factory-plan.md). The first development workflow is integrated:
 work requests, approved workers, evidence, independent

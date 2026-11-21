@@ -95,10 +95,7 @@ long-running work instead of repeatedly selecting one permanent prefix. Missed
 recurrences coalesce to one due occurrence, then advance to the next future time.
 Restarting compute does not replay interrupted external side effects.
 
-Metadata migrations run before listeners and workers. Initial idempotent versions
-adopt the prototype schema without moving private content. New schema changes
-must add a migration and an upgrade/reopen test; do not run DDL in handlers or
-reconciliation ticks. Failed persistence transitions must be observable without
+Metadata migrations run before listeners and workers. The current schema rejects incompatible pre-release databases. See [pre-release database recreation](operations.md#pre-release-database-recreation) for recovery. Add a migration and a reopen test for schema changes. Keep schema changes out of request handlers and reconciliation ticks. Failed persistence transitions must be observable without
 printing prompts, provider responses, tokens, or database credentials.
 
 The control plane drains HTTP and joins its workers before closing metadata

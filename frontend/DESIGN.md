@@ -1,5 +1,7 @@
 # Software factory
 
+> Historical record. See the [documentation index](../docs/README.md) for current setup and workflows.
+
 The product is a compact operator console for an AI software factory. Projects
 own the work and Hermes context; global infrastructure shows worker observations.
 T3 Desktop is the operator client, the control plane dispatches work, and separate

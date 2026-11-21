@@ -1,7 +1,6 @@
 # Workspace activity logs
 
-Open **Workspaces → Activity logs** for a project-wide feed, or use a workspace's
-actions menu → **Activity logs**. Filter by workspace or source and pause/resume
+Open **Workers**, then **Project actions**, then **Activity logs** for the project feed. Use a worker's action menu to open its own **Activity logs**. Filter by workspace or source and pause/resume
 the two-second refresh while reading. The per-workspace view identifies the
 Matrix listener separately from the run/process counts. Workspace rows also show
 **Matrix listener: Connected** beneath the job count. Select it to open the

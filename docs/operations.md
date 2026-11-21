@@ -1,4 +1,4 @@
-# Operating and releasing Agent Workbench
+# Operate and release Harbormaster
 
 ## Supported deployment
 
@@ -9,10 +9,7 @@ files and agent homes. Vault holds integration credentials. These are separate
 recovery units; backing up PostgreSQL alone does not back up user work.
 
 The default Compose deployment is a local development installation. Keep its
-published ports bound to loopback. AuthKit restricts access to a shared operator
-console, not isolated per-user projects. Consult [security](security.md) and the
-selected [backend's acceptance requirements](architecture.md#backend-support)
-before exposing or deploying it on a shared host.
+published ports bound to loopback. The local dashboard requires the operator password. Hosted deployments combine approved sign-in with project membership for project routes. See [deployment setup](deployment.md) and the [backend acceptance requirements](architecture.md#backend-support) before serving a shared installation.
 
 ## Release gates
 

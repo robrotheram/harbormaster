@@ -1,10 +1,10 @@
-# MVP service contracts
+# Service contracts
 
-Implementation baseline; all JSON uses snake_case. The Go module is `agent-workbench`.
+These excerpts describe selected routes. Check the Go implementation and route tests for current authorization and complete fields. JSON uses snake_case. The Go module is `agent-workbench`.
 
 ## Control API
 
-All routes require `Authorization: Bearer <provisioned local control token>`. Initial deployment is one explicitly configured local principal (`local-operator`) and project (`default`), not multi-user OIDC. The token is file-provisioned, never a caller-supplied identity. The control plane exposes a separate authenticated read-only listener for dashboard snapshots.
+The local CLI uses the control token as an Authorization bearer. Project credentials and signed hosted human claims can use the routes allowed by their scope. The control plane exposes a separate authenticated read listener for dashboard snapshots.
 
 - `GET /healthz`: `{"status":"ok"}` (public health only).
 - `GET /v1/workspaces`: `{"items":[Workspace]}`.
@@ -27,11 +27,11 @@ Errors: `{code,message,retryable}` with no internal details. HTTP 400 INVALID_RE
 
 ## Dashboard
 
-The dashboard proxies same-origin `GET /dashboard-api/v1/snapshot` to the control plane read listener on port 8081. It authenticates that hop with a snapshot-only bearer derived from the provisioned control token. A standalone read-only dashboard can receive the derived bearer through `DASHBOARD_READ_TOKEN_FILE`. Default host publication is `127.0.0.1:8080`.
+The dashboard proxies same-origin `GET /dashboard-api/v1/snapshot` to the control plane read listener on port 8081. Local mode derives a snapshot bearer from the control token. Hosted deployments supply a separate `DASHBOARD_READ_TOKEN` or `DASHBOARD_READ_TOKEN_FILE` to dashboard and control plane. Default host publication is `127.0.0.1:8080`.
 
 Snapshot: `{schema_version:1,generated_at,mode:"development",workspaces:{observed_at,status,items:[Workspace]},active_tasks:{observed_at,status,items:[Task]},usage:{observed_at,status,cpu_allocated,memory_allocated_bytes,running_workspaces,max_running_workspaces,cpu_quota,memory_quota_bytes},services:{observed_at,status,items:[{name,status,reason_code?,observed_at}]}}`. Status ok/partial/unavailable; service healthy/degraded/unavailable/unknown/not_configured. Never expose instructions, results, labels, paths, URLs, secrets or raw error text.
 
-The interactive launcher at `/workspaces` is a separate local-operator surface with a provisioned control token. Its `/ui-api/` adapter permits profile/workspace listing, creation, start/stop, desktop pairing and bounded file handoffs. Browser mutations require JSON, a custom request header and matching Origin. It has no Docker or Vault authority.
+The dashboard app at `/app/` exposes worker controls in the project's **Workers** section. Local mode requires the operator password. Hosted mode uses signed human claims for project operations. Its `/ui-api/` adapter permits profile/workspace listing, creation, start/stop, desktop pairing and bounded file handoffs. Browser mutations require JSON, a custom request header and matching Origin. It has no Docker or Vault authority.
 
 Open T3 mints a one-use, one-minute connection ticket after workspace start. The fragment-only ticket is exchanged on that workspace's own `ws-<id>.localhost` origin for a twelve-hour host-only HttpOnly SameSite cookie. Every native HTTP/WebSocket request validates the workspace-bound cookie. The proxy chain carries native protocol 2 to the managed workspace, replacing each internal hop's authorization. No privileged native browser-session bearer or platform control credential is returned to the browser. See [interactive workspace access](interactive-workspaces.md).
 
@@ -54,7 +54,7 @@ Two separate Go binaries. Ports 8080. `GET /healthz` public. No generic proxy or
 
 ## MCP
 
-Separate Go binary with official pinned Go SDK, Streamable HTTP `/mcp` and health route. Environment `CONTROLPLANE_URL=http://controlplane:8080`, `CONTROL_TOKEN_FILE`, `MCP_TOKEN_FILE` (distinct caller-facing token), `MCP_ALLOWED_HOSTS` default localhost,127.0.0.1,mcp. Forward only fixed API routes above; reject arbitrary IDs containing path separators. Enforce Host/Origin. Read tokens from files; no baked credentials. Authenticated even locally; dashboard alone is exempt. Avoid async MCP extension; ordinary tools return application task IDs. Tests with httptest upstream and official MCP client if feasible.
+Separate Go binary with official pinned Go SDK, Streamable HTTP `/mcp` and health route. Environment `CONTROLPLANE_URL=http://controlplane:8080`, `PROJECT_SIGNING_KEY_FILE`, `MCP_TOKEN_FILE` (the bootstrap credential for `default`), `MCP_ALLOWED_HOSTS` default localhost,127.0.0.1,mcp. Forward only fixed API routes above; reject arbitrary IDs containing path separators. Enforce Host/Origin. Read tokens from files; no baked credentials. The tool endpoint requires authentication in local and hosted deployments. Avoid async MCP extension; ordinary tools return application task IDs. Tests with httptest upstream and official MCP client if feasible.
 
 ## Native T3 workspace process
 
@@ -159,8 +159,7 @@ Existing workspace/home ownership and legacy private storage paths are retained.
 
 ## Schedule management
 
-The project Schedules page exposes create, edit, enable/disable, run-now and
-confirmed deletion. `POST /v1/schedules/{id}/update` accepts the creation fields,
+The [schedule guide](project-workbench.md#schedule-work) describes the HTTP and MCP entry points. `POST /v1/schedules/{id}/update` accepts the creation fields,
 `revision` (legacy records start at 0), and `idempotency_key`. Project ownership
 and the replacement worker are checked. Edits preserve enabled state and history;
 changing timing resets the next occurrence. Identical retries do not rewind the

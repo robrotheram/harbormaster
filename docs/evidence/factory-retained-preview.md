@@ -1,5 +1,7 @@
 # Retained gallery implementation contract
 
+> Historical record. See the [documentation index](../README.md) for current setup and workflows.
+
 > Historical acceptance record. The demo recipe workloads, their MCP and HTTP
 > entry points, and the GoGallery image were retired in #57. See
 > [implementation status](../software-factory-implementation.md) for current support.

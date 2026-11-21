@@ -1,5 +1,7 @@
 # Release readiness review — 2026-11-14
 
+> Historical record. See the [documentation index](../README.md) for current setup and workflows.
+
 ## Scope and decision
 
 Reviewed the current working tree, including existing uncommitted features,

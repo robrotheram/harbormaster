@@ -2,6 +2,8 @@
 
 # Project orchestration implementation contract
 
+> Historical record. See the [documentation index](README.md) for current setup and workflows.
+
 Integration contract for the implementation beginning 1 November 2026. The architecture direction remains the source of requirements. Existing workspace content stays in a labelled `default` legacy project; do not infer ownership from display names or move/delete volumes.
 
 ## Shared types and routes

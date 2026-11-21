@@ -1,5 +1,7 @@
 # Enterprise UX review — 14 November 2026
 
+> Historical record. See the [documentation index](../README.md) for current setup and workflows.
+
 Status: thirteenth polish iteration complete. The user accepted 9/10 as the release threshold and requested deployment; the dashboard is deployed and post-deployment verification passed on 14 November 2026. This is an evidence-based design assessment, not production certification or a prediction of investor interest.
 
 ## Method

@@ -1,63 +1,18 @@
-# Contributing
+# Contribute to Harbormaster
 
-Use the Go version declared in `go.mod`, Node.js 24, npm, and Python 3.12 or
-newer. The default checks need no provider accounts, credentials, cluster, or
-Docker daemon. PostgreSQL and live runtime acceptance are separate checks.
+Use the [development guide](docs/development.md) to install tools, run the app, and choose checks. Read [architecture and module ownership](docs/architecture.md) before you change a service boundary.
 
-```sh
-make check
-cd frontend && npx playwright install chromium && cd ..
-make browser-check
-```
+## Make a change
 
-`make check` builds every Go command, runs tests with the race detector, checks
-formatting and package boundaries, runs vet and portable Python adapter contracts,
-and installs/tests/builds the UI.
-The browser suite uses synthetic data and a temporary local test host. It must
-not depend on an installed desktop app or a developer's browser cache path.
+- Keep policy in the application package that owns the operation. Let transports adapt requests and runtime or database packages implement the owning package's interfaces.
+- Add coverage for changed ownership, concurrency, recovery, or protocol behavior. If a change spans HTTP, runtime clients, and controllers, check the operation across those boundaries.
+- Preserve existing workspace ownership and storage during migrations. Record any compatibility path, its consumer, and the condition for removing it.
+- Use synthetic fixtures. Keep `.local`, credentials, private history, workspace files, and browser artifacts out of commits.
 
-[GitHub Actions](.github/workflows/check.yml) runs the portable checks and
-linting for pull requests. Open a pull request and wait for the workflow to pass
-before merging. See [release operations](docs/operations.md) for deployment
-acceptance.
+## Open a pull request
 
-CI also sets `TEST_DATABASE_URL` to a disposable PostgreSQL 17 instance. To run
-that contract locally, supply a PostgreSQL URL for a test role allowed to create
-schemas, then run `go test -race ./internal/store -run TestPostgresMetadataContract`.
-The test creates and drops only its uniquely named schema. Never supply
-production credentials to test tooling.
+1. Run the [checks for your change](docs/development.md#check-your-changes).
+2. Describe the problem, the resulting behavior, and how you verified it.
+3. Check the [CI workflow](.github/workflows/check.yml) before merging. For deployment changes, follow the [release acceptance checks](docs/operations.md#release-gates).
 
-## Making changes
-
-Read [the current architecture](docs/architecture.md) and
-[service contracts](docs/contracts.md) first. Keep an operation's policy in its
-owning application module; transports adapt it and infrastructure implements
-its interfaces. Introduce interfaces at actual substitution boundaries, rather
-than wrapping every helper. Changes spanning HTTP, runtime clients, and
-controllers need a test that crosses those boundaries.
-
-Use small commits with a concrete problem, resulting behavior, and validation
-in the description. Add tests for ownership, recovery, concurrency, or protocol
-behavior affected by a change. Keep fixtures synthetic; never commit tokens,
-private history, workspace files, `.local`, or build/browser artifacts.
-
-Compatibility paths need a documented consumer and a removal condition. Keep
-changes to isolation policy, runtime capability claims, and data retention
-explicit. Do not infer project ownership from display names or delete/move
-existing volumes as part of a migration.
-
-## Live acceptance
-
-`make up` builds and runs the development deployment; `make smoke` exercises
-its fixture flows. These commands use Docker and create local state. Do not
-use `docker compose down --volumes` to clean up a development session.
-
-Kubernetes, Kata, Firecracker, subscription agents, and Matrix need their own
-operator-provisioned infrastructure and acceptance checks. Unit tests simulate
-their dependencies and do not establish real VM or network isolation. Consult
-the relevant guide under `docs/` or `deploy/` before running live checks.
-
-## License
-
-The project is available under the [MIT license](LICENSE). Third-party runtimes,
-dependencies, fonts, and integrations retain their respective licenses.
+Harbormaster uses the [MIT license](LICENSE). Third-party runtimes, fonts, and integrations retain their respective licenses.
