@@ -1,0 +1,66 @@
+[[groups]]
+title = 'Get started'
+pages = [
+  ['/docs', 'Documentation index'],
+  ['/docs/getting-started', 'Run your first task'],
+  ['/docs/user-guide', 'User guide'],
+  ['/docs/deployment', 'Deployment guide'],
+  ['/docs/development', 'Development guide'],
+]
+
+[[groups]]
+title = 'Work with agents'
+pages = [
+  ['/docs/work-conversations', 'Agent conversations'],
+  ['/docs/interactive-workspaces', 'Interactive workers'],
+  ['/docs/issue-board', 'Project tasks'],
+  ['/docs/repository-connections', 'Repository connections'],
+  ['/docs/reviews', 'Review tasks'],
+  ['/docs/workspace-logging', 'Activity logs'],
+  ['/docs/workspace-history', 'Private history'],
+  ['/docs/project-workbench', 'Project MCP and schedules'],
+  ['/docs/subscription-agents', 'Subscription credentials'],
+  ['/docs/assistant-handoffs', 'Assistant handoffs'],
+]
+
+[[groups]]
+title = 'Operate Harbormaster'
+pages = [
+  ['/docs/operations', 'Operations and recovery'],
+  ['/docs/container-publishing', 'Container publishing'],
+  ['/docs/authkit', 'WorkOS AuthKit'],
+  ['/docs/reference/config/readme', 'Gateway configuration'],
+  ['/docs/reference/deploy/kubernetes/readme', 'Kubernetes setup'],
+  ['/docs/reference/deploy/kubernetes/infrastructure/readme', 'Cluster dependencies'],
+  ['/docs/k3s', 'Kubernetes operations'],
+  ['/docs/k3s-hermes', 'Kubernetes Hermes'],
+  ['/docs/reference/deploy/hermes/readme', 'Hermes setup'],
+  ['/docs/firecracker', 'Firecracker setup'],
+]
+
+[[groups]]
+title = 'Technical reference'
+pages = [
+  ['/docs/architecture', 'Architecture'],
+  ['/docs/security', 'Security boundaries'],
+  ['/docs/contracts', 'Service contracts'],
+  ['/docs/workspace-factory-contract', 'Guest execution contract'],
+  ['/docs/reference/frontend/readme', 'Frontend'],
+  ['/docs/reference/integrations/hermes/readme', 'Hermes package'],
+  ['/docs/reference/contributing', 'Contributing'],
+]
+
+[[groups]]
+title = 'Historical records'
+pages = [
+  ['/docs/architecture-direction', 'Proposed architecture'],
+  ['/docs/implementation-contract', 'Original implementation contract'],
+  ['/docs/implementation-contract-2026-11', 'November 2026 contract'],
+  ['/docs/software-factory-plan', 'Software factory plan'],
+  ['/docs/software-factory-implementation', 'Implementation checkpoint'],
+  ['/docs/workbench-consolidation', 'Workbench consolidation'],
+  ['/docs/reference/frontend/design', 'Frontend design notes'],
+  ['/docs/reviews/enterprise-ux-2026-11-14', 'Enterprise UX review'],
+  ['/docs/reviews/release-readiness-2026-11-14', 'Release readiness review'],
+  ['/docs/evidence/factory-retained-preview', 'Retained preview evidence'],
+]

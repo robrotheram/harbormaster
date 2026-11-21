@@ -1,0 +1,13 @@
+{{- range resources.Match "repository/**.md" -}}
+  {{- $source := strings.TrimPrefix "repository/" (strings.TrimPrefix "/" .Name) -}}
+  {{- $path := printf "reference/%s" (strings.TrimSuffix ".md" $source) -}}
+  {{- if hasPrefix $source "docs/" -}}
+    {{- $path = strings.TrimPrefix "docs/" (strings.TrimSuffix ".md" $source) -}}
+  {{- end -}}
+  {{- $body := .Content -}}
+  {{- $heading := index (findRE "(?m)^# .+$" $body 1) 0 -}}
+  {{- $title := strings.TrimPrefix "# " $heading -}}
+  {{- if ne $source "docs/README.md" -}}
+    {{- $.AddPage (dict "path" $path "title" $title "content" (dict "value" $body) "params" (dict "source" $source)) -}}
+  {{- end -}}
+{{- end -}}

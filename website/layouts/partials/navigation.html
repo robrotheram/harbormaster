@@ -1,0 +1,28 @@
+<aside class="sidebar">
+  <details data-expand="(min-width: 900px)" open>
+    <summary>Browse documentation</summary>
+    <nav aria-label="Documentation">
+      {{ range $index, $group := site.Data.navigation.groups }}
+        {{ $active := false }}
+        {{ range .pages }}
+          {{ with site.GetPage (index . 0) }}
+            {{ if eq $.RelPermalink .RelPermalink }}{{ $active = true }}{{ end }}
+          {{ end }}
+        {{ end }}
+        <details class="nav-group"{{ if or (eq $index 0) $active }} open{{ end }}>
+          <summary>{{ .title }}</summary>
+          <ul>
+            {{ range .pages }}
+              {{ $label := index . 1 }}
+              {{ with site.GetPage (index . 0) }}
+                <li><a href="{{ .RelPermalink }}"{{ if eq $.RelPermalink .RelPermalink }} aria-current="page"{{ end }}>{{ $label }}</a></li>
+              {{ else }}
+                {{ errorf "Could not find the documentation page %s" (index . 0) }}
+              {{ end }}
+            {{ end }}
+          </ul>
+        </details>
+      {{ end }}
+    </nav>
+  </details>
+</aside>

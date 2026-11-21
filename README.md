@@ -23,6 +23,6 @@ Open [the dashboard](http://127.0.0.1:8080/app/) and sign in as `operator`. The 
 - [User guide](docs/user-guide.md) for projects, agent work, reviews, and workers.
 - [Documentation index](docs/README.md) for tutorials, integrations, and technical reference.
 
-If you have the local `website/` directory, run `make docs-serve` to browse the guides. See [how to build and serve the docs](docs/development.md#build-and-serve-the-docs).
+Browse the [published documentation](https://robrotheram.github.io/harbormaster/) or run `make docs-serve` to preview it locally. See [how to build and serve the docs](docs/development.md#build-and-serve-the-docs).
 
 [MIT license](LICENSE)

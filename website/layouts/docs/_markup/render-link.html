@@ -1,0 +1,24 @@
+{{- $href := .Destination -}}
+{{- $url := urls.Parse $href -}}
+{{- if and (not $url.IsAbs) (not $url.Host) $url.Path -}}
+  {{- $source := .Page.Params.source | default "docs/README.md" -}}
+  {{- $target := path.Join (path.Dir $source) $url.Path -}}
+  {{- $page := site.GetPage (printf "/%s" $target) -}}
+  {{- if not $page -}}
+    {{- $page = site.GetPage (printf "/docs/reference/%s" $target) -}}
+  {{- end -}}
+  {{- if eq $target "docs/README.md" -}}
+    {{- $href = (site.GetPage "/docs").RelPermalink -}}
+  {{- else if $page -}}
+    {{- $href = $page.RelPermalink -}}
+  {{- else -}}
+    {{- $kind := "blob" -}}
+    {{- if and (not (path.Ext $target)) (ne $target "LICENSE") -}}
+      {{- $kind = "tree" -}}
+    {{- end -}}
+    {{- $href = printf "%s/%s/main/%s" site.Params.repository $kind $target -}}
+  {{- end -}}
+  {{- with $url.RawQuery -}}{{- $href = printf "%s?%s" $href . -}}{{- end -}}
+  {{- with $url.Fragment -}}{{- $href = printf "%s#%s" $href . -}}{{- end -}}
+{{- end -}}
+<a href="{{ $href }}"{{ with .Title }} title="{{ . }}"{{ end }}>{{ .Text | safeHTML }}</a>

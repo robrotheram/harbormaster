@@ -1,0 +1,49 @@
+{{ define "main" }}
+<main id="main-content" class="home" tabindex="-1">
+  <div class="hero">
+    <div class="hero-inner">
+      <div class="hero-copy">
+        <h1>Harbormaster documentation</h1>
+        <p>Run software and research tasks with agents. Follow their work in the browser and review the files or applications they produce.</p>
+        <div class="hero-actions">
+          <a class="button primary" href="{{ (site.GetPage "/docs/getting-started").RelPermalink }}">Run your first task</a>
+          <a href="{{ (site.GetPage "/docs").RelPermalink }}">Browse all docs</a>
+        </div>
+      </div>
+      <section class="work-path" aria-labelledby="work-path-title">
+        <h2 id="work-path-title">A task in Harbormaster</h2>
+        <ol>
+          <li><a href="{{ (site.GetPage "/docs/user-guide").RelPermalink }}#plan-a-task"><strong>Plan</strong> <span>Define the task in a project.</span></a></li>
+          <li><a href="{{ (site.GetPage "/docs/user-guide").RelPermalink }}#start-an-agent-thread"><strong>Run</strong> <span>Send the task to an agent in a worker.</span></a></li>
+          <li><a href="{{ (site.GetPage "/docs/user-guide").RelPermalink }}#review-a-result"><strong>Review</strong> <span>Inspect the output and approve it or request changes.</span></a></li>
+        </ol>
+      </section>
+    </div>
+  </div>
+  <section class="guide-section" aria-labelledby="guides-title">
+    <h2 id="guides-title">Core guides</h2>
+    <div class="guide-grid">
+      <article>
+        <h3><a href="{{ (site.GetPage "/docs/user-guide").RelPermalink }}">User guide</a></h3>
+        <p>Plan tasks, work with agents, and review results in the dashboard.</p>
+      </article>
+      <article>
+        <h3><a href="{{ (site.GetPage "/docs/deployment").RelPermalink }}">Deployment guide</a></h3>
+        <p>Start with Docker Compose or set up the Kubernetes reference deployment.</p>
+      </article>
+      <article>
+        <h3><a href="{{ (site.GetPage "/docs/development").RelPermalink }}">Development guide</a></h3>
+        <p>Build and test Harbormaster locally and prepare a change for review.</p>
+      </article>
+    </div>
+  </section>
+  <section class="guide-section more-guides" aria-labelledby="reference-title">
+    <h2 id="reference-title">Technical reference</h2>
+    <ul>
+      <li><a href="{{ (site.GetPage "/docs/architecture").RelPermalink }}">Architecture</a></li>
+      <li><a href="{{ (site.GetPage "/docs/security").RelPermalink }}">Security boundaries</a></li>
+      <li><a href="{{ (site.GetPage "/docs/contracts").RelPermalink }}">Service contracts</a></li>
+    </ul>
+  </section>
+</main>
+{{ end }}

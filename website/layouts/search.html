@@ -1,0 +1,11 @@
+{{ define "main" }}
+<div class="docs-shell">
+  {{ partial "navigation.html" . }}
+  <main id="main-content" class="search-page prose" tabindex="-1" data-search-index="{{ (site.Home.OutputFormats.Get "searchIndex").RelPermalink }}">
+    <h1>{{ .Title }}</h1>
+    <p id="search-status" role="status">Enter a title, command, or topic in the search box.</p>
+    <ul id="search-results" class="search-results"></ul>
+    <noscript><p>Search requires JavaScript. <a href="{{ (site.GetPage "/docs").RelPermalink }}">Open the documentation index</a> to browse the guides.</p></noscript>
+  </main>
+</div>
+{{ end }}

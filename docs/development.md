@@ -74,13 +74,13 @@ On a fresh Linux environment that needs Chromium system packages, run `npx playw
 
 ## Build and serve the docs
 
-The Hugo project lives in the ignored `website/` directory. Keep a local copy of that directory to build the site.
+Install [Hugo](https://gohugo.io/installation/) v0.147.9 or later. Run `make docs-serve` from the repository root and open `http://localhost:1313/`. Hugo reloads the site when you edit a guide.
 
-Install [Hugo Extended](https://gohugo.io/installation/) v0.147.9 or later. Hugo uses Go to fetch the pinned [Lotus Docs theme](https://themes.gohugo.io/themes/lotusdocs/) and its Bootstrap module on the first build. From the repository root, run `make docs-serve`. Open `http://localhost:1313/`. Hugo reloads the site when you edit a Markdown guide.
+Run `make docs-build` to generate the static site in `public/`. For a build under a URL prefix, set `HUGO_BASEURL` to the full URL with a trailing slash.
 
-Run `make docs-build` to generate static files in `public/`. For hosting, set `HUGO_BASEURL` to the full site URL, including any path prefix and a trailing slash, before you build.
+Edit guides in `docs/`. The site reads its index from `docs/README.md` and the sidebar from `website/data/navigation.toml`. The `website/hugo.toml` file lists the component guides included in the site. Links to other repository files open on GitHub.
 
-Edit the existing files in `docs/`. The site uses `docs/README.md` as the documentation index and mounts the related component guides listed in `website/hugo.toml`. Links to source files outside the site open the GitHub repository.
+The [Pages workflow](../.github/workflows/docs-pages.yml) publishes the [documentation site](https://robrotheram.github.io/harbormaster/) when documentation sources change on `main`.
 
 ## Prepare a change for review
 

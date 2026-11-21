@@ -24,7 +24,9 @@ frontend/test-results/
 .cache/
 .npm/
 
-# Local Hugo site and output
+# Hugo output and cache
 /public/
 /.hugo_build.lock
-/website/
+/website/public/
+/website/resources/
+/website/.hugo_build.lock
