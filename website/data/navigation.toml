@@ -49,18 +49,3 @@ pages = [
   ['/docs/reference/integrations/hermes/readme', 'Hermes package'],
   ['/docs/reference/contributing', 'Contributing'],
 ]
-
-[[groups]]
-title = 'Historical records'
-pages = [
-  ['/docs/architecture-direction', 'Proposed architecture'],
-  ['/docs/implementation-contract', 'Original implementation contract'],
-  ['/docs/implementation-contract-2026-11', 'November 2026 contract'],
-  ['/docs/software-factory-plan', 'Software factory plan'],
-  ['/docs/software-factory-implementation', 'Implementation checkpoint'],
-  ['/docs/workbench-consolidation', 'Workbench consolidation'],
-  ['/docs/reference/frontend/design', 'Frontend design notes'],
-  ['/docs/reviews/enterprise-ux-2026-11-14', 'Enterprise UX review'],
-  ['/docs/reviews/release-readiness-2026-11-14', 'Release readiness review'],
-  ['/docs/evidence/factory-retained-preview', 'Retained preview evidence'],
-]

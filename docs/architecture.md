@@ -1,8 +1,6 @@
 # Architecture and module ownership
 
-This describes implemented boundaries. [Architecture direction](architecture-direction.md)
-records the longer-term deployment proposal; the [original integration plan](implementation-contract-2026-11.md)
-is historical. [Service contracts](contracts.md) describe wire behavior.
+The [service contracts](contracts.md) cover HTTP, MCP, and runtime behavior.
 
 ## Dependency direction
 

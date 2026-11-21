@@ -5,6 +5,17 @@ disableKinds = ['taxonomy', 'term', 'RSS']
 
 [params]
   repository = 'https://github.com/robrotheram/harbormaster'
+  archivedDocs = [
+    'docs/architecture-direction.md',
+    'docs/implementation-contract.md',
+    'docs/implementation-contract-2026-11.md',
+    'docs/software-factory-plan.md',
+    'docs/software-factory-implementation.md',
+    'docs/workbench-consolidation.md',
+    'docs/reviews/enterprise-ux-2026-11-14.md',
+    'docs/reviews/release-readiness-2026-11-14.md',
+    'docs/evidence/factory-retained-preview.md',
+  ]
 
 [markup.tableOfContents]
   startLevel = 2
@@ -33,7 +44,6 @@ disableKinds = ['taxonomy', 'term', 'RSS']
     source = '../docs'
     target = 'assets/repository/docs'
     includeFiles = ['*.md', '**/*.md']
-    excludeFiles = ['README.md']
   [[module.mounts]]
     source = '../CONTRIBUTING.md'
     target = 'assets/repository/CONTRIBUTING.md'
@@ -52,9 +62,6 @@ disableKinds = ['taxonomy', 'term', 'RSS']
   [[module.mounts]]
     source = '../frontend/README.md'
     target = 'assets/repository/frontend/README.md'
-  [[module.mounts]]
-    source = '../frontend/DESIGN.md'
-    target = 'assets/repository/frontend/DESIGN.md'
   [[module.mounts]]
     source = '../integrations/hermes/README.md'
     target = 'assets/repository/integrations/hermes/README.md'

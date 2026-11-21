@@ -14,7 +14,6 @@ on:
       - deploy/kubernetes/README.md
       - deploy/kubernetes/infrastructure/README.md
       - frontend/README.md
-      - frontend/DESIGN.md
       - integrations/hermes/README.md
   workflow_dispatch:
 
