@@ -254,6 +254,8 @@ async function conversationFixture(page: Page) {
     }
     if (path.endsWith("/result"))
       return route.fulfill({ json: { content: "", next_offset: -1 } });
+    if (path.endsWith("/changes"))
+      return route.fulfill({ body: "null", contentType: "application/json" });
     return route.fulfill({ json: { items: [] } });
   });
   return { item, attempts, posts, state, finish, errors, apps, ports };
@@ -292,34 +294,28 @@ test("starts work, shows live tools, inspects files, accepts, and sends changes 
     page.getByRole("button", { name: "Stop task", exact: true }),
   ).toBeVisible();
   f.finish();
-  await expect(page.getByRole("link", { name: "Review output" })).toBeVisible({
-    timeout: 10000,
-  });
   await expect(
     page.getByText("All four tests passed. The report is ready.", {
       exact: true,
     }),
   ).toBeVisible({ timeout: 10000 });
   await conversationTool(page, "Files");
-  await page.getByRole("button", { name: "Inspect", exact: true }).click();
-  await expect(page.getByLabel("Output preview")).toContainText(
-    "All four tests passed.",
-  );
-  expect(await page.evaluate(() => "untrusted" in window)).toBe(false);
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "Close", exact: true })
+  const files = page.getByRole("region", { name: "Task files" });
+  await files
+    .getByRole("button", { name: "outputs/report.md", exact: true })
     .click();
+  await expect(
+    files.getByText("All four tests passed.", { exact: false }),
+  ).toBeVisible();
+  expect(await page.evaluate(() => "untrusted" in window)).toBe(false);
   await page.getByRole("button", { name: "Conversation", exact: true }).click();
-  await page.getByRole("link", { name: "Review output", exact: true }).click();
-  await expect(page).toHaveURL(/attempt=attempt_1/);
+  await expect(page.getByText("Review output", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Workspace", exact: true }).click();
   await page
     .getByRole("button", { name: "Approve this revision", exact: true })
     .click();
   await expect(page.getByText("This revision was approved.")).toBeVisible();
-  await page
-    .getByRole("link", { name: "Open conversation", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Conversation", exact: true }).click();
   await page.getByRole("button", { name: "Filter threads by status" }).click();
   await expect(
     page.getByRole("menuitemradio", { name: "Done (1)", exact: true }),
@@ -422,10 +418,10 @@ test("conversation is scoped to the selected task and project and fits narrow sc
     }),
   ).toBeVisible({ timeout: 10000 });
   for (const width of [1440, 1024, 390, 320]) {
-    await expect(
-      page.getByRole("link", { name: "Review output", exact: true }),
-    ).toBeVisible({ timeout: 10000 });
     await page.setViewportSize({ width, height: 900 });
+    await expect(
+      page.getByRole("button", { name: "Workspace", exact: true }),
+    ).toBeVisible();
     if (width >= 1024) {
       await expect
         .poll(async () => {
@@ -551,6 +547,8 @@ test("workspace supports charts, desktop launch and mobile switching with a shar
 }) => {
   const f = await conversationFixture(page);
   f.state.exists = true;
+  f.state.reply =
+    "```workbench-chart\nexperiment,score\nbaseline,72\nrevision,86\n```";
   await context.route(
     "http://preview-0123456789abcdef0123456789abcdef.localhost:4173/**",
     (route) =>
@@ -560,18 +558,24 @@ test("workspace supports charts, desktop launch and mobile switching with a shar
       }),
   );
   await page.goto("/app/projects/A/work?work=work_one");
-  await conversationTool(page, "Visualize data");
-  await page
-    .getByLabel("Chart data")
-    .fill("experiment,score\nbaseline,72\nrevision,86");
-  await page.getByRole("button", { name: "Draw chart" }).click();
+  await page.getByRole("button", { name: "Start task", exact: true }).click();
+  f.finish();
+  await page.reload();
+  await page.getByRole("button", { name: "Workspace", exact: true }).click();
+  await expect(page.getByRole("tab", { name: "Output" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await expect(
     page.getByRole("img", { name: "score by experiment" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Explore", exact: true }).click();
   await page.getByLabel("Chart type").selectOption("line");
-  await expect(page.locator(".browser-chart svg")).toHaveCount(1);
-  await conversationTool(page, "Preview");
+  await expect(
+    page
+      .getByRole("region", { name: "Agent output" })
+      .locator(".browser-chart svg"),
+  ).toHaveCount(1);
   await page.getByRole("tab", { name: "Desktop", exact: true }).click();
   await page.getByRole("button", { name: "Start worker desktop" }).click();
   await expect(
@@ -585,18 +589,17 @@ test("workspace supports charts, desktop launch and mobile switching with a shar
     command: "workbench-desktop",
     port: 6080,
   });
-  await conversationTool(page, "Visualize data");
+  await page.getByRole("tab", { name: "Output", exact: true }).click();
   await expect(
     page.getByRole("img", { name: "score by experiment" }),
   ).toBeVisible();
-  await conversationTool(page, "Preview");
   await page.getByRole("tab", { name: "Desktop", exact: true }).click();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "Conversation", exact: true }).click();
   await expect(
     page.getByRole("complementary", { name: "Preview workspace" }),
   ).toBeHidden();
-  await conversationTool(page, "Preview");
+  await page.getByRole("button", { name: "Workspace", exact: true }).click();
   await expect(
     page.frameLocator('iframe[title="Workspace desktop"]').getByRole("heading"),
   ).toBeVisible();
@@ -625,7 +628,9 @@ test("preview selection adds a draft only from the selected frame and returns af
   await page.goto("/app/projects/A/work?work=work_one");
   await page.getByRole("button", { name: "Start task", exact: true }).click();
   f.finish();
-  await expect(page.getByRole("link", { name: "Review output" })).toBeVisible();
+  await expect(
+    page.locator(".conversation-thread-heading").getByText("Awaiting review"),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Workspace", exact: true }).click();
   if (
     !(await page
@@ -685,7 +690,7 @@ test("application logs have room to debug, pause updates, filter and draft an ag
   await page.getByRole("button", { name: "Start task", exact: true }).click();
   f.finish();
   await expect(
-    page.getByRole("link", { name: "Review output", exact: true }),
+    page.locator(".conversation-thread-heading").getByText("Awaiting review"),
   ).toBeVisible();
   await conversationTool(page, "Preview");
   await previewTool(page, "Application logs");
@@ -764,9 +769,9 @@ test("detects an agent-started web app and keeps it connected when preview is co
   await expect(
     page.getByRole("separator", { name: "Resize conversation and preview" }),
   ).toBeHidden();
-  await expect(
-    page.getByRole("region", { name: "Conversation visualization" }),
-  ).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Agent output" })).toHaveCount(
+    0,
+  );
   await conversationTool(page, "Preview");
   await expect(frame.getByRole("heading")).toBeVisible();
   expect(f.posts.filter((p) => p.path.endsWith("/applications"))).toHaveLength(
@@ -1898,12 +1903,46 @@ test("retry is inside the task error and send has a visible label", async ({
   ).toBeVisible();
 });
 
-test("workspace actions use reply data and link to the assigned worker", async ({
+test("Files reviews diffs and sends line-specific feedback from the workspace", async ({
   page,
 }) => {
   const f = await conversationFixture(page);
   f.state.exists = true;
   f.state.reply = "Saved [measurements](outputs/measurements.csv).";
+  await page.route(
+    "**/ui-api/work-items/work_one/attempts/attempt_1/changes?project_id=A",
+    (route) =>
+      route.fulfill({
+        json: {
+          files: [
+            { path: "outputs/measurements.csv", status: "A" },
+            {
+              path: "src/score model.ts",
+              status: "M",
+              source: Buffer.from(
+                "// The complete file starts here.\n" +
+                  "\n".repeat(6) +
+                  "const score = 72;\nconst scale = 100;\n",
+              ).toString("base64"),
+            },
+          ],
+          diff: [
+            "diff --git a/outputs/measurements.csv b/outputs/measurements.csv",
+            "@@ -0,0 +1 @@",
+            "+experiment,score",
+            "diff --git a/src/score model.ts b/src/score model.ts",
+            "@@ -8 +8,2 @@",
+            "-const score = 0;",
+            "+const score = 72;",
+            "+const scale = 100;",
+            "@@ -30 +31 @@",
+            "-total = count;",
+            "+total = score * count;",
+            "",
+          ].join("\n"),
+        },
+      }),
+  );
   await page.route("**/ui-api/work-items/work_one/data", (route) =>
     route.fulfill({
       json: {
@@ -1921,30 +1960,77 @@ test("workspace actions use reply data and link to the assigned worker", async (
   await page.reload();
   await expect(page.getByText("measurements", { exact: true })).toBeVisible();
   await conversationTool(page, "Files");
-  await page
-    .getByRole("button", { name: "outputs/measurements.csv", exact: true })
-    .click();
+  const files = page.getByRole("region", { name: "Task files" });
+  const changed = files.getByRole("region", { name: "Changed files" });
+  const diff = files.getByLabel("Git diff");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(
-    page.getByRole("region", { name: "Linked file preview" }).locator("pre"),
-  ).toContainText("baseline,72");
+    changed.getByRole("button", { name: "outputs/measurements.csv, Added" }),
+  ).toHaveAttribute("aria-current", "true");
+  const source = files.getByRole("region", { name: "File contents" });
+  await expect(source).toContainText("baseline,72");
+  await expect(diff).toHaveCount(0);
   await expect(
-    page.getByRole("link", { name: "Download", exact: true }),
+    files.getByRole("link", { name: "Download", exact: true }),
   ).toBeVisible();
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "Close", exact: true })
-    .click();
-  await conversationTool(page, "Visualize data");
+  await files.getByRole("button", { name: "Diff", exact: true }).click();
+  await expect(diff).toContainText("experiment,score");
+  await expect(diff).not.toContainText("const score = 72;");
+
+  await files
+    .getByRole("searchbox", { name: "Filter files" })
+    .fill("score model");
   await expect(
-    page.getByRole("img", { name: "score by experiment" }),
+    changed.getByRole("button", { name: "src/score model.ts, Modified" }),
   ).toBeVisible();
+  await expect(source).toContainText("// The complete file starts here.");
+  await expect(source).toContainText("const score = 72;");
+  await expect(source.locator("diffs-container [data-line='8']")).toContainText(
+    "const score = 72;",
+  );
   await expect(
-    page.getByRole("dialog", { name: "Visualize data" }),
-  ).toHaveCount(0);
-  await conversationTool(page, "Visualize data");
-  await expect(
-    page.getByRole("img", { name: "score by experiment" }),
+    source.locator("diffs-container [data-line='8'] span[style]").first(),
   ).toBeVisible();
+  await expect(diff).toHaveCount(0);
+  await files.getByRole("button", { name: "Diff", exact: true }).click();
+  await expect(diff).toContainText("const score = 72;");
+  await expect(diff).not.toContainText("experiment,score");
+  await expect(diff).not.toContainText("// The complete file starts here.");
+  await files.getByRole("button", { name: "Next hunk" }).click();
+  await files.getByRole("button", { name: "Next hunk" }).click();
+  await expect(files.getByText("2 / 2", { exact: true })).toBeVisible();
+  await files.getByText("Select lines", { exact: true }).click();
+  await files.getByRole("spinbutton", { name: "First line" }).fill("8");
+  await files.getByRole("spinbutton", { name: "Last line" }).fill("9");
+  await files.getByRole("button", { name: "Explain selected lines" }).click();
+  const draft = page.getByLabel("Message to your agent");
+  const suggestion = 'Explain "src/score model.ts:8-9" (revision attempt_1): ';
+  await expect(draft).toBeFocused();
+  await expect(draft).toHaveValue(suggestion);
+  expect(
+    f.posts.filter((post) => post.path.endsWith("/continue")),
+  ).toHaveLength(0);
+  await draft.fill(suggestion + "Use the configured threshold.");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(files).toBeInViewport();
+  await expect(draft).toBeInViewport();
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(390);
+  await page.getByRole("button", { name: "Preview", exact: true }).click();
+  await expect(
+    page
+      .getByRole("region", { name: "Agent output" })
+      .getByRole("region", { name: "measurements" })
+      .getByRole("img", { name: "score by experiment", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect
+    .poll(() => f.posts.find((post) => post.path.endsWith("/continue"))?.body)
+    .toMatchObject({
+      expected_attempt_id: "attempt_1",
+      instruction: suggestion + "Use the configured threshold.",
+    });
   await page
     .getByRole("button", { name: "Task settings", exact: true })
     .click();
@@ -2120,6 +2206,12 @@ test("workspace keeps the composer visible and alerts on new replies without int
   f.finish();
   const alert = page.locator(".thread-message-notice");
   await expect(alert).toContainText("New agent message", { timeout: 10000 });
+  await expect(
+    workspace.getByRole("tab", { name: "Output", exact: true }),
+  ).toHaveCount(0);
+  await expect(workspace.getByText(f.state.reply, { exact: true })).toHaveCount(
+    0,
+  );
   await expect(composer).toBeFocused();
   await expect(composer).toHaveValue("Make the welcome page easier to scan.");
   await expect(workspace).toBeVisible();

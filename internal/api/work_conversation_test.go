@@ -56,6 +56,11 @@ func TestWorkConversationFollowupPreservesHistoryAndDeduplicates(t *testing.T) {
 		t.Fatal(got.Code, got.Body.String())
 	}
 	body := `{"project_id":"` + project.ID + `","instruction":"Add a private comparison experiment","expected_attempt_id":"` + item.LatestAttemptID + `","idempotency_key":"followup-one"}`
+	s.cfg.RequireAgentSelection = true
+	if got := request(t, s, "POST", root+"/continue", body); got.Code != 409 || !strings.Contains(got.Body.String(), "AGENT_SELECTION_REQUIRED") {
+		t.Fatal("missing selection was not reported", got.Code, got.Body.String())
+	}
+	s.cfg.RequireAgentSelection = false
 	var next shared.WorkAttempt
 	for _, status := range []int{202, 200} {
 		got := request(t, s, "POST", root+"/continue", body)

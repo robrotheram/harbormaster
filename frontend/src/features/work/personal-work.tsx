@@ -1,4 +1,5 @@
-import type { ReviewScreenshot } from "@/features/delivery/review-screenshots";
+import type { ReviewArea } from "@/features/delivery/review-preview-markup";
+import type { ReviewScreenshot } from "@/features/delivery/review-screenshot-editor";
 import { useUserSession } from "@/features/auth/session";
 import {
   createContext,
@@ -11,20 +12,20 @@ import {
 // Private text lives only for this mounted project/session, including route changes.
 function usePersonalState() {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const [reviewDrafts, setReviewDrafts] = useState<
-    Record<string, { text: string; key: string }>
-  >({});
   const [reviewScreenshots, setReviewScreenshots] = useState<
     Record<string, { shots: ReviewScreenshot[]; key: string }>
+  >({});
+  const [reviewAreas, setReviewAreas] = useState<
+    Record<string, { areas: ReviewArea[]; key: string }>
   >({});
   const titles = useRef(new Map<string, string>());
   const positions = useRef(new Map<string, number>());
   const [lastThread, setLastThread] = useState("");
   return {
+    reviewAreas,
+    setReviewAreas,
     reviewScreenshots,
     setReviewScreenshots,
-    reviewDrafts,
-    setReviewDrafts,
     drafts,
     setDrafts,
     titles,

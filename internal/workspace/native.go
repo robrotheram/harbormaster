@@ -7,6 +7,17 @@ import (
 	"time"
 )
 
+const workspacePreviewGuidance = `Workspace delivery
+
+If this task delivers or changes a runnable web app, leave a working Web preview for review before finishing. Do this even when the request does not explicitly ask for a preview. Use the workspace terminal to check workbench-preview status and reuse an existing preview if it serves the current app. Start or replace a preview only when needed for this app.
+
+Use workbench-preview start --directory <workspace-relative-directory> --port <port> --command '<server-command>' to run the app under the workspace supervisor. Choose the directory and command from the project. Pass the assigned port using $PORT where supported. For a static site with an index.html, serve the directory that contains it, for example:
+workbench-preview start --directory app --port 4173 --command 'python3 -m http.server "$PORT" --bind 127.0.0.1'
+
+Before handing off, check that workbench-preview status reports the service ready and request the app's entry page from inside the workspace. Check that the response is the intended app. If startup fails, investigate and retry where possible. Keep the supervised service running for review. Ordinary background shell processes can be cleaned up when the agent run ends.
+
+Say where to review the app in Workspace → Preview → Web. If the preview could not be verified, report the blocker. Use previews for runnable web deliverables and explicit preview requests. For other work, deliver the requested files, results, or explanation in the thread.`
+
 func (m *Manager) runNativeTask(ctx context.Context, provider, instruction, taskID, model, effort string) (result string, code string) {
 	m.event(provider, "agent.started", taskID, "", "")
 	defer func() {
@@ -30,6 +41,6 @@ func (m *Manager) runNativeTask(ctx context.Context, provider, instruction, task
 	if desktops > 0 {
 		cfg.Display = ":99"
 	}
-	instruction = "Workspace application preview: when asked to run or preview an app, use the terminal command workbench-preview start --directory <workspace-relative-directory> --port <port> --command <server-command>. Use $PORT in the server command where supported. This starts a supervised process that survives completion of this agent run. Ordinary background shell processes may be cleaned up when your run ends. Check workbench-preview status before claiming that a preview is running; the workbench forwards the app to its Web preview. Do not tell the user to run a local command or open the container's localhost URL on their computer.\n\n" + instruction
+	instruction = workspacePreviewGuidance + "\n\n" + instruction
 	return nativeagent.Run(ctx, cfg, provider, instruction, &nativeEvents{m: m, source: provider, task: taskID}, &nativeEvents{m: m, source: provider, task: taskID})
 }

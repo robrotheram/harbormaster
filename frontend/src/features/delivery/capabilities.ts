@@ -5,6 +5,7 @@ export const capabilityOptions = (project: string) => ({
     request<{
       can_import: boolean;
       can_start: boolean;
+      requires_agent_selection?: boolean;
       import_reason: string;
       start_reason: string;
     }>(`/projects/${encodeURIComponent(project)}/capabilities`),

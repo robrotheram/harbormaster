@@ -87,13 +87,6 @@ for (const scenario of [
     recovered:
       "No network profiles yet. Create a profile to reuse network rules across projects.",
   },
-  {
-    name: "reviews",
-    path: "/app/projects/recovery/reviews",
-    endpoint: "/ui-api/work-items",
-    misleading: "Your review queue is clear",
-    recovered: "Your review queue is clear",
-  },
 ]) {
   test(`${scenario.name} distinguishes unavailable data from empty data and retries in place`, async ({
     page,

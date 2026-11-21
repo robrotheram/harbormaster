@@ -9,9 +9,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Globe,
   Monitor,
-  PanelRightClose,
   RefreshCw,
   ExternalLink,
+  FileText,
   MousePointer2,
   Settings2,
   Smartphone,
@@ -34,26 +34,30 @@ import { privateContentOptions } from "@/shared/private-content";
 
 import { ApplicationLogs, type Application } from "./application-logs";
 
+export type PreviewView = "web" | "desktop" | "output";
+
 export function WorkPreview({
   project,
   workspace,
   revision,
-  onCollapse,
-  onReady,
+  view,
+  onViewChange,
   onSelection,
-  collapsible = true,
-  reviewMode = false,
-  headerActions,
+  output,
+  renderReview,
 }: {
   project: string;
   workspace: string;
   revision?: string;
-  onCollapse: () => void;
-  onReady: () => void;
+  view?: PreviewView;
+  onViewChange: (view: PreviewView) => void;
   onSelection: (text: string) => void;
-  collapsible?: boolean;
-  reviewMode?: boolean;
-  headerActions?: ReactNode;
+  output?: ReactNode;
+  renderReview?: (options: {
+    frame: RefObject<HTMLIFrameElement | null>;
+    origin: string;
+    service: string;
+  }) => ReactNode;
 }) {
   const client = useQueryClient();
   const key = useRequestKey();
@@ -61,7 +65,7 @@ export function WorkPreview({
   const nonce = useRef("");
   const selectionMenuClosing = useRef(false);
   const popup = useRef<Window | null>(null);
-  const [mode, setMode] = useState<"web" | "desktop">("web");
+  const mode = view === "desktop" ? "desktop" : "web";
   const [settings, setSettings] = useState(false);
   const [logs, setLogs] = useState(false);
   const [selectedID, setSelectedID] = useState("");
@@ -100,9 +104,6 @@ export function WorkPreview({
   const restartable = apps.find(
     (a) => a.application.kind !== "forward" && !!a.application.command,
   );
-  useEffect(() => {
-    if (selected?.ready) onReady();
-  }, [selected?.id, selected?.ready, onReady]);
   const detected = useQuery({
     ...privateContentOptions,
     queryKey: ["project", project, "ports", workspace],
@@ -260,200 +261,198 @@ export function WorkPreview({
       if (action === "open") popup.current?.close();
     },
   });
+  const showOutput =
+    !!output &&
+    (view === "output" ||
+      (!view &&
+        !selected &&
+        !restartable &&
+        !detected.data?.items.length &&
+        !query.isPending &&
+        !detected.isPending));
+  const tabs = [
+    { id: "web", text: "Web", icon: Globe },
+    { id: "desktop", text: "Desktop", icon: Monitor },
+    ...(output
+      ? [{ id: "output", text: "Output", icon: FileText } as const]
+      : []),
+  ] as const;
   return (
     <aside className="work-visual-pane" aria-label="Preview workspace">
-      {!reviewMode && (
-        <div className="visual-pane-heading">
-          <div className="visual-tabs" role="tablist" aria-label="Preview mode">
-            {(
-              [
-                { id: "web", text: "Web", icon: Globe },
-                { id: "desktop", text: "Desktop", icon: Monitor },
-              ] as const
-            ).map((tab) => (
-              <button
-                key={tab.id}
-                role="tab"
-                aria-selected={mode === tab.id}
-                onClick={() => {
-                  if (tab.id !== mode) {
-                    setMode(tab.id);
-                    setRefresh((v) => v + 1);
-                  }
-                }}
-              >
-                <tab.icon size={14} />
-                {tab.text}
-              </button>
-            ))}
-          </div>
-          <div className="preview-layout-actions">
-            {headerActions}
-            {collapsible && (
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                aria-label="Collapse preview"
-                title="Collapse preview"
-                onClick={onCollapse}
-              >
-                <PanelRightClose size={14} />
-              </Button>
-            )}
-          </div>
+      <div className="visual-toolbar preview-toolbar">
+        <div className="visual-tabs" role="tablist" aria-label="Preview mode">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={(showOutput ? "output" : mode) === tab.id}
+              onClick={() => onViewChange(tab.id)}
+            >
+              <tab.icon size={14} />
+              {tab.text}
+            </button>
+          ))}
         </div>
-      )}
-      <>
-        <div className="visual-toolbar">
-          {reviewMode && (
+        {!showOutput && (
+          <>
             <select
-              className="review-preview-mode"
-              aria-label="Preview mode"
-              value={mode}
+              aria-label="Preview application"
+              value={selected?.id || ""}
               onChange={(e) => {
-                setMode(e.target.value as "web" | "desktop");
+                setSelectedID(e.target.value);
                 setRefresh((v) => v + 1);
               }}
             >
-              <option value="web">Web app</option>
-              <option value="desktop">Desktop</option>
-            </select>
-          )}
-          <select
-            aria-label="Preview application"
-            value={selected?.id || ""}
-            onChange={(e) => {
-              setSelectedID(e.target.value);
-              setRefresh((v) => v + 1);
-            }}
-          >
-            <option value="" disabled>
-              {mode === "desktop" ? "Workspace desktop" : "Application preview"}
-            </option>
-            {active.map((a) => (
-              <option key={a.id} value={a.id}>
-                {mode === "desktop" ? "Linux desktop" : a.application.directory}{" "}
-                · {a.application.port}
+              <option value="" disabled>
+                {mode === "desktop"
+                  ? "Workspace desktop"
+                  : "Application preview"}
               </option>
-            ))}
-          </select>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Reload preview"
-            disabled={!selected?.ready}
-            onClick={() => setRefresh((v) => v + 1)}
-          >
-            <RefreshCw size={14} />
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Preview options"
-              >
-                <MoreHorizontal size={16} />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="preview-options-menu"
-              onCloseAutoFocus={(event) => {
-                if (selectionMenuClosing.current) {
-                  event.preventDefault();
-                  selectionMenuClosing.current = false;
-                }
-              }}
+              {active.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {mode === "desktop"
+                    ? "Linux desktop"
+                    : a.application.directory}{" "}
+                  · {a.application.port}
+                </option>
+              ))}
+            </select>
+            {selected?.ready &&
+              url &&
+              mode === "web" &&
+              renderReview?.({
+                frame,
+                origin: new URL(url).origin,
+                service: selected.id,
+              })}
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Reload preview"
+              disabled={!selected?.ready}
+              onClick={() => setRefresh((v) => v + 1)}
             >
-              {mode === "web" && (
-                <>
-                  <DropdownMenuItem asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      aria-label={phone ? "Desktop viewport" : "Phone viewport"}
-                      aria-pressed={phone}
-                      onClick={() => setPhone(!phone)}
-                    >
-                      {phone ? <Monitor size={14} /> : <Smartphone size={14} />}{" "}
-                      {phone ? "Desktop viewport" : "Phone viewport"}
-                    </Button>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      aria-label="Select element to change"
-                      title="Select an element, then describe your change in chat"
-                      aria-pressed={inspecting}
-                      disabled={!url}
-                      onClick={() => {
-                        selectionMenuClosing.current = true;
-                        nonce.current = crypto.randomUUID();
-                        frame.current?.contentWindow?.postMessage(
-                          {
-                            type: "workbench-select",
-                            nonce: nonce.current,
-                            enabled: !inspecting,
-                          },
-                          new URL(url).origin,
-                        );
-                        setInspecting(!inspecting);
-                      }}
-                    >
-                      <MousePointer2 size={14} /> Select element to change
-                    </Button>
-                  </DropdownMenuItem>
-                </>
-              )}
-              <DropdownMenuItem asChild>
+              <RefreshCw size={14} />
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
-                  size="sm"
-                  aria-label="Open preview in new tab"
-                  disabled={!selected?.ready || mutation.isPending}
-                  onClick={() => {
-                    popup.current = window.open("about:blank", "_blank");
-                    if (popup.current) popup.current.opener = null;
-                    mutation.mutate("open");
-                  }}
+                  size="icon-sm"
+                  aria-label="Preview options"
                 >
-                  <ExternalLink size={14} /> Open preview in new tab
+                  <MoreHorizontal size={16} />
                 </Button>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  aria-label="Application logs"
-                  title="Application logs"
-                  disabled={!apps.length}
-                  onClick={() => setLogs(true)}
-                >
-                  <Terminal size={14} /> Application logs
-                </Button>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  aria-label="Preview settings and logs"
-                  onClick={() => {
-                    if (selected && mode === "web") {
-                      setDirectory(selected.application.directory);
-                      setCommand(selected.application.command);
-                      setPort(String(selected.application.port));
-                    }
-                    setSettings(true);
-                  }}
-                >
-                  <Settings2 size={14} /> Preview settings
-                </Button>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                className="preview-options-menu"
+                onCloseAutoFocus={(event) => {
+                  if (selectionMenuClosing.current) {
+                    event.preventDefault();
+                    selectionMenuClosing.current = false;
+                  }
+                }}
+              >
+                {mode === "web" && (
+                  <>
+                    <DropdownMenuItem asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label={
+                          phone ? "Desktop viewport" : "Phone viewport"
+                        }
+                        aria-pressed={phone}
+                        onClick={() => setPhone(!phone)}
+                      >
+                        {phone ? (
+                          <Monitor size={14} />
+                        ) : (
+                          <Smartphone size={14} />
+                        )}{" "}
+                        {phone ? "Desktop viewport" : "Phone viewport"}
+                      </Button>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label="Select element to change"
+                        title="Select an element, then describe your change in chat"
+                        aria-pressed={inspecting}
+                        disabled={!url}
+                        onClick={() => {
+                          selectionMenuClosing.current = true;
+                          nonce.current = crypto.randomUUID();
+                          frame.current?.contentWindow?.postMessage(
+                            {
+                              type: "workbench-select",
+                              nonce: nonce.current,
+                              enabled: !inspecting,
+                            },
+                            new URL(url).origin,
+                          );
+                          setInspecting(!inspecting);
+                        }}
+                      >
+                        <MousePointer2 size={14} /> Select element to change
+                      </Button>
+                    </DropdownMenuItem>
+                  </>
+                )}
+                <DropdownMenuItem asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label="Open preview in new tab"
+                    disabled={!selected?.ready || mutation.isPending}
+                    onClick={() => {
+                      popup.current = window.open("about:blank", "_blank");
+                      if (popup.current) popup.current.opener = null;
+                      mutation.mutate("open");
+                    }}
+                  >
+                    <ExternalLink size={14} /> Open preview in new tab
+                  </Button>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label="Application logs"
+                    title="Application logs"
+                    disabled={!apps.length}
+                    onClick={() => setLogs(true)}
+                  >
+                    <Terminal size={14} /> Application logs
+                  </Button>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label="Preview settings and logs"
+                    onClick={() => {
+                      if (selected && mode === "web") {
+                        setDirectory(selected.application.directory);
+                        setCommand(selected.application.command);
+                        setPort(String(selected.application.port));
+                      }
+                      setSettings(true);
+                    }}
+                  >
+                    <Settings2 size={14} /> Preview settings
+                  </Button>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
+        )}
+      </div>
+      {showOutput && output}
+      <div className="preview-surface" hidden={showOutput}>
         {query.isError && <ErrorNotice error={query.error} />}
         {mode === "web" && detected.isError && (
           <p className="visual-hint">
@@ -526,9 +525,7 @@ export function WorkPreview({
                 ? "Run and interact with Linux desktop apps alongside your agent."
                 : restartable
                   ? `${restartable.application.directory} · Port ${restartable.application.port}`
-                  : reviewMode
-                    ? "Start the app to review it here. This keeps your review unchanged."
-                    : "Ask the agent to start your app in the workspace. Its running HTTP port will appear here automatically."}
+                  : "Ask the agent to start your app in the workspace. Its running HTTP port will appear here automatically."}
             </p>
             <Button
               disabled={
@@ -544,14 +541,9 @@ export function WorkPreview({
                       })
                     : restartable
                       ? mutation.mutate("restart")
-                      : reviewMode
-                        ? (() => {
-                            setCommand("");
-                            setSettings(true);
-                          })()
-                        : onSelection(
-                            "Start this project’s web application inside the workspace using workbench-preview. Inspect the project to choose its launch command, verify it is ready, and keep it running for the Web preview.\n",
-                          )
+                      : onSelection(
+                          "Start this project’s web application inside the workspace using workbench-preview. Inspect the project to choose its launch command, verify it is ready, and keep it running for the Web preview.\n",
+                        )
               }
             >
               <Play size={14} />
@@ -560,19 +552,15 @@ export function WorkPreview({
                 : detected.data?.items.length
                   ? "Open detected app"
                   : restartable
-                    ? reviewMode
-                      ? "Start preview"
-                      : "Restart preview"
-                    : reviewMode
-                      ? "Set up preview"
-                      : "Ask agent to run app"}
+                    ? "Restart preview"
+                    : "Ask agent to run app"}
             </Button>
             {apps[0] && !restartable && (
               <small>Previous session: {apps[0].state}</small>
             )}
           </div>
         )}
-      </>
+      </div>
       {logs && (
         <ApplicationLogs
           applications={apps}

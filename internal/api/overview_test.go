@@ -76,6 +76,30 @@ func TestOverviewReferencesAssignmentsAndSharedModeCapabilities(t *testing.T) {
 	}
 }
 
+func TestSubscriptionTaskStartsOnSelectedWorkerAndModel(t *testing.T) {
+	s, runtime := setup(t)
+	s.Runtime = &modelCatalogRuntime{embeddedRuntime: runtime}
+	s.cfg.RequireAgentSelection = true
+	project, cards := sampleForOverview(t, s)
+	card := cards[0]
+	path := "/v1/board/" + card.ID + "/start"
+	body := fmt.Sprintf(`{"project_id":%q,"revision":%d}`, project.ID, card.Revision)
+	if got := request(t, s, "POST", path, body); got.Code != 409 {
+		t.Fatal(got.Code, got.Body)
+	}
+	workers, err := s.Store.Workspaces(t.Context())
+	if err != nil || len(workers) != 0 {
+		t.Fatal("start without a selection allocated a worker", workers, err)
+	}
+	worker := domainWorkspace(t, s, "control-token", project.ID, "subscription-worker")
+	body = fmt.Sprintf(`{"project_id":%q,"revision":%d,"workspace_id":%q,"selection":{"provider":"codex","model":"first-model"}}`, project.ID, card.Revision, worker.ID)
+	got := request(t, s, "POST", path, body)
+	var attempt shared.WorkAttempt
+	if got.Code != 202 || json.Unmarshal(got.Body.Bytes(), &attempt) != nil || attempt.WorkspaceID != worker.ID || attempt.Model != "first-model" {
+		t.Fatal(got.Code, got.Body)
+	}
+}
+
 func TestStartPlannedTaskRetainsIdentityAndRetriesOneAttempt(t *testing.T) {
 	s, _ := setup(t)
 	p, cards := sampleForOverview(t, s)

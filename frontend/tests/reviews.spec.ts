@@ -1,5 +1,4 @@
 import { test, expect, type Page } from "@playwright/test";
-import AxeBuilder from "@axe-core/playwright";
 
 async function setup(
   page: Page,
@@ -69,14 +68,6 @@ async function setup(
     const path = url.pathname;
     if (route.request().method() === "POST") {
       writes.push({ path, body: route.request().postDataJSON() });
-      if (
-        path.endsWith("/review") &&
-        route.request().postDataJSON().decision === "closed"
-      ) {
-        work.state = "closed";
-        attempts[1].review_state = "closed";
-        return route.fulfill({ json: work });
-      }
       if (path === "/ui-api/board/" + work.id) {
         const body = route.request().postDataJSON();
         work.state = (
@@ -161,6 +152,8 @@ async function setup(
       });
     if (path.endsWith("/attempts"))
       return route.fulfill({ json: { items: attempts } });
+    if (path.endsWith("/changes"))
+      return route.fulfill({ json: { files: [] } });
     if (path.endsWith("/instruction"))
       return route.fulfill({
         json: {
@@ -173,7 +166,7 @@ async function setup(
       const old = url.searchParams.get("episode") === "task_old";
       const content = old
         ? "# Previous delivery\nThe original checkout."
-        : '# Checkout delivery\nValidation now explains missing fields.\n\n```workbench-chart\n{"title":"Validation results","data":[{"name":"Pass","value":8},{"name":"Fail","value":2}]}\n```';
+        : '# Checkout delivery\nValidation now explains missing fields.\n\n```workbench-chart\n{"version":1,"type":"bar","title":"Validation results","x":"name","y":["value"],"data":[{"name":"Pass","value":8},{"name":"Fail","value":2}]}\n```';
       return route.fulfill({
         json: {
           workspace_id: work.workspace_id,
@@ -231,7 +224,9 @@ async function setup(
       });
     return route.fulfill({ json: { items: [] } });
   });
-  await page.goto(`/app/projects/${project.id}/reviews`);
+  await page.goto(
+    `/app/projects/${project.id}/work?work=${work.id}&view=workspace`,
+  );
   await expect(
     page.getByRole("heading", { name: "Make checkout clearer" }),
   ).toBeVisible();
@@ -244,40 +239,63 @@ test("review shows only the current task result and guards stale decisions", asy
   const { writes } = await setup(page);
   await expect(page.getByLabel("Review attempt")).toHaveCount(0);
   await expect(page.getByText(/Run \d/)).toHaveCount(0);
-  await page.getByRole("tab", { name: "Code review" }).click();
-  await expect(page.locator(".review-code .is-added")).toContainText([
-    "+++ checkout.ts",
-    "+clearLabel",
-  ]);
-  await page.getByRole("button", { name: /Edit 1/ }).click();
+  const output = page.getByRole("region", { name: "Agent output" });
   await expect(
-    page.getByText("Captured activity for this task", { exact: false }),
+    output.getByRole("heading", { name: "Checkout delivery" }),
+  ).toHaveCount(0);
+  await expect(
+    output
+      .getByRole("region", { name: "Validation results" })
+      .getByRole("img", { name: "value by name", exact: true }),
   ).toBeVisible();
-  await page.getByRole("tab", { name: "Reports", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "Checkout delivery" }),
+    output.getByRole("heading", { name: "Previous delivery" }),
+  ).toHaveCount(0);
+  await expect(
+    output
+      .getByRole("region", { name: "measurements.csv" })
+      .getByRole("img", { name: "value by name", exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "report.md Retained file" }).click();
   await expect(
-    page.getByRole("heading", { name: "Verification report" }),
+    page.getByRole("button", { name: "Review evidence" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Visualize data" }),
+  ).toHaveCount(0);
+  const tools = page.getByRole("group", { name: "Workspace tools" });
+  await expect(
+    tools.getByRole("button", { name: "Task settings" }),
+  ).toBeVisible();
+  await tools.getByRole("button", { name: "Files" }).click();
+  const files = page.getByRole("region", { name: "Task files" });
+  await files.getByRole("button", { name: "fix.patch", exact: true }).click();
+  await files.getByRole("button", { name: "Diff", exact: true }).click();
+  await expect(
+    files
+      .getByRole("region", { name: "Git diff" })
+      .getByText("clearLabel", { exact: true }),
+  ).toBeVisible();
+  await files
+    .getByRole("button", { name: "Review tools", exact: true })
+    .click();
+  await page
+    .getByRole("menuitem", { name: "Recorded edits", exact: true })
+    .click();
+  await files.getByRole("button", { name: /Edit 1/ }).click();
+  await expect(
+    files.getByText("Captured activity for this task", { exact: false }),
+  ).toBeVisible();
+  await files.getByRole("button", { name: "report.md", exact: true }).click();
+  await files.getByRole("button", { name: "Rendered", exact: true }).click();
+  await expect(
+    files.getByRole("heading", { name: "Verification report" }),
   ).toBeVisible();
   expect(
     await page.evaluate(
       () => (window as unknown as Record<string, unknown>).reviewInjected,
     ),
   ).toBeUndefined();
-  await page.getByRole("tab", { name: "Visualisations" }).click();
-  await page
-    .getByRole("button", { name: "measurements.csv Retained file" })
-    .click();
-  await expect(page.locator(".interactive-chart")).toBeVisible();
-  await page.getByRole("tab", { name: "Reports", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "Checkout delivery" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Previous delivery" }),
-  ).toHaveCount(0);
+  await tools.getByRole("button", { name: "Preview", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Approve this revision" }),
   ).toBeEnabled();
@@ -294,13 +312,18 @@ test("review shows only the current task result and guards stale decisions", asy
   );
 });
 
-test("research reviews open reports and fall back to the task response", async ({
+test("plain task replies stay in Conversation while retained charts appear in Output", async ({
   page,
 }) => {
   await setup(page, "research", true);
+  const output = page.getByRole("region", { name: "Agent output" });
   await expect(
-    page.getByRole("tab", { name: "Reports", exact: true }),
-  ).toHaveAttribute("aria-selected", "true");
+    output.getByRole("region", { name: "measurements.csv" }),
+  ).toBeVisible();
+  await expect(
+    output.getByRole("heading", { name: "Retained task response" }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: /^Conversation/ }).click();
   await expect(
     page.getByRole("heading", { name: "Retained task response" }),
   ).toBeVisible();
@@ -316,7 +339,9 @@ test("preview setup starts only the server and keeps the review unchanged", asyn
   page,
 }) => {
   const { writes } = await setup(page);
-  await page.getByRole("button", { name: "Set up preview" }).click();
+  await page.getByRole("tab", { name: "Web", exact: true }).click();
+  await page.getByRole("button", { name: "Preview options" }).click();
+  await page.getByRole("menuitem", { name: /Preview settings/ }).click();
   await page
     .getByLabel("Start command")
     .fill("npm run dev -- --host 0.0.0.0 --port $PORT");
@@ -342,7 +367,7 @@ test("expired previews reuse their launch command without creating a work attemp
 }) => {
   const { writes } = await setup(page, "software", false, true);
   await page
-    .getByRole("button", { name: "Start preview", exact: true })
+    .getByRole("button", { name: "Restart preview", exact: true })
     .click();
   await expect.poll(() => writes.length).toBe(1);
   expect(writes[0].path).toBe("/ui-api/workspaces/ws_review/applications");
@@ -358,26 +383,16 @@ test("expired previews reuse their launch command without creating a work attemp
   ).toBeVisible();
 });
 
-test("request changes requires a comment and sends it with the reviewed attempt", async ({
+test("Workspace sends feedback against the current attempt", async ({
   page,
 }) => {
   const { writes } = await setup(page);
-  await expect(page.getByRole("checkbox")).toHaveCount(0);
-  await expect(
-    page.getByRole("textbox", { name: "Changes needed" }),
-  ).toHaveCount(0);
+  const send = page.getByRole("button", { name: "Send", exact: true });
+  await expect(send).toBeDisabled();
   await page
-    .getByRole("button", { name: "Request changes", exact: true })
-    .click();
-  const changes = page.getByRole("button", {
-    name: "Send changes",
-    exact: true,
-  });
-  await expect(changes).toBeDisabled();
-  await page
-    .getByRole("textbox", { name: "Changes needed" })
+    .getByRole("textbox", { name: "Message to your agent" })
     .fill("Make the button easier to read.");
-  await changes.click();
+  await send.click();
   await expect
     .poll(() => writes[0]?.body.instruction)
     .toBe("Make the button easier to read.");
@@ -385,58 +400,36 @@ test("request changes requires a comment and sends it with the reviewed attempt"
   expect(writes[0].body.expected_attempt_id).toBe("attempt_new");
 });
 
-test("Close finishes work without approving or starting another attempt", async ({
+test("Workspace omits the close action and the old closed badge", async ({
   page,
 }) => {
-  const { writes } = await setup(page);
-  await page.getByRole("button", { name: "Close", exact: true }).click();
-  await expect
-    .poll(() => writes[0]?.body)
-    .toEqual({
-      project_id: "prj_review",
-      decision: "closed",
-      expected_attempt_id: "attempt_new",
-    });
-  await expect(page.getByText("Nothing waiting for review.")).toBeVisible();
-  await page.getByRole("button", { name: "History", exact: true }).click();
+  const { work, attempts, writes } = await setup(page);
   await expect(
-    page.getByRole("heading", { name: "Make checkout clearer" }),
+    page.getByRole("button", { name: "Approve this revision" }),
   ).toBeVisible();
-  await expect(page.locator(".review-outcome")).toContainText("Closed");
   await expect(
-    page.getByRole("button", { name: "Approve this revision", exact: true }),
+    page.getByRole("button", { name: "Close task", exact: true }),
   ).toHaveCount(0);
-  await page
-    .getByRole("link", { name: "Open conversation", exact: true })
-    .click();
+  work.state = "closed";
+  attempts[1].review_state = "closed";
+  await page.reload();
+  const thread = page.getByRole("region", { name: "Work conversation" });
   await expect(
-    page.locator(".conversation-work-item .thread-state"),
-  ).toHaveText("Closed");
-  await expect(page.locator(".conversation-thread-heading")).toContainText(
-    "Closed",
-  );
-  await expect(page.locator(".conversation-thread-heading")).not.toContainText(
-    "Accepted",
-  );
-  await page.getByRole("link", { name: "Overview", exact: true }).click();
-  await page.getByRole("button", { name: /^Completed/ }).click();
-  await page
-    .getByRole("button", { name: "Make checkout clearer", exact: true })
-    .click();
-  await expect(page.getByLabel("Task status")).toBeDisabled();
+    thread.getByRole("heading", { name: "Make checkout clearer" }),
+  ).toBeVisible();
+  await expect(thread.getByText(/closed without approval/i)).toHaveCount(0);
+  await expect(thread.getByText("Closed", { exact: true })).toHaveCount(0);
   await expect(
-    page
-      .getByRole("dialog")
-      .getByRole("button", { name: "Archive", exact: true }),
-  ).toBeEnabled();
-  expect(writes).toHaveLength(1);
+    thread.getByRole("button", { name: "Approve this revision" }),
+  ).toHaveCount(0);
+  expect(writes).toHaveLength(0);
 });
 
-test("preview gets a fresh single-use link after reopening or a readiness change", async ({
-  page,
-}) => {
-  await setup(page);
-  let ready = true;
+async function mockLiveReviewPreview(
+  page: Page,
+  ready: () => boolean,
+  html = "<p>Checkout preview</p>",
+) {
   let connections = 0;
   await page.route("**/ui-api/workspaces/ws_review/applications", (route) =>
     route.fulfill({
@@ -445,7 +438,7 @@ test("preview gets a fresh single-use link after reopening or a readiness change
           {
             id: "app_preview",
             state: "active",
-            ready,
+            ready: ready(),
             application: {
               kind: "web",
               directory: "checkout",
@@ -473,26 +466,34 @@ test("preview gets a fresh single-use link after reopening or a readiness change
     (route) =>
       route.fulfill({
         contentType: "text/html",
-        body: "<p>Checkout preview</p>",
+        body: html,
       }),
   );
+  return () => connections;
+}
+
+test("preview gets a fresh single-use link after reopening or a readiness change", async ({
+  page,
+}) => {
+  await setup(page);
+  let ready = true;
+  const connections = await mockLiveReviewPreview(page, () => ready);
   const frame = page.getByTitle("Application preview", { exact: true });
   await expect(frame).toHaveAttribute("src", /ticket=\d+$/);
   const first = await frame.getAttribute("src");
-  const opened = connections;
+  const opened = connections();
   // Polling alone must not reload a working preview.
   await page.waitForResponse((response) =>
     response.url().endsWith("/applications"),
   );
-  expect(connections).toBe(opened);
+  expect(connections()).toBe(opened);
   ready = false;
   await expect(frame).toHaveCount(0);
   ready = true;
   await expect(frame).toBeVisible({ timeout: 10000 });
   await expect(frame).not.toHaveAttribute("src", first!);
   const second = await frame.getAttribute("src");
-  await page.getByRole("tab", { name: "Reports", exact: true }).click();
-  await page.getByRole("tab", { name: "UI preview" }).click();
+  await page.reload();
   await expect(frame).toBeVisible();
   await expect(frame).not.toHaveAttribute("src", second!);
   const third = await frame.getAttribute("src");
@@ -504,472 +505,128 @@ test("preview gets a fresh single-use link after reopening or a readiness change
   ).toBeEnabled();
 });
 
-test("finished work status stays bound to its run and cannot be changed from Overview", async ({
+test("preview areas follow scrolling and ship together with their comments in one image", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 1280, height: 960 });
   const { writes } = await setup(page);
-  await page.getByRole("button", { name: "Close", exact: true }).click();
-  await expect(page.getByText("Nothing waiting for review.")).toBeVisible();
-  await page.getByRole("link", { name: "Overview", exact: true }).click();
-  await page.getByRole("button", { name: /^Completed/ }).click();
-  await page
-    .getByRole("button", { name: "Make checkout clearer", exact: true })
-    .click();
-  await expect(page.getByLabel("Task status")).toBeDisabled();
+  const connections = await mockLiveReviewPreview(
+    page,
+    () => true,
+    `
+    <!doctype html><style>
+      body { margin: 0; padding: 30px; font: 20px sans-serif; }
+      section { width: 300px; height: 120px; background: #ff8844; }
+      #second { margin-top: 500px; background: #44bb88; }
+    </style>
+    <section id="first">Checkout heading</section>
+    <section id="second">Order summary</section>
+    <script defer src="/.workbench/preview-review.js" data-parent-origin="http://127.0.0.1:4173"></script>
+  `,
+  );
+  await page.route(
+    "http://preview-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.localhost:4173/.workbench/preview-review.js",
+    (route) =>
+      route.fulfill({
+        path: "dist/preview-review.js",
+        contentType: "application/javascript",
+      }),
+  );
+  const preview = page.getByTitle("Application preview", { exact: true });
+  await expect(preview).toBeVisible();
+  const toolbar = page.locator(".preview-toolbar");
   await expect(
-    page.getByText("Status follows the run and review."),
+    toolbar.getByRole("tab", { name: "Web", exact: true }),
   ).toBeVisible();
-  await page.getByRole("link", { name: "Open thread", exact: true }).click();
-  await expect(page.locator(".conversation-thread-heading")).toContainText(
-    "Closed",
-  );
-  expect(writes.map((w) => w.path)).toEqual([
-    "/ui-api/work-items/work_review/review",
-  ]);
-});
+  await expect(
+    toolbar.getByRole("tab", { name: "Desktop", exact: true }),
+  ).toBeVisible();
+  await expect(toolbar.getByLabel("Preview application")).toBeVisible();
+  await expect(toolbar.getByRole("button", { name: "Markup" })).toBeVisible();
+  const child = preview.contentFrame();
+  await expect(child.locator("#first")).toBeVisible();
+  const initialConnections = connections();
 
-test("review comments retain drafts and delivery keys across task switches and explain byte limits", async ({
-  page,
-}) => {
-  const f = await setup(page, "research");
-  const second = {
-    ...f.work,
-    id: "work_other",
-    latest_attempt_id: "attempt_other",
-  };
-  await page.route("**/ui-api/work-items?project_id=prj_review", (route) =>
-    route.fulfill({ json: { items: [f.work, second] } }),
-  );
-  await page.route(
-    "**/ui-api/work-items/work_other/attempts?project_id=prj_review",
-    (route) =>
-      route.fulfill({
-        json: {
-          items: [
-            {
-              ...f.attempts[1],
-              id: "attempt_other",
-              work_item_id: "work_other",
-            },
-          ],
-        },
-      }),
-  );
-  await page.route(
-    "**/ui-api/work-items/work_other/instruction?project_id=prj_review",
-    (route) =>
-      route.fulfill({
-        json: {
-          project_id: f.project.id,
-          work_item_id: second.id,
-          instruction: "Review account settings",
-        },
-      }),
-  );
-  const sent: Record<string, unknown>[] = [];
-  await page.route("**/ui-api/work-items/work_review/continue", (route) => {
-    sent.push(route.request().postDataJSON());
-    return sent.length < 3
-      ? route.fulfill({ status: 503, json: { code: "WORKSPACE_UNAVAILABLE" } })
-      : route.fulfill({ json: f.attempts[1] });
-  });
-  await page.reload();
+  async function drawArea(selector: string) {
+    await page.getByRole("button", { name: "Markup" }).click();
+    const target = child.locator(selector);
+    await target.scrollIntoViewIfNeeded();
+    const bounds = (await target.boundingBox())!;
+    await page.mouse.move(bounds.x + 12, bounds.y + 12);
+    await page.mouse.down();
+    await page.mouse.move(bounds.x + 175, bounds.y + 78, { steps: 4 });
+    await page.mouse.up();
+  }
+
+  await drawArea("#first");
+  const first = child.locator('[data-review-area="1"]');
+  await expect(first).toBeVisible();
+  const offset = await first.evaluate((el) => el.getBoundingClientRect().top);
+  const scrollBefore = await child
+    .locator("body")
+    .evaluate(() => window.scrollY);
+  const frameBounds = (await preview.boundingBox())!;
+  await page.mouse.move(frameBounds.x + 20, frameBounds.y + 20);
+  await page.mouse.wheel(0, 60);
+  await expect
+    .poll(() => child.locator("body").evaluate(() => window.scrollY))
+    .toBe(scrollBefore + 60);
+  await expect
+    .poll(() => first.evaluate((el) => el.getBoundingClientRect().top))
+    .toBe(offset - 60);
   await page
-    .getByRole("button", { name: "Request changes", exact: true })
-    .click();
-  const input = page.getByRole("textbox", {
-    name: "Changes needed",
-    exact: true,
-  });
-  const send = page.getByRole("button", { name: "Send changes", exact: true });
-  await input.fill("😀".repeat(4001));
-  await expect(input).toHaveAttribute("aria-invalid", "true");
-  await expect(page.getByRole("alert")).toContainText("exceeds 16 kB");
+    .getByRole("textbox", { name: "Area 1" })
+    .fill("Increase the heading contrast.");
+  await drawArea("#second");
+  await expect(child.locator('[data-review-area="2"]')).toBeVisible();
+  const send = page.getByRole("button", { name: "Send", exact: true });
   await expect(send).toBeDisabled();
-  expect(sent).toEqual([]);
-  for (const width of [1440, 320]) {
-    await page.setViewportSize({ width, height: 800 });
-    for (const theme of ["dark", "light"]) {
-      const toggle = page.getByRole("button", {
-        name: `Switch to ${theme} theme`,
-        exact: true,
-      });
-      if (await toggle.count()) await toggle.click();
-      await page.waitForFunction(
-        () =>
-          !document
-            .getAnimations()
-            .some(
-              (animation) =>
-                animation instanceof CSSTransition &&
-                animation.playState === "running",
-            ),
-      );
-      const audit = await new AxeBuilder({ page })
-        .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
-        .analyze();
-      expect(audit.violations, `${theme} review comment at ${width}px`).toEqual(
-        [],
-      );
-      if (width === 320)
-        expect((await send.boundingBox())!.height).toBeGreaterThanOrEqual(44);
-      await page.evaluate(() => {
-        document.documentElement.style.fontSize = "200%";
-      });
-      expect(
-        await page.evaluate(
-          () => document.documentElement.scrollWidth <= innerWidth,
-        ),
-      ).toBe(true);
-      expect(
-        await send.evaluate(
-          (element) => element.scrollWidth <= element.clientWidth,
-        ),
-      ).toBe(true);
-      await page.evaluate(() => {
-        document.documentElement.style.fontSize = "";
-      });
-    }
-  }
-  await input.fill("Clarify missing fields.");
+  await page
+    .getByRole("textbox", { name: "Area 2" })
+    .fill("Add a total above the summary.");
+  expect(connections()).toBe(initialConnections);
   await send.click();
-  await expect(page.locator(".review-decision [role=alert]")).toBeVisible();
-  await expect(input).toHaveValue("Clarify missing fields.");
-  const queue = page.getByRole("complementary", { name: "Review queue" });
-  await queue.getByRole("button", { name: /Review account settings/ }).click();
-  await page
-    .getByRole("button", { name: "Request changes", exact: true })
-    .click();
-  await input.fill("Check profile saves.");
-  await queue.getByRole("button", { name: /Make checkout clearer/ }).click();
-  await expect(input).toHaveValue("Clarify missing fields.");
-  await send.click();
-  await expect.poll(() => sent.length).toBe(2);
-  expect(sent[0].idempotency_key).toBeTruthy();
-  expect(sent[1].idempotency_key).toBe(sent[0].idempotency_key);
-  expect(sent[1].expected_attempt_id).toBe("attempt_new");
-  await expect(input).toBeEnabled();
-  await input.fill("Clarify missing fields and add an example.");
-  await send.click();
-  await expect.poll(() => sent.length).toBe(3);
-  expect(sent[2].idempotency_key).not.toBe(sent[0].idempotency_key);
-  await expect(input).toHaveValue("");
-  await queue.getByRole("button", { name: /Review account settings/ }).click();
-  await expect(input).toHaveValue("Check profile saves.");
-  expect(f.writes).toEqual([]);
-});
-
-test("review status outages keep the comment while disabling decisions until a read retry succeeds", async ({
-  page,
-}) => {
-  const f = await setup(page, "research");
-  await page
-    .getByRole("button", { name: "Request changes", exact: true })
-    .click();
-  const input = page.getByRole("textbox", { name: "Changes needed" });
-  await input.fill("Keep this review draft through the outage.");
-  for (const endpoint of [
-    "**/ui-api/work-items/work_review/attempts?project_id=prj_review",
-    "**/ui-api/work-items?project_id=prj_review",
-  ]) {
-    let failing = true;
-    await page.route(endpoint, (route) =>
-      failing
-        ? route.fulfill({ status: 503, json: { code: "SERVICE_UNAVAILABLE" } })
-        : route.fallback(),
-    );
-    await expect(page.getByText(/Review status is unavailable/)).toBeVisible({
-      timeout: 12000,
-    });
-    await expect(input).toHaveValue(
-      "Keep this review draft through the outage.",
-    );
-    await expect(input).toBeEnabled();
-    await expect(
-      page.getByRole("button", { name: "Send changes", exact: true }),
-    ).toBeDisabled();
-    await page.getByRole("button", { name: "Cancel", exact: true }).click();
-    for (const name of ["Approve this revision", "Request changes", "Close"])
-      await expect(
-        page.getByRole("button", { name, exact: true }),
-      ).toBeDisabled();
-    failing = false;
-    await page
-      .getByRole("alert")
-      .filter({
-        has: page.getByRole("button", { name: "Try again", exact: true }),
-      })
-      .getByRole("button", { name: "Try again", exact: true })
-      .click();
-    await expect(
-      page.getByRole("button", { name: "Request changes", exact: true }),
-    ).toBeEnabled();
-    await page
-      .getByRole("button", { name: "Request changes", exact: true })
-      .click();
-    await expect(input).toHaveValue(
-      "Keep this review draft through the outage.",
-    );
-    await page.unroute(endpoint);
-  }
-  expect(f.writes).toEqual([]);
-});
-
-test("failed evidence reads never masquerade as empty reports and recover in place", async ({
-  page,
-}) => {
-  const f = await setup(page, "research");
-  f.attempts[1].artifacts = [];
-  let historyFailed = true;
-  await page.route("**/ui-api/workspaces/ws_review/history?*", (route) =>
-    historyFailed
-      ? route.fulfill({ status: 503, json: { code: "HISTORY_UNAVAILABLE" } })
-      : route.fallback(),
-  );
-  await page.route(
-    "**/ui-api/workspaces/ws_review/tasks/task_new/result?*",
-    (route) =>
-      route.fulfill({ status: 503, json: { code: "RESULT_UNAVAILABLE" } }),
-  );
-  await page.reload();
-  for (const [tab, heading] of [
-    ["Reports", "Report unavailable"],
-    ["Code review", "Code evidence unavailable"],
-    ["Visualisations", "Visualisations unavailable"],
-    ["Reports", "Report unavailable"],
-  ]) {
-    await page.getByRole("tab", { name: tab, exact: true }).click();
-    await expect(
-      page.getByRole("heading", { name: heading, exact: true }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("heading", {
-        name: /^No (report|code evidence|visualisations)/,
-      }),
-    ).toHaveCount(0);
-    await expect(
-      page
-        .locator(".review-evidence")
-        .getByRole("button", { name: "Try again", exact: true })
-        .first(),
-    ).toBeVisible();
-  }
-  historyFailed = false;
-  await page
-    .locator(".review-evidence > [role=alert]")
-    .first()
-    .getByRole("button", { name: "Try again", exact: true })
-    .click();
-  await expect(
-    page.getByRole("heading", { name: "Checkout delivery", exact: true }),
-  ).toBeVisible();
-  await expect(page.locator(".review-evidence > [role=alert]")).toHaveCount(0);
-  expect(f.writes).toEqual([]);
-});
-
-test("retained review files retry without a decision or losing the comment", async ({
-  page,
-}) => {
-  const f = await setup(page, "research");
-  let failing = true;
-  await page.route("**/ui-api/artifacts/report", (route) =>
-    failing
-      ? route.fulfill({ status: 503, json: { code: "OUTPUT_UNAVAILABLE" } })
-      : route.fallback(),
-  );
-  await page
-    .getByRole("button", { name: "Request changes", exact: true })
-    .click();
-  await page
-    .getByRole("textbox", { name: "Changes needed" })
-    .fill("Check the report totals.");
-  await page.getByRole("button", { name: "report.md Retained file" }).click();
-  await expect(page.locator(".review-document [role=alert]")).toBeVisible();
-  failing = false;
-  await page
-    .locator(".review-document")
-    .getByRole("button", { name: "Try again", exact: true })
-    .click();
-  await expect(
-    page.getByRole("heading", { name: "Verification report" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("textbox", { name: "Changes needed" }),
-  ).toHaveValue("Check the report totals.");
-  expect(f.writes).toEqual([]);
-});
-
-test("large review queues load titles in batches and keep the open review stable during search", async ({
-  page,
-}) => {
-  const fixture = await setup(page, "research");
-  const catalog = Array.from({ length: 120 }, (_, index) => ({
-    ...fixture.work,
-    id: index === 0 ? fixture.work.id : `work_queue_${index}`,
-    specification_digest: `digest-${index}`,
-    specification_path: `work-requests/${index}.md`,
-  }));
-  const readIds = new Set<string>();
-  let reading = 0;
-  let peak = 0;
-  let failLast = true;
-  await page.route("**/ui-api/work-items**", async (route) => {
-    const path = new URL(route.request().url()).pathname;
-    if (route.request().method() !== "GET") return route.fallback();
-    if (path === "/ui-api/work-items")
-      return route.fulfill({ json: { items: catalog } });
-    if (path.endsWith("/instruction")) {
-      const id = path.split("/").at(-2)!;
-      const index = catalog.findIndex((item) => item.id === id);
-      if (index < 0) return route.fallback();
-      readIds.add(id);
-      reading++;
-      peak = Math.max(peak, reading);
-      await new Promise((resolve) => setTimeout(resolve, 25));
-      reading--;
-      if (index === 119 && failLast)
-        return route.fulfill({
-          status: 503,
-          json: { code: "SERVICE_UNAVAILABLE" },
-        });
-      return route.fulfill({
-        json: {
-          project_id: fixture.project.id,
-          work_item_id: id,
-          instruction:
-            index === 0
-              ? "Make checkout clearer"
-              : index >= 118
-                ? `Quarterly reconciliation ${index}`
-                : `Review task ${index}`,
-        },
-      });
+  await expect
+    .poll(() => writes.filter(({ path }) => path.endsWith("/continue")).length)
+    .toBe(1);
+  const revision = writes.find(({ path }) => path.endsWith("/continue"))!;
+  expect(revision.body.instruction).toContain("Increase the heading contrast.");
+  expect(revision.body.instruction).toContain("Add a total above the summary.");
+  expect(revision.body.instruction).not.toContain("CSS pixels");
+  expect(revision.body.screenshots).toEqual([
+    {
+      content: expect.any(String),
+      note: "Numbered preview areas and reviewer comments.",
+    },
+  ]);
+  const [image] = revision.body.screenshots as { content: string }[];
+  const panels = await page.evaluate(async (content) => {
+    const source = new Image();
+    source.src = "data:image/jpeg;base64," + content;
+    await source.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = source.naturalWidth;
+    canvas.height = source.naturalHeight;
+    const ctx = canvas.getContext("2d")!;
+    ctx.drawImage(source, 0, 0);
+    const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    let first = 0,
+      second = 0,
+      outline = 0;
+    for (let i = 0; i < pixels.length; i += 4) {
+      const [red, green, blue] = [pixels[i], pixels[i + 1], pixels[i + 2]];
+      if (red > 225 && green > 95 && green < 160 && blue < 95) first++;
+      if (red < 100 && green > 150 && blue > 110 && blue < 155) second++;
+      if (red < 85 && green < 115 && blue > 165) outline++;
     }
-    if (path.endsWith("/attempts")) {
-      const id = path.split("/").at(-2)!;
-      return route.fulfill({
-        json: {
-          items: fixture.attempts.map((attempt) => ({
-            ...attempt,
-            work_item_id: id,
-          })),
-        },
-      });
-    }
-    return route.fallback();
-  });
-  await page.reload();
-  const queue = page.getByRole("complementary", { name: "Review queue" });
-  const heading = page.locator(".review-detail-heading h2");
-  await expect(heading).toHaveText("Make checkout clearer");
-  await expect(queue.getByRole("status")).toHaveCount(0);
-  expect(readIds.size).toBe(20);
-  // The open review has its own independent request-text read.
-  expect(peak).toBeLessThanOrEqual(5);
-  await expect(queue.locator(".review-queue-item")).toHaveCount(20);
-  await expect(queue.getByText("Showing 20 of 120 tasks")).toBeVisible();
-  await queue.getByRole("button", { name: "Show more tasks" }).click();
-  await expect(queue.getByRole("status")).toHaveCount(0);
-  expect(readIds.size).toBe(40);
-  await expect(queue.locator(".review-queue-item")).toHaveCount(40);
-  await page
-    .getByRole("button", { name: "Request changes", exact: true })
-    .click();
-  const comment = page.getByRole("textbox", { name: "Changes needed" });
-  await comment.fill("Keep the original review comment while I search.");
-  peak = 0;
-  await page
-    .getByRole("textbox", { name: "Filter reviews" })
-    .fill("  Quarterly reconciliation  ");
-  await expect(queue.getByText("Searching task titles…")).toBeVisible();
-  await expect(
-    queue.getByText("No matching tasks.", { exact: true }),
-  ).toHaveCount(0);
-  await expect(heading).toHaveText("Make checkout clearer");
-  await expect(comment).toHaveValue(
-    "Keep the original review comment while I search.",
-  );
-  await expect(queue.getByText("Searching task titles…")).toHaveCount(0);
-  expect(readIds.size).toBe(120);
-  expect(peak).toBeLessThanOrEqual(4);
-  await expect(queue.getByText("Showing 1 of 1 available match")).toBeVisible();
-  await expect(
-    queue.getByText(/Search results may be incomplete/),
-  ).toBeVisible();
-  failLast = false;
-  await queue.getByRole("button", { name: "Retry titles" }).click();
-  await expect(queue.getByText("Showing 2 of 2 matches")).toBeVisible();
-  await expect(heading).toHaveText("Make checkout clearer");
-  for (const width of [1440, 320]) {
-    await page.setViewportSize({ width, height: 900 });
-    for (const theme of ["light", "dark"]) {
-      const toggle = page.getByRole("button", {
-        name: `Switch to ${theme} theme`,
-        exact: true,
-      });
-      if (await toggle.count()) await toggle.click();
-      await page.waitForFunction(
-        () =>
-          !document
-            .getAnimations()
-            .some(
-              (animation) =>
-                animation instanceof CSSTransition &&
-                animation.playState === "running",
-            ),
-      );
-      expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
-      expect(
-        await page.evaluate(
-          () => document.documentElement.scrollWidth <= innerWidth,
-        ),
-      ).toBe(true);
-    }
-  }
-  await queue
-    .getByRole("button", { name: /Quarterly reconciliation 119/ })
-    .click();
-  await expect(heading).toHaveText("Quarterly reconciliation 119");
-  await page.getByRole("textbox", { name: "Filter reviews" }).fill("");
-  await expect(
-    queue.getByRole("button", { name: "Show open review" }),
-  ).toBeVisible();
-  await queue.getByRole("button", { name: "Show open review" }).click();
-  await expect(
-    queue.getByRole("button", { name: /Quarterly reconciliation 119/ }),
-  ).toHaveAttribute("aria-pressed", "true");
-  await expect(
-    queue.getByRole("button", { name: /Quarterly reconciliation 119/ }),
-  ).toBeInViewport();
-  await expect(
-    queue.getByRole("button", { name: /Quarterly reconciliation 119/ }),
-  ).toBeFocused();
-  await page
-    .getByRole("textbox", { name: "Filter reviews" })
-    .fill("Make checkout clearer");
-  await expect(heading).toHaveText("Quarterly reconciliation 119");
-  await queue.getByRole("button", { name: /Make checkout clearer/ }).click();
-  await expect(comment).toHaveValue(
-    "Keep the original review comment while I search.",
-  );
-  await page
-    .getByRole("textbox", { name: "Filter reviews" })
-    .fill("nothing matches this title");
-  await expect(
-    queue.getByText("No matching tasks.", { exact: true }),
-  ).toBeVisible();
-  await expect(heading).toHaveText("Make checkout clearer");
-  await queue.getByRole("button", { name: "Show open review" }).click();
-  await expect(
-    page.getByRole("textbox", { name: "Filter reviews" }),
-  ).toHaveValue("");
-  await expect(
-    queue.getByRole("button", { name: /Make checkout clearer/ }),
-  ).toHaveAttribute("aria-pressed", "true");
-  expect(fixture.writes).toEqual([]);
+    return { first, second, outline };
+  }, image.content);
+  expect(panels.first).toBeGreaterThan(1000);
+  expect(panels.second).toBeGreaterThan(1000);
+  expect(panels.outline).toBeGreaterThan(100);
 });
 
-test("screenshot notes are sent with feedback and a failed send keeps the image", async ({
+test("screenshot markup and notes survive a failed send and retry", async ({
   page,
 }) => {
   const { writes } = await setup(page);
@@ -984,38 +641,109 @@ test("screenshot notes are sent with feedback and a failed send keeps the image"
     });
   });
   await page
-    .getByRole("button", { name: "Request changes", exact: true })
-    .click();
-  await page
-    .getByLabel("Changes needed", { exact: true })
+    .getByLabel("Message to your agent", { exact: true })
     .fill("Fix the highlighted layout.");
+  await page.getByText("Attach screenshots", { exact: true }).click();
   await page.getByLabel("Attach screenshot").setInputFiles({
     name: "capture.png",
     mimeType: "image/png",
     buffer: Buffer.from(
       await page.evaluate(() => {
         const canvas = document.createElement("canvas");
-        canvas.width = 20;
-        canvas.height = 20;
+        canvas.width = 1280;
+        canvas.height = 720;
+        const context = canvas.getContext("2d")!;
+        context.fillStyle = "#fff";
+        context.fillRect(0, 0, canvas.width, canvas.height);
         return canvas.toDataURL("image/png").split(",")[1];
       }),
       "base64",
     ),
   });
-  await expect(page.getByAltText("Review screenshot 1")).toBeVisible();
+  const thumbnail = page.getByAltText("Review screenshot 1");
+  await expect(thumbnail).toBeVisible();
+  const original = await thumbnail.getAttribute("src");
   await page
     .getByLabel("Screenshot 1 notes")
     .fill("The button overlaps the title.");
-  await page.getByRole("button", { name: "Send changes", exact: true }).click();
+  const openEditor = page.getByRole("button", { name: "Mark up screenshot 1" });
+  await openEditor.click();
+  const editor = page.getByRole("dialog", { name: "Mark up screenshot" });
+  await expect(editor).toBeVisible();
+  const canvas = editor.getByLabel("Screenshot drawing layer");
+  await expect(canvas).toBeVisible();
+  await editor.evaluate((node) =>
+    Promise.all(node.getAnimations().map((animation) => animation.finished)),
+  );
+  const bounds = (await canvas.boundingBox())!;
+  async function draw(from: [number, number], to: [number, number]) {
+    await page.mouse.move(
+      bounds.x + from[0] * bounds.width,
+      bounds.y + from[1] * bounds.height,
+    );
+    await page.mouse.down();
+    await page.mouse.move(
+      bounds.x + to[0] * bounds.width,
+      bounds.y + to[1] * bounds.height,
+      { steps: 5 },
+    );
+    await page.mouse.up();
+  }
+  await draw([0.15, 0.2], [0.55, 0.65]);
+  await editor.getByRole("button", { name: "Arrow", exact: true }).click();
+  await draw([0.85, 0.7], [0.56, 0.47]);
+  const undo = editor.getByRole("button", { name: "Undo", exact: true });
+  const redo = editor.getByRole("button", { name: "Redo", exact: true });
+  await undo.click();
+  await expect(redo).toBeEnabled();
+  await redo.click();
+  await expect(redo).toBeDisabled();
+  await editor.getByRole("button", { name: "Save markup" }).click();
+  await expect(openEditor).toBeFocused();
+  await expect(thumbnail).not.toHaveAttribute("src", original!);
+  const annotated = (await thumbnail.getAttribute("src"))!;
+  await openEditor.click();
+  await expect(undo).toBeEnabled();
+  await undo.click();
+  await editor.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(thumbnail).toHaveAttribute("src", annotated);
+  await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect.poll(() => writes.length).toBe(1);
   expect(writes[0].body.screenshots).toEqual([
-    { content: expect.any(String), note: "The button overlaps the title." },
+    {
+      content: annotated.split(",")[1],
+      note: "The button overlaps the title.",
+    },
   ]);
+  const imagePixels = await page.evaluate(async (src) => {
+    const image = new Image();
+    image.src = src;
+    await image.decode();
+    const rendered = document.createElement("canvas");
+    rendered.width = image.naturalWidth;
+    rendered.height = image.naturalHeight;
+    const context = rendered.getContext("2d")!;
+    context.drawImage(image, 0, 0);
+    const hasRedStroke = (x: number, y: number) => {
+      const { data } = context.getImageData(x - 10, y - 10, 20, 20);
+      return data.some(
+        (red, index) => index % 4 === 0 && red > 150 && data[index + 1] < 100,
+      );
+    };
+    return {
+      highlight: context.getImageData(450, 300, 1, 1).data[2],
+      arrow: hasRedStroke(902, 421),
+      outside: Array.from(context.getImageData(30, 30, 1, 1).data),
+    };
+  }, annotated);
+  expect(imagePixels.highlight).toBeLessThan(220);
+  expect(imagePixels.arrow).toBe(true);
+  expect(imagePixels.outside).toEqual([255, 255, 255, 255]);
   await expect(page.getByAltText("Review screenshot 1")).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Send changes", exact: true }),
+    page.getByRole("button", { name: "Send", exact: true }),
   ).toBeEnabled();
-  await page.getByRole("button", { name: "Send changes", exact: true }).click();
+  await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect.poll(() => writes.length).toBe(2);
   expect(writes[1].body).toEqual(writes[0].body);
 });
@@ -1046,7 +774,11 @@ test("agent review starts separate work without deciding or revising the source"
     requests.push({ path: "/run", body: route.request().postDataJSON() });
     return route.fulfill({ status: 202, json: {} });
   });
-  await page.getByText("Agent review", { exact: true }).click();
+  await page.getByRole("button", { name: "Files", exact: true }).click();
+  await page.getByRole("button", { name: "Review tools", exact: true }).click();
+  await page
+    .getByRole("menuitem", { name: "Agent review", exact: true })
+    .click();
   await page.getByLabel("Agent review focus").fill("Check accessibility");
   await page.getByRole("button", { name: "Start agent review" }).click();
   await expect(
@@ -1056,7 +788,5 @@ test("agent review starts separate work without deciding or revising the source"
   expect(requests[0].body.instruction).toContain("attempt_new");
   expect(requests[0].body.instruction).toContain("Check accessibility");
   expect(requests[0].body.kind).toBe("research");
-  await expect(
-    page.getByRole("button", { name: "Approve this revision", exact: true }),
-  ).toBeVisible();
+  await expect(page.getByRole("region", { name: "Task files" })).toBeVisible();
 });

@@ -1,39 +1,22 @@
-# Reviewing tasks
+# Review a task in Workspace
 
-Open **Reviews** in a project. The queue shows readable work titles and selects the first pending task. **History** contains finished tasks. Search matches titles, work IDs and kinds.
+Open the task's thread and select **Workspace**.
 
-Choose the format that fits the task:
+- **Preview** opens the live web app when available. **Output** shows charts and images for the selected revision. Read the agent reply in **Conversation**.
+- **Files** lists changed, saved, and linked files. Inspect saved files to review the contents retained for that revision. **Recorded edits** can include requests that failed.
+- **Agent review** under **Files** starts a separate research task. You can add its findings to your message for the agent.
 
-- **UI preview** opens the current workspace application or desktop. Live content can change after the task finishes.
-- **Code review** displays retained source/patch files and captured file edits, with line numbers and added/removed lines. Recorded edit requests are explicitly identified: they may have failed, and captured activity is not a complete repository diff. Earlier evidence can be loaded for longer tasks.
-- **Visualisations** displays delivered image/chart references and retained CSV or JSON data using the existing interactive chart viewer.
-- **Reports** renders the worker’s last recorded response and retained Markdown/text reports. If no response was captured in history, it uses the task result. Earlier responses remain available. Other document formats open through the original artifact link.
+## Send visual feedback
 
-Review is the final stage of a task. Each task shows its current result, with no run selector or comparison between runs. The conversation and Files view also focus on the current result; earlier conversation messages are still available. Internal execution records remain intact for auditing and concurrency checks. Only pending work can be approved or sent back for changes. The server checks the expected attempt ID before recording a decision. A successful decision refreshes both Reviews and the issue board.
+1. Open the live web preview and select **Markup**.
+2. Drag a rectangle around the part of the page you want to change.
+3. Write the change in the matching numbered comment. Scroll the app and repeat for up to six areas.
+4. Select **Send** in the Workspace composer. The agent receives one annotated image with the selected areas and their comments. Add an overall message in the composer if needed.
 
-Select **Approve this revision** to approve the work. Select **Close** when no further work is needed but you do not want to approve it. Close records a separate `closed` work state and review outcome, removes it from the pending queue, and places it in **History** and the completed work scope in **Overview**. It does not start another attempt. To request changes, select **Request changes**, enter a comment in **Changes needed**, and select **Send changes**. **Cancel** hides the comment box and keeps the draft while this task is open. The comment is saved as the next work request and starts a revision. Preview element selections open and populate the same comment box. The action bar stays below the scrollable result, and the task description is available beside its status.
+Open **Conversation** to see the sent image below your message. To include an existing PNG or JPEG, open **Attach screenshots** in the composer. The request can include up to four images, including the annotated preview. Workbench limits each image to 1920 pixels on the longest side and 1 MiB.
 
-Preview startup is separate from work revisions. **Start preview** reuses a saved application launch configuration; **Open detected app** connects to a running server. If no launch command is available, **Set up preview** asks for the directory, command, and port. Starting a preview uses the application service API and does not create an attempt, change the work title, or remove the review from the queue.
+## Decide the revision
 
-Each mounted live preview obtains a fresh single-use connection ticket, including after a readiness change, reload, or reopening the preview. Ordinary polling does not reload a working preview.
+Select **Approve this revision** to accept the output. If you are the assigned reviewer and the task has a different controller, select **Request changes** to record the decision for the controller.
 
-Artifact previews are bounded and fetched only through the authenticated local API. Markdown does not execute HTML. Missing or truncated evidence is identified in the viewer. Image/data references in recorded results use retained outputs; they cannot silently read files from a newer execution.
-
-To revisit a finished decision, open **History** in **Reviews**. To request more work after completion, open the conversation and send a new message. The new run keeps the previous decision in history.
-
-Request changes also supports **Capture screenshot** (choose a browser tab, window,
-or screen) and **Attach screenshot** (PNG/JPEG). Add a note to each image, remove
-unwanted captures, then send the changes with your overall comment. Up to four
-screenshots are resized to a maximum dimension of 1920 pixels and limited to
-1 MiB each. Draft images stay in memory for the current session; sending saves
-immutable private workspace files referenced by the revision request. Browsers
-without screen capture support can still attach existing screenshots.
-
-**Agent review** starts a separate research work item in the same workspace,
-using the task's agent selection. Add an optional focus, open its conversation,
-or copy its returned findings into the change notes for editing before sending.
-The review is instructed to inspect and report without making changes; this is
-an agent instruction, not a read-only workspace sandbox. It does not decide the
-original review. The source revision and retained outputs are included in its
-request; workspace files remain live. The separate review remains available in
-**Workspace** after leaving the page.
+Use the conversation history to revisit earlier revisions and decisions. To request more work after completion, send another message from the same task.

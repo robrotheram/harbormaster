@@ -3,10 +3,17 @@ import { privateContentOptions } from "@/shared/private-content";
 import { workApi, workKeys, type WorkItem } from "./api";
 import { userMessage } from "./conversation-api";
 
-export function instructionOptions(project: string, item: WorkItem) {
+export function instructionOptions(
+  project: string,
+  item: Pick<WorkItem, "id" | "specification_path">,
+) {
   return queryOptions({
     ...privateContentOptions,
-    queryKey: [...workKeys.detail(project, item.id), "instruction"],
+    queryKey: [
+      ...workKeys.detail(project, item.id),
+      "instruction",
+      item.specification_path,
+    ],
     queryFn: ({ signal }) => workApi.instruction(project, item.id, signal),
     staleTime: Infinity,
     retry: false,
@@ -20,11 +27,7 @@ export function conversationTitle(
   const firstLine =
     instruction &&
     userMessage(instruction, {
-      parent_attempt_id: instruction.startsWith(
-        "Continue the same work in this workspace.",
-      )
-        ? "followup"
-        : undefined,
+      parent_attempt_id: "followup",
     })
       .split(/\r?\n/)
       .map((line) => line.trim())

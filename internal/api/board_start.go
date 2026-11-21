@@ -15,8 +15,10 @@ import (
 func (s *Server) registerBoardStart(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/board/{id}/start", func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
-			ProjectID string `json:"project_id"`
-			Revision  int    `json:"revision"`
+			ProjectID   string             `json:"project_id"`
+			Revision    int                `json:"revision"`
+			WorkspaceID string             `json:"workspace_id,omitempty"`
+			Selection   *shared.AgentModel `json:"selection,omitempty"`
 		}
 		if !decodeRouteBody(w, r, &in) || !s.AuthorizeProject(w, r, in.ProjectID) {
 			return
@@ -66,7 +68,21 @@ func (s *Server) registerBoardStart(mux *http.ServeMux) {
 			shared.Error(w, 409, "WORK_STATE_CONFLICT")
 			return
 		}
+		if !validExplicitSelection(in.Selection) || (in.WorkspaceID != "" && (!shared.ValidID(in.WorkspaceID) || (item.WorkspaceID != "" && item.WorkspaceID != in.WorkspaceID))) {
+			shared.Error(w, 400, "INVALID_REQUEST")
+			return
+		}
 		old, _ := json.Marshal(item)
+		if in.Selection != nil {
+			item.Provider, item.Model, item.ReasoningEffort = in.Selection.Provider, in.Selection.Model, in.Selection.ReasoningEffort
+		}
+		if s.cfg.RequireAgentSelection && item.Provider == "" {
+			workError(w, agentSelectionRequired)
+			return
+		}
+		if in.WorkspaceID != "" {
+			item.WorkspaceID = in.WorkspaceID
+		}
 		if item.WorkspaceID == "" {
 			agentKind := "codex"
 			if s.cfg.SharedWorkspaceID != "" {
@@ -80,28 +96,41 @@ func (s *Server) registerBoardStart(mux *http.ServeMux) {
 			}
 			item.WorkspaceID = ws.ID
 		}
+		ws, err := s.Store.Workspace(r.Context(), item.WorkspaceID)
+		if err != nil || !s.workspaceInProject(ws, in.ProjectID) || (in.WorkspaceID != "" && ws.AgentKind == "hermes") {
+			shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
+			return
+		}
+		release := s.operations.Lock(ws.ID)
+		defer release()
+		if ws, err = s.Store.Workspace(r.Context(), item.WorkspaceID); err != nil {
+			shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
+			return
+		}
 		if err = s.prepareWorkSubscription(r, item.WorkspaceID, item.Provider); err != nil {
 			workError(w, err)
 			return
 		}
-		if b.Description != nil || item.SpecificationPath == "" {
+		publish := b.Description != nil || item.SpecificationPath == ""
+		if publish || in.Selection != nil {
+			if err = s.start(r.Context(), &ws); err != nil {
+				apiError(w, err)
+				return
+			}
+		}
+		if in.Selection != nil {
+			if err = s.checkAgentSelection(r.Context(), ws.ID, in.Selection); err != nil {
+				apiError(w, err)
+				return
+			}
+		}
+		if publish {
 			content := "# " + b.Title + "\n\n"
 			if b.Description != nil {
 				content += *b.Description
 			}
 			if len(content) > 65536 {
 				shared.Error(w, 400, "INVALID_REQUEST")
-				return
-			}
-			ws, err := s.Store.Workspace(r.Context(), item.WorkspaceID)
-			if err != nil || !s.workspaceInProject(ws, in.ProjectID) {
-				shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
-				return
-			}
-			release := s.operations.Lock(ws.ID)
-			defer release()
-			if err = s.start(r.Context(), &ws); err != nil {
-				apiError(w, err)
 				return
 			}
 			digest := sha256.Sum256([]byte(content))

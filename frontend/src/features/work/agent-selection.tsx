@@ -22,8 +22,6 @@ export function AgentSelection({
   workspace,
   provider,
   model,
-  onProvider,
-  onModel,
   reasoning = "",
   onReasoning,
   disabled = false,
@@ -32,8 +30,6 @@ export function AgentSelection({
   workspace?: string;
   provider: string;
   model: string;
-  onProvider: (value: string) => void;
-  onModel: (value: string) => void;
   reasoning?: string;
   onReasoning: (effort: string, provider: string, model: string) => void;
   disabled?: boolean;
@@ -99,8 +95,6 @@ export function AgentSelection({
                 query.data?.default_model || "",
               ];
           onReasoning("", nextProvider, nextModel);
-          onProvider(nextProvider);
-          onModel(nextModel);
         }}
       >
         <option value="" disabled={!!query.data && !defaultAvailable}>
@@ -110,9 +104,11 @@ export function AgentSelection({
               ? "Loading models…"
               : query.data && options.length === 0
                 ? "No models available"
-                : query.data?.default_model
-                  ? `${query.data.default_model} (worker default)`
-                  : "Worker default"}
+                : defaultAvailable
+                  ? `${query.data?.default_model} (worker default)`
+                  : options.length > 0
+                    ? "Choose a model"
+                    : "Worker default"}
         </option>
         {value && !known && (
           <option value={value} disabled>
@@ -177,7 +173,7 @@ export function AgentSelection({
           disabled={disabled}
         >
           <SlidersHorizontal size={14} />
-          <span>{model || query.data?.default_model || "Model"}</span>
+          <span>{model || query.data?.default_model || "Choose model"}</span>
           <ChevronDown size={12} />
         </Button>
       </Popover.Trigger>

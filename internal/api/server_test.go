@@ -29,6 +29,7 @@ type embeddedRuntime struct {
 	servers        map[string]*httptest.Server
 	starts         int
 	unknown        bool
+	failForceStop  bool
 	jobs           int
 }
 
@@ -76,12 +77,26 @@ func (rt *embeddedRuntime) Stop(ctx context.Context, id string) error {
 		if w.Code != 200 {
 			return fmt.Errorf("busy")
 		}
-		rt.servers[id].Close()
-		m.Close()
-		delete(rt.servers, id)
-		delete(rt.managers, id)
+		rt.terminate(id)
 	}
 	return nil
+}
+func (rt *embeddedRuntime) ForceStop(_ context.Context, id string) error {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if rt.failForceStop {
+		return fmt.Errorf("runtime offline")
+	}
+	if rt.managers[id] != nil {
+		rt.terminate(id)
+	}
+	return nil
+}
+func (rt *embeddedRuntime) terminate(id string) {
+	rt.servers[id].Close()
+	rt.managers[id].Close()
+	delete(rt.servers, id)
+	delete(rt.managers, id)
 }
 func (rt *embeddedRuntime) Agent(ctx context.Context, id, method, path string, b []byte) (int, []byte, error) {
 	rt.mu.Lock()

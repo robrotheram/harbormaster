@@ -33,7 +33,7 @@ func (s *Server) registerAgentSubscriptions(mux *http.ServeMux) {
 		}
 		items := []map[string]any{}
 		for _, v := range saved {
-			c, err := subscriptions.Open(s.cfg.Token, subscriptions.Binding(owner, v.ID), v.Credential)
+			c, err := s.openSubscription(owner, v.ID, v.Credential)
 			if err != nil {
 				shared.Error(w, 503, "CREDENTIAL_UNAVAILABLE")
 				return
@@ -107,7 +107,7 @@ func (s *Server) registerAgentSubscriptions(mux *http.ServeMux) {
 				return
 			}
 			if *input.Default {
-				cred, err := subscriptions.Open(s.cfg.Token, subscriptions.Binding(owner, v.ID), v.Credential)
+				cred, err := s.openSubscription(owner, v.ID, v.Credential)
 				if err != nil || cred.ExpiresAt <= s.now().Add(time.Minute).Unix() {
 					shared.Error(w, 409, "PROVIDER_LOGIN_REQUIRED")
 					return

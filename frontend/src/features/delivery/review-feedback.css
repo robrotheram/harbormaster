@@ -1,7 +1,3 @@
-.review-comment {
-  max-height: 42vh;
-  overflow-y: auto;
-}
 .review-screenshots {
   display: grid;
   gap: 0.75rem;
@@ -28,27 +24,115 @@
   object-fit: contain;
   justify-self: start;
 }
+.review-screenshot-actions,
+.review-markup-toolbar,
+.review-markup-toolbar > div,
+.review-markup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.review-markup {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+}
+.review-markup-toolbar {
+  justify-content: space-between;
+}
+.review-markup-toolbar button[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-foreground);
+  border-color: var(--ring);
+}
+.review-markup-stage {
+  display: grid;
+  min-width: 0;
+  place-items: center;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--muted);
+}
+.review-markup-image {
+  position: relative;
+  max-width: 100%;
+  user-select: none;
+}
+.review-markup-image img {
+  display: block;
+  max-height: 58dvh;
+  max-width: 100%;
+  width: auto;
+  height: auto;
+}
+.review-markup-image canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+  touch-action: none;
+}
+.review-preview-controls {
+  flex: none;
+}
+.review-preview-hint {
+  position: absolute;
+  z-index: 1;
+  top: calc(100% + 4px);
+  right: 8px;
+  max-width: calc(100% - 16px);
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card);
+  font-size: 12px;
+  pointer-events: none;
+}
+.review-markup-actions {
+  justify-content: flex-end;
+}
 .review-agent {
-  flex-shrink: 0;
-  max-height: 30vh;
-  overflow-y: auto;
-  border-top: 1px solid var(--border);
-  padding: 0.75rem 1rem;
   font-size: 0.875rem;
 }
-.review-agent summary {
-  cursor: pointer;
-  font-weight: 600;
-}
-.review-agent > :not(summary) {
+.review-agent > :not(h3) {
   margin-top: 0.75rem;
 }
 
-/* Keep evidence usable when feedback or findings occupy a short viewport. */
-.review-detail {
-  overflow-y: auto;
+.review-area-comments {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0;
 }
-.review-detail .review-content {
-  min-height: 160px;
-  flex-shrink: 0;
+.review-area-comments li {
+  display: grid;
+  grid-template-columns: minmax(60px, 96px) minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.review-area-comments img {
+  width: 100%;
+  max-height: 90px;
+  object-fit: contain;
+  border-radius: 3px;
+}
+.review-area-comments label {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+.workspace-feedback-draft {
+  max-height: 27dvh;
+  overflow-y: auto;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+.workspace-feedback-draft summary {
+  cursor: pointer;
+  color: var(--muted-foreground);
 }

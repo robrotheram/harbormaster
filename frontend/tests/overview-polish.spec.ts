@@ -354,11 +354,13 @@ test("all open tasks stay discoverable and actions fit at desktop and phone size
   for (const width of [1440, 1280, 1024, 390]) {
     await page.setViewportSize({ width, height: 1000 });
     for (const row of await rows.all()) {
-      const start = await row
-        .getByRole("button", { name: "Start work", exact: true })
-        .boundingBox();
+      const button = row.getByRole("button", {
+        name: "Start work",
+        exact: true,
+      });
+      await expect(button).toHaveCSS("height", width >= 1280 ? "32px" : "36px");
+      const start = await button.boundingBox();
       expect(start).not.toBeNull();
-      expect(start!.height).toBe(32);
       expect(start!.x + start!.width).toBeLessThanOrEqual(width);
     }
     expect(
@@ -483,9 +485,18 @@ test("activity pills distinguish execution states in both themes", async ({
       .include(".overview-page")
       .analyze();
     expect(audit.violations).toEqual([]);
-    if (i === 0)
+    if (i === 0) {
       await page
         .getByRole("button", { name: "Switch to light theme", exact: true })
         .click();
+      await expect(page.locator("html")).not.toHaveClass(/\bdark\b/);
+      await page.locator(".team-scopes").evaluate(async (scopes) => {
+        await Promise.allSettled(
+          scopes
+            .getAnimations({ subtree: true })
+            .map((animation) => animation.finished),
+        );
+      });
+    }
   }
 });

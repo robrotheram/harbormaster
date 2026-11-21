@@ -1,5 +1,7 @@
 import { test, expect } from "@playwright/test";
-test("deletes a project only after the operator confirms", async ({ page }) => {
+test("deletes the default project only after the operator confirms", async ({
+  page,
+}) => {
   let deleted = false;
   await page.route("**/ui-api/**", async (route) => {
     const req = route.request(),
@@ -7,16 +9,16 @@ test("deletes a project only after the operator confirms", async ({ page }) => {
     let value: unknown = { items: [] };
     if (path === "/ui-api/projects")
       value = {
-        items: deleted ? [] : [{ id: "A", name: "Disposable project" }],
+        items: deleted ? [] : [{ id: "default", name: "Workspaces" }],
       };
-    if (path === "/ui-api/projects/A/delete") {
-      expect(req.postDataJSON()).toEqual({ confirm_id: "A" });
+    if (path === "/ui-api/projects/default/delete") {
+      expect(req.postDataJSON()).toEqual({ confirm_id: "default" });
       deleted = true;
       value = { deleted: true, private_disks: "retained" };
     }
     await route.fulfill({ json: value });
   });
-  await page.goto("/app/projects/A/factory");
+  await page.goto("/app/projects/default/factory");
   await expect(
     page
       .getByRole("banner")
@@ -39,6 +41,9 @@ test("deletes a project only after the operator confirms", async ({ page }) => {
     exact: true,
   });
   await expect(dialog).toContainText(
+    "All its workers will stop, including any active runs.",
+  );
+  await expect(dialog).toContainText(
     "Private disks and saved evidence remain on the host",
   );
   const confirm = dialog.getByRole("button", {
@@ -60,7 +65,7 @@ test("deletes a project only after the operator confirms", async ({ page }) => {
   ).toHaveValue("");
   await dialog
     .getByLabel("Type the project name to confirm")
-    .fill("Disposable project");
+    .fill("Workspaces");
   await confirm.click();
   await expect.poll(() => deleted).toBe(true);
   await expect(
@@ -68,7 +73,7 @@ test("deletes a project only after the operator confirms", async ({ page }) => {
   ).toBeVisible();
 });
 
-test("failed project deletion stays in its confirmation dialog with recovery guidance", async ({
+test("failed project deletion stays in its confirmation dialog with the error", async ({
   page,
 }) => {
   let writes = 0;
@@ -83,7 +88,7 @@ test("failed project deletion stays in its confirmation dialog with recovery gui
       writes++;
       return route.fulfill({
         status: 409,
-        json: { code: "STOP_WORKSPACE_FIRST" },
+        json: { code: "RUNTIME_UNAVAILABLE" },
       });
     }
     return route.fulfill({ json: { items: [] } });
@@ -102,9 +107,7 @@ test("failed project deletion stays in its confirmation dialog with recovery gui
   await dialog
     .getByRole("button", { name: "Delete project", exact: true })
     .click();
-  await expect(dialog.getByRole("alert")).toContainText(
-    "Finish active work and close terminals first",
-  );
+  await expect(dialog.getByRole("alert")).toContainText("runtime");
   await expect(
     dialog.getByLabel("Type the project name to confirm"),
   ).toHaveValue("Customer operations");

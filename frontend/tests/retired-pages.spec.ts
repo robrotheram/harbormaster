@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 
 for (const [oldSection, heading] of [
   ["homes", "Workers"],
-  ["factory", "Reviews"],
+  ["factory", "Project work"],
 ]) {
   test(`old ${oldSection} bookmark opens ${heading} without retired requests`, async ({
     page,

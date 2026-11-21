@@ -77,9 +77,16 @@ func TestHostedPreviewConnection(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("FRONTEND_DIR", dir)
+	if err := os.WriteFile(filepath.Join(dir, "preview-review.js"), []byte("/* review bridge */"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	shell := call("GET", "https://reference.example/app/", "", "", nil)
 	if shell.Code != 200 || !strings.Contains(shell.Header().Get("Content-Security-Policy"), "frame-src https://*.reference.example;") {
 		t.Fatal("dashboard blocks hosted preview frames", shell.Code, shell.Header())
+	}
+	shellPolicy := shell.Header().Get("Content-Security-Policy")
+	if !strings.Contains(shellPolicy, "script-src 'self' 'wasm-unsafe-eval';") || strings.Contains(shellPolicy, "'unsafe-eval'") {
+		t.Fatal("unexpected dashboard script policy", shellPolicy)
 	}
 	issued := call("POST", "https://reference.example/ui-api/workspaces/ws_shared/services/service_one/connect", "https://reference.example", `{"embedded":true}`, nil)
 	var result struct {
@@ -114,6 +121,18 @@ func TestHostedPreviewConnection(t *testing.T) {
 	live := call("GET", origin+"/", "", "", cookies[0])
 	if live.Code != 200 || !strings.Contains(live.Body.String(), `const origin="https://reference.example"`) || !strings.Contains(live.Header().Get("Content-Security-Policy"), "wss://"+u.Host) {
 		t.Fatal("hosted application failed", live.Code, live.Header(), live.Body.String())
+	}
+	if strings.Contains(live.Header().Get("Content-Security-Policy"), "wasm-unsafe-eval") {
+		t.Fatal("preview inherited dashboard WebAssembly permission")
+	}
+	if !strings.Contains(live.Body.String(), `src="/.workbench/preview-review.js" data-parent-origin="https://reference.example"`) {
+		t.Fatal("embedded preview did not load the review bridge")
+	}
+	if guest := call("GET", origin+"/.workbench/preview-review.js", "", "", nil); guest.Code != 401 {
+		t.Fatal("preview review bridge served without a connection", guest.Code)
+	}
+	if asset := call("GET", origin+"/.workbench/preview-review.js", "", "", cookies[0]); asset.Code != 200 || asset.Body.String() != "/* review bridge */" {
+		t.Fatal("preview review bridge was not served", asset.Code)
 	}
 	if w := call("GET", origin+"/ui-api/subscriptions", "", "", nil); w.Code != 401 {
 		t.Fatal("preview exposed management API", w.Code)

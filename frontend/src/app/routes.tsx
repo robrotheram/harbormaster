@@ -31,15 +31,31 @@ const projectRoute = createRoute({
   ): {
     work?: string;
     attempt?: string;
+    view?: "workspace" | "files";
     worker?: string;
     tab?: "general" | "hermes";
   } => ({
+    view:
+      search.view === "workspace" || search.view === "files"
+        ? search.view
+        : undefined,
     tab: search.tab === "hermes" ? "hermes" : undefined,
     attempt: typeof search.attempt === "string" ? search.attempt : undefined,
     work: typeof search.work === "string" ? search.work : undefined,
     worker: typeof search.worker === "string" ? search.worker : undefined,
   }),
-  beforeLoad: ({ params }) => {
+  beforeLoad: ({ params, search }) => {
+    if (params.section === "reviews" || params.section === "factory")
+      throw redirect({
+        to: "/projects/$projectId/$section",
+        params: { projectId: params.projectId, section: "work" },
+        search: {
+          work: search.work,
+          attempt: search.attempt,
+          view: "workspace",
+        },
+        replace: true,
+      });
     if (params.section === "hermes")
       throw redirect({
         to: "/projects/$projectId/$section",

@@ -31,7 +31,7 @@ become available; it does not stream every generated token.
    the attempt/task references. A failed run cannot be accepted; use **Retry
    task** or send corrected instructions.
 5. Switch the thread to **Workspace** and open **Files**. Inspect the report and tests. Verify the command in the report and check the recorded tool output for four passing tests. Use **Download** to retrieve a retained file.
-6. Select **Review output**, then **Request changes**. Enter the following feedback and select **Send changes**.
+6. Enter the following feedback in the Workspace composer and select **Send**.
 
    ```text
    Extend add(a, b) to reject non-numeric arguments with TypeError. Add tests
@@ -43,7 +43,7 @@ become available; it does not stream every generated token.
    **Files** shows the current result. **Show earlier conversation** opens
    previous messages. During execution you can draft a message or click
    **Stop task**; sending waits until the agent finishes.
-7. After checking the revised result, open **Reviews** and select **Approve this revision**. The work item becomes **Accepted**. Reload the page and open the conversation again. Its history, outputs, and accepted state should still be available.
+7. After checking the revised result, open the task’s **Workspace** and select **Approve this revision**. The work item becomes **Accepted**. Reload the page and open the conversation again. Its history, outputs, and accepted state should still be available.
 8. To check workspace persistence, let the worker become idle, stop it from
    **Workers**, and return to the bookmarked conversation. Click **Load
    conversation** to start the worker and read its private record. No task should
@@ -73,9 +73,9 @@ Use the refresh control for applications without automatic reload.
 
 Switch between **Conversation** and **Workspace** at the top of the thread. **Conversation** shows messages and recorded tool activity. Use **Show earlier conversation** to load earlier messages. The message composer stays open in either view.
 
-In **Workspace**, use **Preview** to open web or desktop content, **Files** to inspect retained outputs, and **Visualize data** to chart retained or pasted CSV or JSON. Agent-supplied charts appear in **Conversation**.
+In **Workspace**, **Preview** shows the live app when available. The **Output** view appears when charts or images are available. Use **Files** to inspect or download files and **Settings** to manage the task.
 
-- In **Web**, open **Preview options** to change the viewport, open a separate tab, or select an element. Element selection adds text to your message draft. Describe the change before sending.
+- In **Web**, select **Markup** to annotate the running app. Open **Preview options** to change the viewport, open a separate tab, or select an element. Element selection adds text to your message draft. Describe the change before sending.
 - In **Desktop**, select **Start worker desktop** when the image supports it. The view forwards mouse and keyboard input to a private X11 desktop. Agent runs started during the session receive `DISPLAY=:99`.
 - While you use **Workspace**, new replies continue to arrive. Select **View message** to return to **Conversation** without clearing the message draft.
 
@@ -139,7 +139,7 @@ requiring the user to predeclare an output path. Older unretained images are not
 silently replaced with newer files. SVGs render as image resources, not executable
 HTML. External images and paths outside the workspace are not loaded.
 
-Web preview refreshes after an agent run finishes. It keeps the preview session while the agent works and clears the frame when the application stops. Use **Files** or **Visualize data** in the thread's **Workspace** to open other outputs.
+The web preview refreshes after an agent run finishes. It keeps the preview session while the agent works and clears the frame when the application stops. Use **Output** for charts and images and **Files** for file inspection.
 
 ### Interactive charts from workspace data
 

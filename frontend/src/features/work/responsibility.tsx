@@ -73,6 +73,7 @@ export function Responsibility({
     <>
       <Button
         ref={trigger}
+        className="thread-settings-trigger"
         variant="ghost"
         size="sm"
         onClick={() => setOpen(true)}

@@ -100,6 +100,6 @@ You can also import selected issues from **Overview**. Use the task details to s
 
 ## Review imported work
 
-Open the local task from **Overview**. Start work when the task is ready, then use [Reviews](reviews.md) to check the result. A review changes the local work state. Update the provider issue through its explicit sync action.
+Open the local task from **Overview**. Start work when the task is ready, then [review the result in Workspace](reviews.md). A review changes the local work state. Update the provider issue through its explicit sync action.
 
 The connection supports token-based issue access and explicit sync of title, description, and open or closed state. Git hosting project boards and webhook sync are outside that scope. Set up worker Git credentials separately if you need to clone a private repository.

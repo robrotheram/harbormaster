@@ -38,6 +38,56 @@ func TestDeleteWorkspaceAndEntireProject(t *testing.T) {
 	}
 }
 
+func TestDeleteDefaultProjectTerminatesBusyWorker(t *testing.T) {
+	s, rt := setup(t)
+	ws := create(t, s, "default-delete")
+	other := domainProject(t, s, "keep-project")
+	if res := request(t, s, "POST", "/v1/workspaces/"+ws.ID+"/start", `{"idempotency_key":"start-before-delete"}`); res.Code != 200 {
+		t.Fatalf("start worker: %d %s", res.Code, res.Body)
+	}
+	rt.jobs = 1
+	path := "/v1/projects/default/delete"
+	payload := `{"confirm_id":"default"}`
+	rt.failForceStop = true
+	if res := request(t, s, "POST", path, payload); res.Code != 503 {
+		t.Fatalf("failed termination: %d %s", res.Code, res.Body)
+	}
+	if _, err := s.Store.Project(t.Context(), "default"); err != nil {
+		t.Fatal("failed termination hid the project", err)
+	}
+	if _, err := s.Store.Workspace(t.Context(), ws.ID); err != nil {
+		t.Fatal("failed termination hid the worker", err)
+	}
+	rt.failForceStop = false
+	res := request(t, s, "POST", path, payload)
+	if res.Code != 200 {
+		t.Fatalf("delete default: %d %s", res.Code, res.Body)
+	}
+	res = request(t, s, "GET", "/v1/projects", "")
+	if res.Code != 200 || strings.Contains(res.Body.String(), `"id":"default"`) || !strings.Contains(res.Body.String(), other.ID) {
+		t.Fatalf("project list after deletion: %d %s", res.Code, res.Body)
+	}
+	if res = request(t, s, "GET", "/v1/workspaces/"+ws.ID, ""); res.Code != 404 {
+		t.Fatalf("deleted worker still accessible: %d %s", res.Code, res.Body)
+	}
+	observation, err := rt.Inspect(t.Context(), ws.ID)
+	if err != nil || observation.Running {
+		t.Fatalf("worker compute survived deletion: %+v %v", observation, err)
+	}
+}
+
+func TestDeleteDefaultProjectPreservesSharedRuntimeOwner(t *testing.T) {
+	s, _ := setup(t)
+	s.cfg.SharedWorkspaceID = "ws_shared"
+	if _, err := s.EnsureSharedWorkspace(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	res := request(t, s, "POST", "/v1/projects/default/delete", `{"confirm_id":"default"}`)
+	if res.Code != 409 || !strings.Contains(res.Body.String(), "DEFAULT_PROJECT_DELETE_UNSUPPORTED") {
+		t.Fatalf("delete shared owner: %d %s", res.Code, res.Body)
+	}
+}
+
 func TestDeleteWorkspaceRequiresConfirmedIdleStop(t *testing.T) {
 	s, rt := setup(t)
 	ws := create(t, s, "delete-running")

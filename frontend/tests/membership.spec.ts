@@ -194,6 +194,8 @@ test("an assigned reviewer requests revision without dispatching the controller'
       });
     if (path === "/ui-api/work-items")
       return route.fulfill({ json: { items: [work] } });
+    if (path === "/ui-api/work-items/" + work.id)
+      return route.fulfill({ json: work });
     if (path.endsWith("/attempts"))
       return route.fulfill({ json: { items: [attempt] } });
     if (path.endsWith("/members"))

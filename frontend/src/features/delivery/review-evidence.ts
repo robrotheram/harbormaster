@@ -1,15 +1,5 @@
-import type { Artifact } from "@/features/work/api";
 import type { HistoryRecord } from "@/features/history/history-api";
 
-export type ReviewMode = "preview" | "code" | "visuals" | "reports";
-export function artifactMode(
-  artifact: Artifact,
-): Exclude<ReviewMode, "preview"> {
-  const path = (artifact.source_path || artifact.name || "").toLowerCase();
-  if (/\.(csv|json|png|jpe?g|gif|webp|svg)$/.test(path)) return "visuals";
-  if (/\.(md|markdown|txt|pdf|html?)$/.test(path)) return "reports";
-  return "code";
-}
 export function recordedEdits(records: HistoryRecord[]) {
   return records.flatMap((r) => {
     if (r.redacted || !r.content) return [];
@@ -49,17 +39,6 @@ export function recordedEdits(records: HistoryRecord[]) {
     ];
   });
 }
-export function visualSections(content: string) {
-  // Include only delivered chart blocks and image/data references, not prose.
-  return [
-    ...content.matchAll(
-      /```workbench-chart\s*\n[\s\S]*?```|!?\[[^\]\n]*\]\([^\)\n]+\.(?:json|csv|png|jpe?g|gif|webp|svg)(?:\s+"[^"]*")?\)/gi,
-    ),
-  ]
-    .map((match) => match[0])
-    .join("\n\n");
-}
-
 function readableChange(content: string) {
   try {
     const value = JSON.parse(content);

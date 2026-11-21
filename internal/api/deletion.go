@@ -31,8 +31,8 @@ func (s *Server) registerDeletion(mux *http.ServeMux) {
 			var targets []shared.Workspace
 			project := ""
 			if kind == "projects" {
-				// The shared workspace and bootstrap MCP access depend on this project.
-				if id == "default" {
+				// Shared mode uses the default project as the runtime owner.
+				if id == "default" && s.cfg.SharedWorkspaceID != "" {
 					shared.Error(w, 409, "DEFAULT_PROJECT_DELETE_UNSUPPORTED")
 					return
 				}
@@ -79,14 +79,18 @@ func (s *Server) registerDeletion(mux *http.ServeMux) {
 					return
 				}
 			}
-			// Re-read under lifecycle locks. Unknown/busy state or failed stop prevents deletion.
+			stop := s.stop
+			if project != "" {
+				stop = s.lifecycle().ForceStop
+			}
+			// Re-read under lifecycle locks. A failed stop keeps the project and workers visible.
 			for i, old := range targets {
 				ws, err := s.Store.Workspace(r.Context(), old.ID)
 				if err != nil {
 					shared.Error(w, 409, "WORKSPACE_CHANGED")
 					return
 				}
-				if err = s.stop(r.Context(), &ws); err != nil {
+				if err = stop(r.Context(), &ws); err != nil {
 					apiError(w, err)
 					return
 				}

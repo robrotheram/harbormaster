@@ -1,5 +1,10 @@
 import { dataPath, imagePath } from "./workspace-output";
-export type ReplyOutput = { name: string; path?: string; source?: string };
+export type ReplyOutput = {
+  name: string;
+  path?: string;
+  source?: string;
+  label?: string;
+};
 
 // Only explicit links and chart blocks in agent replies become output sources.
 // The same path rules as inline output rendering apply; prose is never fetched.
@@ -16,12 +21,12 @@ export function replyOutputs(content: string): ReplyOutput[] {
     })
     .replace(/```[\s\S]*?```/g, "");
   for (const match of prose.matchAll(
-    /!?\[[^\]]*\]\(<?([^\s)>]+)>?(?:\s+"[^"]*")?\)/g,
+    /!?\[([^\]]*)\]\(<?([^\s)>]+)>?(?:\s+"[^"]*")?\)/g,
   )) {
-    const path = dataPath(match[1]) || imagePath(match[1]);
+    const path = dataPath(match[2]) || imagePath(match[2]);
     if (path && !seen.has(path)) {
       seen.add(path);
-      outputs.push({ name: path, path });
+      outputs.push({ name: path, path, label: match[1] || path });
     }
   }
   return outputs;

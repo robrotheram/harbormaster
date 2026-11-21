@@ -161,20 +161,11 @@ export function TaskDetails({
               to="/projects/$projectId/$section"
               params={{
                 projectId: card.project_id,
-                section:
-                  card.work.state === "awaiting_review" ? "reviews" : "work",
+                section: "work",
               }}
-              search={{
-                work: card.id,
-                attempt:
-                  card.work.state === "awaiting_review"
-                    ? card.work.latest_attempt_id
-                    : undefined,
-              }}
+              search={{ work: card.id }}
             >
-              {card.work.state === "awaiting_review"
-                ? "Review output"
-                : "Open thread"}
+              Open thread
             </Link>
           </Button>
         ) : null}

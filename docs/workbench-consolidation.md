@@ -250,9 +250,9 @@ or multi-user scenarios.
 
 ## Unified task workspace
 
-Conversation and Workspace now share a single persistent composer. Workspace
-contains Preview, Files and Visualize data; opening it hides the transcript
-without stopping its updates. The former split/focus-output controls are removed.
+Conversation and Workspace share a single composer. Workspace contains Preview,
+Files, and Settings. Opening Workspace hides the transcript while replies continue.
+Preview shows live apps and generated charts or images. The former split/focus-output controls are removed.
 Saved open-output preferences open Workspace, and the chosen view stays personal.
 
 New assistant replies received while Workspace is open display a quiet message
