@@ -407,6 +407,13 @@ summary { cursor: pointer; font-weight: 650; }
   .table-scroll table:has(th:nth-child(3)) { min-width: 34rem; }
 }
 
+@media (max-width: 350px) {
+  .site-bar { column-gap: .65rem; }
+  .brand { gap: .45rem; font-size: 1rem; }
+  .brand img { width: 28px; height: 28px; }
+  .header-docs { padding-inline-start: .65rem; }
+}
+
 @media (hover: none) {
   .heading-link { opacity: 1; }
 }
