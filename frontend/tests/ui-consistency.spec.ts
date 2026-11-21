@@ -129,7 +129,6 @@ async function fixture(page: Page) {
     ["repositories", "/app/repositories", "Connections"],
     ...[
       ["board", "Overview"],
-      ["reviews", "Reviews"],
       ["work", "Project work"],
       ["workspaces", "Workers"],
       ["hermes", "Project settings"],
