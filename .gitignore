@@ -1,5 +1,9 @@
 .env
+.env.*
+!.env.example
 .local/
+/compose.override.yaml
+/compose.override.yml
 bin/
 coverage.out
 *.db
@@ -19,3 +23,8 @@ frontend/test-results/
 # CI caches
 .cache/
 .npm/
+
+# Local Hugo site and output
+/public/
+/.hugo_build.lock
+/website/

@@ -1,6 +1,9 @@
 .git
 .local
-.env
+**/.env
+**/.env.*
+compose.override.yaml
+compose.override.yml
 bin
 coverage.out
 *.db*

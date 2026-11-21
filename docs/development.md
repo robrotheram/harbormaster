@@ -72,6 +72,16 @@ On a fresh Linux environment that needs Chromium system packages, run `npx playw
 2. For a change to image contents, container lifecycle, or fixture execution, build and start a local fixture deployment with `make up`. Run `make smoke` against it. Use a development installation you can modify.
 3. For a change to provider, storage, ingress, or isolation behavior, run the matching [deployment acceptance procedure](deployment.md) on the intended infrastructure.
 
+## Build and serve the docs
+
+The Hugo project lives in the ignored `website/` directory. Keep a local copy of that directory to build the site.
+
+Install [Hugo Extended](https://gohugo.io/installation/) v0.147.9 or later. Hugo uses Go to fetch the pinned [Lotus Docs theme](https://themes.gohugo.io/themes/lotusdocs/) and its Bootstrap module on the first build. From the repository root, run `make docs-serve`. Open `http://localhost:1313/`. Hugo reloads the site when you edit a Markdown guide.
+
+Run `make docs-build` to generate static files in `public/`. For hosting, set `HUGO_BASEURL` to the full site URL, including any path prefix and a trailing slash, before you build.
+
+Edit the existing files in `docs/`. The site uses `docs/README.md` as the documentation index and mounts the related component guides listed in `website/hugo.toml`. Links to source files outside the site open the GitHub repository.
+
 ## Prepare a change for review
 
 Run `git diff --check`. Check that generated artifacts, secrets, private workspace files, and connection traces stay out of the diff. In the pull request, describe the observable change and the checks you ran. For behavior changes at a service boundary, include evidence from a check that crosses that boundary. The [CI workflow](../.github/workflows/check.yml) lists the checks used for pull requests and release builds.

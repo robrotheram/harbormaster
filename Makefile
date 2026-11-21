@@ -1,4 +1,6 @@
-.PHONY: bootstrap build test check fmt-check frontend-check browser-check hermes-check kubernetes-check postgres-check go-vuln-check up down logs smoke
+HUGO ?= $(or $(wildcard .local/tools/hugo),hugo)
+
+.PHONY: bootstrap build test check fmt-check frontend-check browser-check hermes-check kubernetes-check postgres-check go-vuln-check docs-build docs-serve up down logs smoke
 bootstrap:
 	go run ./cmd/workbench bootstrap
 build:
@@ -24,6 +26,10 @@ postgres-check:
 	go test -race ./internal/store -run TestPostgresMetadataContract -count=1
 check: fmt-check build test frontend-check hermes-check kubernetes-check
 	go vet ./...
+docs-build:
+	$(HUGO) --source website --destination "$(CURDIR)/public"
+docs-serve:
+	$(HUGO) server --source website --bind 127.0.0.1
 up: bootstrap
 	docker compose --profile build build
 	go run ./cmd/workbench check-runtime-host

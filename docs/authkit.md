@@ -5,12 +5,31 @@ Use WorkOS AuthKit to verify a hosted user's identity. The control plane checks 
 ## Configure WorkOS
 
 1. Configure the [scoped dashboard credentials](../deploy/kubernetes/README.md#configure-hosted-dashboard-access) on the control plane and dashboard. Remove the dashboard's control token. If you adapt Compose for hosted sign-in, use an override that removes the inherited control-token setting and mount. The stock Compose deployment uses local Basic authentication.
-2. Set `WORKOS_CLIENT_ID`, `WORKOS_API_KEY` or `WORKOS_API_KEY_FILE`, and `WORKOS_ALLOWED_EMAILS` on the dashboard. Use a comma-separated list of approved verified emails.
+2. Set `WORKOS_CLIENT_ID` and `WORKOS_ALLOWED_EMAILS` on the dashboard. Use a comma-separated list of approved verified emails. Supply the API key through a Kubernetes Secret or [mount it as a file in Compose](#mount-the-workos-api-key-in-compose).
 3. Set `WORKOS_REDIRECT_URI` to the dashboard origin followed by `/auth/callback`. Use HTTPS for a hosted deployment. HTTP is permitted on loopback.
 4. In WorkOS, register the redirect URI, the same origin followed by `/auth/login` as the sign-in URI, and the same origin followed by `/app/` as the sign-out URI.
 5. Route requests to the dashboard and preserve the public Host header. Use the same hostname in the browser and in WorkOS. Deploy one dashboard replica and verify an approved sign-in.
 
 Incomplete WorkOS settings fail startup. Configure project membership separately. Set `PROJECT_CREATOR_EMAILS` on the control plane for approved accounts that need to create projects.
+
+## Mount the WorkOS API key in Compose
+
+Run `make bootstrap` to create the private `.local/secrets/` directory. Put the key in `.local/secrets/workos_api_key` and set the file mode to `0644`, which lets the non-root dashboard process read the file through the mount. Add the following to your hosted `compose.override.yaml` alongside the scoped credential configuration from step 1.
+
+```yaml
+services:
+  dashboard:
+    environment:
+      WORKOS_API_KEY: !reset null
+      WORKOS_API_KEY_FILE: /run/secrets/workos_api_key
+    secrets:
+      - workos_api_key
+secrets:
+  workos_api_key:
+    file: ./.local/secrets/workos_api_key
+```
+
+If your secret manager supplies the file, set `file` to its absolute path and give the dashboard process read access. Remove the old `WORKOS_API_KEY` value from `.env` after moving it to the file. Run `make up` to apply the override. Git and Docker ignore `.local/`, `.env`, and `compose.override.yaml`.
 
 ## Configure OAuth2 Proxy instead of WorkOS
 
