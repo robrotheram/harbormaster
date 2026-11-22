@@ -64,7 +64,7 @@ For a GUI application, use **Desktop** if your worker image supports it. See [ap
 3. Select **Open T3** for an interactive browser session. On a ready Codex worker without a console, open **Settings** and select **Enable T3** if available. To pair the desktop app, follow [local T3 pairing](interactive-workspaces.md#connect-t3-code-desktop).
 4. To release compute, finish or cancel active work, close terminals, and stop managed applications. Select **Stop worker**. The worker keeps its files and history. The default idle timeout is 60 minutes, and active work delays automatic stop.
 
-Select **Terminal** to connect to the worker’s shell. Leaving the tab closes the shell. Use **Environment** to manage software tools and agent skills.
+Project admins can select **Terminal** to connect to a project worker’s shell. Leaving the tab closes the shell. Use **Environment** to manage software tools and agent skills.
 
 Use **Workers**, then **Project actions**, to open **Activity logs**, **Message history**, or **Copy a file**. For one worker, select **Open worker**, then **Activity**. Activity logs show progress metadata. Message history can contain private conversation text and tool payloads. Review any JSONL export before sharing it. See [activity logs](workspace-logging.md) and [history and exports](workspace-history.md).
 
