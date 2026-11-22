@@ -14,12 +14,15 @@ func (s *Server) registerTerminals(mux *http.ServeMux) {
 }
 
 func (s *Server) terminalRoute(w http.ResponseWriter, r *http.Request) {
-	// Debug shells are human-operator access, not an agent/project API capability.
-	if !s.admin(w, r) {
-		return
-	}
 	ws, ok := s.workspace(w, r)
 	if !ok {
+		return
+	}
+	if ws.Shared {
+		if !s.admin(w, r) {
+			return
+		}
+	} else if !s.projectAdmin(w, r, ws.ProjectID) {
 		return
 	}
 	if r.URL.RawQuery != "" {
