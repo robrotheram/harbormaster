@@ -102,12 +102,15 @@ test("worker startup is read-only until checks pass and the user starts it", asy
       parseFloat(getComputedStyle(el).paddingLeft),
     ),
   ).toBe(20);
-  const action = page.getByRole("button", {
-    name: "Check & start",
+  const action = page.getByRole("link", {
+    name: /^Open worker /,
     exact: true,
   });
   expect((await action.boundingBox())!.width).toBeLessThan(150);
   await action.click();
+  await page
+    .getByRole("button", { name: "Check & start", exact: true })
+    .click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toContainText("Action needed before starting");
   await expect(dialog).toContainText("Update the host controller");
@@ -132,12 +135,8 @@ test("worker startup is read-only until checks pass and the user starts it", asy
   await expect(
     page.getByRole("button", { name: "Run task", exact: true }),
   ).toHaveCount(0);
-  await page.getByRole("button", { name: /^Actions for / }).click();
   await expect(
-    page.getByRole("menuitem", { name: "Run task", exact: true }),
-  ).toHaveCount(0);
-  await expect(
-    page.getByRole("menuitem", { name: "Stop worker", exact: true }),
+    page.getByRole("button", { name: "Stop worker", exact: true }),
   ).toBeEnabled();
   expect(state.starts).toHaveLength(1);
   expect(state.starts[0].idempotency_key).toBeTruthy();
@@ -148,6 +147,7 @@ test("unavailable checks fail closed and failed starts can be retried safely", a
 }) => {
   const state = await fixture(page);
   state.failCheck = true;
+  await page.getByRole("link", { name: /^Open worker / }).click();
   await page
     .getByRole("button", { name: "Check & start", exact: true })
     .click();
@@ -187,6 +187,7 @@ test("startup review fits mobile and cancellation never starts a worker", async 
 }) => {
   await page.setViewportSize({ width: 320, height: 740 });
   const state = await fixture(page);
+  await page.getByRole("link", { name: /^Open worker / }).click();
   await page
     .getByRole("button", { name: "Check & start", exact: true })
     .click();
@@ -206,10 +207,6 @@ test("worker terminal sends interactive keys, resizes, and closes its session", 
 }) => {
   const state = await fixture(page);
   state.canStart = true;
-  await page
-    .getByRole("button", { name: "Check & start", exact: true })
-    .click();
-  await page.getByRole("button", { name: "Start worker", exact: true }).click();
   const exchanges: { input: string; cols: number; rows: number }[] = [];
   let closes = 0;
   let opened = 0;
@@ -241,15 +238,19 @@ test("worker terminal sends interactive keys, resizes, and closes its session", 
       return route.fulfill({ status: 201, json: { id: body.id } });
     },
   );
+  await page.getByRole("link", { name: /^Open worker / }).click();
   await page
-    .getByRole("button", { name: /^Actions for / })
-    .first()
+    .getByRole("button", { name: "Check & start", exact: true })
     .click();
-  await page
-    .getByRole("menuitem", { name: "Open terminal", exact: true })
-    .click();
-  const dialog = page.getByRole("dialog");
+  await page.getByRole("button", { name: "Start worker", exact: true }).click();
+  const workerHeading = page.locator("main h1");
+  const headingLeft = (await workerHeading.boundingBox())!.x;
+  const dialog = page.getByRole("region", { name: "Worker terminal" });
   await expect(dialog.getByRole("status")).toHaveText("Connected");
+  await expect(
+    dialog.getByRole("button", { name: "Close terminal" }),
+  ).toHaveCount(0);
+  expect((await workerHeading.boundingBox())!.x).toBeCloseTo(headingLeft, 0);
   await expect(dialog.locator(".xterm-rows")).toContainText(
     "worker shell ready",
   );
@@ -273,8 +274,9 @@ test("worker terminal sends interactive keys, resizes, and closes its session", 
       () => (window as unknown as { shellExecuted?: boolean }).shellExecuted,
     ),
   ).toBeUndefined();
-  await dialog
-    .getByRole("button", { name: "Close terminal", exact: true })
+  await page
+    .getByRole("navigation", { name: "Worker sections" })
+    .getByRole("link", { name: "Settings", exact: true })
     .click();
   await expect(dialog).toHaveCount(0);
   await expect.poll(() => closes).toBeGreaterThan(0);

@@ -3,6 +3,7 @@ package workspace
 import (
 	"agent-workbench/internal/shared"
 	"agent-workbench/internal/workspace/nativeagent"
+	"agent-workbench/internal/workspace/setup"
 	"context"
 	"time"
 )
@@ -27,7 +28,7 @@ func (m *Manager) runNativeTask(ctx context.Context, provider, instruction, task
 		}
 		m.event(provider, kind, taskID, "", shared.SanitizedTaskError(code))
 	}()
-	cfg := nativeagent.Config{HermesMCPTransport: m.cfg.HermesMCPTransport, TaskID: taskID, ReasoningEffort: effort, ProjectID: m.cfg.ProjectID, WorkspaceID: m.cfg.ID, DataDir: m.cfg.DataDir, HomeDir: m.homePath(), AgentKind: m.cfg.AgentKind, Token: m.cfg.Token, InferenceURL: m.cfg.InferenceURL, CodexModel: m.cfg.CodexModel, ClaudeModel: m.cfg.ClaudeModel, HermesModel: m.cfg.HermesModel, EgressURL: m.cfg.EgressURL, ConnectionMode: m.cfg.ConnectionMode}
+	cfg := nativeagent.Config{HermesMCPTransport: m.cfg.HermesMCPTransport, TaskID: taskID, ReasoningEffort: effort, ToolPath: setup.Path(m.homePath()), ProjectID: m.cfg.ProjectID, WorkspaceID: m.cfg.ID, DataDir: m.cfg.DataDir, HomeDir: m.homePath(), AgentKind: m.cfg.AgentKind, Token: m.cfg.Token, InferenceURL: m.cfg.InferenceURL, CodexModel: m.cfg.CodexModel, ClaudeModel: m.cfg.ClaudeModel, HermesModel: m.cfg.HermesModel, EgressURL: m.cfg.EgressURL, ConnectionMode: m.cfg.ConnectionMode}
 	if model != "" {
 		if provider == "codex" {
 			cfg.CodexModel = model

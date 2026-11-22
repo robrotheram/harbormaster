@@ -60,15 +60,17 @@ For a GUI application, use **Desktop** if your worker image supports it. See [ap
 ## Manage a worker
 
 1. Open **Workers** and select **Create worker**. Choose **T3 with Codex** for T3 sessions or **Codex task worker** for task execution. Configure Hermes from **Settings**, on the **Hermes setup** tab.
-2. On a stopped worker, select **Check & start** or **Start worker** to open the startup check. Resolve any reported blocker, then confirm **Start worker**.
-3. Select **Open T3** for an interactive browser session. On a ready Codex worker without a console, use **Enable T3** first if available. To pair the desktop app, follow [local T3 pairing](interactive-workspaces.md#connect-t3-code-desktop).
+2. Select **Open worker** for the worker you want to manage. If the worker is stopped, select **Check & start**. Resolve any reported blocker, then confirm **Start worker**.
+3. Select **Open T3** for an interactive browser session. On a ready Codex worker without a console, open **Settings** and select **Enable T3** if available. To pair the desktop app, follow [local T3 pairing](interactive-workspaces.md#connect-t3-code-desktop).
 4. To release compute, finish or cancel active work, close terminals, and stop managed applications. Select **Stop worker**. The worker keeps its files and history. The default idle timeout is 60 minutes, and active work delays automatic stop.
 
-Use **Workers**, then **Project actions**, to open **Activity logs**, **Message history**, or **Copy a file**. A worker's own action menu opens logs and history for that worker. Activity logs show progress metadata. Message history can contain private conversation text and tool payloads. Review any JSONL export before sharing it. See [activity logs](workspace-logging.md) and [history and exports](workspace-history.md).
+Select **Terminal** to connect to the worker’s shell. Leaving the tab closes the shell. Use **Environment** to manage software tools and agent skills.
+
+Use **Workers**, then **Project actions**, to open **Activity logs**, **Message history**, or **Copy a file**. For one worker, select **Open worker**, then **Activity**. Activity logs show progress metadata. Message history can contain private conversation text and tool payloads. Review any JSONL export before sharing it. See [activity logs](workspace-logging.md) and [history and exports](workspace-history.md).
 
 ## Change a worker's network access
 
-1. In **Workers**, open the worker's action menu and select **Settings**.
+1. In **Workers**, select **Open worker**, then **Settings**.
 2. Select a global profile or use the worker's own settings. **Blocked** keeps platform integrations available. **GitHub only** allows HTTPS to `github.com:443`. **Custom allowlist** takes exact public host and port pairs, one per line. **Fully open** allows direct networking on Docker, including reachable LAN and host services.
 3. Save the settings. Stop the worker first when changing into or out of **Fully open**. For a linked global profile, an explicit start or open, or a settings save, applies a pending version. Some running workers require a stop and start before the change can take effect.
 

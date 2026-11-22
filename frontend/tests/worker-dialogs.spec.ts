@@ -30,6 +30,8 @@ async function fixture(page: Page) {
   await page.route("**/ui-api/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (route.request().method() === "POST") {
+      if (path.endsWith("/terminals"))
+        return route.fulfill({ status: 403, json: { code: "FORBIDDEN" } });
       state.writes.push({ path, body: route.request().postDataJSON() });
       return route.fulfill({
         status: 503,
@@ -67,9 +69,14 @@ async function fixture(page: Page) {
 }
 async function action(page: Page, name: string, worker = "Stopped worker") {
   await page
-    .getByRole("button", { name: `Actions for ${worker}`, exact: true })
+    .getByRole("link", { name: `Open worker ${worker}`, exact: true })
     .click();
-  await page.getByRole("menuitem", { name, exact: true }).click();
+  await page
+    .getByRole("navigation", { name: "Worker sections" })
+    .getByRole("link", { name: "Settings", exact: true })
+    .click();
+  if (name !== "Settings")
+    await page.getByRole("button", { name, exact: true }).click();
 }
 
 test("worker creation guards empty names and preserves its draft during pending failure", async ({
@@ -123,7 +130,7 @@ test("worker settings distinguish failed profile lookup and retry without saving
   state.profileError = true;
   await page.reload();
   await action(page, "Settings");
-  const dialog = page.getByRole("dialog", {
+  const dialog = page.getByRole("region", {
     name: "Worker settings",
     exact: true,
   });
@@ -245,10 +252,11 @@ test("worker deletion explains running state and retains confirmation on failure
   await page.keyboard.press("Escape");
   await expect(
     page.getByRole("button", {
-      name: "Actions for Source worker",
+      name: "Delete worker",
       exact: true,
     }),
   ).toBeFocused();
+  await page.goto("/app/projects/audit/workspaces");
   await action(page, "Delete worker");
   await expect(dialog).toContainText("Private disks remain on the host");
   const confirmation = dialog.getByRole("textbox", {
@@ -297,7 +305,10 @@ test("worker dialogs remain accessible on narrow screens in both themes", async 
           .click();
         await page.getByRole("menuitem", { name, exact: true }).click();
       } else await action(page, name);
-      const dialog = page.getByRole("dialog");
+      const dialog =
+        name === "Settings"
+          ? page.getByRole("region", { name: "Worker settings" })
+          : page.getByRole("dialog");
       await expect(dialog).toBeVisible();
       await page.waitForFunction(
         () =>
@@ -327,8 +338,12 @@ test("worker dialogs remain accessible on narrow screens in both themes", async 
       expect(
         await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth),
       ).toBe(true);
-      await page.keyboard.press("Escape");
-      await expect(dialog).toHaveCount(0);
+      if (name !== "Settings") {
+        await page.keyboard.press("Escape");
+        await expect(dialog).toHaveCount(0);
+      }
+      if (name === "Settings" || name === "Delete worker")
+        await page.goto("/app/projects/audit/workspaces");
     }
   }
 });

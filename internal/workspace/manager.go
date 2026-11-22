@@ -44,6 +44,8 @@ type Config struct {
 	HTTP                                               *http.Client
 }
 type Manager struct {
+	setupJob         *setupJob
+	setupCancel      context.CancelFunc
 	terminals        map[string]*terminalSession
 	applications     map[string]*applicationProcess
 	historyCollectMu sync.Mutex
@@ -147,6 +149,11 @@ func New(cfg Config) (*Manager, error) {
 		return nil, e
 	}
 	m := &Manager{historyStop: make(chan struct{}), cfg: cfg, db: db, tasks: tasks, root: root, ownerLock: lock, cancels: map[string]context.CancelFunc{}, lastActivity: time.Now().UTC()}
+	if err := m.workerSetup().Recover(); err != nil {
+		root.Close()
+		db.Close()
+		return nil, fmt.Errorf("recover worker setup: %w", err)
+	}
 	if cfg.EgressURL != "" {
 		listener, err := net.Listen("tcp", "127.0.0.1:8099")
 		if err != nil {
@@ -185,6 +192,9 @@ func (m *Manager) Close() error {
 		close(m.historyStop)
 	}
 	m.closed = true
+	if m.setupCancel != nil {
+		m.setupCancel()
+	}
 	for _, terminal := range m.terminals {
 		terminal.stop()
 	}
@@ -221,6 +231,9 @@ func (m *Manager) submitLocked(s submit) (shared.Task, int, error) {
 	}
 	if m.closed || m.quiescing {
 		return shared.Task{}, 503, shared.CodedError{Status: http.StatusServiceUnavailable, Code: "WORKSPACE_STOPPING"}
+	}
+	if m.setupCancel != nil {
+		return shared.Task{}, 409, shared.CodedError{Status: http.StatusConflict, Code: "WORKSPACE_BUSY"}
 	}
 	if s.Provider == "" {
 		s.Provider = m.cfg.DefaultProvider
@@ -405,6 +418,9 @@ func (m *Manager) activityLocked() shared.Activity { return m.activitySnapshotLo
 func (m *Manager) workActivityLocked() shared.Activity { return m.activitySnapshotLocked(true) }
 func (m *Manager) activitySnapshotLocked(allowApplications bool) shared.Activity {
 	a := shared.Activity{Known: true, LastActivity: m.lastActivity}
+	if m.setupCancel != nil {
+		a.BackgroundJobs++
+	}
 	for _, terminal := range m.terminals {
 		terminal.mu.Lock()
 		if !terminal.exited {
@@ -525,6 +541,8 @@ func (m *Manager) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { shared.JSON(w, 200, map[string]string{"status": "ok"}) })
 	api := http.NewServeMux()
+	api.HandleFunc("GET /v1/setup", m.setupRoute)
+	api.HandleFunc("POST /v1/setup", m.setupRoute)
 	api.HandleFunc("POST /v1/terminals", m.createTerminal)
 	api.HandleFunc("POST /v1/terminals/{terminal}/{action}", m.terminalRoute)
 	api.HandleFunc("GET /v1/runtime-capabilities", m.runtimeCapabilities)

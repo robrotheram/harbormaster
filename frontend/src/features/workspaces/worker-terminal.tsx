@@ -3,7 +3,7 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { Button } from "@/components/ui/button";
-import { ErrorNotice, Modal } from "@/shared/components";
+import { ErrorNotice } from "@/shared/components";
 import { request } from "@/shared/http";
 import type { Workspace } from "@/shared/types";
 
@@ -16,10 +16,10 @@ type Exchange = {
 
 export function WorkerTerminal({
   workspace,
-  onClose,
+  onSessionClosed,
 }: {
   workspace: Workspace;
-  onClose: () => void;
+  onSessionClosed: () => void;
 }) {
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const [status, setStatus] = useState("Connecting…");
@@ -58,12 +58,13 @@ export function WorkerTerminal({
     resize();
     const observer = new ResizeObserver(resize);
     observer.observe(container);
-    term.focus();
+    term.textarea?.focus({ preventScroll: true });
     setError(undefined);
     setStatus("Connecting…");
 
+    let closing: Promise<Response | undefined> | undefined;
     const close = () =>
-      fetch(`/ui-api${base}/${id}/close`, {
+      (closing ??= fetch(`/ui-api${base}/${id}/close`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -73,7 +74,9 @@ export function WorkerTerminal({
         keepalive: true,
         cache: "no-store",
         redirect: "error",
-      }).catch(() => undefined);
+      })
+        .catch(() => undefined)
+        .finally(onSessionClosed));
     const fail = (reason: unknown) => {
       ended = true;
       input = [];
@@ -154,43 +157,44 @@ export function WorkerTerminal({
       term.dispose();
       if (created) void close();
     };
-  }, [workspace.id, generation, container]);
+  }, [workspace.id, generation, container, onSessionClosed]);
 
   return (
-    <Modal
-      title={`Terminal · ${workspace.name || workspace.id}`}
-      onClose={onClose}
-      wide
-      closeOnEscape={false}
+    <section
+      aria-label="Worker terminal"
+      className="min-w-0 overflow-hidden rounded-md border bg-card"
     >
-      <p className="text-xs text-muted-foreground">
-        Interactive shell in this worker’s workspace. Closing this window ends
-        the shell. Ctrl+C interrupts a command.
-      </p>
-      {error != null && <ErrorNotice error={error} />}
-      <div
-        ref={setContainer}
-        aria-label="Worker terminal"
-        className="h-[min(60dvh,520px)] min-h-48 min-w-0 overflow-hidden rounded-md bg-[#101217] p-2"
-      />
-      <div className="flex items-center justify-between gap-3">
-        <span role="status" className="text-xs text-muted-foreground">
-          {status}
-        </span>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <code className="text-xs font-medium">/data/files</code>
+          <span
+            role="status"
+            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"
+          >
+            <span
+              aria-hidden="true"
+              className={`size-1.5 rounded-full ${status === "Connected" ? "bg-teal-600 dark:bg-teal-400" : "bg-current"}`}
+            />
+            {status}
+          </span>
+        </div>
         <div className="flex gap-2">
           {(status === "Disconnected" || status === "Shell exited") && (
             <Button
+              size="sm"
               variant="outline"
               onClick={() => setGeneration((value) => value + 1)}
             >
               New shell
             </Button>
           )}
-          <Button variant="outline" onClick={onClose}>
-            Close terminal
-          </Button>
         </div>
       </div>
-    </Modal>
+      {error != null && <ErrorNotice error={error} />}
+      <div
+        ref={setContainer}
+        className="h-[max(20rem,calc(100dvh-21rem))] min-w-0 overflow-hidden bg-[#101217] p-2 sm:h-[max(22rem,calc(100dvh-18rem))] sm:p-3"
+      />
+    </section>
   );
 }

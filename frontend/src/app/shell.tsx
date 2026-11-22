@@ -59,6 +59,11 @@ const ProjectSettings = lazy(() =>
     default: m.ProjectSettings,
   })),
 );
+const WorkerPage = lazy(() =>
+  import("@/features/workspaces/worker-page").then((m) => ({
+    default: m.WorkerPage,
+  })),
+);
 const Workspaces = lazy(() =>
   import("@/features/workspaces/workspaces").then((m) => ({
     default: m.Workspaces,
@@ -110,8 +115,12 @@ export function ProjectShell({
   globalSettings = false,
   section = "work",
   globalPage,
+  workerID,
+  workerPanel,
 }: {
   projectID?: string;
+  workerID?: string;
+  workerPanel?: "environment" | "settings" | "activity";
   globalSettings?: boolean;
   section?: string;
   globalPage?:
@@ -643,11 +652,20 @@ export function ProjectShell({
               </section>
             ) : selected ? (
               <PersonalWorkProvider key={project.id}>
-                <ProjectView
-                  key={project.id}
-                  project={project}
-                  section={selected.id}
-                />
+                {workerID ? (
+                  <WorkerPage
+                    key={workerID}
+                    project={project}
+                    workerID={workerID}
+                    panel={workerPanel}
+                  />
+                ) : (
+                  <ProjectView
+                    key={project.id}
+                    project={project}
+                    section={selected.id}
+                  />
+                )}
               </PersonalWorkProvider>
             ) : (
               <section aria-labelledby="unavailable-page">

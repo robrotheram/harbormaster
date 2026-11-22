@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"agent-workbench/internal/shared"
+	"agent-workbench/internal/workspace/setup"
 	"bytes"
 	"crypto/sha256"
 	"database/sql"
@@ -183,7 +184,7 @@ func (m *Manager) createApplication(w http.ResponseWriter, r *http.Request, a sh
 	id = shared.NewID("service_")
 	cmd := exec.Command("/bin/sh", "-c", a.Command)
 	cmd.Dir = fmt.Sprintf("/proc/%d/fd/%d", os.Getpid(), dir.Fd())
-	cmd.Env = []string{"PATH=/usr/local/bin:/usr/bin:/bin", "HOME=" + m.homePath(), "PORT=" + strconv.Itoa(a.Port), "HOST=127.0.0.1", "PYTHONUNBUFFERED=1", "LANG=C.UTF-8"}
+	cmd.Env = []string{"PATH=" + setup.Path(m.homePath()), "HOME=" + m.homePath(), "PORT=" + strconv.Itoa(a.Port), "HOST=127.0.0.1", "PYTHONUNBUFFERED=1", "LANG=C.UTF-8"}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	log := &applicationLog{}
 	cmd.Stdout = log

@@ -29,6 +29,7 @@ type Config struct {
 	HermesMCPTransport MCPTransport
 	Display            string
 	ReasoningEffort    string
+	ToolPath           string
 
 	DataDir, HomeDir, AgentKind, Token, InferenceURL, ProjectID, WorkspaceID, TaskID string
 	CodexModel, ClaudeModel, HermesModel                                             string

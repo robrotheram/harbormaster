@@ -444,8 +444,8 @@ function WorkerDetails({
         alone does not verify either.
       </p>
       <Link
-        to="/projects/$projectId/$section"
-        params={{ projectId: w.project_id, section: "workspaces" }}
+        to="/projects/$projectId/workspaces/$workerId"
+        params={{ projectId: w.project_id, workerId: w.id }}
         className="factory-action-link"
       >
         Open worker controls

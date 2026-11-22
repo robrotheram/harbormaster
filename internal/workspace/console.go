@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"agent-workbench/internal/workspace/setup"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -76,7 +77,7 @@ func (m *Manager) startConsole() error {
 	if err := repairEmptyConsoleModel(configPath, settingsPath, m.cfg.CodexModel); err != nil {
 		return err
 	}
-	env := []string{"PATH=/usr/local/bin:/usr/bin:/bin", "HOME=" + home, "LANG=C.UTF-8", "TMPDIR=/tmp", "T3CODE_HOME=" + base, "CODEX_HOME=" + codexHome, "OPENAI_API_KEY=" + m.cfg.Token, "WORKBENCH_INFERENCE_GRANT=" + m.cfg.Token, "T3CODE_TELEMETRY_ENABLED=false", "T3CODE_OTEL_SDK_DISABLED=true", "DISABLE_AUTOUPDATER=1", "DISABLE_UPDATES=1", "DATA_DIR=" + m.cfg.DataDir}
+	env := []string{"PATH=" + setup.Path(m.homePath()), "HOME=" + home, "LANG=C.UTF-8", "TMPDIR=/tmp", "T3CODE_HOME=" + base, "CODEX_HOME=" + codexHome, "OPENAI_API_KEY=" + m.cfg.Token, "WORKBENCH_INFERENCE_GRANT=" + m.cfg.Token, "T3CODE_TELEMETRY_ENABLED=false", "T3CODE_OTEL_SDK_DISABLED=true", "DISABLE_AUTOUPDATER=1", "DISABLE_UPDATES=1", "DATA_DIR=" + m.cfg.DataDir}
 	if m.cfg.ClaudeModel != "" {
 		env = append(env, "CLAUDE_CODE_OAUTH_TOKEN="+m.cfg.Token, "ANTHROPIC_BASE_URL="+strings.TrimRight(m.cfg.InferenceURL, "/")+"/claude", "ANTHROPIC_MODEL="+m.cfg.ClaudeModel, "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1")
 	}

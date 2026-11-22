@@ -702,15 +702,24 @@ export function WorkConversation({
             </>
           )}
           <Responsibility item={item} running={running}>
-            <Link
-              className="conversation-worker-link"
-              to="/projects/$projectId/$section"
-              params={{ projectId: project.id, section: "workspaces" }}
-              search={{ worker: item.workspace_id }}
-              title={item.workspace_id}
-            >
-              <Server size={14} /> Worker: {worker?.name || "Task worker"}
-            </Link>
+            {item.workspace_id ? (
+              <Link
+                className="conversation-worker-link"
+                to="/projects/$projectId/workspaces/$workerId"
+                params={{ projectId: project.id, workerId: item.workspace_id }}
+                title={item.workspace_id}
+              >
+                <Server size={14} /> Worker: {worker?.name || "Task worker"}
+              </Link>
+            ) : (
+              <Link
+                className="conversation-worker-link"
+                to="/projects/$projectId/$section"
+                params={{ projectId: project.id, section: "workspaces" }}
+              >
+                <Server size={14} /> Project workers
+              </Link>
+            )}
             <p>Created {date(item.created_at)}</p>
             {owner && <p>Task assignee: {owner}</p>}
           </Responsibility>

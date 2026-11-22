@@ -7,7 +7,7 @@ records them. Audit history reads from the control-plane
 database. In shared-worker mode it includes episodes linked to a work attempt
 in the selected project and is available to the local operator.
 
-In **Workers**, open **Message history** from a worker's action menu to browse
+In **Workers**, select **Open worker**, then **Activity**, then **Message history** to browse
 its messages and download **Export JSONL**. Exports include tool calls, results,
 lifecycle events, delivery echoes, and metadata. An export includes all records in its snapshot. Stopped and
 unreachable workers return the last synced snapshot. The view shows when it

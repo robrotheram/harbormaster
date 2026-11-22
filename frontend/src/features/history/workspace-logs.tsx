@@ -56,7 +56,7 @@ export function WorkspaceLogs({
   project: Project;
   workspace?: Workspace;
   workspaces: Workspace[];
-  onClose: () => void;
+  onClose?: () => void;
 }) {
   const [selected, setSelected] = useState(workspace?.id || "");
   const [live, setLive] = useState(true);
@@ -71,25 +71,27 @@ export function WorkspaceLogs({
     (e) => !source || e.source === source,
   );
   const names = new Map(workspaces.map((w) => [w.id, w.name || w.id]));
-  return (
-    <Modal title="Worker activity logs" onClose={onClose} wide>
+  const content = (
+    <div className="min-w-0 space-y-3">
       <div className="flex flex-wrap gap-3 items-center">
-        <NativeSelect
-          aria-label="Worker log filter"
-          wrapperClassName="w-full sm:w-auto sm:flex-1"
-          value={selected}
-          onChange={(e) => setSelected(e.target.value)}
-        >
-          <option value="">All workers in this project</option>
-          {workspaces.map((w) => (
-            <option key={w.id} value={w.id}>
-              {w.name || w.id}
-            </option>
-          ))}
-        </NativeSelect>
+        {onClose && (
+          <NativeSelect
+            aria-label="Worker log filter"
+            wrapperClassName="w-full sm:w-auto sm:flex-1"
+            value={selected}
+            onChange={(e) => setSelected(e.target.value)}
+          >
+            <option value="">All workers in this project</option>
+            {workspaces.map((w) => (
+              <option key={w.id} value={w.id}>
+                {w.name || w.id}
+              </option>
+            ))}
+          </NativeSelect>
+        )}
         <NativeSelect
           aria-label="Log source"
-          wrapperClassName="w-full sm:w-auto"
+          wrapperClassName="w-full sm:w-auto min-w-0"
           value={source}
           onChange={(e) => setSource(e.target.value)}
         >
@@ -113,32 +115,36 @@ export function WorkspaceLogs({
           Refresh
         </Button>
       </div>
-      <p className="text-sm text-muted-foreground">
-        {live ? "Updates every 2 seconds." : "Updates paused."} Shows the latest
-        500 recorded events. Older events are retained up to 2,000 per worker.
-        Prompts, commands, tool output, credentials and reasoning are excluded.
+      <p className="text-xs text-muted-foreground">
+        {live ? "Live updates every 2 seconds." : "Updates paused."} Showing up
+        to 500 recorded events.
       </p>
       <Observation
         at={query.dataUpdatedAt}
         fetching={query.isFetching}
         error={query.isError}
       />
-      {selected && query.data && !query.isError && (
-        <div className="rounded-lg border p-3 text-sm space-y-1">
-          <p>
-            {label(query.data.state || "unknown")} ·{" "}
-            {query.data.active_runs ?? "—"}{" "}
-            {query.data.active_runs === 1 ? "run" : "runs"} ·{" "}
-            {query.data.background_jobs ?? "—"} background{" "}
-            {query.data.background_jobs === 1 ? "process" : "processes"}
-          </p>
-          {query.data.services?.map((s) => (
-            <p key={s.name}>
-              {s.name}: <strong>{s.state}</strong>
-            </p>
-          ))}
-        </div>
-      )}
+      {selected &&
+        query.data &&
+        !query.isError &&
+        (onClose || !!query.data.services?.length) && (
+          <div className="rounded-lg border p-3 text-sm space-y-1">
+            {onClose && (
+              <p>
+                {label(query.data.state || "unknown")} ·{" "}
+                {query.data.active_runs ?? "—"}{" "}
+                {query.data.active_runs === 1 ? "run" : "runs"} ·{" "}
+                {query.data.background_jobs ?? "—"} background{" "}
+                {query.data.background_jobs === 1 ? "process" : "processes"}
+              </p>
+            )}
+            {query.data.services?.map((s) => (
+              <p key={s.name}>
+                {s.name}: <strong>{s.state}</strong>
+              </p>
+            ))}
+          </div>
+        )}
       {query.isError && (
         <ErrorNotice
           error={query.error}
@@ -147,7 +153,7 @@ export function WorkspaceLogs({
         />
       )}
       <div
-        className="max-h-[55vh] overflow-auto rounded-lg border"
+        className="max-h-[60dvh] overflow-auto rounded-md border focus-visible:outline-2 focus-visible:outline-ring"
         role="log"
         aria-label="Worker activity events"
         aria-live="off"
@@ -168,7 +174,9 @@ export function WorkspaceLogs({
             <thead className="sr-only sm:not-sr-only sm:sticky sm:top-0 bg-background">
               <tr>
                 <th className="p-3">Time</th>
-                <th className="p-3">Worker / source</th>
+                <th className="p-3">
+                  {onClose ? "Worker / source" : "Source"}
+                </th>
                 <th className="p-3">Activity</th>
               </tr>
             </thead>
@@ -185,7 +193,9 @@ export function WorkspaceLogs({
                     {new Date(e.at).toLocaleTimeString()}
                   </td>
                   <td className="block min-w-0 p-3 sm:table-cell">
-                    <span>{names.get(e.workspace_id) || e.workspace_id}</span>
+                    {onClose && (
+                      <span>{names.get(e.workspace_id) || e.workspace_id}</span>
+                    )}
                     <span className="block text-xs text-muted-foreground">
                       {sourceLabel(e.source)}
                     </span>
@@ -193,7 +203,7 @@ export function WorkspaceLogs({
                   <td className="block min-w-0 col-span-2 px-3 pb-3 sm:table-cell sm:p-3">
                     {eventText(e)}
                     {e.task_id && (
-                      <span className="block font-mono text-xs text-muted-foreground">
+                      <span className="block break-all font-mono text-xs text-muted-foreground">
                         {e.task_id}
                       </span>
                     )}
@@ -204,6 +214,13 @@ export function WorkspaceLogs({
           </table>
         ) : null}
       </div>
+    </div>
+  );
+  return onClose ? (
+    <Modal title="Worker activity logs" onClose={onClose} wide>
+      {content}
     </Modal>
+  ) : (
+    content
   );
 }

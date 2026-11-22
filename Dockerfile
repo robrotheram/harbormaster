@@ -38,14 +38,19 @@ FROM platform AS dashboard
 COPY --from=frontend-build /ui/dist /opt/workbench/ui
 ENV FRONTEND_DIR=/opt/workbench/ui
 
+FROM scratch AS mise-download
+ADD --checksum=sha256:be6f46a4cc3d5532acf359f163cf7ce80ceb43e5718d7b9049165a340fb02e2d https://github.com/jdx/mise/releases/download/v2026.11.11/mise-v2026.11.11-linux-x64 /opt/mise/amd64/mise
+ADD --checksum=sha256:2fd4b495e19d8a10dcfc0e0badea539fd745bd697473b59d18acc2ee8ef8c815 https://github.com/jdx/mise/releases/download/v2026.11.11/mise-v2026.11.11-linux-arm64 /opt/mise/arm64/mise
+
 # T3's standalone executable needs glibc, libatomic and its adjacent assets.
 FROM node:26-bookworm-slim@sha256:5df79989ed685e09f0a98019db4cebfb22fb9df1a53c0161664a011f7ff6b0f1 AS workspace-tools
 ARG TARGETARCH
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates git python3 ripgrep libatomic1 && \
     rm -rf /var/lib/apt/lists/*
 COPY tools/package.json tools/package-lock.json /opt/workspace-tools/
+COPY --from=mise-download --chmod=755 /opt/mise/${TARGETARCH}/mise /usr/local/bin/mise
 RUN --mount=type=cache,target=/root/.npm npm ci --prefix /opt/workspace-tools --omit=dev --no-audit --no-fund && \
-    for cli in codex claude; do ln -s "/opt/workspace-tools/node_modules/.bin/$cli" "/usr/local/bin/$cli"; done && \
+    for cli in codex claude skills; do ln -s "/opt/workspace-tools/node_modules/.bin/$cli" "/usr/local/bin/$cli"; done && \
     T3_VERSION=$(node -p 'require("/opt/workspace-tools/node_modules/t3/package.json").version') && \
     T3CODE_HOME=/tmp/t3 /opt/workspace-tools/node_modules/.bin/t3 --version && \
     mv "/tmp/t3/runtime/versions/$T3_VERSION" /opt/t3 && rm -rf /tmp/t3 && chmod 755 /opt/t3 && \
@@ -60,7 +65,7 @@ RUN --mount=type=cache,target=/root/.npm npm ci --prefix /opt/workspace-tools --
     for helper in "$CODEX_BIN"/*; do \
       if [ -f "$helper" ] && [ "$helper" != "$CODEX_BIN/codex" ]; then ln -s "$helper" "/usr/local/bin/$(basename "$helper")" || exit 1; fi; \
     done && \
-    codex --version && codex-native --version && claude --version && t3 --version && \
+    codex --version && codex-native --version && claude --version && t3 --version && mise --version && skills --version && \
     useradd -m -u 10001 workbench && mkdir -p /data/files && chown -R 10001:10001 /data
 
 FROM workspace-tools AS workspace-base

@@ -161,6 +161,24 @@ const messages: Record<string, string> = {
     "Choose an existing blocked or allowlist connection profile. Fully open networking cannot be used for Hermes.",
   HERMES_REVISION_CONFLICT:
     "Hermes settings changed in another session. Reload this page before saving again.",
+  SETUP_UNAVAILABLE:
+    "Setup is unavailable on this worker. Ask an operator to update the worker image and runtime.",
+  SETUP_BUSY: "This worker is preparing another setup change.",
+  SETUP_REVIEW_PENDING:
+    "Apply or discard the pending changes before starting another setup.",
+  SETUP_UNSUPPORTED_CONFIG:
+    "Setup supports standard mise tool declarations and skills locked to an exact GitHub commit.",
+  SETUP_CHECKOUT_CHANGED:
+    "The checkout changed after review. Prepare the change again.",
+  SETUP_SKILL_CONFLICT:
+    "This skill already exists or has local changes. Check the skill files before continuing.",
+  SETUP_NETWORK_BLOCKED:
+    "The worker’s connection policy blocked the download. Check the allowed destinations in Connection settings.",
+  SETUP_DOWNLOAD_FAILED:
+    "Couldn’t prepare the download. Check the worker’s connection settings and confirm the version or repository is available.",
+  SETUP_STORAGE_FAILED:
+    "The worker couldn’t save the setup change. Check available disk space and try again.",
+  SETUP_INTERRUPTED: "Setup preparation was interrupted. Try the change again.",
   WORKSPACE_BUSY:
     "This worker has active work or terminal processes. Finish them in T3 before retrying.",
   NOT_READY: "The worker is still starting. Check its state and retry shortly.",

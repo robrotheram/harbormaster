@@ -203,6 +203,8 @@ func (s *Server) Handler() http.Handler {
 	s.registerFactoryEnvironments(secured)
 	s.registerDeletion(secured)
 	s.registerTerminals(secured)
+	secured.HandleFunc("GET /v1/workspaces/{id}/setup", s.workerSetup)
+	secured.HandleFunc("POST /v1/workspaces/{id}/setup", s.workerSetup)
 	secured.HandleFunc("POST /v1/file-handoffs", s.shareFile)
 	secured.HandleFunc("/v1/workspaces/{id}/desktop/{path...}", workspaceProxy(s, s.Runtime.Desktop))
 	secured.HandleFunc("/v1/workspaces/{id}/console/{path...}", workspaceProxy(s, func(w http.ResponseWriter, r *http.Request, id, path string) {

@@ -100,6 +100,8 @@ var managementRoutes = []managementRoute{
 	{http.MethodGet, "/v1/workspaces/{id}/start-readiness", 4096, 0, noSharedHuman},
 	{http.MethodGet, "/v1/workspaces/{id}/ports", 4096, 0, noSharedHuman},
 	{http.MethodGet, "/v1/workspaces/{id}/models", 4096, 0, noSharedHuman},
+	{http.MethodGet, "/v1/workspaces/{id}/setup", 4096, 0, noSharedHuman},
+	{http.MethodPost, "/v1/workspaces/{id}/setup", 4096, 4096, noSharedHuman},
 	{http.MethodGet, "/v1/workspaces/{id}/applications", 4096, 0, noSharedHuman},
 	{http.MethodGet, "/v1/workspaces/{id}/artifacts", 4096, 0, noSharedHuman},
 	{http.MethodGet, "/v1/workspaces/{id}/artifacts/{artifact}/content", 4096, 0, noSharedHuman},

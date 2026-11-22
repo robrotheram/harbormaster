@@ -2057,10 +2057,10 @@ test("Files reviews diffs and sends line-specific feedback from the workspace", 
   await page
     .getByRole("link", { name: "Worker: Research worker", exact: true })
     .click();
-  await expect(page).toHaveURL(/workspaces\?worker=ws_one/);
-  await expect(page.getByRole("table", { name: "Workers" })).toContainText(
-    "Research worker",
-  );
+  await expect(page).toHaveURL(/workspaces\/ws_one$/);
+  await expect(
+    page.getByRole("heading", { name: "Research worker", exact: true }),
+  ).toBeVisible();
 });
 
 test("expired previews can restart their saved application directly", async ({

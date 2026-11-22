@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"agent-workbench/internal/workspace/setup"
 	"net/http"
 	"os"
 	"os/exec"
@@ -85,7 +86,7 @@ func (m *Manager) createTerminal(w http.ResponseWriter, r *http.Request) {
 	cmd := exec.Command(shell, args...)
 	cmd.Dir = filepath.Join(m.cfg.DataDir, "files")
 	// Do not inherit management credentials from the workspace service process.
-	cmd.Env = []string{"PATH=/usr/local/bin:/usr/bin:/bin", "HOME=" + home, "TERM=xterm-256color", "LANG=C.UTF-8", "SHELL=" + shell}
+	cmd.Env = []string{"PATH=" + setup.Path(m.homePath()), "HOME=" + home, "TERM=xterm-256color", "LANG=C.UTF-8", "SHELL=" + shell}
 	if m.cfg.EgressURL != "" {
 		cmd.Env = egress.Environment(cmd.Env, m.cfg.InferenceURL, m.cfg.BrokerURL)
 	}

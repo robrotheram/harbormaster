@@ -25,7 +25,7 @@ export function WorkspaceHistory({
   project: Project;
   workspace?: Workspace;
   workspaces: Workspace[];
-  onClose: () => void;
+  onClose?: () => void;
 }) {
   const client = useQueryClient();
   const [selected, setSelected] = useState(workspace?.id || "");
@@ -63,33 +63,30 @@ export function WorkspaceHistory({
   const busy = start.isPending || download.isPending;
   const data = query.data;
   const records = data?.page.records || [];
-  return (
-    <Modal
-      title="Message history"
-      onClose={onClose}
-      wide
-      closeDisabled={start.isPending}
-    >
+  const content = (
+    <div className="min-w-0 space-y-3">
       <div className="flex flex-wrap gap-2 items-center">
-        <NativeSelect
-          aria-label="History worker"
-          wrapperClassName="w-full sm:w-auto sm:flex-1"
-          disabled={busy}
-          value={selected}
-          onChange={(e) => {
-            setSelected(e.target.value);
-            setBefore(0);
-            start.reset();
-            download.reset();
-          }}
-        >
-          <option value="">Choose a worker</option>
-          {workspaces.map((w) => (
-            <option value={w.id} key={w.id}>
-              {w.name || w.id}
-            </option>
-          ))}
-        </NativeSelect>
+        {onClose && (
+          <NativeSelect
+            aria-label="History worker"
+            wrapperClassName="w-full sm:w-auto sm:flex-1"
+            disabled={busy}
+            value={selected}
+            onChange={(e) => {
+              setSelected(e.target.value);
+              setBefore(0);
+              start.reset();
+              download.reset();
+            }}
+          >
+            <option value="">Choose a worker</option>
+            {workspaces.map((w) => (
+              <option value={w.id} key={w.id}>
+                {w.name || w.id}
+              </option>
+            ))}
+          </NativeSelect>
+        )}
         <Button
           variant="outline"
           disabled={!selected || query.isFetching || busy}
@@ -223,6 +220,18 @@ export function WorkspaceHistory({
         Exports use JSONL: one JSON record per line, including tool activity and
         metadata. Review before sharing.
       </p>
+    </div>
+  );
+  return onClose ? (
+    <Modal
+      title="Message history"
+      onClose={onClose}
+      wide
+      closeDisabled={start.isPending}
+    >
+      {content}
     </Modal>
+  ) : (
+    content
   );
 }

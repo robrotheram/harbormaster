@@ -29,6 +29,16 @@ async function fixture(page: Page) {
     const url = new URL(route.request().url()),
       path = url.pathname;
     if (route.request().method() === "POST") {
+      if (path.endsWith("/terminals"))
+        return route.fulfill({
+          json: { id: route.request().postDataJSON().id },
+        });
+      if (path.endsWith("/exchange"))
+        return route.fulfill({
+          json: { output: "", offset: 0, exited: false, truncated: false },
+        });
+      if (path.endsWith("/close"))
+        return route.fulfill({ json: { closed: true } });
       state.writes.push(path);
       state.historyStopped = false;
       return route.fulfill({ json: workers[0] });
@@ -134,10 +144,16 @@ async function fixture(page: Page) {
   return state;
 }
 async function open(page: Page, item: string) {
+  const worker = page.getByRole("link", {
+    name: "Open worker Support worker",
+    exact: true,
+  });
+  if (await worker.count()) await worker.click();
   await page
-    .getByRole("button", { name: "Actions for Support worker", exact: true })
+    .getByRole("navigation", { name: "Worker sections" })
+    .getByRole("link", { name: "Activity" })
     .click();
-  await page.getByRole("menuitem", { name: item, exact: true }).click();
+  await page.getByRole("button", { name: item, exact: true }).click();
 }
 
 test("log failures never claim there is no activity and retry preserves filters", async ({
@@ -146,8 +162,8 @@ test("log failures never claim there is no activity and retry preserves filters"
   const state = await fixture(page);
   state.logsFail = true;
   await open(page, "Activity logs");
-  const dialog = page.getByRole("dialog", {
-    name: "Worker activity logs",
+  const dialog = page.getByRole("region", {
+    name: "Activity logs",
     exact: true,
   });
   await expect(dialog.getByRole("alert")).toBeVisible();
@@ -161,20 +177,19 @@ test("log failures never claim there is no activity and retry preserves filters"
   state.logsFail = false;
   await dialog.getByRole("button", { name: "Try again", exact: true }).click();
   await expect(dialog.getByRole("alert")).toHaveCount(0);
-  await expect(dialog.getByText(/Task started/)).toBeVisible();
+  await expect(dialog.getByRole("log").getByText(/Task started/)).toBeVisible();
+  await expect(
+    dialog.getByRole("region", { name: "Agent activity" }),
+  ).toContainText("Codex · Task started");
   await expect(
     dialog.getByRole("combobox", { name: "Log source", exact: true }),
   ).toHaveValue("codex");
-  await expect(
-    dialog.getByText(/Ready · 1 run · 0 background processes/),
-  ).toBeVisible();
   expect(state.writes).toHaveLength(0);
   state.logsFail = true;
   await dialog.getByRole("button", { name: "Refresh", exact: true }).click();
   await expect(dialog.getByRole("alert")).toBeVisible();
   await expect(dialog.getByText(/Last successful update/)).toBeVisible();
-  await expect(dialog.getByText(/Ready · 1 run/)).toHaveCount(0);
-  await expect(dialog.getByText(/Task started/)).toBeVisible();
+  await expect(dialog.getByRole("log").getByText(/Task started/)).toBeVisible();
 });
 
 test("history export errors stay in the app and incomplete downloads are rejected", async ({
@@ -182,7 +197,7 @@ test("history export errors stay in the app and incomplete downloads are rejecte
 }) => {
   const state = await fixture(page);
   await open(page, "Message history");
-  const dialog = page.getByRole("dialog", {
+  const dialog = page.getByRole("region", {
     name: "Message history",
     exact: true,
   });
@@ -191,7 +206,9 @@ test("history export errors stay in the app and incomplete downloads are rejecte
     .getByRole("button", { name: "Export JSONL", exact: true })
     .click();
   await expect(dialog.getByRole("alert")).toBeVisible();
-  await expect(page).toHaveURL(/\/app\/projects\/audit\/workspaces$/);
+  await expect(page).toHaveURL(
+    /\/app\/projects\/audit\/workspaces\/ws_0\?panel=activity$/,
+  );
   await expect(dialog.getByText(/Latest message 0 /)).toBeVisible();
   state.exportFail = false;
   state.incompleteExport = true;
@@ -223,7 +240,7 @@ test("newest history resets the cursor without refetching the old page", async (
 }) => {
   const state = await fixture(page);
   await open(page, "Message history");
-  const dialog = page.getByRole("dialog", {
+  const dialog = page.getByRole("region", {
     name: "Message history",
     exact: true,
   });
@@ -239,7 +256,7 @@ test("newest history resets the cursor without refetching the old page", async (
   );
 });
 
-test("starting from history locks worker selection until recovery completes", async ({
+test("starting from history disables exports until recovery completes", async ({
   page,
 }) => {
   const state = await fixture(page);
@@ -253,7 +270,7 @@ test("starting from history locks worker selection until recovery completes", as
     await route.fallback();
   });
   await open(page, "Message history");
-  const dialog = page.getByRole("dialog", {
+  const dialog = page.getByRole("region", {
     name: "Message history",
     exact: true,
   });
@@ -261,20 +278,17 @@ test("starting from history locks worker selection until recovery completes", as
     .getByRole("button", { name: "Start worker to view messages", exact: true })
     .click();
   await expect(
-    dialog.getByRole("combobox", { name: "History worker", exact: true }),
-  ).toBeDisabled();
-  await expect(
-    dialog.getByRole("button", { name: "Close", exact: true }),
+    dialog.getByRole("button", { name: "Export JSONL", exact: true }),
   ).toBeDisabled();
   release();
   await expect(dialog.getByText(/Latest message 0 /)).toBeVisible();
   await expect(
-    dialog.getByRole("combobox", { name: "History worker", exact: true }),
+    dialog.getByRole("button", { name: "Export JSONL", exact: true }),
   ).toBeEnabled();
   expect(state.writes).toEqual(["/ui-api/workspaces/ws_0/start"]);
 });
 
-test("history and activity dialogs remain accessible at phone widths", async ({
+test("history and activity remain accessible at phone widths", async ({
   page,
 }) => {
   test.setTimeout(90000);
@@ -288,23 +302,20 @@ test("history and activity dialogs remain accessible at phone widths", async ({
     if (await toggle.count()) await toggle.click();
     for (const item of ["Message history", "Activity logs"]) {
       await open(page, item);
-      const dialog = page.getByRole("dialog");
+      const dialog = page.getByRole("region", { name: item, exact: true });
       await expect(
-        dialog.getByText(
-          item === "Message history" ? /Latest message 0 / : "Task started",
-          { exact: false },
-        ),
+        item === "Message history"
+          ? dialog.getByText(/Latest message 0 /)
+          : dialog.getByRole("log").getByText(/Task started/),
       ).toBeVisible();
-      const workerSelector = dialog.getByRole("combobox", {
-        name:
-          item === "Message history" ? "History worker" : "Worker log filter",
-        exact: true,
-      });
-      expect(
-        (await workerSelector.boundingBox())!.width,
-      ).toBeGreaterThanOrEqual(200);
       if (item === "Message history") {
         await dialog.getByRole("button", { name: "Export JSONL" }).hover();
+      } else {
+        expect(
+          (await dialog
+            .getByRole("combobox", { name: "Log source" })
+            .boundingBox())!.width,
+        ).toBeGreaterThanOrEqual(200);
       }
       await page.waitForFunction(
         () =>
@@ -334,8 +345,6 @@ test("history and activity dialogs remain accessible at phone widths", async ({
       expect(
         await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth),
       ).toBe(true);
-      await page.keyboard.press("Escape");
-      await expect(dialog).toHaveCount(0);
     }
   }
 });
@@ -387,10 +396,14 @@ test("failed clipboard access explains how to copy a pairing link manually", asy
   });
   await page.goto("/app/projects/audit/workspaces");
   await page
-    .getByRole("button", { name: "Actions for Desktop worker", exact: true })
+    .getByRole("link", { name: "Open worker Desktop worker", exact: true })
     .click();
   await page
-    .getByRole("menuitem", { name: "Connect T3 desktop", exact: true })
+    .getByRole("navigation", { name: "Worker sections" })
+    .getByRole("link", { name: "Settings" })
+    .click();
+  await page
+    .getByRole("button", { name: "Connect T3 desktop", exact: true })
     .click();
   const dialog = page.getByRole("dialog", {
     name: "Connect T3 desktop",
@@ -405,7 +418,7 @@ test("failed clipboard access explains how to copy a pairing link manually", asy
   ).toHaveValue(/synthetic-test/);
 });
 
-test("closing a pending history export cancels the read without downloading", async ({
+test("leaving a pending history export cancels the read without downloading", async ({
   page,
 }) => {
   const state = await fixture(page);
@@ -426,7 +439,7 @@ test("closing a pending history export cancels the read without downloading", as
     downloads.push(download.suggestedFilename()),
   );
   await open(page, "Message history");
-  const dialog = page.getByRole("dialog", {
+  const dialog = page.getByRole("region", {
     name: "Message history",
     exact: true,
   });
@@ -440,7 +453,9 @@ test("closing a pending history export cancels the read without downloading", as
   const failure = page.waitForEvent("requestfailed", (request) =>
     request.url().endsWith("/history/export"),
   );
-  await page.keyboard.press("Escape");
+  await page
+    .getByRole("button", { name: "Activity logs", exact: true })
+    .click();
   release();
   await failure;
   await expect(dialog).toHaveCount(0);

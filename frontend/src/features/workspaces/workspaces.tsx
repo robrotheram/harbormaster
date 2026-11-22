@@ -5,13 +5,8 @@ import {
   WorkerSelection,
   type WorkerBatch,
 } from "@/features/platform/worker-actions";
-import { lazy, Suspense } from "react";
-import { DeleteWorker } from "./delete-worker";
-import { StartWorker } from "./start-worker";
 import { WorkerRow } from "./worker-row";
-import { WorkspaceSettings } from "./settings";
 import { CopyForm } from "./file-handoff";
-import { PairingPanel } from "./pairing-panel";
 import { WorkspaceForm } from "./workspace-form";
 import { workspaceOptions } from "./api";
 import { WorkspaceHistory } from "@/features/history/workspace-history";
@@ -41,20 +36,12 @@ import { Button } from "@/components/ui/button";
 import { useState } from "react";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { consoleURL, safePairing } from "@/features/workspaces/connections";
 import { keys } from "@/shared/query-keys";
 
-import { workspacesApi } from "@/features/workspaces/api";
 import { useConnectionProfiles } from "@/features/connection-profiles/api";
 import { bytes } from "@/shared/format";
 import { Empty, ErrorNotice, Observation } from "@/shared/components";
-import type { Pairing, Project, Workspace } from "@/shared/types";
-
-const WorkerTerminal = lazy(() =>
-  import("./worker-terminal").then((module) => ({
-    default: module.WorkerTerminal,
-  })),
-);
+import type { Project } from "@/shared/types";
 
 export function Workspaces({ project }: { project: Project }) {
   const client = useQueryClient();
@@ -70,21 +57,10 @@ export function Workspaces({ project }: { project: Project }) {
   const [search, setSearch] = useState(routeSearch.worker || "");
   const [view, setView] = useState<"all" | "running" | "stopped">("all");
   const [create, setCreate] = useState(false);
-  const [parent, setParent] = useState<Workspace>();
   const [copy, setCopy] = useState(false);
-  const [start, setStart] = useState<Workspace>();
-  const [deleting, setDeleting] = useState<Workspace>();
-  const [pairing, setPairing] = useState<{
-    workspace: Workspace;
-    value: Pairing;
-  }>();
-  const [settings, setSettings] = useState<Workspace>();
-  const [terminal, setTerminal] = useState<Workspace>();
-  const [logs, setLogs] = useState<Workspace | "all">();
-  const [history, setHistory] = useState<Workspace | "all">();
+  const [logs, setLogs] = useState(false);
+  const [history, setHistory] = useState(false);
   const [message, setMessage] = useState("");
-  const [actionError, setActionError] = useState<unknown>();
-  const [busy, setBusy] = useState("");
   const workspaces = blocked ? [] : query.data || [];
   const sharedWorkspace = workspaces.some((workspace) => workspace.shared);
   const visible = workspaces.filter(
@@ -101,77 +77,8 @@ export function Workspaces({ project }: { project: Project }) {
     client.invalidateQueries({ queryKey: keys.project(project.id) });
   const changed = () => {
     setCreate(false);
-    setParent(undefined);
     refresh();
   };
-
-  async function operate(
-    workspace: Workspace,
-    action: "start" | "stop" | "pair" | "enable-t3" | "delete",
-    open = false,
-  ) {
-    if (busy) return;
-    if (action === "delete") {
-      setDeleting(workspace);
-      return;
-    }
-    const tab = open ? window.open("about:blank", "_blank") : null;
-    if (tab) tab.opener = null;
-    setBusy(workspace.id);
-    setActionError(undefined);
-    setMessage("");
-    try {
-      if (action === "enable-t3") {
-        await workspacesApi.enableConsole(workspace.id);
-        setMessage(
-          "T3 enabled. You can now open the browser or connect T3 desktop.",
-        );
-      } else if (action === "pair") {
-        setPairing({
-          workspace,
-          value: safePairing(
-            await workspacesApi.pair(workspace.id),
-            workspace.id,
-            location.origin,
-          ),
-        });
-      } else if (action === "stop") {
-        await workspacesApi.stop(workspace.id);
-        setMessage(
-          (workspace.name || "Worker") +
-            " stopped. Files and conversation history are preserved.",
-        );
-      } else {
-        const result = await workspacesApi.start(workspace.id);
-        if (open) {
-          if (!result.console_ticket)
-            throw new Error(
-              "The worker started, but its browser connection was not available. Try Open T3 again. If this repeats, ask your administrator to check the T3 gateway.",
-            );
-          const port = import.meta.env.DEV
-            ? import.meta.env.VITE_WORKBENCH_PORT || "8080"
-            : location.port;
-          const url = consoleURL(
-            workspace.id,
-            result.console_ticket,
-            port,
-            location.origin,
-          );
-          if (tab) tab.location.replace(url);
-          else
-            setMessage(
-              "Worker started. Allow popups, then select Open T3 again.",
-            );
-        } else setMessage((workspace.name || "Worker") + " started.");
-      }
-    } catch (error) {
-      tab?.close();
-      setActionError(error);
-    } finally {
-      setBusy("");
-      refresh();
-    }
-  }
 
   return (
     <>
@@ -200,10 +107,10 @@ export function Workspaces({ project }: { project: Project }) {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={() => setLogs("all")}>
+              <DropdownMenuItem onSelect={() => setLogs(true)}>
                 Activity logs
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => setHistory("all")}>
+              <DropdownMenuItem onSelect={() => setHistory(true)}>
                 Message history
               </DropdownMenuItem>
               <DropdownMenuSeparator />
@@ -237,7 +144,6 @@ export function Workspaces({ project }: { project: Project }) {
           retrying={query.isFetching}
         />
       )}{" "}
-      {actionError != null && <ErrorNotice error={actionError} />}{" "}
       {message && (
         <div className="notice" role="status">
           {message}
@@ -405,16 +311,7 @@ export function Workspaces({ project }: { project: Project }) {
                       : undefined
                   }
                   profiles={globalProfiles.data || []}
-                  busy={busy}
-                  operate={operate}
-                  setStart={setStart}
-                  setLogs={setLogs}
-                  setHistory={setHistory}
-                  setSettings={setSettings}
-                  setTerminal={setTerminal}
-                  setParent={setParent}
-                  setMessage={setMessage}
-                  setActionError={setActionError}
+                  projectID={project.id}
                 />
               ))}
               {!visible.length && (
@@ -452,42 +349,10 @@ export function Workspaces({ project }: { project: Project }) {
           </div>
         </div>
       )}
-      {deleting && (
-        <DeleteWorker
-          workspace={workspaces.find((w) => w.id === deleting.id) || deleting}
-          onClose={() => setDeleting(undefined)}
-          onDeleted={() => {
-            setDeleting(undefined);
-            setMessage(
-              "Worker deleted from Workbench. Private disks retained.",
-            );
-            void refresh();
-          }}
-        />
-      )}
-      {start && (
-        <StartWorker
-          workspace={start}
-          onClose={() => setStart(undefined)}
-          onStarted={() => {
-            setMessage(`${start.name || "Worker"} started.`);
-            setStart(undefined);
-            refresh();
-          }}
-          onSettings={() => {
-            setSettings(start);
-            setStart(undefined);
-          }}
-        />
-      )}
-      {(create || parent) && (
+      {create && (
         <WorkspaceForm
           project={project}
-          parent={parent}
-          onClose={() => {
-            setCreate(false);
-            setParent(undefined);
-          }}
+          onClose={() => setCreate(false)}
           onCreated={changed}
         />
       )}
@@ -505,46 +370,18 @@ export function Workspaces({ project }: { project: Project }) {
           }}
         />
       )}
-      {pairing && (
-        <PairingPanel
-          workspace={pairing.workspace}
-          value={pairing.value}
-          onClose={() => setPairing(undefined)}
-        />
-      )}
-      {settings && (
-        <WorkspaceSettings
-          workspace={settings}
-          onClose={() => setSettings(undefined)}
-          onSaved={() => {
-            setSettings(undefined);
-            refresh();
-            setMessage("Worker settings saved.");
-          }}
-        />
-      )}
       {history && (
         <WorkspaceHistory
           project={project}
           workspaces={workspaces}
-          workspace={history === "all" ? undefined : history}
-          onClose={() => setHistory(undefined)}
+          onClose={() => setHistory(false)}
         />
-      )}
-      {terminal && (
-        <Suspense fallback={<span role="status">Loading terminal…</span>}>
-          <WorkerTerminal
-            workspace={terminal}
-            onClose={() => setTerminal(undefined)}
-          />
-        </Suspense>
       )}
       {logs && (
         <WorkspaceLogs
           project={project}
           workspaces={workspaces}
-          workspace={logs === "all" ? undefined : logs}
-          onClose={() => setLogs(undefined)}
+          onClose={() => setLogs(false)}
         />
       )}
     </>

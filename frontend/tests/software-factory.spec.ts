@@ -277,7 +277,7 @@ test("global infrastructure reports actual runtimes and filters across projects"
   await expect(page.getByRole("dialog")).toContainText("unverified");
   await expect(page.getByRole("dialog")).toContainText("Docker");
   await page.getByRole("link", { name: "Open worker controls" }).click();
-  await expect(page).toHaveURL(/projects\/docs\/workspaces$/);
+  await expect(page).toHaveURL(/projects\/docs\/workspaces\/ws_docs$/);
   expect(errors).toEqual([]);
 });
 

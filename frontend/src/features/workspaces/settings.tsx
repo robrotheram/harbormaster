@@ -22,7 +22,7 @@ export function WorkspaceSettings({
   initialSection = "worker",
 }: {
   workspace: Workspace;
-  onClose: () => void;
+  onClose?: () => void;
   onSaved: (updated: Workspace) => void;
   initialSection?: "worker" | "subscriptions";
 }) {
@@ -71,16 +71,22 @@ export function WorkspaceSettings({
       }),
     onSuccess: onSaved,
   });
+  const hasEdits =
+    idle !== (workspace.idle_timeout_minutes ?? 60) ||
+    globalID !== (workspace.connection_profile_id || "") ||
+    (!globalID &&
+      (localConnections.mode !== (original?.mode ?? "blocked") ||
+        localConnections.destinations.join("\n") !==
+          (original?.destinations ?? []).join("\n")));
+  const profileUpdate =
+    !!globalProfile &&
+    globalProfile.revision > (workspace.connection_profile_revision ?? 0);
   const canSave =
     !mutation.isPending &&
     !needsStop &&
     (!globalID || (globals.isSuccess && !!globalProfile));
-  return (
-    <Modal
-      title="Worker settings"
-      onClose={onClose}
-      closeDisabled={mutation.isPending}
-    >
+  const content = (
+    <>
       <div
         className="flex flex-wrap gap-2 pb-4"
         aria-label="Worker settings sections"
@@ -91,7 +97,7 @@ export function WorkspaceSettings({
           aria-pressed={section === "worker"}
           onClick={() => setSection("worker")}
         >
-          Worker
+          {onClose ? "Worker" : "General"}
         </Button>
         <Button
           type="button"
@@ -111,7 +117,7 @@ export function WorkspaceSettings({
           }}
         >
           <fieldset disabled={mutation.isPending} className="min-w-0 space-y-5">
-            <p>{workspace.name || workspace.id}</p>
+            {onClose && <p>{workspace.name || workspace.id}</p>}
             <label>
               Automatic idle shutdown
               <NativeSelect
@@ -138,9 +144,12 @@ export function WorkspaceSettings({
               </NativeSelect>
             </label>
             <p className="form-note">
-              Opening starts a fresh idle interval. Active runs and background
-              jobs prevent shutdown.
+              The timer resets when you open the worker. Active work keeps it
+              running.
             </p>
+            <div className="border-t pt-4">
+              <h2 className="text-sm font-semibold">Network access</h2>
+            </div>
             <label>
               Global connection profile
               <NativeSelect
@@ -185,11 +194,11 @@ export function WorkspaceSettings({
                 Choose an available connection profile before saving.
               </p>
             )}
-            <p className="form-note">
-              Manage shared profiles in Network profiles in the sidebar. Save
-              here to apply the latest version. Worker-specific settings detach
-              this worker from global updates.
-            </p>
+            {globalID && (
+              <p className="form-note">
+                Save to apply the latest version of the shared profile.
+              </p>
+            )}
             {globalID && globalProfile && (
               <p>
                 {globalProfile.description} Selected mode:{" "}
@@ -252,31 +261,53 @@ export function WorkspaceSettings({
               </p>
             ) : (
               <p className="form-note">
-                Approved platform integrations remain available. Tools must use
-                the supplied HTTP/HTTPS proxy for external connections. Provider
-                credentials remain in the platform.
+                Platform integrations stay available. External HTTP and HTTPS
+                traffic uses the worker proxy.
               </p>
             )}
             {needsStop && (
               <p role="status" className="notice">
                 Stop this worker before applying this profile. Finish active
-                work, close terminals, then use Stop on its worker row. Changing
-                direct networking or upgrading an older proxy requires a
-                stop/start; files and history are preserved.
+                work, close terminals, then select Stop worker. Changing direct
+                networking or upgrading an older proxy requires a stop/start;
+                files and history are preserved.
               </p>
             )}
             {mutation.isError && <ErrorNotice error={mutation.error} />}
-            <div className="form-actions">
-              <Button variant="outline" type="button" onClick={onClose}>
-                Cancel
-              </Button>
-              <Button variant="default" disabled={!canSave}>
+            <div className="form-actions flex-wrap">
+              {!onClose && (hasEdits || profileUpdate) && (
+                <span className="mr-auto self-center text-xs text-muted-foreground">
+                  {hasEdits ? "Unsaved changes" : "Profile update available"}
+                </span>
+              )}
+              {onClose && (
+                <Button variant="outline" type="button" onClick={onClose}>
+                  Cancel
+                </Button>
+              )}
+              <Button
+                variant={
+                  onClose || hasEdits || profileUpdate ? "default" : "outline"
+                }
+                disabled={!canSave}
+              >
                 {mutation.isPending ? "Saving…" : "Save settings"}
               </Button>
             </div>
           </fieldset>
         </Form>
       )}
+    </>
+  );
+  if (!onClose)
+    return <section aria-label="Worker settings">{content}</section>;
+  return (
+    <Modal
+      title="Worker settings"
+      onClose={onClose}
+      closeDisabled={mutation.isPending}
+    >
+      {content}
     </Modal>
   );
 }

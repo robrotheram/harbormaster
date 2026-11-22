@@ -72,6 +72,32 @@ const projectRoute = createRoute({
     return <ProjectShell projectID={projectId} section={section} />;
   },
 });
+const workerRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/projects/$projectId/workspaces/$workerId",
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { panel?: "environment" | "settings" | "activity" } => ({
+    panel:
+      search.panel === "setup" || search.panel === "environment"
+        ? "environment"
+        : search.panel === "settings" || search.panel === "activity"
+          ? search.panel
+          : undefined,
+  }),
+  component: () => {
+    const { projectId, workerId } = workerRoute.useParams();
+    const { panel } = workerRoute.useSearch();
+    return (
+      <ProjectShell
+        projectID={projectId}
+        section="workspaces"
+        workerID={workerId}
+        workerPanel={panel}
+      />
+    );
+  },
+});
 const connectionsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/connection-profiles",
@@ -116,6 +142,7 @@ export const router = createRouter({
   routeTree: rootRoute.addChildren([
     indexRoute,
     projectRoute,
+    workerRoute,
     connectionsRoute,
     repositoriesRoute,
     managementRoute,

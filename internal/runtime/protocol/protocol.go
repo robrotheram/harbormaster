@@ -40,6 +40,8 @@ func AllowedAgentPath(method, path string) bool {
 				return method == "POST"
 			}
 			return len(partsFactory) == 4 && partsFactory[2] == "blobs" && shared.ValidID(partsFactory[3]) && (method == "GET" || method == "POST")
+		case "setup":
+			return len(partsFactory) == 2 && (method == "GET" || method == "POST")
 		case "models", "ports":
 			return len(partsFactory) == 2 && method == "GET"
 		case "services":

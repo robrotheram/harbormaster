@@ -228,10 +228,14 @@ test("project workflows preserve boundaries and UI behavior", async ({
     .click();
   await page.getByText("New project workspace", { exact: true }).waitFor();
   await page
-    .getByRole("button", { name: "Actions for Research worker A", exact: true })
+    .getByRole("link", { name: "Open worker Research worker A", exact: true })
     .click();
   await page
-    .getByRole("menuitem", { name: "Branch worker", exact: true })
+    .getByRole("navigation", { name: "Worker sections" })
+    .getByRole("link", { name: "Settings", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Branch worker", exact: true })
     .click();
   assert.equal(
     await page.getByLabel("Tool profile", { exact: true }).count(),
@@ -245,13 +249,10 @@ test("project workflows preserve boundaries and UI behavior", async ({
   await page
     .getByRole("button", { name: "Create branch worker", exact: true })
     .click();
-  await page.getByText("Research worker A branch", { exact: true }).waitFor();
+  await page.getByText("Worker branched.", { exact: true }).waitFor();
 
   await page
-    .getByRole("button", { name: "Actions for Research worker A", exact: true })
-    .click();
-  await page
-    .getByRole("menuitem", { name: "Connect T3 desktop", exact: true })
+    .getByRole("button", { name: "Connect T3 desktop", exact: true })
     .click();
   await page.getByLabel("Private pairing URL").waitFor();
   assert(
@@ -260,6 +261,10 @@ test("project workflows preserve boundaries and UI behavior", async ({
     ),
   );
   await page.keyboard.press("Escape");
+  await page
+    .getByRole("navigation", { name: "Project navigation" })
+    .getByRole("link", { name: "Workers", exact: true })
+    .click();
   await page
     .getByRole("button", { name: "Project actions", exact: true })
     .click();
@@ -294,15 +299,12 @@ test("project workflows preserve boundaries and UI behavior", async ({
     .getByRole("link", { name: "Workers", exact: true })
     .click();
   await page.getByText("Research worker A", { exact: true }).waitFor();
-  await page
-    .getByRole("button", { name: "Actions for Research worker A", exact: true })
-    .click();
+
   assert.equal(
     await page.getByRole("menuitem", { name: "Run task", exact: true }).count(),
     0,
     "Workers must not offer the removed task action",
   );
-  await page.keyboard.press("Escape");
   await page.getByLabel("Search workers").fill("no-matching-workspace");
   await page
     .getByText("No workers match this filter.", { exact: false })
@@ -312,20 +314,20 @@ test("project workflows preserve boundaries and UI behavior", async ({
     .click();
   await page.getByText("Research worker A", { exact: true }).waitFor();
   await page
-    .getByRole("button", {
-      name: "Actions for Research worker A",
-      exact: true,
-    })
+    .getByRole("link", { name: "Open worker Research worker A", exact: true })
     .click();
-  await page.getByRole("menuitem", { name: "Settings", exact: true }).click();
   await page
-    .getByRole("dialog")
+    .getByRole("navigation", { name: "Worker sections" })
+    .getByRole("link", { name: "Settings", exact: true })
+    .click();
+  await page
+    .getByRole("region", { name: "Worker settings" })
     .getByLabel("Global connection profile", { exact: true })
     .selectOption("github");
   await page
     .getByRole("button", { name: "Save settings", exact: true })
     .click();
-  await page.getByText("Global profile · v1", { exact: true }).waitFor();
+  await page.getByText("Worker settings saved.", { exact: true }).waitFor();
   await page.getByRole("button", { name: "Platform", exact: true }).click();
   await page
     .getByRole("menuitem", { name: "Network profiles", exact: true })

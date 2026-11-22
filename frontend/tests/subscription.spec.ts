@@ -198,10 +198,13 @@ test("manage multiple personal accounts and independently select worker provider
 
   await page.goto("/app/projects/default/workspaces");
   await page
-    .getByRole("button", { name: "Actions for Shared workspace", exact: true })
+    .getByRole("link", { name: "Open worker Shared workspace", exact: true })
     .click();
-  await page.getByRole("menuitem", { name: "Settings", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "Worker settings" });
+  await page
+    .getByRole("navigation", { name: "Worker sections" })
+    .getByRole("link", { name: "Settings", exact: true })
+    .click();
+  const dialog = page.getByRole("region", { name: "Worker settings" });
   await dialog
     .getByRole("button", { name: "Subscriptions", exact: true })
     .click();

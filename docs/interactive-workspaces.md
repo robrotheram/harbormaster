@@ -4,25 +4,25 @@ Open the dashboard and select your project's **Workers** page. Configure [native
 
 ## Open T3 in the browser
 
-1. Create a worker with **T3 with Codex**, or open the action menu on a ready Codex worker and select **Enable T3** if available.
-2. Start the worker if needed. Select **Open T3**. If the browser blocks the new tab, allow popups for the dashboard and retry.
+1. Create a worker with **T3 with Codex**, or select **Open worker** on a ready Codex worker. In **Settings**, select **Enable T3** if available.
+2. Open the worker and start it if needed. Select **Open T3**. If the browser blocks the new tab, allow popups for the dashboard and retry.
 3. Use the T3 tab to create a thread, inspect changes, or open a terminal. The project root is `/data/files`.
 
-T3 runs in the worker. The browser uses a workspace-specific origin and a one-use connection ticket. If the session expires, open T3 again from **Workers**. Closing the tab leaves active work running. Use **Stop worker** when you finish and the worker is idle. A stop preserves files, agent settings, and recorded history.
+T3 runs in the worker. The browser uses a workspace-specific origin and a one-use connection ticket. If the session expires, select **Open T3** again on the worker page. Closing the tab leaves active work running. Use **Stop worker** when you finish and the worker is idle. A stop preserves files, agent settings, and recorded history.
 
 Bundled `workspace-files` provides confined file operations, and `project-git` reports Git status, diff summaries, and recent history. Runtime network access follows the worker's connection profile.
 
 ## Branch a worker
 
 1. On a backend that supports branch seeding, start the parent and wait for it to become idle.
-2. Open its action menu and select **Branch worker**. Enter a worker name and a new local Git branch.
+2. Open the worker. In **Settings**, select **Branch worker**. Enter a worker name and a new local Git branch.
 3. Create the worker and open it to check the copied files. The copy uses separate storage and excludes the parent's conversations and agent settings. Publish the branch through your usual Git workflow if needed.
 
 ## Connect T3 Code desktop
 
-1. On the local operator dashboard, start a T3-enabled worker. Open its action menu and select **Connect T3 desktop**.
+1. On the local operator dashboard, start a T3-enabled worker. Open the worker. In **Settings**, select **Connect T3 desktop**.
 2. Select **Open T3 desktop** to hand the URL to the installed app. To enter it manually, select **Copy pairing URL**. In T3 Code, open **Settings**, then **Environments**, then **Add environment**. Paste the full URL.
-3. Confirm the worker in T3 Code. If the link expired or was used, request another from **Workers**.
+3. Confirm the worker in T3 Code. If the link expired or was used, request another from the worker’s **Settings**.
 
 The one-use URL grants access to the same files and conversations as the browser session. Keep it private. To revoke a client, use the environment's native T3 access settings. Hosted dashboards disable native desktop pairing. Use the browser console for hosted access.
 

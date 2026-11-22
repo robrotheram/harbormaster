@@ -1,72 +1,27 @@
 import { WorkerCheckbox } from "@/features/platform/worker-actions";
-import {
-  GitBranch,
-  Globe,
-  Network,
-  Play,
-  ExternalLink,
-  Loader2,
-  Monitor,
-  MoreHorizontal,
-  Settings2,
-  Copy,
-  Square,
-  TerminalSquare,
-} from "lucide-react";
+import { GitBranch, Globe, Network } from "lucide-react";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { TableCell, TableRow } from "@/components/ui/table";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu";
 import { isGitHubOnly } from "@/features/connection-profiles/policy";
 import { WorkspaceActivity } from "@/features/history/workspace-activity";
 import { bytes, date } from "@/shared/format";
 import type { Workspace, GlobalConnectionProfile } from "@/shared/types";
 
-export type WorkerOperation =
-  "start" | "stop" | "pair" | "enable-t3" | "delete";
 export function WorkerRow({
   workspace,
+  projectID,
   selection,
   profiles,
-  busy,
-  operate,
-  setStart,
-  setLogs,
-  setHistory,
-  setSettings,
-  setTerminal,
-  setParent,
-  setMessage,
-  setActionError,
 }: {
   workspace: Workspace;
+  projectID: string;
   selection?: { checked: boolean; toggle: () => void };
   profiles: GlobalConnectionProfile[];
-  busy: string;
-  operate: (
-    workspace: Workspace,
-    action: WorkerOperation,
-    open?: boolean,
-  ) => void;
-  setStart: (workspace: Workspace) => void;
-  setLogs: (workspace: Workspace) => void;
-  setHistory: (workspace: Workspace) => void;
-  setSettings: (workspace: Workspace) => void;
-  setTerminal: (workspace: Workspace) => void;
-  setParent: (workspace: Workspace) => void;
-  setMessage: (message: string) => void;
-  setActionError: (error: unknown) => void;
 }) {
+  const navigate = useNavigate();
   const console = workspace.console_enabled || workspace.agent_kind === "t3";
   const kind = workspace.agent_kind || "codex";
-  const stopped = ["STOPPED", "ERROR", "UNKNOWN"].includes(workspace.state);
-  const transitioning = ["STARTING", "STOPPING"].includes(workspace.state);
   const linked = profiles.find((p) => p.id === workspace.connection_profile_id);
   const pending =
     linked && linked.revision > (workspace.connection_profile_revision ?? 0);
@@ -118,7 +73,13 @@ export function WorkerRow({
       <TableCell className="max-md:p-0 max-md:text-right">
         <WorkspaceActivity
           workspace={workspace}
-          onOpenActivity={() => setLogs(workspace)}
+          onOpenActivity={() =>
+            void navigate({
+              to: "/projects/$projectId/workspaces/$workerId",
+              params: { projectId: projectID, workerId: workspace.id },
+              search: { panel: "activity" },
+            })
+          }
         />
       </TableCell>
       <TableCell className="max-md:col-span-2 max-md:flex max-md:flex-wrap max-md:items-baseline max-md:gap-x-4 max-md:px-0 max-md:pt-3 max-md:pb-2">
@@ -163,127 +124,15 @@ export function WorkerRow({
       </TableCell>
       <TableCell className="pr-5 max-md:col-span-2 max-md:px-0 max-md:pt-3 max-md:pb-0">
         <div className="flex flex-wrap items-center justify-end gap-1.5 max-md:justify-start">
-          {(stopped || transitioning || console) && (
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={
-                !!busy || transitioning || (!stopped && !workspace.ready)
-              }
-              onClick={() =>
-                stopped
-                  ? setStart(workspace)
-                  : operate(workspace, "start", true)
-              }
+          <Button asChild variant="outline" size="sm">
+            <Link
+              to="/projects/$projectId/workspaces/$workerId"
+              params={{ projectId: projectID, workerId: workspace.id }}
+              aria-label={`Open worker ${workspace.name || workspace.id}`}
             >
-              {busy === workspace.id ? (
-                <Loader2 className="size-3.5 loading-spinner" />
-              ) : stopped ? (
-                <Play className="size-3.5" />
-              ) : (
-                <ExternalLink className="size-3.5" />
-              )}
-              {busy === workspace.id
-                ? "Working…"
-                : transitioning
-                  ? workspace.state === "STARTING"
-                    ? "Starting…"
-                    : "Stopping…"
-                  : stopped
-                    ? "Check & start"
-                    : "Open T3"}
-            </Button>
-          )}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={"Actions for " + (workspace.name || workspace.id)}
-                disabled={!!busy}
-              >
-                <MoreHorizontal />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-52">
-              <DropdownMenuLabel>Worker actions</DropdownMenuLabel>
-              {workspace.ready && (
-                <DropdownMenuItem onSelect={() => setTerminal(workspace)}>
-                  <TerminalSquare />
-                  Open terminal
-                </DropdownMenuItem>
-              )}
-              {console && workspace.ready && (
-                <DropdownMenuItem onSelect={() => operate(workspace, "pair")}>
-                  <Monitor />
-                  Connect T3 desktop
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => setLogs(workspace)}>
-                <TerminalSquare />
-                Activity logs
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => setHistory(workspace)}>
-                <TerminalSquare />
-                Message history
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => setSettings(workspace)}>
-                <Settings2 />
-                Settings
-              </DropdownMenuItem>
-              {!console && kind === "codex" && workspace.ready && (
-                <DropdownMenuItem
-                  onSelect={() => operate(workspace, "enable-t3")}
-                >
-                  <Monitor />
-                  Enable T3
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuItem
-                disabled={workspace.shared}
-                onSelect={() => setParent(workspace)}
-              >
-                <GitBranch />
-                Branch worker
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={() =>
-                  navigator.clipboard
-                    .writeText(workspace.id)
-                    .then(() => setMessage("Worker ID copied."))
-                    .catch(setActionError)
-                }
-              >
-                <Copy />
-                Copy worker ID
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              {workspace.state !== "STOPPED" ? (
-                <DropdownMenuItem
-                  disabled={workspace.state !== "READY"}
-                  onSelect={() => operate(workspace, "stop")}
-                  className="text-destructive focus:text-destructive"
-                >
-                  <Square />
-                  Stop worker
-                </DropdownMenuItem>
-              ) : (
-                <DropdownMenuItem onSelect={() => setStart(workspace)}>
-                  <Play />
-                  Start worker
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                className="text-destructive focus:text-destructive"
-                disabled={workspace.shared}
-                onSelect={() => operate(workspace, "delete")}
-              >
-                Delete worker
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+              Open worker
+            </Link>
+          </Button>
         </div>
         {workspace.ready && (
           <div className="mt-1.5 truncate text-right text-[10px] text-muted-foreground max-md:text-left">
