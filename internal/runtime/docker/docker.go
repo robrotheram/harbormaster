@@ -11,12 +11,15 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
 	"agent-workbench/internal/runtime/protocol"
 	"agent-workbench/internal/shared"
 )
+
+var errAddressPoolExhausted = errors.New("Docker bridge address pools are exhausted")
 
 type Docker struct {
 	HTTP *http.Client
@@ -49,6 +52,15 @@ func (d *Docker) call(ctx context.Context, method, path string, body any, out an
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if method == http.MethodPost && path == "/networks/create" {
+			var failure struct {
+				Message string `json:"message"`
+			}
+			if err := json.NewDecoder(io.LimitReader(resp.Body, 8<<10)).Decode(&failure); err == nil &&
+				strings.Contains(failure.Message, "all predefined address pools have been fully subnetted") {
+				return errAddressPoolExhausted
+			}
+		}
 		return protocol.APIError{Status: resp.StatusCode}
 	}
 	if out != nil {
@@ -502,6 +514,9 @@ func (c *Controller) start(ctx context.Context, id string, spec protocol.Workspa
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	info, e := c.ensure(ctx, id, spec)
+	if errors.Is(e, errAddressPoolExhausted) {
+		return shared.Observation{}, protocol.Failure(503, protocol.DockerAddressPoolExhausted)
+	}
 	if e != nil {
 		return shared.Observation{}, protocol.Failure(503, "RUNTIME_UNAVAILABLE")
 	}

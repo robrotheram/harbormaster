@@ -3997,6 +3997,11 @@
   padding: 1px 6px;
   margin-left: 3px;
 }
+.task-activity-detail {
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+  font-size: 0.75rem;
+}
 .overview-hint {
   font-size: 12px;
   color: var(--muted-foreground);

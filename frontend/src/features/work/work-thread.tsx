@@ -50,7 +50,13 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { ErrorNotice, Form, State, useRequestKey } from "@/shared/components";
+import {
+  ErrorNotice,
+  Form,
+  Modal,
+  State,
+  useRequestKey,
+} from "@/shared/components";
 import { APIError } from "@/shared/http";
 import { privateContentOptions } from "@/shared/private-content";
 import { date, label } from "@/shared/format";
@@ -299,6 +305,10 @@ export function WorkConversation({
       setReadingImage(false);
     }
   }
+  const [changeRequest, setChangeRequest] = useState<{
+    attempt: string;
+    feedback: string;
+  }>();
   const [actionSequence, setActionSequence] = useState(0);
   const mutation = useMutation({
     mutationFn: async (
@@ -321,7 +331,13 @@ export function WorkConversation({
       if (action === "accept")
         return workApi.review(project.id, id, true, item?.latest_attempt_id);
       if (action === "request-changes")
-        return workApi.review(project.id, id, false, item?.latest_attempt_id);
+        return workApi.review(
+          project.id,
+          id,
+          false,
+          changeRequest?.attempt,
+          changeRequest?.feedback.trim(),
+        );
       if (action === "wake")
         return workspacesApi.start(item!.workspace_id, delivery);
       const screenshots = shots.map(({ url, note }) => ({
@@ -377,6 +393,7 @@ export function WorkConversation({
           });
         }
       }
+      if (action === "request-changes") setChangeRequest(undefined);
       await Promise.all([
         client.invalidateQueries({ queryKey: workKeys.list(project.id) }),
         client.invalidateQueries({ queryKey: boardKey(project.id) }),
@@ -489,6 +506,45 @@ export function WorkConversation({
           onSaved={() => setSubscriptionSettings(false)}
         />
       )}
+      {changeRequest && (
+        <Modal
+          title="Request changes"
+          onClose={() => setChangeRequest(undefined)}
+          closeDisabled={mutation.isPending}
+        >
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (changeRequest.feedback.trim())
+                mutation.mutate("request-changes");
+            }}
+          >
+            <label>
+              What needs to change?
+              <Textarea
+                autoFocus
+                required
+                maxLength={1000}
+                value={changeRequest.feedback}
+                onChange={(event) =>
+                  setChangeRequest({
+                    ...changeRequest,
+                    feedback: event.target.value,
+                  })
+                }
+                disabled={mutation.isPending}
+              />
+            </label>
+            {mutation.error && <ErrorNotice error={mutation.error} />}
+            <Button
+              type="submit"
+              disabled={mutation.isPending || !changeRequest.feedback.trim()}
+            >
+              Send change request
+            </Button>
+          </form>
+        </Modal>
+      )}
       <div className="conversation-main">
         <header className="conversation-thread-heading">
           <div className="conversation-heading-title">
@@ -565,7 +621,11 @@ export function WorkConversation({
                     variant="outline"
                     size="sm"
                     disabled={mutation.isPending}
-                    onClick={() => mutation.mutate("request-changes")}
+                    onClick={() => {
+                      if (!latest) return;
+                      mutation.reset();
+                      setChangeRequest({ attempt: latest.id, feedback: "" });
+                    }}
                   >
                     Request changes
                   </Button>
@@ -574,6 +634,12 @@ export function WorkConversation({
             )}
           </div>
         </header>
+        {(workspaceOpen ? fileAttempt : latest)?.review_feedback && (
+          <div className="task-guidance whitespace-pre-wrap">
+            <strong>Requested changes</strong>
+            <div>{(workspaceOpen ? fileAttempt : latest)?.review_feedback}</div>
+          </div>
+        )}
         <div
           className="thread-workspace-tools"
           role="group"

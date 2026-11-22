@@ -134,7 +134,7 @@ func TestWorkExecutionRecoveryReviewAndRetry(t *testing.T) {
 	if err != nil || len(attempts) != 1 || len(attempts[0].Artifacts) != 1 || !strings.Contains(attempts[0].Artifacts[0].ContentURL, first.WorkItemID) {
 		t.Fatal(attempts, err)
 	}
-	if _, err = repo.ReviewRevisionBy(ctx, item.ProjectID, item.ID, "changes_requested", first.ID, "", time.Now()); err != nil {
+	if _, err = repo.ReviewRevisionBy(ctx, item.ProjectID, item.ID, "changes_requested", first.ID, "", "Check the output", time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	attempts, err = repo.Attempts(ctx, item.ProjectID, item.ID)
@@ -153,7 +153,7 @@ func TestWorkExecutionRecoveryReviewAndRetry(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err = repo.ReviewRevisionBy(ctx, item.ProjectID, item.ID, "accepted", retry.ID, "", time.Now()); !errors.Is(err, ErrConflict) {
+	if _, err = repo.ReviewRevisionBy(ctx, item.ProjectID, item.ID, "accepted", retry.ID, "", "", time.Now()); !errors.Is(err, ErrConflict) {
 		t.Fatal("failed publication accepted", err)
 	}
 	agent.failArtifacts = false

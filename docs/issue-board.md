@@ -1,6 +1,6 @@
 # Plan and sync project tasks
 
-Use **Overview** to manage the project's task list. Filter by work scope or assignee. Select **Needs attention** to find work that needs intervention. Use **Archive** to switch to archived tasks.
+Use **Overview** to manage the project's task list. Filter by work scope or assignee. Select **For me** to see open tasks you own or control and reviews assigned to you. Select **Needs attention** to find tasks that need intervention, including tasks with unfinished dependencies. Open a task to see the status of each dependency. Turn on **Wait for dependencies before running** for work that needs all its prerequisites complete, such as acceptance testing. Use **Archive** to switch to archived tasks.
 
 ## Create and dispatch a task
 

@@ -80,7 +80,7 @@ func (s *Server) registerBoard(mux *http.ServeMux) {
 			return
 		}
 		p, _ := r.Context().Value(principalKey{}).(principal)
-		work, created, err := s.Store.CreatePlannedTask(r.Context(), in, p.human.ID, s.now())
+		work, created, err := s.Store.CreatePlannedTask(r.Context(), in, p.human.ID, nil, s.now())
 		if err != nil {
 			workError(w, err)
 			return
@@ -123,17 +123,18 @@ func (s *Server) registerBoard(mux *http.ServeMux) {
 	})
 	handle := func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
-			OwnerID      *string   `json:"owner_id"`
-			Owner        *string   `json:"owner"`
-			Priority     *string   `json:"priority"`
-			Dependencies *[]string `json:"dependencies"`
-			DiscardLocal bool      `json:"discard_local"`
-			ProjectID    string    `json:"project_id"`
-			Revision     int       `json:"revision"`
-			Stage        string    `json:"stage"`
-			Title        *string   `json:"title"`
-			Description  *string   `json:"description"`
-			Direction    string    `json:"direction"`
+			OwnerID             *string   `json:"owner_id"`
+			Owner               *string   `json:"owner"`
+			Priority            *string   `json:"priority"`
+			RequireDependencies *bool     `json:"require_dependencies"`
+			Dependencies        *[]string `json:"dependencies"`
+			DiscardLocal        bool      `json:"discard_local"`
+			ProjectID           string    `json:"project_id"`
+			Revision            int       `json:"revision"`
+			Stage               string    `json:"stage"`
+			Title               *string   `json:"title"`
+			Description         *string   `json:"description"`
+			Direction           string    `json:"direction"`
 		}
 		if !decodeRouteBody(w, r, &in) || !s.AuthorizeProject(w, r, in.ProjectID) {
 			return
@@ -218,6 +219,9 @@ func (s *Server) registerBoard(mux *http.ServeMux) {
 					return
 				}
 				b.Priority = *in.Priority
+			}
+			if in.RequireDependencies != nil {
+				b.RequireDependencies = *in.RequireDependencies
 			}
 			if in.Dependencies != nil {
 				if len(*in.Dependencies) > 32 {

@@ -5,6 +5,7 @@ import (
 	"agent-workbench/internal/store"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -42,8 +43,14 @@ func TestForgeConnectionsArePlatformResources(t *testing.T) {
 	}
 }
 
-func TestForgeImportIsPrivateDraftAndDeduplicated(t *testing.T) {
+func TestForgeImportPlansAtCapacityAndDeduplicates(t *testing.T) {
 	s, _ := setup(t)
+	s.cfg.MaxRunning = 1
+	occupant := create(t, s, "occupied")
+	workerPath := "/v1/workspaces/" + occupant.ID
+	if got := request(t, s, "POST", workerPath+"/start", `{"idempotency_key":"start-occupant"}`); got.Code != 200 {
+		t.Fatal(got.Code, got.Body)
+	}
 	remote := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("PRIVATE-TOKEN") != "private-token" {
 			t.Error("missing authentication")
@@ -69,7 +76,7 @@ func TestForgeImportIsPrivateDraftAndDeduplicated(t *testing.T) {
 		if response.Code != status || json.Unmarshal(response.Body.Bytes(), &item) != nil {
 			t.Fatal(response.Code, response.Body)
 		}
-		if item.State != "draft" || strings.Contains(response.Body.String(), "private-token") || strings.Contains(response.Body.String(), "Private requirement") {
+		if item.State != "planned" || item.WorkspaceID != "" || item.SpecificationPath != "" || strings.Contains(response.Body.String(), "private-token") || strings.Contains(response.Body.String(), "Private requirement") {
 			t.Fatal(response.Body)
 		}
 		if i == 0 {
@@ -78,8 +85,28 @@ func TestForgeImportIsPrivateDraftAndDeduplicated(t *testing.T) {
 			t.Fatal("duplicate work created")
 		}
 	}
+	workers, err := s.Store.Workspaces(t.Context())
+	if err != nil || len(workers) != 1 {
+		t.Fatal("import allocated a worker", len(workers), err)
+	}
+	board, err := s.Store.BoardItem(t.Context(), "default", first.ID)
+	if err != nil || board.Source == nil || board.Source.Number != 12 {
+		t.Fatal("import lost its issue link", board, err)
+	}
+	start := "/v1/board/" + first.ID + "/start"
+	body := fmt.Sprintf(`{"project_id":"default","revision":%d}`, board.Revision)
+	if got := request(t, s, "POST", start, body); got.Code != 429 {
+		t.Fatal("dispatch should wait for worker capacity", got.Code, got.Body)
+	}
+	if got := request(t, s, "POST", workerPath+"/stop", `{"idempotency_key":"stop-occupant"}`); got.Code != 200 {
+		t.Fatal(got.Code, got.Body)
+	}
+	if got := request(t, s, "POST", start, body); got.Code != 202 {
+		t.Fatal(got.Code, got.Body)
+	}
 	response := request(t, s, "GET", "/v1/work-items/"+first.ID+"/instruction?project_id=default", "")
-	if response.Code != 200 || !strings.Contains(response.Body.String(), "Private requirement") {
+	if response.Code != 200 || !strings.Contains(response.Body.String(), "Private requirement") ||
+		!strings.Contains(response.Body.String(), "https://example.test/issue/12") {
 		t.Fatal(response.Code, response.Body)
 	}
 }

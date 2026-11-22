@@ -3,6 +3,7 @@ package api
 import (
 	"agent-workbench/internal/orchestration"
 	"agent-workbench/internal/shared"
+	"agent-workbench/internal/store"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -72,6 +73,9 @@ func (s *Server) registerBoardStart(mux *http.ServeMux) {
 			shared.Error(w, 400, "INVALID_REQUEST")
 			return
 		}
+		if !s.checkWorkDependencies(w, r, repo, b) {
+			return
+		}
 		old, _ := json.Marshal(item)
 		if in.Selection != nil {
 			item.Provider, item.Model, item.ReasoningEffort = in.Selection.Provider, in.Selection.Model, in.Selection.ReasoningEffort
@@ -126,6 +130,9 @@ func (s *Server) registerBoardStart(mux *http.ServeMux) {
 		}
 		if publish {
 			content := "# " + b.Title + "\n\n"
+			if b.Source != nil {
+				content += fmt.Sprintf("Source: %s\nRepository: %s\n\n", b.Source.URL, b.Source.Repository)
+			}
 			if b.Description != nil {
 				content += *b.Description
 			}
@@ -177,4 +184,27 @@ func (s *Server) registerBoardStart(mux *http.ServeMux) {
 		}
 		shared.JSON(w, 202, attempt)
 	})
+}
+
+func (s *Server) checkWorkDependencies(w http.ResponseWriter, r *http.Request, repo orchestration.Repository, card store.BoardItem) bool {
+	if !card.RequireDependencies {
+		return true
+	}
+	for _, id := range card.Dependencies {
+		item, err := repo.Work(r.Context(), card.ProjectID, id)
+		if err != nil {
+			workError(w, err)
+			return false
+		}
+		dependency, err := s.Store.BoardItem(r.Context(), card.ProjectID, id)
+		if err != nil {
+			workError(w, err)
+			return false
+		}
+		if dependency.Effective(item).RemoteState() != "closed" {
+			shared.Error(w, http.StatusConflict, "WORK_DEPENDENCIES_PENDING")
+			return false
+		}
+	}
+	return true
 }

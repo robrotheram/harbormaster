@@ -128,6 +128,14 @@ func (s *Server) registerWorkConversation(mux *http.ServeMux, repo orchestration
 			shared.Error(w, 409, "WORK_STATE_CONFLICT")
 			return
 		}
+		card, err := s.Store.BoardItem(r.Context(), in.ProjectID, item.ID)
+		if err != nil {
+			workError(w, err)
+			return
+		}
+		if !s.checkWorkDependencies(w, r, repo, card) {
+			return
+		}
 		ws, err := s.Store.Workspace(r.Context(), item.WorkspaceID)
 		if err != nil || !s.workspaceInProject(ws, in.ProjectID) {
 			shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")

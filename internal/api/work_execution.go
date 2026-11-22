@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 )
 
 func workError(w http.ResponseWriter, err error) {
@@ -62,6 +63,14 @@ func (s *Server) registerWorkExecution(mux *http.ServeMux, repo orchestration.Re
 		item, err := repo.Work(r.Context(), in.ProjectID, id)
 		if err != nil {
 			workError(w, err)
+			return
+		}
+		card, err := s.Store.BoardItem(r.Context(), in.ProjectID, item.ID)
+		if err != nil {
+			workError(w, err)
+			return
+		}
+		if !s.checkWorkDependencies(w, r, repo, card) {
 			return
 		}
 		provider := item.Provider
@@ -159,6 +168,7 @@ func (s *Server) registerWorkExecution(mux *http.ServeMux, repo orchestration.Re
 			ProjectID         string `json:"project_id"`
 			Accepted          *bool  `json:"accepted"`
 			Decision          string `json:"decision,omitempty"`
+			Feedback          string `json:"feedback,omitempty"`
 			ExpectedAttemptID string `json:"expected_attempt_id"`
 		}
 		if !decodeRouteBody(w, r, &in) || !s.AuthorizeProject(w, r, in.ProjectID) {
@@ -194,7 +204,15 @@ func (s *Server) registerWorkExecution(mux *http.ServeMux, repo orchestration.Re
 		} else if *in.Accepted {
 			decision = "accepted"
 		}
-		item, err := repo.ReviewRevisionBy(r.Context(), in.ProjectID, r.PathValue("id"), decision, in.ExpectedAttemptID, actor.human.ID, s.now())
+		feedback := strings.TrimSpace(in.Feedback)
+		if decision == "changes_requested" && (feedback == "" || len(feedback) > 4000) {
+			shared.Error(w, 400, "REVIEW_FEEDBACK_REQUIRED")
+			return
+		}
+		if decision != "changes_requested" {
+			feedback = ""
+		}
+		item, err := repo.ReviewRevisionBy(r.Context(), in.ProjectID, r.PathValue("id"), decision, in.ExpectedAttemptID, actor.human.ID, feedback, s.now())
 		if err != nil {
 			workError(w, err)
 			return

@@ -26,6 +26,8 @@ import { columns } from "./board-api";
 import type { BoardCard, BoardStage } from "./board-api";
 
 export type TaskChange = {
+  revision?: number;
+  require_dependencies?: boolean;
   title?: string;
   description?: string;
   stage?: BoardStage;
@@ -74,7 +76,20 @@ export function TaskDetails({
   const [editing, setEditing] = useState(false),
     [title, setTitle] = useState(""),
     [description, setDescription] = useState(""),
-    [preview, setPreview] = useState(false);
+    [preview, setPreview] = useState(false),
+    [editBase, setEditBase] = useState<{
+      revision: number;
+      title: string;
+      description: string;
+    }>();
+  const staleEdit = editBase?.revision !== card.revision;
+  const loadDraft = () => {
+    const title = card.title || "";
+    setEditBase({ revision: card.revision, title, description: content });
+    setTitle(title);
+    setDescription(content);
+    setPreview(false);
+  };
   const save = async (change: TaskChange) => {
     try {
       await onSave(change);
@@ -134,9 +149,7 @@ export function TaskDetails({
               busy || (card.description === undefined && instruction.isFetching)
             }
             onClick={() => {
-              setTitle(card.title || "");
-              setDescription(content);
-              setPreview(false);
+              loadDraft();
               setEditing(true);
             }}
           >
@@ -197,7 +210,20 @@ export function TaskDetails({
               className="task-edit-form"
               onSubmit={async (e) => {
                 e.preventDefault();
-                if (await save({ title: title.trim(), description }))
+                if (!editBase || staleEdit) return;
+                if (
+                  await save({
+                    revision: editBase.revision,
+                    title:
+                      title.trim() !== editBase.title
+                        ? title.trim()
+                        : undefined,
+                    description:
+                      description !== editBase.description
+                        ? description
+                        : undefined,
+                  })
+                )
                   setEditing(false);
               }}
             >
@@ -242,7 +268,30 @@ export function TaskDetails({
                 Markdown supported
               </small>
               <div className="task-edit-actions">
-                <Button type="submit" disabled={busy || !title.trim()}>
+                {staleEdit && (
+                  <div role="status">
+                    The task changed while you were editing. Copy any draft text
+                    you want to keep before loading the latest version.
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={busy}
+                      onClick={loadDraft}
+                    >
+                      Load latest and discard draft
+                    </Button>
+                  </div>
+                )}
+                <Button
+                  type="submit"
+                  disabled={
+                    busy ||
+                    staleEdit ||
+                    !title.trim() ||
+                    (title.trim() === editBase?.title &&
+                      description === editBase?.description)
+                  }
+                >
                   Save changes
                 </Button>
                 <Button
@@ -320,6 +369,17 @@ export function TaskDetails({
           </section>
           <section>
             <h3>Dependencies</h3>
+            <label className="task-activity-detail">
+              <input
+                type="checkbox"
+                checked={card.require_dependencies || false}
+                disabled={busy}
+                onChange={(event) =>
+                  void save({ require_dependencies: event.target.checked })
+                }
+              />
+              Wait for dependencies before running
+            </label>
             <div className="task-dependencies">
               {dependencies.map((dep) => (
                 <div className="task-dependency" key={dep.id}>
@@ -331,6 +391,11 @@ export function TaskDetails({
                     <span>{taskReference(dep)}</span>
                     {dep.title || "Untitled task"}
                   </Link>
+                  <span className="task-activity-detail">
+                    {dep.stage === "done" || dep.archived_from === "done"
+                      ? "Done"
+                      : teamActivity(dep)}
+                  </span>
                   <button
                     disabled={busy}
                     aria-label={`Remove dependency ${taskReference(dep)}`}

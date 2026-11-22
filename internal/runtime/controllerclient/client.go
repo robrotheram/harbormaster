@@ -109,6 +109,10 @@ func (c *Client) StartConfigured(ctx context.Context, id string, spec protocol.W
 		return o, e
 	}
 	if s != 200 {
+		var failure shared.APIError
+		if s == http.StatusServiceUnavailable && json.Unmarshal(b, &failure) == nil && failure.Code == protocol.DockerAddressPoolExhausted {
+			return o, shared.CodedError{Status: s, Code: failure.Code}
+		}
 		return o, fmt.Errorf("runtime start refused: %d", s)
 	}
 	e = json.Unmarshal(b, &o)

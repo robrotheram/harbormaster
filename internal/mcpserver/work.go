@@ -48,6 +48,7 @@ type WorkReview struct {
 	ID                string `json:"id"`
 	Accepted          bool   `json:"accepted"`
 	ExpectedAttemptID string `json:"expected_attempt_id"`
+	Feedback          string `json:"feedback,omitempty"`
 }
 
 func registerWorkExecutionTools(s *mcp.Server, c *controlClient) {
@@ -65,8 +66,8 @@ func registerWorkExecutionTools(s *mcp.Server, c *controlClient) {
 		err = c.do(ctx, "POST", "/v1/work-items/"+url.PathEscape(in.ID)+"/cancel", map[string]string{"project_id": in.ProjectID}, &out)
 		return
 	})
-	add(s, "work_review", "Accept or reject retained execution evidence.", func(ctx context.Context, in WorkReview) (out shared.WorkItem, err error) {
-		err = c.do(ctx, "POST", "/v1/work-items/"+url.PathEscape(in.ID)+"/review", map[string]any{"project_id": in.ProjectID, "accepted": in.Accepted, "expected_attempt_id": in.ExpectedAttemptID}, &out)
+	add(s, "work_review", "Accept a revision or request changes with feedback.", func(ctx context.Context, in WorkReview) (out shared.WorkItem, err error) {
+		err = c.do(ctx, "POST", "/v1/work-items/"+url.PathEscape(in.ID)+"/review", map[string]any{"project_id": in.ProjectID, "accepted": in.Accepted, "expected_attempt_id": in.ExpectedAttemptID, "feedback": in.Feedback}, &out)
 		return
 	})
 }

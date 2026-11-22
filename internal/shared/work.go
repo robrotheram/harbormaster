@@ -30,8 +30,9 @@ type WorkItem struct {
 	UpdatedAt           time.Time        `json:"updated_at"`
 }
 
-// WorkAttempt stores references only; artifact bytes remain in the workspace.
+// WorkAttempt stores execution and review metadata; artifact bytes remain in the workspace.
 type WorkAttempt struct {
+	ReviewFeedback      string         `json:"review_feedback,omitempty"`
 	ReviewedBy          string         `json:"reviewed_by,omitempty"`
 	Provider            string         `json:"provider,omitempty"`
 	Model               string         `json:"model,omitempty"`

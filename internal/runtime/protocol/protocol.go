@@ -14,6 +14,8 @@ import (
 	"agent-workbench/internal/shared"
 )
 
+const DockerAddressPoolExhausted = "DOCKER_ADDRESS_POOL_EXHAUSTED"
+
 // APIError is an unsuccessful response from a provider API, not a workspace error.
 type APIError struct{ Status int }
 

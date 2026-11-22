@@ -57,7 +57,7 @@ var managementRoutes = []managementRoute{
 	{http.MethodPost, "/v1/work-items/{id}/responsibility", 4096, 4096, noSharedHuman},
 	{http.MethodPost, "/v1/work-items/{id}/run", 4096, 2048, noSharedHuman},
 	{http.MethodPost, "/v1/work-items/{id}/cancel", 4096, 1024, noSharedHuman},
-	{http.MethodPost, "/v1/work-items/{id}/review", 4096, 1024, noSharedHuman},
+	{http.MethodPost, "/v1/work-items/{id}/review", 8192, 1024, noSharedHuman},
 	{http.MethodPost, "/v1/work-items/{id}/continue", 6 << 20, 6 << 20, noSharedHuman},
 	{http.MethodPost, "/v1/work-items/{id}/image", 4096, 2048, noSharedHuman},
 	{http.MethodPost, "/v1/work-items/{id}/data", 4096, 2048, noSharedHuman},

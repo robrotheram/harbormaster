@@ -15,20 +15,21 @@ var ErrBoardConflict = errors.New("board revision conflict")
 // BoardItem stores user-visible planning metadata separately from execution.
 // Mutable ticket descriptions are separate from immutable execution instructions.
 type BoardItem struct {
-	Number         int          `json:"number,omitempty"`
-	OwnerID        string       `json:"owner_id,omitempty"`
-	Owner          string       `json:"owner,omitempty"`
-	Priority       string       `json:"priority,omitempty"`
-	Dependencies   []string     `json:"dependencies,omitempty"`
-	Description    *string      `json:"description,omitempty"`
-	ArchivedFrom   string       `json:"archived_from,omitempty"`
-	ID             string       `json:"id"`
-	ProjectID      string       `json:"project_id"`
-	Revision       int          `json:"revision"`
-	Stage          string       `json:"stage"`
-	ExecutionState string       `json:"execution_state"`
-	Title          string       `json:"title,omitempty"`
-	Source         *BoardSource `json:"source,omitempty"`
+	Number              int          `json:"number,omitempty"`
+	OwnerID             string       `json:"owner_id,omitempty"`
+	Owner               string       `json:"owner,omitempty"`
+	Priority            string       `json:"priority,omitempty"`
+	RequireDependencies bool         `json:"require_dependencies,omitempty"`
+	Dependencies        []string     `json:"dependencies,omitempty"`
+	Description         *string      `json:"description,omitempty"`
+	ArchivedFrom        string       `json:"archived_from,omitempty"`
+	ID                  string       `json:"id"`
+	ProjectID           string       `json:"project_id"`
+	Revision            int          `json:"revision"`
+	Stage               string       `json:"stage"`
+	ExecutionState      string       `json:"execution_state"`
+	Title               string       `json:"title,omitempty"`
+	Source              *BoardSource `json:"source,omitempty"`
 }
 type BoardSource struct {
 	Description  *string `json:"description,omitempty"`

@@ -2,6 +2,7 @@ package controllerclient
 
 import (
 	"agent-workbench/internal/runtime/protocol"
+	"agent-workbench/internal/shared"
 	"context"
 	"encoding/json"
 	"errors"
@@ -85,5 +86,18 @@ func TestArtifactTransferHasSeparateResponseBudget(t *testing.T) {
 	}
 	if _, _, err = client.Agent(context.Background(), "ws_one", "GET", "/v1/tasks/task_one/result", nil); err == nil {
 		t.Fatal("metadata response budget widened")
+	}
+}
+
+func TestStartPreservesDockerAddressPoolError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		shared.Error(w, http.StatusServiceUnavailable, protocol.DockerAddressPoolExhausted)
+	}))
+	defer server.Close()
+
+	_, err := NewClient(server.URL, "controller-token").StartConfigured(t.Context(), "ws_one", protocol.WorkspaceSpec{})
+	var failure shared.CodedError
+	if !errors.As(err, &failure) || failure.Status != http.StatusServiceUnavailable || failure.Code != protocol.DockerAddressPoolExhausted {
+		t.Fatal("start lost Docker address pool error", err)
 	}
 }

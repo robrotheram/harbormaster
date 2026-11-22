@@ -15,7 +15,7 @@ import (
 
 // CreatePlannedTask saves editable planning content without allocating compute.
 // The API claims the request fingerprint before this transaction; retries retain edits.
-func (s *Store) CreatePlannedTask(ctx context.Context, in shared.BoardCreate, actor string, now time.Time) (shared.WorkItem, bool, error) {
+func (s *Store) CreatePlannedTask(ctx context.Context, in shared.BoardCreate, actor string, source *BoardSource, now time.Time) (shared.WorkItem, bool, error) {
 	var item shared.WorkItem
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -35,7 +35,10 @@ func (s *Store) CreatePlannedTask(ctx context.Context, in shared.BoardCreate, ac
 	if _, err = tx.ExecContext(ctx, `INSERT INTO work_items(id,project_id,create_key,metadata) VALUES($1,$2,$3,$4)`, item.ID, item.ProjectID, in.IdempotencyKey, string(data)); err != nil {
 		return item, false, err
 	}
-	board := BoardItem{ID: item.ID, ProjectID: item.ProjectID, Stage: "planned", ExecutionState: "planned", Title: in.Title, Description: &in.Description, Priority: "normal"}
+	board := BoardItem{ID: item.ID, ProjectID: item.ProjectID, Stage: "planned", ExecutionState: "planned", Title: in.Title, Description: &in.Description, Priority: "normal", Source: source}
+	if source != nil && source.State == "closed" {
+		board.Stage = "done"
+	}
 	if err = s.saveBoardItem(ctx, tx, board, 0); err != nil {
 		return item, false, err
 	}

@@ -4,6 +4,7 @@ import (
 	"agent-workbench/internal/shared"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -143,5 +144,35 @@ func TestStartPlannedTaskRetainsIdentityAndRetriesOneAttempt(t *testing.T) {
 	got = humanRequest(t, s, "alice@example.com", "GET", "/v1/work-items/"+c.ID+"/instruction?project_id="+p.ID, "")
 	if got.Code != 200 {
 		t.Fatal("instruction not prepared", got.Code, got.Body)
+	}
+}
+
+func TestRequiredDependenciesGateDispatch(t *testing.T) {
+	s, _ := setup(t)
+	p, cards := sampleForOverview(t, s)
+	prerequisite, dependent := cards[0], cards[1]
+	save := func(id string, body string) boardCard {
+		t.Helper()
+		got := request(t, s, "POST", "/v1/board/"+id, body)
+		var updated boardCard
+		if got.Code != 200 || json.Unmarshal(got.Body.Bytes(), &updated) != nil {
+			t.Fatal(got.Code, got.Body)
+		}
+		return updated
+	}
+	dependent = save(dependent.ID, fmt.Sprintf(`{"project_id":%q,"revision":%d,"stage":"planned","require_dependencies":true,"dependencies":[%q]}`,
+		p.ID, dependent.Revision, prerequisite.ID))
+	path := "/v1/board/" + dependent.ID + "/start"
+	body := fmt.Sprintf(`{"project_id":%q,"revision":%d}`, p.ID, dependent.Revision)
+	if got := request(t, s, "POST", path, body); got.Code != 409 || !strings.Contains(got.Body.String(), "WORK_DEPENDENCIES_PENDING") {
+		t.Fatal(got.Code, got.Body)
+	}
+	workers, err := s.Store.Workspaces(t.Context())
+	if err != nil || len(workers) != 0 {
+		t.Fatal("blocked start allocated a worker", workers, err)
+	}
+	save(prerequisite.ID, fmt.Sprintf(`{"project_id":%q,"revision":%d,"stage":"done"}`, p.ID, prerequisite.Revision))
+	if got := request(t, s, "POST", path, body); got.Code != 202 {
+		t.Fatal(got.Code, got.Body)
 	}
 }

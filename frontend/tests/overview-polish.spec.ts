@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-async function overview(page: Page, canStart = true) {
-  const cards = [
+function overviewCards() {
+  return [
     {
       id: "work_search",
       number: 2,
@@ -44,6 +44,15 @@ async function overview(page: Page, canStart = true) {
       updated_at: "2026-11-17T10:00:00Z",
     },
   }));
+}
+
+async function overview(
+  page: Page,
+  canStart = true,
+  userId = "alice",
+  cards = overviewCards(),
+  otherMembers: string[] = [],
+) {
   const requests: string[] = [];
   const edits: Record<string, unknown>[] = [];
   let failEdit = true;
@@ -52,7 +61,7 @@ async function overview(page: Page, canStart = true) {
     r.fulfill({
       json: {
         status: "authenticated",
-        user: { id: "alice", email: "alice@example.com", name: "Alice" },
+        user: { id: userId, email: `${userId}@example.com`, name: userId },
       },
     }),
   );
@@ -77,7 +86,7 @@ async function overview(page: Page, canStart = true) {
       return r.fulfill({
         json: {
           can_manage: true,
-          user_id: "alice",
+          user_id: userId,
           items: [
             {
               user_id: "alice",
@@ -91,6 +100,12 @@ async function overview(page: Page, canStart = true) {
               role: "member",
               status: "active",
             },
+            ...otherMembers.map((id) => ({
+              user_id: id,
+              email: `${id}@example.com`,
+              role: "member",
+              status: "active",
+            })),
             {
               user_id: "pending",
               email: "pending@example.com",
@@ -499,4 +514,163 @@ test("activity pills distinguish execution states in both themes", async ({
       });
     }
   }
+});
+
+test("four project members see their own handoffs while the board refreshes", async ({
+  browser,
+  baseURL,
+}) => {
+  const cards = overviewCards();
+  const [search, keyboard, welcome] = cards;
+  Object.assign(welcome, { owner: "alice@example.com", owner_id: "alice" });
+  Object.assign(welcome.work, { controller_id: "architect" });
+  Object.assign(search, { owner: "alice@example.com", owner_id: "alice" });
+  Object.assign(search.work, {
+    controller_id: "alice",
+    reviewer_id: "bob",
+    state: "awaiting_review",
+    latest_attempt_id: "attempt_review",
+  });
+  Object.assign(keyboard, {
+    title: "Accept the integrated result",
+    require_dependencies: true,
+    owner: "tester@example.com",
+    owner_id: "tester",
+  });
+  Object.assign(keyboard.work, { controller_id: "tester" });
+
+  const actors = ["architect", "alice", "bob", "tester"];
+  const pages = await Promise.all(
+    actors.map(() => browser.newPage({ baseURL })),
+  );
+  try {
+    await Promise.all(
+      pages.map(async (page, index) => {
+        await overview(page, true, actors[index], cards, [
+          "architect",
+          "tester",
+        ]);
+        await page.goto("/app/projects/A/team");
+        await page.getByRole("button", { name: /^For me/ }).click();
+      }),
+    );
+    const [architect, author, reviewer, tester] = pages;
+    await expect(architect.locator(".team-table tbody tr")).toHaveCount(1);
+    await expect(architect.locator(".team-table")).toContainText(welcome.title);
+    await expect(author.locator(".team-table tbody tr")).toHaveCount(2);
+    await expect(author.locator(".team-table")).toContainText(
+      "Controller: architect@example.com",
+    );
+    await expect(
+      author.getByRole("link", { name: "View review", exact: true }),
+    ).toBeVisible();
+    await expect(reviewer.locator(".team-table tbody tr")).toHaveCount(1);
+    await expect(reviewer.locator(".team-table")).toContainText(
+      "Reviewer: You",
+    );
+    await expect(
+      reviewer.getByRole("link", { name: "Review", exact: true }),
+    ).toBeVisible();
+    await expect(reviewer.locator(".team-table")).toContainText(
+      "1 unfinished dependency",
+    );
+    await expect(tester.locator(".team-table tbody tr")).toHaveCount(1);
+    await expect(tester.locator(".team-table")).toContainText(keyboard.title);
+    await expect(tester.locator(".team-table")).toContainText(
+      "1 required, unfinished dependency",
+    );
+    await expect(
+      tester.getByRole("button", { name: "Start work" }),
+    ).toBeDisabled();
+
+    Object.assign(welcome, { stage: "done" });
+    Object.assign(welcome.work, { state: "completed" });
+    await reviewer.bringToFront();
+    await expect(reviewer.locator(".team-table")).not.toContainText(
+      "unfinished dependency",
+      { timeout: 10_000 },
+    );
+    Object.assign(search.work, { state: "changes_requested" });
+    await author.bringToFront();
+    await expect(
+      author.getByRole("link", { name: "Revise", exact: true }),
+    ).toBeVisible({ timeout: 10_000 });
+    await reviewer.bringToFront();
+    await expect(reviewer.locator(".team-table tbody tr")).toHaveCount(0, {
+      timeout: 10_000,
+    });
+
+    Object.assign(search, { stage: "done" });
+    Object.assign(search.work, { state: "completed" });
+    await tester.bringToFront();
+    await expect(tester.locator(".team-table")).not.toContainText(
+      "unfinished dependency",
+      { timeout: 10_000 },
+    );
+    await expect(
+      tester.getByRole("button", { name: "Start work" }),
+    ).toBeEnabled();
+  } finally {
+    await Promise.all(pages.map((page) => page.close()));
+  }
+});
+
+test("retrying a stale task edit preserves another member's saved description", async ({
+  page,
+}) => {
+  const fixture = await overview(page);
+  const card = fixture.cards[0];
+  await page.goto("/app/projects/A/team?work=" + card.id);
+  const details = page.getByRole("dialog");
+  await details.getByRole("button", { name: "Edit", exact: true }).click();
+  await details
+    .getByRole("textbox", { name: "Task title" })
+    .fill("Updated title");
+
+  await page.route(
+    "**/ui-api/board/" + card.id,
+    async (route) => {
+      if (route.request().method() === "POST") {
+        expect(route.request().postDataJSON()).toMatchObject({
+          revision: 1,
+          title: "Updated title",
+        });
+        expect(route.request().postDataJSON()).not.toHaveProperty(
+          "description",
+        );
+        card.description = "Description saved by another member.";
+        card.revision++;
+        return route.fulfill({
+          status: 409,
+          json: { code: "BOARD_REVISION_CONFLICT" },
+        });
+      }
+      return route.fallback();
+    },
+    { times: 1 },
+  );
+
+  const save = details.getByRole("button", { name: "Save changes" });
+  await save.click();
+  await expect(save).toBeDisabled();
+  await expect(
+    details.getByRole("textbox", { name: "Task title" }),
+  ).toHaveValue("Updated title");
+  await details
+    .getByRole("button", { name: "Load latest and discard draft" })
+    .click();
+  await expect(
+    details.getByRole("textbox", { name: "Task description" }),
+  ).toHaveValue("Description saved by another member.");
+  await details
+    .getByRole("textbox", { name: "Task title" })
+    .fill("Updated title");
+  await save.click();
+  // The shared fixture fails its first title save so its recovery path is also exercised.
+  await expect(details.getByRole("alert")).toBeVisible();
+  await save.click();
+  await expect(
+    details.getByRole("heading", { name: "Updated title" }),
+  ).toBeVisible();
+  expect(card.description).toBe("Description saved by another member.");
 });

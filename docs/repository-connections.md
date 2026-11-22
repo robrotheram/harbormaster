@@ -89,11 +89,11 @@ milestones, create a ticket, or close/reopen one. GitHub pull requests are exclu
 **Open in provider** opens the provider's richer editing interface.
 
 Choose a destination project before importing a ticket.
-**Import to factory** creates a planned software work item, with the issue title,
-source URL and description in its private workspace specification. It does not
-start execution. Open the imported work to run it. Repeating the import of an
-unchanged ticket on the same connection returns the same work item. Repeating an import preserves the existing work specification. Use board sync to
-refresh title/description/status and continue the existing conversation with new requirements.
+**Import to factory** creates a planned software task with the issue title,
+description, and source URL. Importing needs no worker capacity. **Start work**
+allocates a worker and publishes the task as instructions for the agent.
+Repeating an import returns the same task and preserves local edits. Use board
+sync to refresh the title, description, or status from the repository.
 A disconnected/recreated connection has a new identity.
 
 You can also import selected issues from **Overview**. Use the task details to sync or refresh imported fields. See [project task sync](issue-board.md#import-and-sync-repository-issues) for conflict handling.

@@ -196,31 +196,32 @@ func (s *Server) registerForges(mux *http.ServeMux) {
 				writeForgeError(w, http.StatusBadGateway, e)
 				return
 			}
-			status := 200
+			source := &store.BoardSource{ConnectionID: c.ID, Repository: c.Repository, Number: number, URL: issue.URL, Title: issue.Title, Description: &issue.Body, State: issue.State, SyncedAt: s.now().UTC().Format(time.RFC3339)}
 			if errors.Is(lookupErr, sql.ErrNoRows) {
-				instruction := fmt.Sprintf("# %s\n\nSource: %s\nRepository: %s\n\n%s", issue.Title, issue.URL, c.Repository, issue.Body)
 				actor, _ := r.Context().Value(principalKey{}).(principal)
-				var created bool
-				item, created, e = s.createWorkItem(r.Context(), actor, workItemCreate{ProjectID: project, Kind: "software", Instruction: &instruction, Key: key})
+				planned := shared.BoardCreate{ProjectID: project, Kind: "software", Title: issue.Title, Description: issue.Body, IdempotencyKey: key}
+				item, created, e := s.Store.CreatePlannedTask(r.Context(), planned, actor.human.ID, source, s.now())
 				if e != nil {
-					w.Header().Set("Content-Type", "application/json")
-					writeRequestErrorBody(w, e)
+					workError(w, e)
 					return
 				}
-				status = createStatus(created)
+				shared.JSON(w, createStatus(created), item)
+				return
 			}
+
+			// Finish linking any import interrupted before the old route saved its board source.
 			board = board.Effective(item)
 			board.Title = issue.Title
 			board.Description = &issue.Body
 			if board.Revision == 0 && issue.State == "closed" {
 				board.Stage = "done"
 			}
-			board.Source = &store.BoardSource{ConnectionID: c.ID, Repository: c.Repository, Number: number, URL: issue.URL, Title: issue.Title, Description: &issue.Body, State: issue.State, SyncedAt: s.now().UTC().Format(time.RFC3339)}
+			board.Source = source
 			if e = s.Store.SaveBoardItem(r.Context(), board, board.Revision); e != nil {
 				workError(w, e)
 				return
 			}
-			shared.JSON(w, status, item)
+			shared.JSON(w, 200, item)
 			return
 		}
 		if (number == 0 && strings.TrimSpace(input.Title) == "") || len(input.Title) > 256 || len(input.Body) > 65536 || (number > 0 && input.State != "open" && input.State != "closed") {

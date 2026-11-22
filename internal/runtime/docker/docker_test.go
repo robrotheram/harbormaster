@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"agent-workbench/internal/runtime/protocol"
 	"agent-workbench/internal/shared"
 	"bytes"
 	"encoding/json"
@@ -22,6 +23,7 @@ type fakeEngine struct {
 	created, running bool
 	createCount      int
 	removed          int
+	addressPoolFull  bool
 	spec             map[string]any
 	runtime, network string
 }
@@ -35,6 +37,11 @@ func (f *fakeEngine) handler(w http.ResponseWriter, r *http.Request) {
 	case r.Method == "GET" && strings.HasPrefix(path, "/networks/"):
 		http.Error(w, "missing", 404)
 	case r.Method == "POST" && path == "/networks/create":
+		if f.addressPoolFull {
+			w.WriteHeader(500)
+			io.WriteString(w, `{"message":"all predefined address pools have been fully subnetted"}`)
+			return
+		}
 		var b struct {
 			Name     string
 			Internal bool
@@ -124,6 +131,23 @@ func controllerRequest(c *Controller, method, path, token, body string) *httptes
 	c.Handler().ServeHTTP(w, r)
 	return w
 }
+func TestStartReportsAddressPoolExhaustionAndCanRetry(t *testing.T) {
+	c, engine := controller(t, false)
+	engine.addressPoolFull = true
+	start := "/v1/workspaces/ws_test/start"
+	body := `{"home_id":"home_test"}`
+	if got := controllerRequest(c, "POST", start, c.cfg.Token, body); got.Code != 503 ||
+		!strings.Contains(got.Body.String(), protocol.DockerAddressPoolExhausted) {
+		t.Fatal(got.Code, got.Body)
+	}
+	engine.mu.Lock()
+	engine.addressPoolFull = false
+	engine.mu.Unlock()
+	if got := controllerRequest(c, "POST", start, c.cfg.Token, body); got.Code != 200 {
+		t.Fatal("retry failed:", got.Code, got.Body)
+	}
+}
+
 func TestFixedExecutionProfileAndGrantRevocation(t *testing.T) {
 	c, engine := controller(t, false)
 	if r := controllerRequest(c, "POST", "/v1/workspaces/ws_test/start", "", ""); r.Code != 401 {

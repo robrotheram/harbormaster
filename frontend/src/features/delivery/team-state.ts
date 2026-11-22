@@ -11,20 +11,54 @@ export function teamActivity(card: BoardCard) {
   if (card.work.state === "in_progress") return "Ready to start";
   return label(workStatus(card.work.state));
 }
-export function teamAttention(card: BoardCard) {
-  if (card.source?.error) return "Resolve import sync failure";
-  if (card.work.state === "awaiting_review")
-    return "Reviewer needed · Review latest output";
-  if (
-    ["changes_requested", "failed", "blocked", "cancelled", "unknown"].includes(
-      card.work.state,
-    )
-  )
-    return `${card.owner || "Owner needed"} · Inspect run`;
-  if (card.dependencies?.length)
-    return `Dependencies: ${card.dependencies.join(", ")}`;
-  if (!card.owner && teamScope(card) !== "completed") return "Assign an owner";
-  return "—";
+export function pendingDependencies(
+  card: BoardCard,
+  cards: ReadonlyMap<string, BoardCard>,
+) {
+  return (card.dependencies || []).filter((id) => {
+    const dependency = cards.get(id);
+    return (
+      !dependency ||
+      !(
+        dependency.stage === "done" ||
+        dependency.archived_from === "done" ||
+        workFinished(dependency.work.state)
+      )
+    );
+  });
+}
+
+export function needsAttention(card: BoardCard, pending: number) {
+  return (
+    !!card.source?.error ||
+    (teamScope(card) !== "completed" &&
+      (pending > 0 ||
+        !card.owner ||
+        [
+          "awaiting_review",
+          "changes_requested",
+          "failed",
+          "blocked",
+          "cancelled",
+          "unknown",
+        ].includes(card.work.state)))
+  );
+}
+
+export function taskIsForMember(
+  card: BoardCard,
+  userId: string,
+  email: string,
+) {
+  return (
+    !!userId &&
+    teamScope(card) !== "completed" &&
+    (card.owner_id === userId ||
+      (!card.owner_id && assigneeKey(card) === email.toLowerCase()) ||
+      card.work.controller_id === userId ||
+      (card.work.state === "awaiting_review" &&
+        card.work.reviewer_id === userId))
+  );
 }
 
 export function inTaskScope(card: BoardCard, scope: string) {

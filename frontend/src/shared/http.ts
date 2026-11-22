@@ -27,6 +27,10 @@ const messages: Record<string, string> = {
     "Workbench could not verify the preview's status. Refresh and check the preview worker before trying again.",
   PREVIEW_RELEASE_NOT_CONFIRMED:
     "Workbench could not confirm that preview access has ended. Refresh its status, revoke access if it is still active, then release the environment again.",
+  WORK_DEPENDENCIES_PENDING:
+    "Finish the required dependencies before running this task.",
+  REVIEW_FEEDBACK_REQUIRED:
+    "Describe what needs to change before sending this review.",
   WORK_STATE_CONFLICT:
     "This work changed since you opened it. Reopen the conversation or review to inspect the latest result before trying again.",
   WORKSPACE_UNAVAILABLE:
@@ -200,6 +204,8 @@ const messages: Record<string, string> = {
     "This runtime cannot apply the requested network policy.",
   RUNTIME_CAPABILITIES_INCOMPATIBLE:
     "The runtime controller uses an incompatible capability format. Update the host controller to match the control plane, then check again.",
+  DOCKER_ADDRESS_POOL_EXHAUSTED:
+    "Docker has no free bridge subnets for a new worker. Ask an operator to free unused Docker networks or expand the address pools, then retry.",
   RUNTIME_UNAVAILABLE:
     "The runtime could not complete this request. Use the worker startup check or check Platform services before retrying.",
   SUBSCRIPTION_LIMIT_REACHED:

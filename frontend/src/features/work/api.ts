@@ -37,6 +37,7 @@ export type Attempt = {
   task_id?: string;
   parent_attempt_id?: string;
   review_state?: string;
+  review_feedback?: string;
   specification_path?: string;
   state: string;
   error_code?: string;
@@ -171,11 +172,13 @@ export const workApi = {
     id: string,
     accepted: boolean,
     expected_attempt_id?: string,
+    feedback?: string,
   ) =>
     request(path(id) + "/review", {
       project_id: project,
       accepted,
       expected_attempt_id,
+      feedback,
     }),
 };
 export const workOptions = (project: string) => ({

@@ -13,6 +13,7 @@ export type BoardCard = {
   owner?: string;
   priority?: string;
   dependencies?: string[];
+  require_dependencies?: boolean;
   id: string;
   project_id: string;
   revision: number;
@@ -56,6 +57,7 @@ export const boardApi = {
       owner_id?: string;
       priority?: string;
       dependencies?: string[];
+      require_dependencies?: boolean;
     },
   ) =>
     request<BoardCard>(`/board/${card.id}`, {

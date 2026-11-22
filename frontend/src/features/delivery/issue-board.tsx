@@ -39,7 +39,9 @@ import { boardApi, boardKey, boardOptions, type BoardCard } from "./board-api";
 import {
   activityTone,
   teamActivity,
-  teamAttention,
+  needsAttention,
+  pendingDependencies,
+  taskIsForMember,
   inTaskScope,
   assigneeKey,
 } from "./team-state";
@@ -67,9 +69,8 @@ function Board({ project }: { project: Project }) {
     title: c.title || titles.get(c.id),
   }));
   const roster = useQuery(memberOptions(project.id));
-  const me = roster.data?.items.find(
-    (member) => member.user_id === roster.data?.user_id,
-  );
+  const members = roster.data?.items || [];
+  const me = members.find((member) => member.user_id === roster.data?.user_id);
   const assigneeLabel = (card: BoardCard) =>
     card.owner &&
     me &&
@@ -77,15 +78,26 @@ function Board({ project }: { project: Project }) {
       assigneeKey(card) === me.email.toLowerCase())
       ? "You"
       : card.owner || "Unassigned";
+  const memberLabel = (id: string) =>
+    id === me?.user_id
+      ? "You"
+      : members.find((member) => member.user_id === id)?.email;
+  const cardsById = new Map(cards.map((card) => [card.id, card]));
+  const requiresReadyDependencies = (card: BoardCard) =>
+    !!card.require_dependencies &&
+    pendingDependencies(card, cardsById).length > 0;
   const canStartTask = (card: BoardCard) =>
     capabilities.data?.can_start === true &&
+    !requiresReadyDependencies(card) &&
     (!card.work.controller_id ||
       capabilities.data?.can_import === true ||
       roster.data?.user_id === card.work.controller_id);
   const startReason = (card: BoardCard) =>
-    capabilities.data?.can_start && !canStartTask(card)
-      ? "Only the current agent controller can start this task. Ask them to transfer control."
-      : capabilities.data?.start_reason;
+    requiresReadyDependencies(card)
+      ? "Finish the required dependencies before starting this task."
+      : capabilities.data?.can_start && !canStartTask(card)
+        ? `Ask ${memberLabel(card.work.controller_id || "") || "the current controller"} to transfer agent control before you start this task.`
+        : capabilities.data?.start_reason;
   const [search, setSearch] = useState(""),
     [owner, setOwner] = useState(""),
     [scope, setScope] = useState("open"),
@@ -116,13 +128,16 @@ function Board({ project }: { project: Project }) {
   const change = useMutation({
     mutationFn: ({ card, edit }: { card: BoardCard; edit: TaskChange }) =>
       boardApi.save(
-        card,
+        { ...card, revision: edit.revision ?? card.revision },
         edit.stage || card.stage,
         edit.title,
         edit.description,
         {
           ...(edit.owner_id !== undefined ? { owner_id: edit.owner_id } : {}),
           ...(edit.priority ? { priority: edit.priority } : {}),
+          ...(edit.require_dependencies !== undefined
+            ? { require_dependencies: edit.require_dependencies }
+            : {}),
           ...(edit.dependencies ? { dependencies: edit.dependencies } : {}),
         },
       ),
@@ -175,19 +190,26 @@ function Board({ project }: { project: Project }) {
     } else start.mutate({ card });
   };
   const current = cards.find((c) => c.id === selected);
+  const scopes = ["open", "active", "planned", "completed"];
+  if (me?.user_id) scopes.splice(1, 0, "for-me");
+  const matchesScope = (card: BoardCard, value: string) =>
+    value === "for-me"
+      ? taskIsForMember(card, me?.user_id || "", me?.email || "")
+      : inTaskScope(card, value);
   const priorityRank = (c: BoardCard) =>
     ({ high: 0, normal: 1, low: 2 })[c.priority || "normal"] ?? 1;
   const matches = cards.filter(
     (c) =>
       (archived ? c.stage === "archived" : c.stage !== "archived") &&
       (!owner || assigneeKey(c) === owner) &&
-      (!flagged || teamAttention(c) !== "—") &&
+      (!flagged ||
+        needsAttention(c, pendingDependencies(c, cardsById).length)) &&
       `${c.title || ""} ${taskReference(c)} ${c.id} ${c.owner || "unassigned"} ${c.source?.repository || ""} ${c.source?.number || ""}`
         .toLowerCase()
         .includes(search.toLowerCase()),
   );
   const visible = matches
-    .filter((c) => archived || inTaskScope(c, scope))
+    .filter((c) => archived || matchesScope(c, scope))
     .sort((a, b) =>
       sort === "priority"
         ? priorityRank(a) - priorityRank(b) || (a.number || 0) - (b.number || 0)
@@ -337,19 +359,19 @@ function Board({ project }: { project: Project }) {
               <h2>Archived tasks</h2>
             ) : (
               <nav className="team-scopes" aria-label="Work scope">
-                {["open", "active", "planned", "completed"].map((value) => (
+                {scopes.map((value) => (
                   <Button
                     key={value}
                     variant="ghost"
                     aria-pressed={scope === value}
                     onClick={() => setScope(value)}
                   >
-                    {label(value)}
+                    {value === "for-me" ? "For me" : label(value)}
                     <span className="scope-count">
                       {
                         cards.filter(
                           (c) =>
-                            c.stage !== "archived" && inTaskScope(c, value),
+                            c.stage !== "archived" && matchesScope(c, value),
                         ).length
                       }
                     </span>
@@ -375,6 +397,11 @@ function Board({ project }: { project: Project }) {
               </thead>
               <tbody>
                 {visible.map((card) => {
+                  const awaitingReview = card.work.state === "awaiting_review";
+                  const revising = card.work.state === "changes_requested";
+                  const reviewer = card.work.reviewer_id;
+                  const controller = card.work.controller_id;
+                  const pending = pendingDependencies(card, cardsById).length;
                   const firstRun =
                     !card.work.latest_attempt_id &&
                     ["planned", "draft", "in_progress"].includes(
@@ -446,6 +473,37 @@ function Board({ project }: { project: Project }) {
                           <i />
                           {teamActivity(card)}
                         </span>
+                        {awaitingReview && (
+                          <div className="task-activity-detail">
+                            {reviewer
+                              ? `Reviewer: ${memberLabel(reviewer) || "Assigned member"}`
+                              : "Reviewer unassigned"}
+                          </div>
+                        )}
+                        {revising && (
+                          <div className="task-activity-detail">
+                            {controller
+                              ? `Revision by ${memberLabel(controller) || "assigned controller"}`
+                              : "Controller unassigned"}
+                          </div>
+                        )}
+                        {firstRun &&
+                          controller &&
+                          card.owner_id !== controller && (
+                            <div className="task-activity-detail">
+                              Controller:{" "}
+                              {memberLabel(controller) || "Assigned member"}
+                            </div>
+                          )}
+                        {pending > 0 && (
+                          <div className="task-activity-detail">
+                            {pending}{" "}
+                            {card.require_dependencies
+                              ? "required, unfinished"
+                              : "unfinished"}{" "}
+                            {pending === 1 ? "dependency" : "dependencies"}
+                          </div>
+                        )}
                       </td>
                       <td className="task-row-actions">
                         <div className="task-action-group">
@@ -485,15 +543,20 @@ function Board({ project }: { project: Project }) {
                                 }}
                                 search={{
                                   work: card.id,
-                                  view:
-                                    card.work.state === "awaiting_review"
-                                      ? "workspace"
-                                      : undefined,
+                                  view: awaitingReview
+                                    ? "workspace"
+                                    : undefined,
                                 }}
                               >
-                                {card.work.state === "awaiting_review"
-                                  ? "Review"
-                                  : "Open thread"}
+                                {awaitingReview
+                                  ? !reviewer || reviewer === me?.user_id
+                                    ? "Review"
+                                    : "View review"
+                                  : revising &&
+                                      controller &&
+                                      controller === me?.user_id
+                                    ? "Revise"
+                                    : "Open thread"}
                               </Link>
                             </Button>
                           ) : null}

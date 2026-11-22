@@ -160,11 +160,16 @@ func TestControllerHandoffAndAssignedReviewerAreEnforced(t *testing.T) {
 	if got := humanRequest(t, s, "bob@example.com", "POST", root+"/review", decision); got.Code != 403 {
 		t.Fatal("wrong reviewer", got.Code, got.Body)
 	}
-	if got := humanRequest(t, s, "alice@example.com", "POST", root+"/review", decision); got.Code != 200 {
+	missingFeedback := fmt.Sprintf(`{"project_id":"default","accepted":false,"expected_attempt_id":%q}`, attempt.ID)
+	if got := humanRequest(t, s, "alice@example.com", "POST", root+"/review", missingFeedback); got.Code != 400 || !strings.Contains(got.Body.String(), "REVIEW_FEEDBACK_REQUIRED") {
 		t.Fatal(got.Code, got.Body)
 	}
-	got = request(t, s, "GET", root+"/attempts?project_id=default", "")
-	if !strings.Contains(got.Body.String(), `"reviewed_by":"user_alice_example_com"`) {
+	withFeedback := fmt.Sprintf(`{"project_id":"default","accepted":false,"expected_attempt_id":%q,"feedback":"Verify archive checksums."}`, attempt.ID)
+	if got := humanRequest(t, s, "alice@example.com", "POST", root+"/review", withFeedback); got.Code != 200 {
+		t.Fatal(got.Code, got.Body)
+	}
+	got = humanRequest(t, s, "bob@example.com", "GET", root+"/attempts?project_id=default", "")
+	if !strings.Contains(got.Body.String(), `"reviewed_by":"user_alice_example_com"`) || !strings.Contains(got.Body.String(), `"review_feedback":"Verify archive checksums."`) {
 		t.Fatal("missing review attribution", got.Body)
 	}
 }

@@ -241,6 +241,12 @@ test("an assigned reviewer requests revision without dispatching the controller'
   await page
     .getByRole("button", { name: "Request changes", exact: true })
     .click();
+  const submit = page.getByRole("button", { name: "Send change request" });
+  await expect(submit).toBeDisabled();
+  await page
+    .getByRole("textbox", { name: "What needs to change?" })
+    .fill("Verify archive checksums.");
+  await submit.click();
   await expect(
     page.getByText(
       "Changes requested. The controller can prepare the next revision.",
@@ -252,6 +258,7 @@ test("an assigned reviewer requests revision without dispatching the controller'
       body: {
         project_id: "A",
         accepted: false,
+        feedback: "Verify archive checksums.",
         expected_attempt_id: "attempt_one",
       },
     },

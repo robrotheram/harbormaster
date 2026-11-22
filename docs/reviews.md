@@ -17,6 +17,6 @@ Open **Conversation** to see the sent image below your message. To include an ex
 
 ## Decide the revision
 
-Select **Approve this revision** to accept the output. If you are the assigned reviewer and the task has a different controller, select **Request changes** to record the decision for the controller.
+Select **Approve this revision** to accept the output. If you are the assigned reviewer and the task has a different controller, select **Request changes** and describe what needs to change. The controller can read the feedback on the reviewed revision.
 
 Use the conversation history to revisit earlier revisions and decisions. To request more work after completion, send another message from the same task.

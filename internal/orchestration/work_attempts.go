@@ -193,7 +193,7 @@ func (r Repository) saveAttempt(ctx context.Context, project string, a shared.Wo
 
 // ReviewRevisionBy checks the actor and reviewed revision in the same snapshot
 // used by the compare-and-swap update.
-func (r Repository) ReviewRevisionBy(ctx context.Context, project, id, decision, expected, actor string, now time.Time) (shared.WorkItem, error) {
+func (r Repository) ReviewRevisionBy(ctx context.Context, project, id, decision, expected, actor, feedback string, now time.Time) (shared.WorkItem, error) {
 	if expected == "" || (decision != "accepted" && decision != "changes_requested" && decision != "closed") {
 		return shared.WorkItem{}, ErrInvalidWork
 	}
@@ -242,6 +242,7 @@ func (r Repository) ReviewRevisionBy(ctx context.Context, project, id, decision,
 		if err != nil {
 			return item, err
 		}
+		attempt.ReviewFeedback = feedback
 		attempt.ReviewState = decision
 		attempt.ReviewedBy = actor
 		attempt.UpdatedAt = now.UTC()

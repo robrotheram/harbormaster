@@ -45,7 +45,7 @@ services:
       CREDENTIAL_ENCRYPTION_KEY_FILE: /run/secrets/credential_encryption_key
       PROJECT_SIGNING_KEY_FILE: /run/secrets/project_signing_key
       DATABASE_URL_FILE: /run/secrets/database_url
-      CONTROLLER_URL: http://runtime-controller:8080
+      CONTROLLER_URL: http://runtime-controller-management:8080
     secrets: [control_token, controller_token, database_url, credential_encryption_key, project_signing_key]
     networks: [metadata, management, dashboard, ingress, host-access]
     ports: ["127.0.0.1:${CONTROL_PORT:-8090}:8080"]
@@ -85,8 +85,11 @@ services:
       CLAUDE_MODEL: ${CLAUDE_MODEL:-}
     secrets: [controller_token, gateway_service_token, grant_secret]
     healthcheck:
-      test: [CMD, /usr/local/bin/healthcheck, "http://runtime-controller:8080/healthz"]
-    networks: [management]
+      test: [CMD, /usr/local/bin/healthcheck, "http://runtime-controller-management:8080/healthz"]
+    networks:
+      management:
+        # The controller listens on this bridge and also joins worker networks.
+        aliases: [runtime-controller-management]
 
   dashboard:
     <<: *app
@@ -129,7 +132,7 @@ services:
     environment:
       GATEWAY_MODE: ${GATEWAY_MODE:-fixture}
       GATEWAY_CONFIG: /etc/workbench/inference.json
-      CONTROLLER_URL: http://runtime-controller:8080
+      CONTROLLER_URL: http://runtime-controller-management:8080
       GATEWAY_SERVICE_TOKEN_FILE: /run/secrets/gateway_service_token
       SUBSCRIPTION_VAULT_ADDR: https://vault:8200
       SUBSCRIPTION_VAULT_CA_FILE: /etc/workbench/vault-ca.pem
@@ -143,7 +146,7 @@ services:
     container_name: ${DEPLOYMENT_ID:-awb}-egress-gateway
     build: {context: ., target: platform, args: {SERVICE: egress-gateway}}
     environment:
-      CONTROLLER_URL: http://runtime-controller:8080
+      CONTROLLER_URL: http://runtime-controller-management:8080
       GATEWAY_SERVICE_TOKEN_FILE: /run/secrets/gateway_service_token
     secrets: [gateway_service_token]
     networks: [management, upstream]
@@ -155,7 +158,7 @@ services:
     environment:
       GATEWAY_MODE: ${GATEWAY_MODE:-fixture}
       GATEWAY_CONFIG: /etc/workbench/broker.json
-      CONTROLLER_URL: http://runtime-controller:8080
+      CONTROLLER_URL: http://runtime-controller-management:8080
       GATEWAY_SERVICE_TOKEN_FILE: /run/secrets/gateway_service_token
       VAULT_ADDR: https://vault:8200
     secrets: [gateway_service_token]
