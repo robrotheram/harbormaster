@@ -473,11 +473,10 @@ function Board({ project }: { project: Project }) {
                           <i />
                           {teamActivity(card)}
                         </span>
-                        {awaitingReview && (
+                        {awaitingReview && reviewer && (
                           <div className="task-activity-detail">
-                            {reviewer
-                              ? `Reviewer: ${memberLabel(reviewer) || "Assigned member"}`
-                              : "Reviewer unassigned"}
+                            Reviewer:{" "}
+                            {memberLabel(reviewer) || "Assigned member"}
                           </div>
                         )}
                         {revising && (
