@@ -800,7 +800,7 @@ export function WorkConversation({
                 project={project.id}
                 attempt={a}
                 onLoad={
-                  a.workspace_id === worker?.id && worker.state === "STOPPED"
+                  worker?.state === "STOPPED" && a.workspace_id === worker.id
                     ? () => mutation.mutate("wake")
                     : undefined
                 }
