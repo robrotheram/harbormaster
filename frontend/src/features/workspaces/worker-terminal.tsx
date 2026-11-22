@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
-import { Terminal } from "@xterm/xterm";
-import { FitAddon } from "@xterm/addon-fit";
-import "@xterm/xterm/css/xterm.css";
+import { FitAddon, Ghostty, Terminal } from "ghostty-web";
+import ghosttyWasm from "ghostty-web/ghostty-vt.wasm?url";
 import { Button } from "@/components/ui/button";
 import { ErrorNotice } from "@/shared/components";
 import { request } from "@/shared/http";
@@ -13,6 +12,16 @@ type Exchange = {
   exited: boolean;
   truncated: boolean;
 };
+
+let ghostty: Promise<Ghostty> | undefined;
+
+function loadGhostty() {
+  // Use Vite's same-origin asset URL under the dashboard's CSP.
+  return (ghostty ??= Ghostty.load(ghosttyWasm).catch((error) => {
+    ghostty = undefined;
+    throw error;
+  }));
+}
 
 export function WorkerTerminal({
   workspace,
@@ -36,29 +45,7 @@ export function WorkerTerminal({
     let timer: ReturnType<typeof setTimeout>;
     let offset = 0;
     let input: string[] = [];
-    const term = new Terminal({
-      cursorBlink: true,
-      fontSize: 13,
-      fontFamily: "'Geist Mono Variable', monospace",
-      scrollback: 3000,
-      theme: { background: "#101217", foreground: "#e3e6ed" },
-    });
-    const fit = new FitAddon();
-    term.loadAddon(fit);
-    term.open(container);
-    const resize = () => {
-      if (disposed) return;
-      const dimensions = fit.proposeDimensions();
-      if (dimensions)
-        term.resize(
-          Math.max(2, Math.min(500, dimensions.cols)),
-          Math.max(1, Math.min(200, dimensions.rows)),
-        );
-    };
-    resize();
-    const observer = new ResizeObserver(resize);
-    observer.observe(container);
-    term.textarea?.focus({ preventScroll: true });
+    let disposeTerminal: (() => void) | undefined;
     setError(undefined);
     setStatus("Connecting…");
 
@@ -86,7 +73,7 @@ export function WorkerTerminal({
       }
       if (created) void close();
     };
-    const subscription = term.onData((data) => {
+    const queueInput = (data: string) => {
       if (!created || ended || disposed) return;
       if (input.length + data.length > 65536) {
         fail(
@@ -97,8 +84,8 @@ export function WorkerTerminal({
         return;
       }
       input.push(...Array.from(data));
-    });
-    const exchange = async () => {
+    };
+    const exchange = async (term: Terminal) => {
       if (disposed || ended) return;
       try {
         const result = await request<Exchange>(`${base}/${id}/exchange`, {
@@ -109,41 +96,85 @@ export function WorkerTerminal({
         });
         if (disposed) return;
         if (result.truncated) {
-          term.reset();
-          term.writeln("[Earlier terminal output was truncated]");
+          // Cancel any partial escape sequence and reset in place so selection
+          // keeps using the live Ghostty buffer.
+          term.clearSelection();
+          term.writeln("\x18\x1bc[Earlier terminal output was truncated]");
         }
         if (result.output) {
           const bytes = Uint8Array.from(atob(result.output), (c) =>
             c.charCodeAt(0),
           );
-          await new Promise<void>((resolve) => term.write(bytes, resolve));
+          term.write(bytes);
         }
-        if (disposed) return;
         offset = result.offset;
         if (result.exited) {
           ended = true;
           setStatus("Shell exited");
           void close();
         } else {
-          timer = setTimeout(exchange, input.length ? 0 : 100);
+          timer = setTimeout(() => void exchange(term), input.length ? 0 : 100);
         }
       } catch (reason) {
         fail(reason);
       }
     };
-    void request<{ id: string }>(base, { id, cols: term.cols, rows: term.rows })
-      .then((result) => {
-        created = true;
-        if (result.id !== id)
-          throw new Error("The terminal returned an unexpected session.");
-        if (disposed) {
-          void close();
-          return;
-        }
-        setStatus("Connected");
-        void exchange();
-      })
-      .catch(fail);
+    const connect = async () => {
+      const ghostty = await loadGhostty();
+      if (disposed) return;
+      const surface = document.createElement("div");
+      // Ghostty draws its cursor on the canvas and uses this element for text input.
+      surface.className = "relative size-full caret-transparent";
+      const term = new Terminal({
+        ghostty,
+        cursorBlink: true,
+        fontSize: 13,
+        fontFamily: "'Geist Mono Variable', monospace",
+        scrollback: 3000,
+        theme: { background: "#101217", foreground: "#e3e6ed" },
+      });
+      const fit = new FitAddon();
+      const resize = () => {
+        if (disposed) return;
+        const dimensions = fit.proposeDimensions();
+        if (dimensions)
+          term.resize(
+            Math.max(2, Math.min(500, dimensions.cols)),
+            Math.max(1, Math.min(200, dimensions.rows)),
+          );
+      };
+      const observer = new ResizeObserver(resize);
+      const subscription = term.onData(queueInput);
+      disposeTerminal = () => {
+        observer.disconnect();
+        subscription.dispose();
+        term.dispose();
+        surface.remove();
+      };
+      container.append(surface);
+      term.loadAddon(fit);
+      term.open(surface);
+      // The canvas handles focus on click. Only the terminal surface needs a tab stop.
+      if (term.textarea) term.textarea.tabIndex = -1;
+      resize();
+      observer.observe(surface);
+
+      const result = await request<{ id: string }>(base, {
+        id,
+        cols: term.cols,
+        rows: term.rows,
+      });
+      created = true;
+      if (result.id !== id)
+        throw new Error("The terminal returned an unexpected session.");
+      if (disposed) {
+        void close();
+        return;
+      }
+      setStatus("Connected");
+      void exchange(term);
+    };
+    void connect().catch(fail);
     const unload = () => {
       if (created) void close();
     };
@@ -152,9 +183,7 @@ export function WorkerTerminal({
       disposed = true;
       clearTimeout(timer);
       window.removeEventListener("pagehide", unload);
-      observer.disconnect();
-      subscription.dispose();
-      term.dispose();
+      disposeTerminal?.();
       if (created) void close();
     };
   }, [workspace.id, generation, container, onSessionClosed]);

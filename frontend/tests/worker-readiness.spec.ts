@@ -202,14 +202,19 @@ test("startup review fits mobile and cancellation never starts a worker", async 
   expect(state.starts).toHaveLength(0);
 });
 
-test("worker terminal sends interactive keys, resizes, and closes its session", async ({
+test("worker terminal renders output, sends input, resizes, and closes its session", async ({
   page,
+  context,
 }) => {
   const state = await fixture(page);
   state.canStart = true;
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   const exchanges: { input: string; cols: number; rows: number }[] = [];
   let closes = 0;
   let opened = 0;
+  await page.route("**/assets/ghostty-vt-*.wasm", (route) => route.abort(), {
+    times: 1,
+  });
   await page.route(
     "**/ui-api/workspaces/ws_readiness/terminals**",
     async (route) => {
@@ -224,13 +229,13 @@ test("worker terminal sends interactive keys, resizes, and closes its session", 
         exchanges.push(body);
         const output = body.offset
           ? ""
-          : "worker shell ready\r\n<script>window.shellExecuted=true</script>\r\n$ ";
+          : "\x1b[32mworker shell ready\x1b[0m\r\n<script>window.shellExecuted=true</script>\r\n$ ";
         return route.fulfill({
           json: {
             output: Buffer.from(output).toString("base64"),
             offset: 100,
             exited: false,
-            truncated: false,
+            truncated: !body.offset,
           },
         });
       }
@@ -246,25 +251,37 @@ test("worker terminal sends interactive keys, resizes, and closes its session", 
   const workerHeading = page.locator("main h1");
   const headingLeft = (await workerHeading.boundingBox())!.x;
   const dialog = page.getByRole("region", { name: "Worker terminal" });
+  await expect(dialog.getByRole("status")).toHaveText("Disconnected");
+  expect(opened).toBe(0);
+  await dialog.getByRole("button", { name: "New shell" }).click();
   await expect(dialog.getByRole("status")).toHaveText("Connected");
+  const surface = dialog.locator('[contenteditable="true"]');
+  await expect(surface).toBeFocused();
+  await expect(surface).toHaveCSS("caret-color", "rgba(0, 0, 0, 0)");
   await expect(
     dialog.getByRole("button", { name: "Close terminal" }),
   ).toHaveCount(0);
   expect((await workerHeading.boundingBox())!.x).toBeCloseTo(headingLeft, 0);
-  await expect(dialog.locator(".xterm-rows")).toContainText(
-    "worker shell ready",
-  );
-  const input = dialog.locator(".xterm-helper-textarea");
-  await input.focus();
+  await expect.poll(() => exchanges.at(-1)?.input).toBe("");
+  const canvas = dialog.locator("canvas");
+  await expect(canvas).toBeVisible();
+  const rowHeight = (await canvas.boundingBox())!.height / exchanges[0].rows;
+  await expect(async () => {
+    await canvas.dblclick({ position: { x: 12, y: rowHeight * 1.5 } });
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+      "worker",
+    );
+  }).toPass();
   await page.keyboard.type("pwd");
   await page.keyboard.press("Enter");
   await page.keyboard.press("Control+c");
   await page.keyboard.press("Tab");
   await page.keyboard.press("Escape");
+  await page.keyboard.press("Control+v");
   await expect(dialog).toBeVisible();
   await expect
     .poll(() => exchanges.map((e) => e.input).join(""))
-    .toContain("pwd\r\x03\t\x1b");
+    .toContain("pwd\r\x03\t\x1bworker");
   await expect.poll(() => exchanges.length).toBeGreaterThan(0);
   const initialCols = exchanges.at(-1)!.cols;
   await page.setViewportSize({ width: 390, height: 844 });
