@@ -44,15 +44,18 @@ become available; it does not stream every generated token.
    previous messages. During execution you can draft a message or click
    **Stop task**; sending waits until the agent finishes.
 7. After checking the revised result, open the task’s **Workspace** and select **Approve this revision**. The work item becomes **Accepted**. Reload the page and open the conversation again. Its history, outputs, and accepted state should still be available.
-8. To check workspace persistence, let the worker become idle, stop it from
-   **Workers**, and return to the bookmarked conversation. Click **Load
-   conversation** to start the worker and read its private record. No task should
-   rerun merely because the conversation is opened.
+8. Stop the idle worker from **Workers**. Reopen the bookmarked conversation.
+   The latest synced messages and recorded activity appear without starting the worker.
+9. To continue on another worker, select it under **Worker for next message**.
+   Send a follow-up. Open **Show earlier conversation** to check the earlier
+   replies. The new run uses the selected worker and the same thread.
 
-Follow-ups are fresh native runs with references to the prior instructions and
-workspace files. They do not resume a native session or inject into a running
-task. File contents and conversation bodies stay in the worker's private storage;
-the control plane stores execution references and review state.
+A follow-up starts a fresh run. A move gives the new worker a bounded copy of
+the cached requests and replies, using the recorder's redaction. It needs the
+latest request in the central cache. Project files, services, and native
+sessions stay on the original worker. Each attempt keeps its worker and artifact
+references. See [agent history and evaluation export](workspace-history.md) for
+cache coverage.
 
 ## Run and preview a web application
 

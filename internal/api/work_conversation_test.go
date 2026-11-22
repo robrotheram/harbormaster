@@ -200,3 +200,102 @@ func TestWorkConversationRecoversPrivatePublicationAndRefusesActiveRevision(t *t
 		}
 	}
 }
+
+func TestMoveWorkConversationFromStoppedWorker(t *testing.T) {
+	s, rt := setup(t)
+	project := domainProject(t, s, "portable-conversation")
+	foreign := domainProject(t, s, "foreign-conversation-worker")
+	createWorker := func(projectID, key string) shared.Workspace {
+		t.Helper()
+		var ws shared.Workspace
+		res := request(t, s, "POST", "/v1/workspaces", fmt.Sprintf(`{"project_id":%q,"idempotency_key":%q}`, projectID, key))
+		if res.Code != 201 || json.Unmarshal(res.Body.Bytes(), &ws) != nil {
+			t.Fatal(res.Code, res.Body.String())
+		}
+		return ws
+	}
+	target := createWorker(project.ID, "target")
+	foreignWorker := createWorker(foreign.ID, "foreign")
+	created := request(t, s, "POST", "/v1/work-items", fmt.Sprintf(`{"project_id":%q,"instruction":"Original message for handoff","kind":"research","idempotency_key":"handoff"}`, project.ID))
+	var item shared.WorkItem
+	if created.Code != 201 || json.Unmarshal(created.Body.Bytes(), &item) != nil {
+		t.Fatal(created.Code, created.Body.String())
+	}
+	path := "/v1/work-items/" + item.ID
+	run := request(t, s, "POST", path+"/run", fmt.Sprintf(`{"project_id":%q,"idempotency_key":"run"}`, project.ID))
+	if run.Code != 202 {
+		t.Fatal(run.Code, run.Body.String())
+	}
+	item = waitWorkReview(t, s, project.ID, item.ID)
+	repo := orchestration.Repository{DB: s.Store.DB}
+	prior, err := repo.Attempt(context.Background(), project.ID, item.ID, item.LatestAttemptID)
+	if err != nil || prior.TaskID == "" {
+		t.Fatal(prior, err)
+	}
+	source := "/v1/workspaces/" + item.WorkspaceID
+	if res := request(t, s, "POST", source+"/stop", `{"idempotency_key":"stop"}`); res.Code != 200 {
+		t.Fatal(res.Code, res.Body.String())
+	}
+	// Recreate the API service so the assertions use the durable cache.
+	s = New(s.Store, rt, s.cfg)
+	initialStarts := rt.starts
+	historyPath := path + "/attempts/" + prior.ID + "/history?project_id=" + project.ID
+	for _, route := range []string{historyPath, source + "/history", path + "/instruction?project_id=" + project.ID} {
+		res := request(t, s, "GET", route, "")
+		if res.Code != 200 || !strings.Contains(res.Body.String(), "Original message for handoff") {
+			t.Fatal(route, res.Code, res.Body.String())
+		}
+	}
+	result := request(t, s, "GET", source+"/tasks/"+prior.TaskID+"/result?limit=65536&no_start=1", "")
+	if result.Code != 409 || rt.starts != initialStarts {
+		t.Fatal("reading history started the source", result.Code, rt.starts)
+	}
+	moveBody := func(worker, key string) string {
+		return fmt.Sprintf(`{"project_id":%q,"workspace_id":%q,"instruction":"Continue elsewhere","expected_attempt_id":%q,"idempotency_key":%q}`, project.ID, worker, prior.ID, key)
+	}
+	if res := request(t, s, "POST", path+"/continue", moveBody(foreignWorker.ID, "foreign")); res.Code != 404 {
+		t.Fatal("cross-project move accepted", res.Code, res.Body.String())
+	}
+	var next shared.WorkAttempt
+	for _, status := range []int{202, 200} {
+		res := request(t, s, "POST", path+"/continue", moveBody(target.ID, "move"))
+		if res.Code != status || json.Unmarshal(res.Body.Bytes(), &next) != nil {
+			t.Fatal(res.Code, res.Body.String())
+		}
+	}
+	if next.ParentAttemptID != prior.ID || next.WorkspaceID != target.ID || rt.starts != initialStarts+1 || rt.managers[item.WorkspaceID] != nil {
+		t.Fatal("move lost provenance or started the wrong worker", next, rt.starts)
+	}
+	root := filepath.Join(rt.base, target.ID, "files")
+	files, err := filepath.Glob(filepath.Join(root, "work-requests", "context-*.md"))
+	if err != nil || len(files) != 1 {
+		t.Fatal(files, err)
+	}
+	prompt, err := os.ReadFile(filepath.Join(root, next.SpecificationPath))
+	if err != nil || !strings.Contains(string(prompt), filepath.Base(files[0])) {
+		t.Fatal("specification omitted the handoff", err)
+	}
+	handoff, err := os.ReadFile(files[0])
+	if err != nil || !strings.Contains(string(handoff), "Original message for handoff") || !strings.Contains(string(handoff), "sensitive-result-marker") {
+		t.Fatal("handoff omitted the prior conversation", err)
+	}
+	current := waitWorkReview(t, s, project.ID, item.ID)
+	if current.WorkspaceID != target.ID {
+		t.Fatal("work did not run on new worker", current)
+	}
+	s.Reconcile(context.Background())
+	if res := request(t, s, "POST", source+"/delete", fmt.Sprintf(`{"confirm_id":%q}`, item.WorkspaceID)); res.Code != 200 {
+		t.Fatal(res.Code, res.Body.String())
+	}
+	if res := request(t, s, "GET", historyPath, ""); res.Code != 200 || !strings.Contains(res.Body.String(), "Original message for handoff") {
+		t.Fatal("deleted worker's attempt lost history", res.Code, res.Body.String())
+	}
+	audit := "/v1/projects/" + project.ID + "/audit-history?kind=user.message"
+	if res := request(t, s, "GET", audit, ""); res.Code != 200 || !strings.Contains(res.Body.String(), "Original message for handoff") || !strings.Contains(res.Body.String(), "Continue elsewhere") {
+		t.Fatal("project audit did not combine workers", res.Code, res.Body.String())
+	}
+	s.cfg.ProjectTokens = map[string]string{"foreign-token": foreign.ID}
+	if res := domainRequest(t, s, "foreign-token", "GET", audit, ""); res.Code != 404 {
+		t.Fatal("project audit crossed project boundary", res.Code)
+	}
+}

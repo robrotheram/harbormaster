@@ -77,8 +77,12 @@ func (s *Server) registerWorkImages(mux *http.ServeMux, repo orchestration.Repos
 			}
 			unlock := s.operations.Lock(ws.ID)
 			defer unlock()
-			if err := s.lifecycle().ObserveTask(r.Context(), &ws); err != nil {
+			if err := s.refresh(r.Context(), &ws); err != nil {
 				shared.Error(w, 503, "WORKSPACE_UNAVAILABLE")
+				return
+			}
+			if !ws.Ready {
+				shared.Error(w, 409, "WORKSPACE_STOPPED")
 				return
 			}
 			body, _ := json.Marshal(shared.FileHandoff{Path: in.Path})

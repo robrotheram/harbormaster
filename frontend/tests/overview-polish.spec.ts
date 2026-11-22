@@ -178,6 +178,21 @@ test("Overview edits, assigns, links dependencies and launches the same task", a
   await expect(
     dialog.getByRole("heading", { name: "Add task search and filters" }),
   ).toBeVisible();
+  const title = dialog.getByRole("heading", {
+    name: "Add task search and filters",
+  });
+  const inline = await title.evaluate((heading) => {
+    const titleBounds = heading.getBoundingClientRect();
+    const actions = heading.nextElementSibling!.getBoundingClientRect();
+    return (
+      actions.left >= titleBounds.right &&
+      Math.abs(
+        (actions.top + actions.bottom - titleBounds.top - titleBounds.bottom) /
+          2,
+      ) < 2
+    );
+  });
+  expect(inline).toBe(true);
   await page.screenshot({
     path: "artifacts/task-pane-polished.png",
     fullPage: true,
@@ -228,7 +243,9 @@ test("Overview edits, assigns, links dependencies and launches the same task", a
     description: "Both fields save together.",
   });
   await dialog.getByLabel("Priority", { exact: true }).selectOption("high");
-  await expect(dialog.locator(".priority-high")).toBeVisible();
+  await expect(dialog.getByLabel("Priority", { exact: true })).toHaveValue(
+    "high",
+  );
   await dialog
     .getByRole("link", { name: "#1 Build a welcome page", exact: true })
     .click();
@@ -558,27 +575,35 @@ test("four project members see their own handoffs while the board refreshes", as
     await expect(architect.locator(".team-table tbody tr")).toHaveCount(1);
     await expect(architect.locator(".team-table")).toContainText(welcome.title);
     await expect(author.locator(".team-table tbody tr")).toHaveCount(2);
-    await expect(author.locator(".team-table")).toContainText(
-      "Controller: architect@example.com",
-    );
+    await author
+      .getByRole("button", { name: /View activity for Build a welcome page/ })
+      .click();
+    await expect(
+      author.getByRole("region", { name: "Execution", exact: true }),
+    ).toContainText("architect@example.com");
+    await author.keyboard.press("Escape");
     await expect(
       author.getByRole("link", { name: "View review", exact: true }),
     ).toBeVisible();
     await expect(reviewer.locator(".team-table tbody tr")).toHaveCount(1);
-    await expect(reviewer.locator(".team-table")).toContainText(
-      "Reviewer: You",
-    );
+    await reviewer
+      .getByRole("button", { name: /View activity for Add task search/ })
+      .click();
+    await expect(
+      reviewer.getByRole("region", { name: "Execution", exact: true }),
+    ).toContainText("You");
+    await reviewer.keyboard.press("Escape");
     await expect(
       reviewer.getByRole("link", { name: "Review", exact: true }),
     ).toBeVisible();
-    await expect(reviewer.locator(".team-table")).toContainText(
-      "1 unfinished dependency",
-    );
+    await expect(
+      reviewer.getByRole("button", { name: /dependency warning/ }),
+    ).toBeVisible();
     await expect(tester.locator(".team-table tbody tr")).toHaveCount(1);
     await expect(tester.locator(".team-table")).toContainText(keyboard.title);
-    await expect(tester.locator(".team-table")).toContainText(
-      "1 required, unfinished dependency",
-    );
+    await expect(
+      tester.getByRole("button", { name: /dependency warning/ }),
+    ).toBeVisible();
     await expect(
       tester.getByRole("button", { name: "Start work" }),
     ).toBeDisabled();
@@ -586,10 +611,9 @@ test("four project members see their own handoffs while the board refreshes", as
     Object.assign(welcome, { stage: "done" });
     Object.assign(welcome.work, { state: "completed" });
     await reviewer.bringToFront();
-    await expect(reviewer.locator(".team-table")).not.toContainText(
-      "unfinished dependency",
-      { timeout: 10_000 },
-    );
+    await expect(
+      reviewer.getByRole("button", { name: /dependency warning/ }),
+    ).toHaveCount(0, { timeout: 10_000 });
     Object.assign(search.work, { state: "changes_requested" });
     await author.bringToFront();
     await expect(
@@ -603,10 +627,9 @@ test("four project members see their own handoffs while the board refreshes", as
     Object.assign(search, { stage: "done" });
     Object.assign(search.work, { state: "completed" });
     await tester.bringToFront();
-    await expect(tester.locator(".team-table")).not.toContainText(
-      "unfinished dependency",
-      { timeout: 10_000 },
-    );
+    await expect(
+      tester.getByRole("button", { name: /dependency warning/ }),
+    ).toHaveCount(0, { timeout: 10_000 });
     await expect(
       tester.getByRole("button", { name: "Start work" }),
     ).toBeEnabled();
@@ -673,4 +696,86 @@ test("retrying a stale task edit preserves another member's saved description", 
     details.getByRole("heading", { name: "Updated title" }),
   ).toBeVisible();
   expect(card.description).toBe("Description saved by another member.");
+});
+
+test("Activity presents prerequisites and owners without expanding the overview row", async ({
+  page,
+}) => {
+  const fixture = await overview(page);
+  const [search, keyboard, welcome] = fixture.cards;
+  Object.assign(welcome, { owner: "architect@example.com", stage: "done" });
+  Object.assign(welcome.work, { state: "completed" });
+  Object.assign(search, { owner: "bob@example.com" });
+  Object.assign(keyboard, {
+    owner: "tester@example.com",
+    require_dependencies: true,
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/app/projects/A/team");
+  const row = page.getByRole("row").filter({ hasText: keyboard.title });
+  await expect(row).not.toContainText("unfinished dependency");
+  await row
+    .getByRole("button", { name: /Not started, dependency warning/ })
+    .click();
+  const activity = page.getByRole("dialog", { name: "Task details" });
+  await expect(
+    activity.getByRole("region", { name: "Dependencies", exact: true }),
+  ).toBeFocused();
+  await expect(page.getByRole("dialog")).toHaveCount(1);
+  await expect(
+    activity.getByRole("region", { name: "Task content" }),
+  ).toBeAttached();
+  await expect(
+    activity.getByRole("complementary", { name: "Task properties" }),
+  ).toBeAttached();
+  const graph = activity.getByRole("region", { name: "Dependency graph" });
+  const inspector = activity.getByRole("region", {
+    name: "Selected task activity",
+  });
+  await expect(graph).toBeVisible();
+  const dependencies = activity.getByRole("region", {
+    name: "Dependencies",
+    exact: true,
+  });
+  await expect(
+    dependencies.getByRole("link", { name: /Add task search/ }),
+  ).toBeVisible();
+  await expect(dependencies).toContainText("bob@example.com");
+  await expect(dependencies.getByRole("checkbox")).toHaveCount(0);
+  await expect(
+    activity.getByRole("button", { name: "Start work" }),
+  ).toBeDisabled();
+  expect(await activity.evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(
+    true,
+  );
+  const graphAudit = await new AxeBuilder({ page })
+    .include(".activity-map")
+    .analyze();
+  expect(graphAudit.violations).toEqual([]);
+  await expect(graph.locator(".activity-map-node")).toHaveCount(3);
+  await expect(
+    graph.getByRole("button", {
+      name: /Build a welcome page.*architect@example.com/,
+    }),
+  ).toBeVisible();
+  await graph.getByRole("button", { name: /Add task search/ }).click();
+  await expect(
+    inspector.getByRole("heading", { name: search.title }),
+  ).toBeVisible();
+  await expect(inspector).toContainText("bob@example.com");
+  await inspector.getByRole("button", { name: "Open task" }).click();
+  await expect(
+    activity.getByRole("heading", { name: search.title, exact: true }).first(),
+  ).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(1);
+  await expect(graph).toBeVisible();
+  await expect(
+    graph.getByRole("button", { name: /Check keyboard navigation/ }),
+  ).toBeVisible();
+  await activity.getByRole("button", { name: "Close", exact: true }).click();
+  await page.getByRole("button", { name: "Activity", exact: true }).click();
+  await expect(
+    activity.getByRole("button", { name: "Entire project" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("dialog")).toHaveCount(1);
 });

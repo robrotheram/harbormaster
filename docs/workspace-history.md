@@ -1,12 +1,18 @@
-# Private agent history and evaluation export
+# Agent history and evaluation export
 
-Open **Workers**, then **Project actions**, then **Message history**. To open one worker's history, use its action menu. Choose a workspace, browse its newest/older records,
-and download **Export JSONL**.
-The view shows user messages and agent replies as a conversation. Tool calls,
-lifecycle events, delivery echoes and technical metadata are kept in JSONL
-exports. The newest page refreshes every five seconds. Export includes all retained
-records, not just the displayed page. Reading history requires its VM to run;
-viewing a stopped workspace offers an explicit Start button.
+Open the project's **Settings** and select **Audit** to inspect recorded events
+across the project. Filter by worker or event type. Expand an event to read its
+content and see the model, tool, MCP server, and call ID when the adapter
+records them. Audit history reads from the control-plane
+database. In shared-worker mode it includes episodes linked to a work attempt
+in the selected project and is available to the local operator.
+
+In **Workers**, open **Message history** from a worker's action menu to browse
+its messages and download **Export JSONL**. Exports include tool calls, results,
+lifecycle events, delivery echoes, and metadata. An export includes all records in its snapshot. Stopped and
+unreachable workers return the last synced snapshot. The view shows when it
+last synced. Start a worker explicitly to backfill older history that has yet
+to sync.
 
 Validation runs can carry a small **Test run** label on their messages and replies.
 This uses an operator annotation attached to the episode ID; matching words in
@@ -46,15 +52,21 @@ from today's workspace settings. `at` is source event time where available;
   original runtime never stored. Matrix capture begins with this update;
   prior Matrix conversations/delivery receipts are not retroactively imported.
 
-Full text stays on the private workspace SQLite disk. The platform database
-stores progress metadata and numeric episode feedback only, with workspace and
-project authorization enforced on reads/exports. Ratings require the operator
-credential; workspace agents and project credentials cannot issue trusted
-operator ratings. Feedback is append-only metadata; an export attaches the
-latest operator rating per episode as `operator_feedback` with reviewer
-`local-operator`. Unreviewed episodes have no rating, not an implicit neutral.
-Agent-produced content and runtime history are untrusted observations, not a
-tamper-proof audit trail or verified rewards.
+The control plane copies redacted history from ready workers in batches during
+reconciliation and attempts a final sync before a normal stop. Reads use the
+cached copy when the worker is unavailable. A crash or force stop can leave
+recent records unsynced. History from earlier installs backfills as each worker
+comes online. The worker recorder remains the source for the cache.
+
+Both database copies contain private project data. Apply your deployment's
+access and backup controls to the control-plane database. Cached history stays
+available in project audit history after a worker is deleted. Project deletion
+hides that project's history through the API. Cached records have no automatic
+expiry. Feedback and test labels require the operator credential. An export
+attaches the latest rating per episode as `operator_feedback` with reviewer
+`local-operator`. Unreviewed episodes have no rating. Audit records reflect what
+the worker observed. Use them for review and debugging with the recorder's
+coverage and integrity limits in mind.
 
 Known credential formats, credential fields and the workspace grant are
 redacted before recording. Structured JSON tool payloads remain JSON after
@@ -70,8 +82,7 @@ Each record's content is limited to 32 KiB (UTF-8 safe); `truncated` and `redact
 flags distinguish transformed data. Native frames over 1 MiB or malformed
 frames cannot be parsed. Capture is best-effort and may miss intermediate output
 around crashes, interrupted runs or unsupported adapters. Interrupted episodes
-may lack a terminal record. Workspace disk deletion also deletes its history;
-export data you need to keep.
+may lack a terminal record. Workspace disk loss can make unsynced history unavailable.
 
 ## JSONL contract (schema version 1)
 
@@ -84,7 +95,8 @@ pages backward; `after=N&until=H` pages forward within a fixed snapshot.
 `GET /v1/workspaces/{id}/history/export` streams an attachment:
 
 1. `manifest`: schema/export/workspace/project IDs, export time, fixed sequence
-   high-water mark, agent/runtime/profile/branch provenance and capture policy.
+   high-water mark, agent and runtime provenance, branch, capture policy, and
+   sync information when the export uses the cache.
 2. `record`: one versioned history record per line, with sequence number and
    optional operator feedback. Records are ordered by capture sequence; native
    timestamps can be older than the preceding record when importing history.
@@ -99,6 +111,13 @@ unfinished episodes. For evaluation/RL, group by workspace and episode, filter
 for appropriate terminal/delivery status, and deliberately handle gaps,
 truncation, redaction, synthetic fixture data and imported/unknown metadata.
 Do not treat a tool result or an agent's own claim as an operator reward.
+
+`GET /v1/projects/{id}/audit-history` returns up to 20 cached events in reverse
+cache insertion order. Use `before` with the returned `next_before` cursor to
+read the next page. Optional `workspace_id` and `kind` filters select a worker
+and event type. Each entry includes the worker ID and the versioned record.
+The cache insertion cursor is independent of the worker's sequence and the
+event's source timestamp.
 
 An operator can annotate an existing run with
 `POST /v1/workspaces/{id}/history/purpose` and

@@ -1,9 +1,10 @@
 import { useUserSession } from "@/features/auth/session";
 import { memberOptions } from "@/features/work/responsibility";
+import { ProjectAudit } from "@/features/history/project-audit";
 import { ProjectMembers } from "./members";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { Tabs } from "radix-ui";
-import { Bot, Settings2 } from "lucide-react";
+import { Bot, ClipboardList, Settings2 } from "lucide-react";
 import { lazy, Suspense } from "react";
 import { projectsApi } from "./api";
 import { keys } from "@/shared/query-keys";
@@ -33,12 +34,14 @@ export function ProjectSettings({ project }: { project: Project }) {
         <h1>Project settings</h1>
       </div>
       <Tabs.Root
-        value={search.tab === "hermes" ? "hermes" : "general"}
+        value={search.tab ?? "general"}
         onValueChange={(tab) =>
           void navigate({
             to: "/projects/$projectId/$section",
             params: { projectId: project.id, section: "settings" },
-            search: { tab: tab === "hermes" ? "hermes" : "general" },
+            search: {
+              tab: tab === "hermes" || tab === "audit" ? tab : undefined,
+            },
           })
         }
       >
@@ -53,6 +56,10 @@ export function ProjectSettings({ project }: { project: Project }) {
           <Tabs.Trigger value="hermes" className={tabClassName}>
             <Bot aria-hidden="true" className="size-4 shrink-0" />
             Hermes setup
+          </Tabs.Trigger>
+          <Tabs.Trigger value="audit" className={tabClassName}>
+            <ClipboardList aria-hidden="true" className="size-4 shrink-0" />
+            Audit
           </Tabs.Trigger>
         </Tabs.List>
         <Tabs.Content
@@ -71,6 +78,12 @@ export function ProjectSettings({ project }: { project: Project }) {
           <Suspense fallback={<p role="status">Loading Hermes setup…</p>}>
             <HermesSettings project={project} />
           </Suspense>
+        </Tabs.Content>
+        <Tabs.Content
+          value="audit"
+          className="pt-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <ProjectAudit key={project.id} project={project} />
         </Tabs.Content>
       </Tabs.Root>
     </div>

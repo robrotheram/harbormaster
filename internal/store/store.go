@@ -1,4 +1,4 @@
-// Package store persists platform metadata. Content belongs in workspace storage.
+// Package store persists platform metadata and the private transcript cache.
 package store
 
 import (

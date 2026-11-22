@@ -55,8 +55,8 @@ func TestPostgresMetadataContract(t *testing.T) {
 		}
 	}()
 	var count, version int
-	if err := s.DB.QueryRowContext(ctx, `SELECT count(*), max(version) FROM schema_migrations`).Scan(&count, &version); err != nil || count != 2 || version != 2 {
-		t.Fatal("expected PostgreSQL schema version 2", count, version, err)
+	if err := s.DB.QueryRowContext(ctx, `SELECT count(*), max(version) FROM schema_migrations`).Scan(&count, &version); err != nil || count != 3 || version != 3 {
+		t.Fatal("expected PostgreSQL schema version 3", count, version, err)
 	}
 
 	now := time.Now().UTC()
@@ -75,6 +75,19 @@ func TestPostgresMetadataContract(t *testing.T) {
 	forged.ProjectID = "default"
 	if err = s.Save(ctx, forged); !errors.Is(err, ErrOwnership) {
 		t.Fatal("workspace ownership mutation accepted", err)
+	}
+
+	historyPage := shared.HistoryPage{HighWatermark: 1, Records: []shared.HistoryRecord{
+		{ID: "hist_test", Seq: 1, EpisodeID: "task_history", SchemaVersion: 1, Kind: "tool.call", ToolServer: "test-mcp"},
+	}}
+	if ok, err := s.AppendHistoryCache(ctx, w, 0, historyPage, now); err != nil || !ok {
+		t.Fatal("append history", ok, err)
+	}
+	if page, _, err := s.CachedHistory(ctx, w.ID, HistoryFilter{Before: 2, Descending: true}); err != nil || len(page.Records) != 1 {
+		t.Fatal("read cached history", page, err)
+	}
+	if items, _, err := s.ProjectAudit(ctx, project.ID, "", w.ID, "tool.call", 0); err != nil || len(items) != 1 || items[0].Record.ToolServer != "test-mcp" {
+		t.Fatal("read project audit", items, err)
 	}
 
 	profile, err := s.ConnectionProfile(ctx, "github")

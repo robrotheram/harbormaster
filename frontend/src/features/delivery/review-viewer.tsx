@@ -34,19 +34,13 @@ export function RecordedChanges({
       attempt.workspace_id,
       attempt.task_id,
     ],
-    queryFn: ({ signal }) =>
-      runHistory(project, attempt.workspace_id, attempt.task_id!, 0, signal),
+    queryFn: ({ signal }) => runHistory(project, attempt, 0, signal),
     enabled: !!attempt.workspace_id && !!attempt.task_id,
     retry: false,
   });
   const more = useMutation({
     mutationFn: () =>
-      runHistory(
-        project,
-        attempt.workspace_id,
-        attempt.task_id!,
-        cursor ?? history.data!.page.next_before,
-      ),
+      runHistory(project, attempt, cursor ?? history.data!.page.next_before),
     onSuccess: (data) => {
       setOlder((old) => [...data.page.records, ...old]);
       setCursor(data.page.next_before);

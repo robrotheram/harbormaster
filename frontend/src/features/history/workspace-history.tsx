@@ -116,6 +116,14 @@ export function WorkspaceHistory({
           {download.isPending ? "Preparing export…" : "Export JSONL"}
         </Button>
       </div>
+      {data?.cache && (
+        <p role="status" className="text-xs text-muted-foreground">
+          Cached history as of {new Date(data.cache.synced_at).toLocaleString()}
+          .
+          {data.cache.cached_through < data.cache.source_high_watermark &&
+            " Some recorded activity has yet to sync."}
+        </p>
+      )}
       {data?.page.capture_limited && (
         <p role="alert" className="notice">
           History storage is full. New messages are not being recorded.

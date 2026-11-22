@@ -196,6 +196,12 @@ func newInteractiveHandler(readURL, controlURL, readToken, token string) (http.H
 				if key == "episode" && len(values) == 1 && shared.ValidID(values[0]) && r.Method == "GET" && len(parts) == 3 && parts[0] == "workspaces" && parts[2] == "history" {
 					continue
 				}
+				if key == "no_start" && len(values) == 1 && values[0] == "1" && r.Method == "GET" && len(parts) == 5 && parts[0] == "workspaces" && parts[2] == "tasks" && parts[4] == "result" {
+					continue
+				}
+				if (key == "workspace_id" || key == "kind") && len(values) == 1 && r.Method == "GET" && len(parts) == 3 && parts[0] == "projects" && parts[2] == "audit-history" {
+					continue
+				}
 				if key != "project_id" && key != "offset" && key != "limit" && key != "after" && key != "before" && key != "until" && key != "order" || len(values) != 1 {
 					validQuery = false
 				}

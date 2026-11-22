@@ -36,11 +36,12 @@ func (r Repository) RunWorkWithSelection(ctx context.Context, project, id, key s
 // WorkRevision contains private file references, never conversational content.
 type WorkRevision struct {
 	ExpectedAttemptID, Path, Digest string
+	WorkspaceID                     string
 	Selection                       *shared.AgentModel
 }
 
 func (r Repository) ContinueWork(ctx context.Context, project, id, key string, revision WorkRevision, now time.Time) (shared.WorkAttempt, error) {
-	if !shared.ValidID(revision.ExpectedAttemptID) || !shared.ValidProjectFile(revision.Path) || len(revision.Digest) != 64 {
+	if !shared.ValidID(revision.ExpectedAttemptID) || !shared.ValidProjectFile(revision.Path) || len(revision.Digest) != 64 || (revision.WorkspaceID != "" && !shared.ValidID(revision.WorkspaceID)) {
 		return shared.WorkAttempt{}, ErrInvalidWork
 	}
 	return r.runWork(ctx, project, id, key, &revision, revision.Selection, now)
@@ -57,7 +58,7 @@ func (r Repository) runWork(ctx context.Context, project, id, key string, revisi
 	defer tx.Rollback()
 	a, err := jsonmetadata.Get[shared.WorkAttempt](ctx, tx, `SELECT metadata FROM work_attempts WHERE project_id=$1 AND work_item_id=$2 AND delivery_key=$3`, project, id, key)
 	if err == nil {
-		if revision != nil && (a.ParentAttemptID != revision.ExpectedAttemptID || a.SpecificationPath != revision.Path || a.SpecificationDigest != revision.Digest) {
+		if revision != nil && (a.ParentAttemptID != revision.ExpectedAttemptID || a.SpecificationPath != revision.Path || a.SpecificationDigest != revision.Digest || (revision.WorkspaceID != "" && a.WorkspaceID != revision.WorkspaceID)) {
 			return a, ErrConflict
 		}
 		if selection != nil && (a.Provider != selection.Provider || a.Model != selection.Model || a.ReasoningEffort != selection.ReasoningEffort) {
@@ -118,6 +119,9 @@ func (r Repository) runWork(ctx context.Context, project, id, key string, revisi
 			return a, err
 		}
 		item.SpecificationPath, item.SpecificationDigest = revision.Path, revision.Digest
+		if revision.WorkspaceID != "" {
+			item.WorkspaceID = revision.WorkspaceID
+		}
 	}
 	if selection != nil {
 		item.Provider, item.Model, item.ReasoningEffort = selection.Provider, selection.Model, selection.ReasoningEffort

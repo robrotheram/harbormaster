@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -18,7 +18,14 @@ export function TicketMarkdown({ content }: { content: string }) {
         components={{
           a: ({ href, children }) => (
             <a href={href} target="_blank" rel="noopener noreferrer">
-              {children}
+              {typeof children === "string" && children === href
+                ? children.split(/(?<=\/)(?=[^/])/).map((segment, index) => (
+                    <Fragment key={index}>
+                      {index > 0 && <wbr />}
+                      {segment}
+                    </Fragment>
+                  ))
+                : children}
             </a>
           ),
           img: ({ src, alt }) => (

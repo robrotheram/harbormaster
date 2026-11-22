@@ -35,6 +35,7 @@ async function conversationFixture(page: Page) {
     exists: false,
     failContinue: false,
     foreignHistory: false,
+    alternateWorker: false,
     request: "Investigate the experiment.",
     reply: "All four tests passed. The report is ready.",
     connects: 0,
@@ -142,6 +143,7 @@ async function conversationFixture(page: Page) {
             json: { code: "WORKSPACE_UNAVAILABLE" },
           });
         }
+        if (body.workspace_id) item.workspace_id = body.workspace_id;
         const a = addRun(body.expected_attempt_id);
         a.message = body.instruction;
         return route.fulfill({ status: 202, json: a });
@@ -173,9 +175,20 @@ async function conversationFixture(page: Page) {
                     project_id: "A",
                     name: "Research worker",
                     agent_kind: "codex",
-                    state: "READY",
-                    ready: true,
+                    state: state.alternateWorker ? "STOPPED" : "READY",
+                    ready: !state.alternateWorker,
                   },
+                  ...(state.alternateWorker
+                    ? [
+                        {
+                          id: "ws_two",
+                          project_id: "A",
+                          name: "Backup worker",
+                          state: "STOPPED",
+                          ready: false,
+                        },
+                      ]
+                    : []),
                 ],
         },
       });
@@ -206,8 +219,8 @@ async function conversationFixture(page: Page) {
         contentType: "application/octet-stream",
       });
     if (path.endsWith("/history")) {
-      const task = url.searchParams.get("episode"),
-        a = attempts.find((a) => a.task_id === task)!;
+      const a = attempts.find((a) => a.id === path.split("/").at(-2));
+      const task = a?.task_id;
       const episode = state.foreignHistory ? "task_foreign" : task;
       const record = (seq: number, kind: string, content: string) => ({
         id: `hist_${task}_${seq}`,
@@ -240,7 +253,11 @@ async function conversationFixture(page: Page) {
       return route.fulfill({
         json: {
           project_id: "A",
-          workspace_id: "ws_one",
+          workspace_id: a?.workspace_id || "ws_one",
+          cache:
+            state.alternateWorker && a?.workspace_id === "ws_one"
+              ? { synced_at: now, cached_through: 3, source_high_watermark: 3 }
+              : null,
           page: {
             records,
             next_before: 0,
@@ -1297,30 +1314,33 @@ test("reading older activity preserves position and only new records announce ne
       "Detailed findings remain readable while the task continues. ".repeat(6),
     capture_scope: "live",
   });
-  await page.route("**/ui-api/workspaces/ws_one/history?*", (route) => {
-    const params = new URL(route.request().url()).searchParams;
-    const after = Number(params.get("after"));
-    const older = params.has("before");
-    const first = older ? 1 : after ? after + 1 : 21;
-    const last = older ? 20 : latest;
-    return route.fulfill({
-      json: {
-        project_id: "A",
-        workspace_id: "ws_one",
-        page: {
-          records: Array.from(
-            { length: Math.max(0, last - first + 1) },
-            (_, i) => record(first + i),
-          ),
-          next_before: older ? 0 : 21,
-          high_watermark: latest,
-          schema_version: 1,
-          bytes_used: 100,
-          capture_limited: false,
+  await page.route(
+    "**/ui-api/work-items/work_one/attempts/*/history?*",
+    (route) => {
+      const params = new URL(route.request().url()).searchParams;
+      const after = Number(params.get("after"));
+      const older = params.has("before");
+      const first = older ? 1 : after ? after + 1 : 21;
+      const last = older ? 20 : latest;
+      return route.fulfill({
+        json: {
+          project_id: "A",
+          workspace_id: "ws_one",
+          page: {
+            records: Array.from(
+              { length: Math.max(0, last - first + 1) },
+              (_, i) => record(first + i),
+            ),
+            next_before: older ? 0 : 21,
+            high_watermark: latest,
+            schema_version: 1,
+            bytes_used: 100,
+            capture_limited: false,
+          },
         },
-      },
-    });
-  });
+      });
+    },
+  );
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/app/projects/A/work?work=work_one");
   const feed = page.locator(".conversation-feed");
@@ -2265,4 +2285,43 @@ test("workspace keeps the composer visible and alerts on new replies without int
     page.getByRole("button", { name: "View message", exact: true }),
   ).toHaveCount(0);
   expect(f.errors).toEqual([]);
+});
+
+test("reads a stopped worker's cached conversation and sends the next message to another worker", async ({
+  page,
+}) => {
+  const f = await conversationFixture(page);
+  f.state.exists = true;
+  f.state.alternateWorker = true;
+  f.item.latest_attempt_id = "attempt_1";
+  f.attempts.push({
+    id: "attempt_1",
+    task_id: "task_1",
+    workspace_id: "ws_one",
+    work_item_id: f.item.id,
+    created_at: f.item.created_at,
+  });
+  f.finish();
+  await page.goto("/app/projects/A/work?work=work_one");
+  await expect(
+    page.getByText("All four tests passed. The report is ready."),
+  ).toBeVisible();
+  await expect(page.getByText(/Cached history as of/)).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Start worker to load history" }),
+  ).toHaveCount(0);
+  expect(f.posts).toHaveLength(0);
+  await page.getByLabel("Worker for next message").selectOption("ws_two");
+  await page
+    .getByLabel("Message to your agent")
+    .fill("Continue on the backup worker.");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect
+    .poll(
+      () =>
+        f.posts.find((post) => post.path.endsWith("/continue"))?.body
+          .workspace_id,
+    )
+    .toBe("ws_two");
+  expect(f.posts.some((post) => post.path.endsWith("/start"))).toBe(false);
 });

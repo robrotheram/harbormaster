@@ -49,6 +49,7 @@ import {
   MessageSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import {
   ErrorNotice,
@@ -218,9 +219,22 @@ export function WorkConversation({
   const worker = workers.data?.find((w) => w.id === item?.workspace_id);
   const [subscriptionSettings, setSubscriptionSettings] = useState(false);
   const [selection, setSelection] = useState<AgentModel>();
+  const [move, setMove] = useState<{ work: string; worker: string }>();
+  const destination = move?.work === id ? move.worker : undefined;
+  const alternateWorkers =
+    workers.data?.filter(
+      (candidate) =>
+        candidate.id !== item?.workspace_id &&
+        candidate.project_id === project.id &&
+        !candidate.shared &&
+        !["STOPPING", "UNKNOWN"].includes(candidate.state),
+    ) || [];
+  const executionWorker =
+    alternateWorkers.find((candidate) => candidate.id === destination) ||
+    worker;
   const subscriptionAction = (error: unknown) => {
     if (
-      !worker ||
+      !executionWorker ||
       !error ||
       typeof error !== "object" ||
       !("code" in error) ||
@@ -321,6 +335,7 @@ export function WorkConversation({
         id,
         message,
         selection,
+        destination,
         areas: areaDraft?.key,
         screenshots: screenshotDraft?.key,
         attempt: item?.latest_attempt_id,
@@ -365,12 +380,14 @@ export function WorkConversation({
         delivery,
         selection,
         screenshots,
+        destination,
       );
     },
     onMutate: () => draftID,
     onSuccess: async (_, action, submittedDraft) => {
       setActionSequence((v) => v + 1);
       if (action === "continue") {
+        setMove(undefined);
         setMessage("");
         personal.setReviewAreas((old) => {
           const next = { ...old };
@@ -455,6 +472,7 @@ export function WorkConversation({
     !running &&
     !mutation.isPending &&
     canContinue &&
+    (!destination || alternateWorkers.some((w) => w.id === destination)) &&
     !capturingArea &&
     !readingImage &&
     !areas.some(({ comment }) => !comment.trim()) &&
@@ -498,9 +516,9 @@ export function WorkConversation({
       className={`conversation-session visual-session unified-thread ${workspaceOpen ? "is-workspace-open" : ""}`}
       aria-label="Work conversation"
     >
-      {subscriptionSettings && worker && (
+      {subscriptionSettings && executionWorker && (
         <WorkspaceSettings
-          workspace={worker}
+          workspace={executionWorker}
           initialSection="subscriptions"
           onClose={() => setSubscriptionSettings(false)}
           onSaved={() => setSubscriptionSettings(false)}
@@ -744,6 +762,11 @@ export function WorkConversation({
                   project={project.id}
                   item={item}
                   action={runAction}
+                  onLoad={
+                    worker?.state === "STOPPED"
+                      ? () => mutation.mutate("wake")
+                      : undefined
+                  }
                 />
               )}
             {!earlier && attempts.length > 1 && (
@@ -776,6 +799,11 @@ export function WorkConversation({
                 key={a.id}
                 project={project.id}
                 attempt={a}
+                onLoad={
+                  a.workspace_id === worker?.id && worker.state === "STOPPED"
+                    ? () => mutation.mutate("wake")
+                    : undefined
+                }
                 action={a.id === latest?.id ? runAction : null}
                 onReply={a.id === fileAttempt?.id ? recordReply : undefined}
                 onAsk={selectElement}
@@ -795,21 +823,6 @@ export function WorkConversation({
                       ? "Agent is working. Recorded activity updates here."
                       : "Preparing the worker and waiting for task acceptance…"}
                 </span>
-              </div>
-            )}
-            {worker?.state === "STOPPED" && (
-              <div className="conversation-notice">
-                <p>
-                  The worker is stopped. Start it here to read the private
-                  conversation.
-                </p>
-                <Button
-                  variant="outline"
-                  disabled={mutation.isPending}
-                  onClick={() => mutation.mutate("wake")}
-                >
-                  Load conversation
-                </Button>
               </div>
             )}
           </div>
@@ -994,10 +1007,40 @@ export function WorkConversation({
                 }
                 disabled={!item.latest_attempt_id || mutation.isPending}
               />
+              {canContinue && alternateWorkers.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 px-2 pb-2">
+                  <NativeSelect
+                    aria-label="Worker for next message"
+                    value={destination || ""}
+                    disabled={running || mutation.isPending}
+                    onChange={(event) => {
+                      setMove(
+                        event.target.value
+                          ? { work: id, worker: event.target.value }
+                          : undefined,
+                      );
+                      setSelection(undefined);
+                    }}
+                  >
+                    <option value="">{worker?.name || "Current worker"}</option>
+                    {alternateWorkers.map((candidate) => (
+                      <option value={candidate.id} key={candidate.id}>
+                        {candidate.name || candidate.id}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                  {destination && (
+                    <span className="text-xs text-muted-foreground">
+                      The next worker gets the recorded conversation. Files and
+                      running services stay on their worker.
+                    </span>
+                  )}
+                </div>
+              )}
               <div className="thread-composer-footer">
                 <AgentSelection
                   compact
-                  workspace={item.workspace_id}
+                  workspace={destination || item.workspace_id}
                   provider={selection?.provider ?? item.provider ?? ""}
                   model={selection?.model ?? item.model ?? ""}
                   reasoning={
@@ -1087,13 +1130,16 @@ function DraftMessage({
   project,
   item,
   action,
+  onLoad,
 }: {
   project: string;
   item: WorkItem;
   action?: ReactNode;
+  onLoad?: () => void;
 }) {
   const query = useQuery(instructionOptions(project, item));
-  if (query.isError) return <ErrorNotice error={query.error} />;
+  if (query.isError)
+    return <HistoryReadError error={query.error} onLoad={onLoad} />;
   return (
     <article className="conversation-message is-user">
       <div className="conversation-speaker">
@@ -1109,6 +1155,27 @@ function DraftMessage({
   );
 }
 
+function HistoryReadError({
+  error,
+  onLoad,
+}: {
+  error: unknown;
+  onLoad?: () => void;
+}) {
+  return (
+    <>
+      <ErrorNotice error={error} />
+      {onLoad &&
+        error instanceof APIError &&
+        error.code === "HISTORY_WORKSPACE_STOPPED" && (
+          <Button type="button" variant="outline" onClick={onLoad}>
+            Start worker to load history
+          </Button>
+        )}
+    </>
+  );
+}
+
 function RunConversation({
   project,
   attempt,
@@ -1116,11 +1183,13 @@ function RunConversation({
   onAsk,
   onActivity,
   action,
+  onLoad,
   onReply,
 }: {
   project: string;
   attempt: Attempt;
   action?: ReactNode;
+  onLoad?: () => void;
   onReply?: (attempt: string, content: string) => void;
   onOlder: () => void;
   onAsk: (message: string) => void;
@@ -1142,8 +1211,7 @@ function RunConversation({
     queryFn: async ({ signal }) => {
       const value = await refreshRunHistory(
         project,
-        attempt.workspace_id,
-        attempt.task_id!,
+        attempt,
         observed.current,
         signal,
       );
@@ -1158,12 +1226,7 @@ function RunConversation({
   });
   const more = useMutation({
     mutationFn: () =>
-      runHistory(
-        project,
-        attempt.workspace_id,
-        attempt.task_id!,
-        cursor ?? history.data!.page.next_before,
-      ),
+      runHistory(project, attempt, cursor ?? history.data!.page.next_before),
     onSuccess: (data) => {
       setOlder((old) => [...data.page.records, ...old]);
       setCursor(data.page.next_before);
@@ -1185,10 +1248,7 @@ function RunConversation({
   }, [newestSequence, onActivity]);
   const records = [
     ...new Map(
-      [
-        ...older,
-        ...(history.isError ? [] : history.data?.page.records || []),
-      ].map((r) => [r.id, r]),
+      [...older, ...(history.data?.page.records || [])].map((r) => [r.id, r]),
     ).values(),
   ].sort((a, b) => a.seq - b.seq);
   const result = useQuery(
@@ -1199,7 +1259,9 @@ function RunConversation({
       !!attempt.task_id &&
         !activeAttempt(attempt.state) &&
         !records.some((r) => r.kind === "assistant.message") &&
-        !history.isPending,
+        history.isSuccess &&
+        !history.data?.cache,
+      true,
     ),
   );
   const replyContent =
@@ -1235,7 +1297,18 @@ function RunConversation({
         </Button>
       )}
       {more.isError && <ErrorNotice error={more.error} />}
-      {history.isError && <ErrorNotice error={history.error} />}
+      {history.isError && (
+        <HistoryReadError error={history.error} onLoad={onLoad} />
+      )}
+      {history.data?.cache && (
+        <p className="conversation-muted">
+          {records.length ? "Cached history" : "No cached records for this run"}{" "}
+          as of {date(history.data.cache.synced_at)}.
+          {history.data.cache.cached_through <
+            history.data.cache.source_high_watermark &&
+            " Some recorded activity has yet to sync."}
+        </p>
+      )}
       {history.data?.page.capture_limited && (
         <p role="alert">
           Recording storage is full. Some activity may be missing.

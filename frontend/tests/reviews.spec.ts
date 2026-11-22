@@ -163,7 +163,10 @@ async function setup(
         },
       });
     if (path.endsWith("/history")) {
-      const old = url.searchParams.get("episode") === "task_old";
+      const task = attempts.find(
+        (attempt) => attempt.id === path.split("/").at(-2),
+      )?.task_id;
+      const old = task === "task_old";
       const content = old
         ? "# Previous delivery\nThe original checkout."
         : '# Checkout delivery\nValidation now explains missing fields.\n\n```workbench-chart\n{"version":1,"type":"bar","title":"Validation results","x":"name","y":["value"],"data":[{"name":"Pass","value":8},{"name":"Fail","value":2}]}\n```';
@@ -183,7 +186,7 @@ async function setup(
                     source: "codex",
                     at: project.created_at,
                     seq: 2,
-                    episode_id: url.searchParams.get("episode"),
+                    episode_id: task,
                     kind: "assistant.message",
                     content,
                   },
@@ -192,7 +195,7 @@ async function setup(
                     source: "codex",
                     at: project.created_at,
                     seq: 1,
-                    episode_id: url.searchParams.get("episode"),
+                    episode_id: task,
                     kind: "tool.call",
                     tool: "apply_patch",
                     content: JSON.stringify({

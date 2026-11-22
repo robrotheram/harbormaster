@@ -43,12 +43,15 @@ export const resultOptions = (
   workspace: string,
   task: string | undefined,
   enabled: boolean,
+  noStart = false,
 ) => ({
   ...privateContentOptions,
-  queryKey: [...taskKey(project, workspace, task), "result"],
+  queryKey: [...taskKey(project, workspace, task), "result", noStart],
   queryFn: ({ signal }: { signal: AbortSignal }) =>
     request<{ content: string; next_offset: number }>(
-      path(workspace, task) + "/result?limit=65536",
+      path(workspace, task) +
+        "/result?limit=65536" +
+        (noStart ? "&no_start=1" : ""),
       undefined,
       signal,
     ),

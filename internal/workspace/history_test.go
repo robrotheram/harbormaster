@@ -171,3 +171,21 @@ func TestT3HistoryCollectsNamespacedIDsWithinWorkspace(t *testing.T) {
 		t.Fatal("native import lost or crossed project boundary", calls, page)
 	}
 }
+
+func TestCodexHistoryRecordsMCPServer(t *testing.T) {
+	m, err := New(Config{ID: "ws_history", HomeID: "home_test", DataDir: t.TempDir(), Token: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	m.captureHistoryLine("codex", "ep_test", []byte(`{"type":"item.completed","item":{"id":"mcp_1","type":"mcp_tool_call","server":"docs","tool":"search","arguments":{"query":"history"},"result":{"content":[]},"status":"completed"}}`))
+	page := readHistoryTest(t, m, "")
+	if len(page.Records) != 2 {
+		t.Fatal("missing call or result", page)
+	}
+	for _, record := range page.Records {
+		if record.ToolServer != "docs" || record.Tool != "search" || record.ToolCallID != "mcp_1" {
+			t.Fatal("MCP invocation lost provenance", record)
+		}
+	}
+}

@@ -446,3 +446,72 @@ test("closing a pending history export cancels the read without downloading", as
   await expect(dialog).toHaveCount(0);
   expect(downloads).toEqual([]);
 });
+
+test("project audit filters cached tool activity without contacting a worker", async ({
+  page,
+}) => {
+  const state = await fixture(page);
+  const at = "2026-11-14T12:00:00Z";
+  await page.route("**/ui-api/projects/audit/audit-history?*", (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    const items = [
+      {
+        cursor: 2,
+        workspace_id: "ws_1",
+        record: {
+          at,
+          captured_at: at,
+          kind: "tool.call",
+          episode_id: "task_audit",
+          source: "codex",
+          tool: "search",
+          tool_server: "docs",
+          content: '{"query":"history"}',
+        },
+      },
+      {
+        cursor: 1,
+        workspace_id: "ws_0",
+        record: {
+          at,
+          captured_at: at,
+          kind: "user.message",
+          episode_id: "task_support",
+          source: "codex",
+          content: "Review the logs",
+        },
+      },
+    ];
+    return route.fulfill({
+      json: {
+        project_id: "audit",
+        next_before: 0,
+        items: items.filter(
+          (item) =>
+            (!params.get("kind") || params.get("kind") === item.record.kind) &&
+            (!params.get("workspace_id") ||
+              params.get("workspace_id") === item.workspace_id),
+        ),
+      },
+    });
+  });
+  await page.goto("/app/projects/audit/settings");
+  await page.getByRole("tab", { name: "Audit", exact: true }).click();
+  await expect(page).toHaveURL(/settings\?tab=audit$/);
+  await page.reload();
+  const audit = page.getByRole("tabpanel", { name: "Audit", exact: true });
+  await audit.getByLabel("Audit event type").selectOption("tool.call");
+  await expect(
+    audit
+      .getByRole("list", { name: "Audit events" })
+      .getByText("User message", { exact: true }),
+  ).toHaveCount(0);
+  await audit.getByText("docs / search", { exact: true }).click();
+  await expect(
+    audit.getByText('{"query":"history"}', { exact: true }),
+  ).toBeVisible();
+  await audit.getByLabel("Audit worker").selectOption("ws_0");
+  await expect(audit.getByText(/No cached events/)).toBeVisible();
+  expect(state.writes).toHaveLength(0);
+  expect(state.historyReads).toHaveLength(0);
+});

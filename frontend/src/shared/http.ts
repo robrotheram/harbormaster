@@ -117,10 +117,12 @@ const messages: Record<string, string> = {
     "This project has multiple Hermes workers. Open the worker you want from Workers.",
   HISTORY_UNAVAILABLE:
     "Recorded activity is unavailable. Try again. If this continues, check the worker’s status under Workers and share the support details with your administrator.",
+  HANDOFF_HISTORY_UNAVAILABLE:
+    "The latest request is missing from the central cache. Bring the original worker online to sync its history before moving the conversation.",
   RESULT_UNAVAILABLE:
     "The task’s final response could not be loaded. Check its recorded activity in the conversation and try again. If it remains unavailable, share the support details with your administrator.",
   HISTORY_WORKSPACE_STOPPED:
-    "Private history remains on the worker disk. Start the worker to browse or export it.",
+    "No cached history is available for this worker. Start the worker to load its saved history.",
   MATRIX_HOMESERVER_INVALID:
     "This address does not provide a valid Matrix homeserver. Enter your Element or Matrix HTTPS address and save the configuration to discover it.",
   MATRIX_TOKEN_INVALID:

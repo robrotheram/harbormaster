@@ -2,7 +2,7 @@ package shared
 
 import "time"
 
-// HistoryRecord is private workspace content, never platform metadata.
+// HistoryRecord contains private transcript data from the worker recorder.
 type HistoryRecord struct {
 	// Purpose is assigned by the control plane from operator metadata only.
 	Purpose       string    `json:"purpose,omitempty"`
@@ -21,6 +21,7 @@ type HistoryRecord struct {
 	Kind          string    `json:"kind"`
 	Role          string    `json:"role,omitempty"`
 	Content       string    `json:"content,omitempty"`
+	ToolServer    string    `json:"tool_server,omitempty"`
 	Tool          string    `json:"tool,omitempty"`
 	ToolCallID    string    `json:"tool_call_id,omitempty"`
 	Provider      string    `json:"provider,omitempty"`

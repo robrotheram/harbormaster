@@ -3,6 +3,13 @@ import { runHistory, refreshRunHistory, userMessage } from "./conversation-api";
 import type { Attempt } from "./api";
 import type { Snapshot, HistoryRecord } from "@/features/history/history-api";
 
+const attempt = {
+  id: "attempt_one",
+  work_item_id: "work_one",
+  workspace_id: "ws_one",
+  task_id: "task_one",
+};
+
 afterEach(() => vi.unstubAllGlobals());
 describe("work conversation boundaries", () => {
   it("requests one task and rejects foreign project, worker, or task records", async () => {
@@ -16,22 +23,18 @@ describe("work conversation boundaries", () => {
         new Response(JSON.stringify(snapshot)),
     );
     vi.stubGlobal("fetch", fetcher);
-    await expect(
-      runHistory("project_one", "ws_one", "task_one", 7),
-    ).resolves.toEqual(snapshot);
-    expect(String(fetcher.mock.calls[0][0])).toContain(
-      "episode=task_one&order=desc&before=7",
+    await expect(runHistory("project_one", attempt, 7)).resolves.toEqual(
+      snapshot,
     );
+    expect(String(fetcher.mock.calls[0][0])).toContain(
+      "/work-items/work_one/attempts/attempt_one/history?project_id=project_one&order=desc&before=7",
+    );
+    await expect(runHistory("project_other", attempt)).rejects.toThrow();
     await expect(
-      runHistory("project_other", "ws_one", "task_one"),
-    ).rejects.toThrow();
-    await expect(
-      runHistory("project_one", "ws_other", "task_one"),
+      runHistory("project_one", { ...attempt, workspace_id: "ws_other" }),
     ).rejects.toThrow();
     snapshot.page.records.push({ episode_id: "task_other" });
-    await expect(
-      runHistory("project_one", "ws_one", "task_one"),
-    ).rejects.toThrow();
+    await expect(runHistory("project_one", attempt)).rejects.toThrow();
   });
   it("retains displayed events and catches up on bursts without skipping pages", async () => {
     const records = Array.from(
@@ -77,19 +80,9 @@ describe("work conversation boundaries", () => {
         );
       }),
     );
-    const first = await refreshRunHistory(
-      "project_one",
-      "ws_one",
-      "task_one",
-      previous,
-    );
+    const first = await refreshRunHistory("project_one", attempt, previous);
     expect(first.page.next_after).toBe(60);
-    const second = await refreshRunHistory(
-      "project_one",
-      "ws_one",
-      "task_one",
-      first,
-    );
+    const second = await refreshRunHistory("project_one", attempt, first);
     expect(seen).toEqual([40, 60]);
     expect(second.page.records.map((r) => r.seq)).toEqual(
       records.slice(20).map((r) => r.seq),

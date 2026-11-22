@@ -1,6 +1,6 @@
 # Plan and sync project tasks
 
-Use **Overview** to manage the project's task list. Filter by work scope or assignee. Select **For me** to see open tasks you own or control and reviews assigned to you. Select **Needs attention** to find tasks that need intervention, including tasks with unfinished dependencies. Open a task to see the status of each dependency. Turn on **Wait for dependencies before running** for work that needs all its prerequisites complete, such as acceptance testing. Use **Archive** to switch to archived tasks.
+Use **Overview** to manage the project's task list. Filter by work scope or assignee. Select **For me** to see open tasks you own or control and reviews assigned to you. Select **Needs attention** to find tasks that need intervention, including tasks with unfinished dependencies. Select an activity pill to jump to **Dependencies**. Tasks with prerequisites or downstream tasks show the dependency graph automatically. Switch to **Entire project** to see the project graph. Select **Activity** in the Overview toolbar to open the project graph directly. Use **Archive** to switch to archived tasks.
 
 ## Create and dispatch a task
 
@@ -12,7 +12,7 @@ A planned task stays idle until dispatched. Editing its description changes proj
 
 ## Update task status or archive a task
 
-Before the first run, open the task and change **Status**. After a run exists, the task status follows its execution and review. To continue completed work, open its conversation and send a new request.
+Before the first run, open the task and change **Planning status**. After a run exists, the task status follows its execution and review. To continue completed work, open its conversation and send a new request.
 
 Use the task's archive action to hide it from the active list. Archiving leaves current execution and the provider issue state alone. Restore the task from the archive when it needs to appear in the active list again.
 

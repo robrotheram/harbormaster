@@ -33,13 +33,16 @@ const projectRoute = createRoute({
     attempt?: string;
     view?: "workspace" | "files";
     worker?: string;
-    tab?: "general" | "hermes";
+    tab?: "general" | "hermes" | "audit";
   } => ({
     view:
       search.view === "workspace" || search.view === "files"
         ? search.view
         : undefined,
-    tab: search.tab === "hermes" ? "hermes" : undefined,
+    tab:
+      search.tab === "hermes" || search.tab === "audit"
+        ? search.tab
+        : undefined,
     attempt: typeof search.attempt === "string" ? search.attempt : undefined,
     work: typeof search.work === "string" ? search.work : undefined,
     worker: typeof search.worker === "string" ? search.worker : undefined,

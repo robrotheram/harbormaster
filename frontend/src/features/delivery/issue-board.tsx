@@ -12,8 +12,10 @@ import {
   Plus,
   Play,
   Loader2,
+  GitBranch,
   RefreshCw,
   SlidersHorizontal,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +23,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import {
   Sheet,
   SheetContent,
+  SheetClose,
   SheetHeader,
   SheetTitle,
   SheetDescription,
@@ -46,7 +49,7 @@ import {
   assigneeKey,
 } from "./team-state";
 import { taskReference, PriorityPill } from "./task-controls";
-import { TaskDetails, type TaskChange } from "./task-details";
+import { TaskDetails, type TaskChange, type TaskEntry } from "./task-details";
 import { NewIssue } from "./new-issue";
 import { IssueImport } from "./issue-import";
 
@@ -105,13 +108,15 @@ function Board({ project }: { project: Project }) {
     [archived, setArchived] = useState(false),
     [creating, setCreating] = useState(false),
     [importing, setImporting] = useState(false),
+    [taskEntry, setTaskEntry] = useState<TaskEntry>("details"),
     [selected, setSelected] = useState(route.work || "");
   const [sort, setSort] = useState("priority");
   const returnFocus = useRef<HTMLElement | null>(null);
   useEffect(() => {
     setSelected(route.work || "");
   }, [route.work]);
-  const select = (id: string) => {
+  const select = (id: string, entry: TaskEntry = "details") => {
+    setTaskEntry(entry);
     setSelected(id);
     void navigate({
       to: "/projects/$projectId/$section",
@@ -235,6 +240,18 @@ function Board({ project }: { project: Project }) {
           <p>Tasks, owners, and the next step.</p>
         </div>
         <div className="overview-header-actions">
+          <Button
+            variant="ghost"
+            disabled={!cards.some((card) => card.stage !== "archived")}
+            onClick={() => {
+              const first =
+                visible.find((card) => card.stage !== "archived") ||
+                cards.find((card) => card.stage !== "archived");
+              if (first) select(first.id, "project");
+            }}
+          >
+            <GitBranch size={15} /> Activity
+          </Button>
           <Button variant="ghost" onClick={() => setArchived(!archived)}>
             <Archive size={15} />
             {archived ? "Back to overview" : "Archive"}
@@ -467,42 +484,19 @@ function Board({ project }: { project: Project }) {
                         </span>
                       </td>
                       <td data-label="Activity">
-                        <span
-                          className={`task-pill activity-${activityTone(card)}`}
+                        <button
+                          type="button"
+                          className={`task-pill activity-trigger activity-${activityTone(card)}${pending > 0 ? " has-dependency-warning" : ""}`}
+                          aria-label={`${teamActivity(card)}${pending > 0 ? ", dependency warning" : ""}. View activity for ${card.title || taskReference(card)}`}
+                          aria-haspopup="dialog"
+                          onClick={() => select(card.id, "activity")}
                         >
                           <i />
                           {teamActivity(card)}
-                        </span>
-                        {awaitingReview && reviewer && (
-                          <div className="task-activity-detail">
-                            Reviewer:{" "}
-                            {memberLabel(reviewer) || "Assigned member"}
-                          </div>
-                        )}
-                        {revising && (
-                          <div className="task-activity-detail">
-                            {controller
-                              ? `Revision by ${memberLabel(controller) || "assigned controller"}`
-                              : "Controller unassigned"}
-                          </div>
-                        )}
-                        {firstRun &&
-                          controller &&
-                          card.owner_id !== controller && (
-                            <div className="task-activity-detail">
-                              Controller:{" "}
-                              {memberLabel(controller) || "Assigned member"}
-                            </div>
+                          {pending > 0 && (
+                            <AlertTriangle size={13} aria-hidden="true" />
                           )}
-                        {pending > 0 && (
-                          <div className="task-activity-detail">
-                            {pending}{" "}
-                            {card.require_dependencies
-                              ? "required, unfinished"
-                              : "unfinished"}{" "}
-                            {pending === 1 ? "dependency" : "dependencies"}
-                          </div>
-                        )}
+                        </button>
                       </td>
                       <td className="task-row-actions">
                         <div className="task-action-group">
@@ -607,7 +601,9 @@ function Board({ project }: { project: Project }) {
       >
         <SheetContent
           className="task-sheet"
-          onOpenAutoFocus={() => {
+          showCloseButton={false}
+          onOpenAutoFocus={(event) => {
+            if (taskEntry !== "details") event.preventDefault();
             returnFocus.current =
               document.activeElement instanceof HTMLElement
                 ? document.activeElement
@@ -628,9 +624,19 @@ function Board({ project }: { project: Project }) {
         >
           <SheetHeader>
             <SheetTitle>Task details</SheetTitle>
-            <SheetDescription>
-              Plan, assign and start this task.
+            <SheetDescription className="sr-only">
+              Description, responsibility, and dependencies.
             </SheetDescription>
+            <SheetClose asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Close"
+                disabled={busy}
+              >
+                <X size={18} />
+              </Button>
+            </SheetClose>
           </SheetHeader>
           {error && (
             <div className="task-panel-error">
@@ -649,6 +655,10 @@ function Board({ project }: { project: Project }) {
               canSync={capabilities.data?.can_import === true}
               canStart={canStartTask(current)}
               startReason={startReason(current)}
+              entry={taskEntry}
+              onOpenTask={(id, projectScope) =>
+                select(id, projectScope ? "project" : "graph")
+              }
               onStart={() => startWork(current)}
               onSave={(edit) => change.mutateAsync({ card: current, edit })}
               onSync={(direction, discard) =>

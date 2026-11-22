@@ -202,3 +202,69 @@ func TestHistoryPurposeUsesOperatorMetadataAndSurvivesRestart(t *testing.T) {
 		}
 	}
 }
+
+func TestCachedHistoryBackfillsAndExportsOffline(t *testing.T) {
+	s, base := setup(t)
+	ws := create(t, s, "cache-history")
+	path := "/v1/workspaces/" + ws.ID
+	if res := request(t, s, "POST", path+"/start", `{"idempotency_key":"start-cache"}`); res.Code != 200 {
+		t.Fatal(res.Code, res.Body.String())
+	}
+	fixture := &historyFixtureRuntime{embeddedRuntime: base}
+	s.Runtime = fixture
+	s.Reconcile(context.Background())
+	if res := request(t, s, "POST", path+"/stop", `{"idempotency_key":"stop-cache"}`); res.Code != 200 {
+		t.Fatal(res.Code, res.Body.String())
+	}
+	reads := fixture.reads
+	s = New(s.Store, fixture, s.cfg)
+	res := request(t, s, "GET", path+"/history?order=desc", "")
+	var data struct {
+		Page shared.HistoryPage `json:"page"`
+	}
+	if res.Code != 200 || json.Unmarshal(res.Body.Bytes(), &data) != nil || len(data.Page.Records) != 20 ||
+		data.Page.Records[0].Seq != 25 || data.Page.NextBefore != 6 || data.Page.Records[0].Purpose != "" {
+		t.Fatal(res.Code, res.Body.String())
+	}
+	res = request(t, s, "GET", path+"/history?order=desc&before=6", "")
+	if res.Code != 200 || json.Unmarshal(res.Body.Bytes(), &data) != nil || len(data.Page.Records) != 5 || data.Page.Records[4].Seq != 1 {
+		t.Fatal(res.Code, res.Body.String())
+	}
+	res = request(t, s, "GET", path+"/history/export", "")
+	if res.Code != 200 || !strings.Contains(res.Body.String(), `"records":25`) || !strings.Contains(res.Body.String(), `"type":"export_complete"`) {
+		t.Fatal(res.Code, res.Body.String())
+	}
+	if fixture.reads != reads || base.starts != 1 {
+		t.Fatal("offline read reached the worker", fixture.reads, reads, base.starts)
+	}
+}
+
+func TestProjectAuditScopesSharedWorkerEpisodes(t *testing.T) {
+	s, _ := setup(t)
+	ctx := context.Background()
+	s.cfg.SharedWorkspaceID = "ws_shared"
+	if _, err := s.EnsureSharedWorkspace(ctx); err != nil {
+		t.Fatal(err)
+	}
+	projects := []shared.Project{domainProject(t, s, "history-a"), domainProject(t, s, "history-b")}
+	for i, project := range projects {
+		res := request(t, s, "POST", "/v1/work-items", fmt.Sprintf(`{"project_id":%q,"kind":"research","idempotency_key":"run-audit","instruction":"Shared audit message %d"}`, project.ID, i))
+		var item shared.WorkItem
+		if res.Code != 201 || json.Unmarshal(res.Body.Bytes(), &item) != nil {
+			t.Fatal(res.Code, res.Body.String())
+		}
+		run := request(t, s, "POST", "/v1/work-items/"+item.ID+"/run", fmt.Sprintf(`{"project_id":%q,"idempotency_key":"run"}`, project.ID))
+		if run.Code != 202 {
+			t.Fatal(run.Code, run.Body.String())
+		}
+		waitWorkReview(t, s, project.ID, item.ID)
+	}
+	s.Reconcile(ctx)
+	for i, project := range projects {
+		res := request(t, s, "GET", "/v1/projects/"+project.ID+"/audit-history?kind=user.message", "")
+		if res.Code != 200 || !strings.Contains(res.Body.String(), fmt.Sprintf("Shared audit message %d", i)) ||
+			strings.Contains(res.Body.String(), fmt.Sprintf("Shared audit message %d", 1-i)) {
+			t.Fatal("shared audit crossed project scope", res.Code, res.Body.String())
+		}
+	}
+}

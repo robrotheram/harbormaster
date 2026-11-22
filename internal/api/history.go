@@ -1,31 +1,57 @@
 package api
 
 import (
-	"agent-workbench/internal/shared"
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
-
+	"errors"
 	"net/http"
 	"net/url"
 	"strconv"
 	"time"
+
+	"agent-workbench/internal/shared"
+	"agent-workbench/internal/store"
 )
 
 var historyUnavailable = shared.CodedError{Status: http.StatusConflict, Code: "HISTORY_UNAVAILABLE"}
 
-func (s *Server) readHistory(ctx context.Context, ws shared.Workspace, q url.Values) (shared.HistoryPage, error) {
+func (s *Server) readHistory(ctx context.Context, ws shared.Workspace, q url.Values, filter store.HistoryFilter) (shared.HistoryPage, *store.HistoryCacheState, error) {
+	failure := historyUnavailable
+	if ws.State == "STOPPED" {
+		page, state, err := s.Store.CachedHistory(ctx, ws.ID, filter)
+		if err == nil {
+			return page, &state, nil
+		}
+	}
+	liveCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	if err := s.refresh(liveCtx, &ws); err == nil {
+		if ws.Ready {
+			if page, err := s.workerHistory(liveCtx, ws.ID, q); err == nil {
+				return page, nil, nil
+			}
+		} else {
+			failure = shared.CodedError{Status: http.StatusConflict, Code: "HISTORY_WORKSPACE_STOPPED"}
+		}
+	}
+	page, state, err := s.Store.CachedHistory(ctx, ws.ID, filter)
+	if errors.Is(err, sql.ErrNoRows) {
+		return page, nil, failure
+	}
+	if err != nil {
+		return page, nil, storageUnavailable
+	}
+	return page, &state, nil
+}
+
+func (s *Server) workerHistory(ctx context.Context, workspace string, q url.Values) (shared.HistoryPage, error) {
 	var page shared.HistoryPage
-	if err := s.refresh(ctx, &ws); err != nil {
-		return page, historyUnavailable
-	}
-	if !ws.Ready {
-		return page, shared.CodedError{Status: http.StatusConflict, Code: "HISTORY_WORKSPACE_STOPPED"}
-	}
 	q.Set("history", "1")
 	q.Set("limit", "20")
-	code, b, err := s.Runtime.Agent(ctx, ws.ID, "GET", "/v1/tasks?"+q.Encode(), nil)
+	code, b, err := s.Runtime.Agent(ctx, workspace, "GET", "/v1/tasks?"+q.Encode(), nil)
 	if err != nil || code != 200 || json.Unmarshal(b, &page) != nil || page.SchemaVersion != 1 {
 		return page, historyUnavailable
 	}
@@ -38,53 +64,78 @@ func (s *Server) readHistory(ctx context.Context, ws shared.Workspace, q url.Val
 	}
 	return page, nil
 }
+func (s *Server) serveHistoryPage(w http.ResponseWriter, r *http.Request, ws shared.Workspace, project, episode string) {
+	q := r.URL.Query()
+	if episode != "" {
+		q.Set("episode", episode)
+	}
+	filter, valid := historyFilter(q)
+	if !valid {
+		shared.Error(w, 400, "INVALID_REQUEST")
+		return
+	}
+	for k := range q {
+		switch k {
+		case "episode", "after", "before", "until", "order":
+		default:
+			q.Del(k)
+		}
+	}
+	var page shared.HistoryPage
+	var cache *store.HistoryCacheState
+	var err error
+	if ws.State == "DELETED" {
+		var state store.HistoryCacheState
+		page, state, err = s.Store.CachedHistory(r.Context(), ws.ID, filter)
+		cache = &state
+		if errors.Is(err, sql.ErrNoRows) {
+			err = historyUnavailable
+		}
+	} else {
+		page, cache, err = s.readHistory(r.Context(), ws, q, filter)
+	}
+	if err != nil {
+		shared.WriteHTTPError(w, err, historyUnavailable)
+		return
+	}
+	ratings, err := s.Store.HistoryFeedback(r.Context(), ws.ID)
+	if err != nil {
+		shared.Error(w, 503, "STORAGE_UNAVAILABLE")
+		return
+	}
+	purposes, err := s.Store.HistoryPurposes(r.Context(), ws.ID)
+	if err != nil {
+		shared.Error(w, 503, "STORAGE_UNAVAILABLE")
+		return
+	}
+	for i := range page.Records {
+		page.Records[i].Purpose = purposes[page.Records[i].EpisodeID]
+	}
+	if episode != "" {
+		for _, record := range page.Records {
+			if record.EpisodeID != episode {
+				shared.Error(w, 503, "HISTORY_UNAVAILABLE")
+				return
+			}
+		}
+		rating, hasRating := ratings[episode]
+		clear(ratings)
+		if hasRating {
+			ratings[episode] = rating
+		}
+	}
+	w.Header().Set("Cache-Control", "private, no-store")
+	shared.JSON(w, 200, map[string]any{"page": page, "cache": cache, "ratings": ratings, "workspace_id": ws.ID, "project_id": project})
+}
+
 func (s *Server) registerHistory(mux *http.ServeMux) {
+	s.registerProjectAudit(mux)
 	mux.HandleFunc("GET /v1/workspaces/{id}/history", func(w http.ResponseWriter, r *http.Request) {
 		ws, ok := s.workspace(w, r)
 		if !ok {
 			return
 		}
-		q := url.Values{}
-		if episode := r.URL.Query().Get("episode"); episode != "" {
-			if !shared.ValidID(episode) {
-				shared.Error(w, 400, "INVALID_REQUEST")
-				return
-			}
-			q.Set("episode", episode)
-		}
-		for _, k := range []string{"after", "before", "until"} {
-			if v := r.URL.Query().Get(k); v != "" {
-				n, e := strconv.ParseInt(v, 10, 64)
-				if e != nil || n < 0 {
-					shared.Error(w, 400, "INVALID_REQUEST")
-					return
-				}
-				q.Set(k, v)
-			}
-		}
-		if r.URL.Query().Get("order") == "desc" {
-			q.Set("order", "desc")
-		}
-		page, e := s.readHistory(r.Context(), ws, q)
-		if e != nil {
-			shared.WriteHTTPError(w, e, historyUnavailable)
-			return
-		}
-		ratings, e := s.Store.HistoryFeedback(r.Context(), ws.ID)
-		if e != nil {
-			shared.Error(w, 503, "STORAGE_UNAVAILABLE")
-			return
-		}
-		purposes, e := s.Store.HistoryPurposes(r.Context(), ws.ID)
-		if e != nil {
-			shared.Error(w, 503, "STORAGE_UNAVAILABLE")
-			return
-		}
-		for i := range page.Records {
-			page.Records[i].Purpose = purposes[page.Records[i].EpisodeID]
-		}
-		// No message content is stored in the platform database.
-		shared.JSON(w, 200, map[string]any{"page": page, "ratings": ratings, "workspace_id": ws.ID, "project_id": ws.ProjectID})
+		s.serveHistoryPage(w, r, ws, ws.ProjectID, "")
 	})
 	mux.HandleFunc("POST /v1/workspaces/{id}/history/purpose", func(w http.ResponseWriter, r *http.Request) {
 		if !s.admin(w, r) {
@@ -105,7 +156,7 @@ func (s *Server) registerHistory(mux *http.ServeMux) {
 			shared.Error(w, 400, "INVALID_REQUEST")
 			return
 		}
-		page, e := s.readHistory(r.Context(), ws, url.Values{"episode": []string{in.Episode}})
+		page, _, e := s.readHistory(r.Context(), ws, url.Values{"episode": {in.Episode}}, store.HistoryFilter{Episode: in.Episode})
 		if e != nil {
 			shared.WriteHTTPError(w, e, historyUnavailable)
 			return
@@ -143,7 +194,7 @@ func (s *Server) registerHistory(mux *http.ServeMux) {
 			shared.Error(w, 400, "INVALID_REQUEST")
 			return
 		}
-		page, e := s.readHistory(r.Context(), ws, url.Values{"episode": []string{in.Episode}})
+		page, _, e := s.readHistory(r.Context(), ws, url.Values{"episode": {in.Episode}}, store.HistoryFilter{Episode: in.Episode})
 		if e != nil {
 			shared.WriteHTTPError(w, e, historyUnavailable)
 			return
@@ -164,7 +215,7 @@ func (s *Server) registerHistory(mux *http.ServeMux) {
 		if !ok {
 			return
 		}
-		page, e := s.readHistory(r.Context(), ws, url.Values{})
+		page, cache, e := s.readHistory(r.Context(), ws, url.Values{}, store.HistoryFilter{})
 		if e != nil {
 			shared.WriteHTTPError(w, e, historyUnavailable)
 			return
@@ -187,7 +238,7 @@ func (s *Server) registerHistory(mux *http.ServeMux) {
 		after := int64(0)
 		count := 0
 		digest := sha256.New()
-		if enc.Encode(map[string]any{"type": "manifest", "schema_version": 1, "export_id": shared.NewID("export_"), "workspace_id": ws.ID, "project_id": ws.ProjectID, "exported_at": time.Now().UTC(), "high_watermark": until, "capture_limited": page.CaptureLimited, "bytes_used": page.BytesUsed, "private_reasoning_excluded": true, "redaction": "best_effort_known_credentials", "feedback_source": "local_operator_only", "purpose_source": "operator_annotation", "agent_kind": ws.AgentKind, "runtime_type": ws.RuntimeType, "branch": ws.Branch}) != nil {
+		if enc.Encode(map[string]any{"type": "manifest", "schema_version": 1, "export_id": shared.NewID("export_"), "workspace_id": ws.ID, "project_id": ws.ProjectID, "exported_at": time.Now().UTC(), "high_watermark": until, "capture_limited": page.CaptureLimited, "cache": cache, "bytes_used": page.BytesUsed, "private_reasoning_excluded": true, "redaction": "best_effort_known_credentials", "feedback_source": "local_operator_only", "purpose_source": "operator_annotation", "agent_kind": ws.AgentKind, "runtime_type": ws.RuntimeType, "branch": ws.Branch}) != nil {
 			return
 		}
 		for {
@@ -217,7 +268,11 @@ func (s *Server) registerHistory(mux *http.ServeMux) {
 				enc.Encode(map[string]any{"type": "export_error", "code": "HISTORY_CURSOR_INVALID"})
 				return
 			}
-			page, e = s.readHistory(r.Context(), ws, url.Values{"after": []string{strconv.FormatInt(after, 10)}, "until": []string{strconv.FormatInt(until, 10)}})
+			if cache != nil {
+				page, _, e = s.Store.CachedHistory(r.Context(), ws.ID, store.HistoryFilter{After: after, Until: until})
+			} else {
+				page, e = s.workerHistory(r.Context(), ws.ID, url.Values{"after": {strconv.FormatInt(after, 10)}, "until": {strconv.FormatInt(until, 10)}})
+			}
 			if e != nil {
 				enc.Encode(map[string]any{"type": "export_error", "code": "HISTORY_UNAVAILABLE"})
 				return

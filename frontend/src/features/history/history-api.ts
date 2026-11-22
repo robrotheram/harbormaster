@@ -13,6 +13,7 @@ export type HistoryRecord = {
   role?: string;
   content?: string;
   tool?: string;
+  tool_server?: string;
   tool_call_id?: string;
   model?: string;
   provider?: string;
@@ -28,6 +29,11 @@ export type HistoryRecord = {
   elapsed_ms?: number;
 };
 export type Snapshot = {
+  cache?: {
+    cached_through: number;
+    source_high_watermark: number;
+    synced_at: string;
+  } | null;
   workspace_id: string;
   project_id: string;
   page: {

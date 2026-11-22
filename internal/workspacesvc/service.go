@@ -34,6 +34,7 @@ type Service struct {
 	Now             func() time.Time
 	HermesAvailable func(context.Context) bool
 	Coordinator     *Coordinator
+	BeforeStop      func(context.Context, shared.Workspace)
 }
 type lockEntry struct {
 	mu         sync.Mutex
@@ -253,6 +254,9 @@ func (s *Service) Stop(ctx context.Context, w *shared.Workspace) error {
 	}
 	if w.State != "READY" || w.ActiveRuns > 0 || w.BackgroundJobs > 0 {
 		return shared.CodedError{Status: shared.StatusConflict, Code: "WORKSPACE_BUSY"}
+	}
+	if s.BeforeStop != nil {
+		s.BeforeStop(ctx, *w)
 	}
 	return s.stop(ctx, w, s.Runtime.Stop)
 }

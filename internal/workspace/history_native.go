@@ -88,8 +88,10 @@ func (m *Manager) captureHistoryLine(source, task string, b []byte) {
 			Command   string          `json:"command"`
 			Output    string          `json:"aggregated_output"`
 			Name      string          `json:"tool"`
+			Server    string          `json:"server"`
 			Arguments json.RawMessage `json:"arguments"`
 			Result    json.RawMessage `json:"result"`
+			Error     json.RawMessage `json:"error"`
 			Changes   json.RawMessage `json:"changes"`
 			Status    string          `json:"status"`
 		} `json:"item"`
@@ -109,7 +111,7 @@ func (m *Manager) captureHistoryLine(source, task string, b []byte) {
 		return
 	}
 	v := frame.Item
-	tool := ""
+	tool, server := "", ""
 	input, output := "", ""
 	switch v.Type {
 	case "command_execution":
@@ -120,16 +122,19 @@ func (m *Manager) captureHistoryLine(source, task string, b []byte) {
 		tool = "file_change"
 		output = string(v.Changes)
 	case "mcp_tool_call":
-		tool = v.Name
+		tool, server = v.Name, v.Server
 		input = string(v.Arguments)
 		output = string(v.Result)
+		if output == "" || output == "null" {
+			output = string(v.Error)
+		}
 	default:
 		return
 	}
 	if input != "" {
-		m.history(shared.HistoryRecord{ID: stableHistoryID(task, "tool.call", v.ID), EpisodeID: task, Source: source, Kind: "tool.call", Role: "assistant", Tool: tool, ToolCallID: v.ID, Content: input})
+		m.history(shared.HistoryRecord{ID: stableHistoryID(task, "tool.call", v.ID), EpisodeID: task, Source: source, Kind: "tool.call", Role: "assistant", Tool: tool, ToolServer: server, ToolCallID: v.ID, Content: input})
 	}
 	if frame.Type == "item.completed" {
-		m.history(shared.HistoryRecord{ID: stableHistoryID(task, "tool.result", v.ID), EpisodeID: task, Source: source, Kind: "tool.result", Role: "tool", Tool: tool, ToolCallID: v.ID, Content: output, Status: strings.ToLower(v.Status)})
+		m.history(shared.HistoryRecord{ID: stableHistoryID(task, "tool.result", v.ID), EpisodeID: task, Source: source, Kind: "tool.result", Role: "tool", Tool: tool, ToolServer: server, ToolCallID: v.ID, Content: output, Status: strings.ToLower(v.Status)})
 	}
 }

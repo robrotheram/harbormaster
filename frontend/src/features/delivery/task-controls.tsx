@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, type ReactNode } from "react";
 import { Popover } from "radix-ui";
 import { Check, ChevronDown, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,7 @@ export function SearchPicker({
   onSelect,
   disabled,
   placeholder,
+  icon,
 }: {
   label: string;
   value: string;
@@ -31,6 +32,7 @@ export function SearchPicker({
   onSelect: (value: string) => void;
   disabled?: boolean;
   placeholder?: string;
+  icon?: ReactNode;
 }) {
   const [open, setOpen] = useState(false),
     [search, setSearch] = useState("");
@@ -48,15 +50,17 @@ export function SearchPicker({
     >
       <Popover.Trigger asChild>
         <Button
-          variant="outline"
-          className="task-picker-trigger"
+          variant={icon ? "ghost" : "outline"}
+          size={icon ? "sm" : "default"}
+          className={icon ? undefined : "task-picker-trigger"}
           role="combobox"
           aria-label={label}
           aria-expanded={open}
           disabled={disabled}
         >
+          {icon}
           <span>{value}</span>
-          <ChevronDown size={14} />
+          {!icon && <ChevronDown size={14} />}
         </Button>
       </Popover.Trigger>
       <Popover.Portal>

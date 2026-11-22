@@ -109,7 +109,7 @@ func (m *Manager) history(v shared.HistoryRecord) {
 	if strings.Contains(lower, "think") || strings.Contains(lower, "reason") || strings.Contains(lower, "reflection") {
 		return
 	}
-	if len(v.Tool) > 128 || len(v.ToolCallID) > 512 || len(v.SessionID) > 512 || len(v.RoomID) > 255 || len(v.SenderID) > 255 || len(v.MessageID) > 512 || len(v.RequesterID) > 255 || len(v.NativeRunID) > 512 {
+	if len(v.Tool) > 128 || len(v.ToolServer) > 128 || len(v.ToolCallID) > 512 || len(v.SessionID) > 512 || len(v.RoomID) > 255 || len(v.SenderID) > 255 || len(v.MessageID) > 512 || len(v.RequesterID) > 255 || len(v.NativeRunID) > 512 {
 		return
 	}
 	content, redacted, truncated := m.redactHistoryContent(v.Content)
@@ -155,7 +155,7 @@ func (m *Manager) history(v shared.HistoryRecord) {
 		}
 	}
 	// All string fields use the same redaction boundary, including source IDs.
-	fields := []*string{&v.Tool, &v.ToolCallID, &v.SessionID, &v.RoomID, &v.SenderID, &v.Model, &v.Provider, &v.Status, &v.MessageID, &v.RequesterID, &v.NativeRunID}
+	fields := []*string{&v.Tool, &v.ToolServer, &v.ToolCallID, &v.SessionID, &v.RoomID, &v.SenderID, &v.Model, &v.Provider, &v.Status, &v.MessageID, &v.RequesterID, &v.NativeRunID}
 	for _, f := range fields {
 		s, r, t := m.redactHistory(*f)
 		*f = s
@@ -278,7 +278,7 @@ func stableHistoryID(episode, kind, key string) string {
 	return "hist_" + hex.EncodeToString(h[:16])
 }
 
-// Result history is recorded inside the private workspace database only.
+// The worker records the final reply and terminal event before central sync.
 func (m *Manager) historyTaskResult(_ context.Context, id, provider, result, code, state string, elapsed time.Duration) {
 	if provider == "" {
 		provider = "workspace"

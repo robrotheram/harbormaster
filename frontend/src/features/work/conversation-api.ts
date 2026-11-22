@@ -2,24 +2,25 @@ import { APIError, request } from "@/shared/http";
 import { checkedHistory, type Snapshot } from "@/features/history/history-api";
 import type { Attempt } from "./api";
 
+type Run = Pick<Attempt, "id" | "work_item_id" | "workspace_id" | "task_id">;
+
 export async function runHistory(
   project: string,
-  workspace: string,
-  task: string,
+  attempt: Run,
   before = 0,
   signal?: AbortSignal,
   after?: number,
 ) {
   const value = checkedHistory(
     await request<Snapshot>(
-      `/workspaces/${encodeURIComponent(workspace)}/history?episode=${encodeURIComponent(task)}${after !== undefined ? `&after=${after}` : `&order=desc${before ? `&before=${before}` : ""}`}`,
+      `/work-items/${encodeURIComponent(attempt.work_item_id)}/attempts/${encodeURIComponent(attempt.id)}/history?project_id=${encodeURIComponent(project)}${after !== undefined ? `&after=${after}` : `&order=desc${before ? `&before=${before}` : ""}`}`,
       undefined,
       signal,
     ),
     project,
-    workspace,
+    attempt.workspace_id,
   );
-  if (value.page.records.some((r) => r.episode_id !== task))
+  if (value.page.records.some((r) => r.episode_id !== attempt.task_id))
     throw new APIError("NOT_FOUND_OR_FORBIDDEN", 403);
   return value;
 }
@@ -28,15 +29,14 @@ export async function runHistory(
 // not silently drop activity. Keep events already shown while this view is open.
 export async function refreshRunHistory(
   project: string,
-  workspace: string,
-  task: string,
+  attempt: Run,
   previous?: Snapshot,
   signal?: AbortSignal,
 ) {
   const after = previous
     ? previous.page.records.reduce((latest, r) => Math.max(latest, r.seq), 0)
     : undefined;
-  const value = await runHistory(project, workspace, task, 0, signal, after);
+  const value = await runHistory(project, attempt, 0, signal, after);
   if (!previous) return value;
   return {
     ...value,
@@ -68,7 +68,11 @@ export function userMessage(
     content.split("\n\n", 2)[1]?.startsWith(followup);
   if (
     (attempt.parent_attempt_id &&
-      (content.startsWith(followup) || hasContextPreamble)) ||
+      (content.startsWith(followup) ||
+        content.startsWith(
+          'Continue this conversation on this worker. Read "work-requests/context-',
+        ) ||
+        hasContextPreamble)) ||
     content.startsWith("Workbench presentation: interactive-v1.\n")
   ) {
     const at = content.indexOf(marker);

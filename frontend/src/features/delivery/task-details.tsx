@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
@@ -6,9 +6,8 @@ import {
   Loader2,
   Pencil,
   Play,
-  X,
-  UserRound,
   Archive,
+  AlertTriangle,
   ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -20,9 +19,11 @@ import { memberOptions } from "@/features/work/responsibility";
 import { instructionOptions } from "@/features/work/conversation-title";
 import { userMessage } from "@/features/work/conversation-api";
 import { TicketMarkdown } from "./ticket-description";
-import { taskReference, PriorityPill, SearchPicker } from "./task-controls";
+import { taskReference, SearchPicker } from "./task-controls";
 import { teamActivity, activityTone } from "./team-state";
 import { columns } from "./board-api";
+import { TaskRunDetails } from "./task-activity";
+import { TaskDependencies } from "./task-dependencies";
 import type { BoardCard, BoardStage } from "./board-api";
 
 export type TaskChange = {
@@ -35,6 +36,8 @@ export type TaskChange = {
   priority?: string;
   dependencies?: string[];
 };
+export type TaskEntry = "details" | "activity" | "graph" | "project";
+
 export function TaskDetails({
   card,
   cards,
@@ -43,6 +46,8 @@ export function TaskDetails({
   canStart,
   canSync,
   startReason,
+  entry,
+  onOpenTask,
   onStart,
   onSave,
   onSync,
@@ -54,14 +59,28 @@ export function TaskDetails({
   canStart: boolean;
   canSync: boolean;
   startReason?: string;
+  entry: TaskEntry;
+  onOpenTask: (id: string, projectScope: boolean) => void;
   onStart: () => void;
   onSave: (change: TaskChange) => Promise<unknown>;
   onSync: (direction: "pull" | "push", discard?: boolean) => void;
 }) {
+  const titleHeading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (entry !== "details") return;
+    const frame = requestAnimationFrame(() => {
+      titleHeading.current?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [entry]);
   const [copyStatus, setCopyStatus] = useState("");
   const roster = useQuery(memberOptions(card.project_id));
   const members = roster.data?.items.filter((m) => m.status === "active") || [];
   const me = members.find((m) => m.user_id === roster.data?.user_id);
+  const memberLabel = (id: string) =>
+    id === me?.user_id
+      ? "You"
+      : members.find((member) => member.user_id === id)?.email;
   const instruction = useQuery({
     ...instructionOptions(card.project_id, card.work),
     enabled: card.description === undefined && !!card.work.specification_path,
@@ -98,225 +117,238 @@ export function TaskDetails({
       return false;
     }
   };
-  const dependencies = (card.dependencies || [])
-    .map((id) => cards.find((c) => c.id === id))
-    .filter((c): c is BoardCard => !!c);
-  const missing = (card.dependencies || []).filter(
-    (id) => !cards.some((c) => c.id === id),
-  );
   const firstRun =
     !card.work.latest_attempt_id &&
     ["planned", "draft", "in_progress"].includes(card.work.state) &&
     card.stage !== "archived";
   return (
     <div className="task-detail-content">
-      <div className="task-detail-top">
-        <div className="task-reference-group">
-          <span className="task-reference">{taskReference(card)}</span>
-          <button
-            className="task-copy-link"
-            aria-label="Copy task link"
-            onClick={async () => {
-              try {
-                await navigator.clipboard.writeText(window.location.href);
-                setCopyStatus("Link copied");
-              } catch {
-                setCopyStatus(
-                  "Copy the address from your browser to share this task.",
-                );
-              }
-            }}
+      <div className="task-masthead">
+        <div className="task-detail-top">
+          <div className="task-reference-group">
+            <span className="task-reference">{taskReference(card)}</span>
+            <button
+              className="task-copy-link"
+              aria-label="Copy task link"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(window.location.href);
+                  setCopyStatus("Link copied");
+                } catch {
+                  setCopyStatus(
+                    "Copy the address from your browser to share this task.",
+                  );
+                }
+              }}
+            >
+              <Copy size={13} />
+            </button>
+            <span role="status" className="task-field-hint">
+              {copyStatus}
+            </span>
+          </div>
+          <span
+            className={`task-pill activity-${card.stage === "archived" ? "planned" : activityTone(card)}`}
           >
-            <Copy size={13} />
-          </button>
-          <span role="status" className="task-field-hint">
-            {copyStatus}
+            {card.stage === "archived" ? "Archived" : teamActivity(card)}
           </span>
         </div>
-        <span
-          className={`task-pill activity-${card.stage === "archived" ? "planned" : activityTone(card)}`}
-        >
-          {card.stage === "archived" ? "Archived" : teamActivity(card)}
-        </span>
-        <PriorityPill priority={card.priority} />
-      </div>
-      <div className="task-detail-title">
-        <h2>{card.title || "Untitled task"}</h2>
-        {!editing && (
-          <Button
-            variant="outline"
-            disabled={
-              busy || (card.description === undefined && instruction.isFetching)
-            }
-            onClick={() => {
-              loadDraft();
-              setEditing(true);
-            }}
-          >
-            <Pencil size={14} />
-            Edit
-          </Button>
+        <div className="task-title-row">
+          <h2 className="task-detail-title" ref={titleHeading} tabIndex={-1}>
+            {card.title || "Untitled task"}
+          </h2>
+          <div className="task-detail-actions">
+            {firstRun ? (
+              <Button disabled={busy || editing || !canStart} onClick={onStart}>
+                {starting ? (
+                  <Loader2 size={14} className="loading-spinner" />
+                ) : (
+                  <Play size={14} />
+                )}
+                {starting ? "Starting…" : "Start work"}
+              </Button>
+            ) : card.work.latest_attempt_id ? (
+              <Button asChild>
+                <Link
+                  to="/projects/$projectId/$section"
+                  params={{
+                    projectId: card.project_id,
+                    section: "work",
+                  }}
+                  search={{ work: card.id }}
+                >
+                  Open thread
+                </Link>
+              </Button>
+            ) : null}
+            {!editing && (
+              <Button
+                variant="outline"
+                disabled={
+                  busy ||
+                  (card.description === undefined && instruction.isFetching)
+                }
+                onClick={() => {
+                  loadDraft();
+                  setEditing(true);
+                }}
+              >
+                <Pencil size={14} />
+                Edit
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              disabled={busy || editing}
+              onClick={() =>
+                void save({
+                  stage:
+                    card.stage === "archived"
+                      ? card.archived_from || "planned"
+                      : "archived",
+                })
+              }
+            >
+              <Archive size={14} />
+              {card.stage === "archived" ? "Restore task" : "Archive"}
+            </Button>
+          </div>
+        </div>
+        {firstRun && !canStart && (
+          <p className="task-guidance">
+            <AlertTriangle size={15} />
+            {startReason || "Checking execution availability…"}
+          </p>
         )}
       </div>
-      <div className="task-detail-actions">
-        {firstRun ? (
-          <Button disabled={busy || editing || !canStart} onClick={onStart}>
-            {starting ? (
-              <Loader2 size={14} className="loading-spinner" />
-            ) : (
-              <Play size={14} />
-            )}
-            {starting ? "Starting…" : "Start work"}
-          </Button>
-        ) : card.work.latest_attempt_id ? (
-          <Button asChild>
-            <Link
-              to="/projects/$projectId/$section"
-              params={{
-                projectId: card.project_id,
-                section: "work",
-              }}
-              search={{ work: card.id }}
-            >
-              Open thread
-            </Link>
-          </Button>
-        ) : null}
-        <Button
-          variant="ghost"
-          disabled={busy || editing}
-          onClick={() =>
-            void save({
-              stage:
-                card.stage === "archived"
-                  ? card.archived_from || "planned"
-                  : "archived",
-            })
-          }
-        >
-          <Archive size={14} />
-          {card.stage === "archived" ? "Restore task" : "Archive"}
-        </Button>
-      </div>
-      {firstRun && !canStart && (
-        <p className="task-guidance">
-          {startReason || "Checking execution availability…"}
-        </p>
-      )}
       <div className="task-detail-grid">
-        <section className="task-body" aria-label="Task content">
-          {editing ? (
-            <form
-              className="task-edit-form"
-              onSubmit={async (e) => {
-                e.preventDefault();
-                if (!editBase || staleEdit) return;
-                if (
-                  await save({
-                    revision: editBase.revision,
-                    title:
-                      title.trim() !== editBase.title
-                        ? title.trim()
-                        : undefined,
-                    description:
-                      description !== editBase.description
-                        ? description
-                        : undefined,
-                  })
-                )
-                  setEditing(false);
-              }}
-            >
-              <label>
-                Title
-                <Input
-                  autoFocus
-                  aria-label="Task title"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  maxLength={256}
-                  required
-                  disabled={busy}
-                />
-              </label>
-              <div className="task-description-heading">
-                <label htmlFor="task-description">Description</label>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  aria-pressed={preview}
-                  onClick={() => setPreview(!preview)}
-                >
-                  {preview ? "Write" : "Preview"}
-                </Button>
-              </div>
-              {preview ? (
-                <TicketMarkdown content={description} />
-              ) : (
-                <Textarea
-                  id="task-description"
-                  aria-label="Task description"
-                  rows={12}
-                  maxLength={60000}
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  disabled={busy}
-                />
-              )}
-              <small className="text-muted-foreground">
-                Markdown supported
-              </small>
-              <div className="task-edit-actions">
-                {staleEdit && (
-                  <div role="status">
-                    The task changed while you were editing. Copy any draft text
-                    you want to keep before loading the latest version.
-                    <Button
-                      type="button"
-                      variant="outline"
-                      disabled={busy}
-                      onClick={loadDraft}
-                    >
-                      Load latest and discard draft
-                    </Button>
-                  </div>
+        <div className="task-main">
+          <section className="task-body" aria-label="Task content">
+            {editing ? (
+              <form
+                className="task-edit-form"
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!editBase || staleEdit) return;
+                  if (
+                    await save({
+                      revision: editBase.revision,
+                      title:
+                        title.trim() !== editBase.title
+                          ? title.trim()
+                          : undefined,
+                      description:
+                        description !== editBase.description
+                          ? description
+                          : undefined,
+                    })
+                  )
+                    setEditing(false);
+                }}
+              >
+                <label>
+                  Title
+                  <Input
+                    autoFocus
+                    aria-label="Task title"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    maxLength={256}
+                    required
+                    disabled={busy}
+                  />
+                </label>
+                <div className="task-description-heading">
+                  <label htmlFor="task-description">Description</label>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    aria-pressed={preview}
+                    onClick={() => setPreview(!preview)}
+                  >
+                    {preview ? "Write" : "Preview"}
+                  </Button>
+                </div>
+                {preview ? (
+                  <TicketMarkdown content={description} />
+                ) : (
+                  <Textarea
+                    id="task-description"
+                    aria-label="Task description"
+                    rows={12}
+                    maxLength={60000}
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    disabled={busy}
+                  />
                 )}
-                <Button
-                  type="submit"
-                  disabled={
-                    busy ||
-                    staleEdit ||
-                    !title.trim() ||
-                    (title.trim() === editBase?.title &&
-                      description === editBase?.description)
+                <small className="text-muted-foreground">
+                  Markdown supported
+                </small>
+                <div className="task-edit-actions">
+                  {staleEdit && (
+                    <div role="status">
+                      The task changed while you were editing. Copy any draft
+                      text you want to keep before loading the latest version.
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={busy}
+                        onClick={loadDraft}
+                      >
+                        Load latest and discard draft
+                      </Button>
+                    </div>
+                  )}
+                  <Button
+                    type="submit"
+                    disabled={
+                      busy ||
+                      staleEdit ||
+                      !title.trim() ||
+                      (title.trim() === editBase?.title &&
+                        description === editBase?.description)
+                    }
+                  >
+                    Save changes
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => setEditing(false)}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            ) : (
+              <>
+                <h3>Description</h3>
+                {instruction.isError && (
+                  <ErrorNotice error={instruction.error} />
+                )}
+                <TicketMarkdown
+                  content={
+                    content || "No description yet. Select Edit to add one."
                   }
-                >
-                  Save changes
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={busy}
-                  onClick={() => setEditing(false)}
-                >
-                  Cancel
-                </Button>
-              </div>
-            </form>
-          ) : (
-            <>
-              <h3>Description</h3>
-              {instruction.isError && <ErrorNotice error={instruction.error} />}
-              <TicketMarkdown
-                content={
-                  content || "No description yet. Select Edit to add one."
-                }
-              />
-            </>
-          )}
-        </section>
+                />
+              </>
+            )}
+          </section>
+          <TaskDependencies
+            card={card}
+            cards={cards}
+            entry={entry}
+            busy={busy}
+            memberLabel={memberLabel}
+            onOpenTask={onOpenTask}
+            onSave={save}
+          />
+        </div>
         <aside className="task-property-panel" aria-label="Task properties">
+          <h3>Planning</h3>
           <section>
             <div className="task-property-heading">
               <h3>Assignee</h3>
@@ -349,10 +381,6 @@ export function TaskDetails({
               placeholder="Find a project member…"
             />
             {roster.isError && <ErrorNotice error={roster.error} />}
-            <p className="task-field-hint">
-              <UserRound size={12} />
-              Assignment tracks responsibility.
-            </p>
           </section>
           <section>
             <h3>Priority</h3>
@@ -362,94 +390,13 @@ export function TaskDetails({
               disabled={busy}
               onChange={(e) => void save({ priority: e.target.value })}
             >
-              <option value="high">↑ High priority</option>
-              <option value="normal">− Normal priority</option>
-              <option value="low">↓ Low priority</option>
+              <option value="high">↑ High</option>
+              <option value="normal">Normal</option>
+              <option value="low">↓ Low</option>
             </NativeSelect>
           </section>
           <section>
-            <h3>Dependencies</h3>
-            <label className="task-activity-detail">
-              <input
-                type="checkbox"
-                checked={card.require_dependencies || false}
-                disabled={busy}
-                onChange={(event) =>
-                  void save({ require_dependencies: event.target.checked })
-                }
-              />
-              Wait for dependencies before running
-            </label>
-            <div className="task-dependencies">
-              {dependencies.map((dep) => (
-                <div className="task-dependency" key={dep.id}>
-                  <Link
-                    to="/projects/$projectId/$section"
-                    params={{ projectId: card.project_id, section: "team" }}
-                    search={{ work: dep.id }}
-                  >
-                    <span>{taskReference(dep)}</span>
-                    {dep.title || "Untitled task"}
-                  </Link>
-                  <span className="task-activity-detail">
-                    {dep.stage === "done" || dep.archived_from === "done"
-                      ? "Done"
-                      : teamActivity(dep)}
-                  </span>
-                  <button
-                    disabled={busy}
-                    aria-label={`Remove dependency ${taskReference(dep)}`}
-                    onClick={() =>
-                      void save({
-                        dependencies: (card.dependencies || []).filter(
-                          (id) => id !== dep.id,
-                        ),
-                      })
-                    }
-                  >
-                    <X size={14} />
-                  </button>
-                </div>
-              ))}
-              {missing.map((id) => (
-                <div className="task-dependency" key={id}>
-                  <span>Unavailable dependency</span>
-                  <button
-                    disabled={busy}
-                    aria-label="Remove unavailable dependency"
-                    onClick={() =>
-                      void save({
-                        dependencies: (card.dependencies || []).filter(
-                          (v) => v !== id,
-                        ),
-                      })
-                    }
-                  >
-                    <X size={14} />
-                  </button>
-                </div>
-              ))}
-            </div>
-            <SearchPicker
-              label="Add dependency"
-              value="Add dependency"
-              disabled={busy}
-              options={cards
-                .filter(
-                  (c) => c.id !== card.id && !card.dependencies?.includes(c.id),
-                )
-                .map((c) => ({
-                  value: c.id,
-                  label: `${taskReference(c)} ${c.title || "Untitled task"}`,
-                }))}
-              onSelect={(id) =>
-                void save({ dependencies: [...(card.dependencies || []), id] })
-              }
-              placeholder="Find a task by title or #…"
-            />
-          </section>
-          <section>
-            <h3>Status</h3>
+            <h3>Planning status</h3>
             <NativeSelect
               aria-label="Task status"
               value={card.stage}
@@ -471,14 +418,15 @@ export function TaskDetails({
                 <option value="archived">Archived</option>
               )}
             </NativeSelect>
-            <p className="task-field-hint">
-              {card.work.latest_attempt_id
-                ? "Status follows the run and review."
-                : "Changing status does not start an agent."}
-            </p>
+            {card.work.latest_attempt_id && (
+              <p className="task-field-hint">
+                Status follows the run and review.
+              </p>
+            )}
           </section>
+          <TaskRunDetails card={card} memberLabel={memberLabel} />
           {card.source && (
-            <section>
+            <section className="task-repository">
               <h3>Repository issue</h3>
               <a
                 className="task-inline-action"

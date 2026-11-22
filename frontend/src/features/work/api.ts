@@ -116,6 +116,7 @@ export const workApi = {
     idempotency_key: string,
     selection?: { provider: string; model: string; reasoning_effort?: string },
     screenshots?: { content: string; note: string }[],
+    workspace?: string,
   ) =>
     request<Attempt>(path(id) + "/continue", {
       project_id: project,
@@ -123,6 +124,7 @@ export const workApi = {
       presentation: "interactive-v1",
       ...(selection ? { selection } : {}),
       ...(screenshots?.length ? { screenshots } : {}),
+      ...(workspace ? { workspace_id: workspace } : {}),
       expected_attempt_id,
       idempotency_key,
     }),

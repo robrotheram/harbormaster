@@ -95,7 +95,9 @@ func New(s *store.Store, rt protocol.Runtime, c Config) *Server {
 }
 func reserved(w shared.Workspace) bool { return workspacesvc.Reserved(w) }
 func (s *Server) lifecycle() *workspacesvc.Service {
-	return &workspacesvc.Service{Store: s.Store, Runtime: s.Runtime, Config: workspacesvc.Config{IdleTimeout: s.cfg.IdleTimeout, MaxRunning: s.cfg.MaxRunning, CPUQuota: s.cfg.CPUQuota, MemoryQuota: s.cfg.MemoryQuota, SharedWorkspaceID: s.cfg.SharedWorkspaceID}, Now: s.now, HermesAvailable: s.hermesAvailable, Coordinator: &s.operations}
+	return &workspacesvc.Service{Store: s.Store, Runtime: s.Runtime, Config: workspacesvc.Config{IdleTimeout: s.cfg.IdleTimeout, MaxRunning: s.cfg.MaxRunning, CPUQuota: s.cfg.CPUQuota, MemoryQuota: s.cfg.MemoryQuota, SharedWorkspaceID: s.cfg.SharedWorkspaceID}, Now: s.now, HermesAvailable: s.hermesAvailable, Coordinator: &s.operations, BeforeStop: func(ctx context.Context, ws shared.Workspace) {
+		s.syncHistory(ctx, ws, 16, 4*time.Second)
+	}}
 }
 func (s *Server) refresh(ctx context.Context, w *shared.Workspace) error {
 	return s.lifecycle().Refresh(ctx, w)
@@ -408,9 +410,14 @@ func (s *Server) taskRoute(w http.ResponseWriter, r *http.Request, suffix string
 		b, _ = json.Marshal(req)
 	}
 	query := ""
+	noStart := false
 	if suffix == "/result" {
 		q := url.Values{}
 		for k, vs := range r.URL.Query() {
+			if k == "no_start" && len(vs) == 1 && vs[0] == "1" {
+				noStart = true
+				continue
+			}
 			if (k != "offset" && k != "limit") || len(vs) != 1 {
 				shared.Error(w, 400, "INVALID_REQUEST")
 				return
@@ -427,7 +434,16 @@ func (s *Server) taskRoute(w http.ResponseWriter, r *http.Request, suffix string
 	if !ok {
 		return
 	}
-	if e := s.lifecycle().ObserveTask(r.Context(), &ws); e != nil {
+	if noStart {
+		if err := s.refresh(r.Context(), &ws); err != nil {
+			apiError(w, err)
+			return
+		}
+		if !ws.Ready {
+			shared.Error(w, 409, "WORKSPACE_STOPPED")
+			return
+		}
+	} else if e := s.lifecycle().ObserveTask(r.Context(), &ws); e != nil {
 		apiError(w, e)
 		return
 	}
@@ -509,6 +525,7 @@ func (s *Server) Reconcile(ctx context.Context) {
 		ws := &current
 		if e = s.refresh(ctx, ws); e == nil {
 			if ws.Ready {
+				s.syncHistory(ctx, *ws, 4, time.Second)
 				status, b, err := s.Runtime.Agent(ctx, ws.ID, "GET", "/v1/tasks", nil)
 				if err == nil && status == 200 {
 					s.captureEvents(ctx, *ws, b)
