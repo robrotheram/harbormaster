@@ -37,10 +37,12 @@ Before a release:
 5. Run the selected runtime's live acceptance and a restore rehearsal. Do not
    claim production readiness for experimental adapters based on simulated tests.
 
-Push the version tag after the release checks pass. GitHub Actions scans the
-release images, publishes version tags and attaches the image inventory and
-digest-pinned Kubernetes manifests to the GitHub Release. Update environment
-overlays through reviewed pull requests using the digests in the inventory.
+Push the version tag after the release checks pass. If a successful `main` push
+for the tagged commit has all its scanned image digests, GitHub Actions uses those
+digests. Otherwise, it runs the checks and image scans for the tag. GitHub Actions
+publishes versioned images and attaches the image inventory and digest-pinned
+Kubernetes manifests to the GitHub Release. Update environment overlays through
+reviewed pull requests using the digests in the inventory.
 See [container publishing](container-publishing.md). The workflow does not
 deploy to any environment.
 
