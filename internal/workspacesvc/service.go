@@ -92,6 +92,7 @@ func (s *Service) Refresh(ctx context.Context, w *shared.Workspace) error {
 	o, err := s.Runtime.Inspect(ctx, w.ID)
 	if err != nil {
 		w.State = "UNKNOWN"
+		w.StartupReason = ""
 		w.Ready = false
 		w.IdleStopAt = nil
 		return err
@@ -210,6 +211,7 @@ func (s *Service) reserve(ctx context.Context, w *shared.Workspace) error {
 		return err
 	}
 	w.State = "STARTING"
+	w.StartupReason = ""
 	w.UpdatedAt = s.Now()
 	return s.Store.Save(ctx, *w)
 }
@@ -283,6 +285,7 @@ func (s *Service) stop(ctx context.Context, w *shared.Workspace, stop func(conte
 		return e
 	}
 	w.State = "STOPPED"
+	w.StartupReason = ""
 	w.ActiveRuns, w.BackgroundJobs = 0, 0
 	w.IdleStopAt = nil
 	w.UpdatedAt = s.Now()

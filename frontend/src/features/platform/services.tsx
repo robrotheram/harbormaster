@@ -23,6 +23,9 @@ export function PlatformServices() {
       <div className="page-title">
         <div>
           <h1>Platform services</h1>
+          {query.isSuccess && (
+            <p>Harbormaster {query.data.version || "version unavailable"}</p>
+          )}
         </div>
         <Button
           variant="outline"

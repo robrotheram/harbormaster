@@ -89,15 +89,19 @@ func TestArtifactTransferHasSeparateResponseBudget(t *testing.T) {
 	}
 }
 
-func TestStartPreservesDockerAddressPoolError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		shared.Error(w, http.StatusServiceUnavailable, protocol.DockerAddressPoolExhausted)
-	}))
-	defer server.Close()
+func TestStartPreservesActionableRuntimeErrors(t *testing.T) {
+	for _, code := range []string{protocol.DockerAddressPoolExhausted, "WORKSPACE_UNSCHEDULABLE", "NOT_READY"} {
+		t.Run(code, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				shared.Error(w, http.StatusServiceUnavailable, code)
+			}))
+			defer server.Close()
 
-	_, err := NewClient(server.URL, "controller-token").StartConfigured(t.Context(), "ws_one", protocol.WorkspaceSpec{})
-	var failure shared.CodedError
-	if !errors.As(err, &failure) || failure.Status != http.StatusServiceUnavailable || failure.Code != protocol.DockerAddressPoolExhausted {
-		t.Fatal("start lost Docker address pool error", err)
+			_, err := NewClient(server.URL, "controller-token").StartConfigured(t.Context(), "ws_one", protocol.WorkspaceSpec{})
+			var failure shared.CodedError
+			if !errors.As(err, &failure) || failure.Status != http.StatusServiceUnavailable || failure.Code != code {
+				t.Fatal("start lost runtime error", err)
+			}
+		})
 	}
 }

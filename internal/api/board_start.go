@@ -88,17 +88,8 @@ func (s *Server) registerBoardStart(mux *http.ServeMux) {
 			item.WorkspaceID = in.WorkspaceID
 		}
 		if item.WorkspaceID == "" {
-			agentKind := "codex"
-			if s.cfg.SharedWorkspaceID != "" {
-				agentKind = "t3"
-			}
-			ws, _, err := s.createWorkspace(r.Context(), p, workspaceCreate{Project: in.ProjectID, Key: key, AgentKind: agentKind, TemplateID: "development-v1"})
-			if err != nil {
-				w.Header().Set("Content-Type", "application/json")
-				writeRequestErrorBody(w, err)
-				return
-			}
-			item.WorkspaceID = ws.ID
+			shared.Error(w, http.StatusConflict, "WORKER_SELECTION_REQUIRED")
+			return
 		}
 		ws, err := s.Store.Workspace(r.Context(), item.WorkspaceID)
 		if err != nil || !s.workspaceInProject(ws, in.ProjectID) || (in.WorkspaceID != "" && ws.AgentKind == "hermes") {

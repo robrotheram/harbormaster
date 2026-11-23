@@ -21,6 +21,7 @@ import (
 )
 
 type Config struct {
+	Version                    string
 	DashboardReadToken         string
 	HumanSigningKey            string
 	ProjectSigningKey          string
@@ -666,7 +667,7 @@ func (s *Server) DashboardHandler() http.Handler {
 			}
 		}
 		safeItems := snapshotWorkspaces(items)
-		shared.JSON(w, 200, map[string]any{"schema_version": 1, "generated_at": now, "mode": "development", "workspaces": map[string]any{"observed_at": observed, "status": status, "items": safeItems}, "active_tasks": map[string]any{"observed_at": observed, "status": status, "items": active}, "usage": usage, "services": map[string]any{"observed_at": now, "status": serviceStatus, "items": services}})
+		shared.JSON(w, 200, map[string]any{"schema_version": 1, "version": s.cfg.Version, "generated_at": now, "mode": "development", "workspaces": map[string]any{"observed_at": observed, "status": status, "items": safeItems}, "active_tasks": map[string]any{"observed_at": observed, "status": status, "items": active}, "usage": usage, "services": map[string]any{"observed_at": now, "status": serviceStatus, "items": services}})
 	})
 	return shared.RequireToken(s.cfg.DashboardReadToken, mux)
 }

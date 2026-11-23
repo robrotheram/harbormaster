@@ -49,6 +49,10 @@ publishes a GitHub Release with these assets:
 - `kubernetes-hermes.yaml` adds the Hermes MCP component and selects the Hermes
   workspace digest.
 
+The release manifests set `HARBORMASTER_VERSION` on the control plane for
+**Platform services**. Set the same variable when deploying a release through
+your own overlay or Compose configuration.
+
 The rendered manifests still require environment configuration such as storage,
 runtime and secrets. Use the release inventory when updating a Kustomize
 environment overlay and submit the change for review. Use the release digests

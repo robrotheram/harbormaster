@@ -34,25 +34,24 @@ def image_inventory(digest_dir, namespace):
     return images
 
 
-def render(kubernetes_dir, kustomize, images, output, hermes=False):
+def render(kubernetes_dir, kustomize, images, version, output, hermes=False):
     workspace = images["workspace-hermes" if hermes else "workspace"]
-    runtime_patch = {
-        "apiVersion": "apps/v1",
-        "kind": "Deployment",
-        "metadata": {"name": "runtime-controller", "namespace": "harbormaster"},
-        "spec": {
-            "template": {
-                "spec": {
-                    "containers": [
-                        {
-                            "name": "runtime-controller",
-                            "env": [{"name": "WORKSPACE_IMAGE", "value": workspace}],
-                        }
-                    ]
+    def env_patch(service, name, value):
+        return {
+            "apiVersion": "apps/v1",
+            "kind": "Deployment",
+            "metadata": {"name": service, "namespace": "harbormaster"},
+            "spec": {
+                "template": {
+                    "spec": {
+                        "containers": [
+                            {"name": service, "env": [{"name": name, "value": value}]}
+                        ]
+                    }
                 }
-            }
-        },
-    }
+            },
+        }
+
     kustomization = {
         "apiVersion": "kustomize.config.k8s.io/v1beta1",
         "kind": "Kustomization",
@@ -65,7 +64,10 @@ def render(kubernetes_dir, kustomize, images, output, hermes=False):
             }
             for name in sorted(APP_IMAGES)
         ],
-        "patches": [{"patch": json.dumps(runtime_patch)}],
+        "patches": [
+            {"patch": json.dumps(env_patch("runtime-controller", "WORKSPACE_IMAGE", workspace))},
+            {"patch": json.dumps(env_patch("controlplane", "HARBORMASTER_VERSION", version))},
+        ],
     }
     if hermes:
         kustomization["components"] = ["../components/hermes"]
@@ -79,6 +81,8 @@ def render(kubernetes_dir, kustomize, images, output, hermes=False):
         raise ValueError(f"Rendered {output.name} has unexpected application image references")
     if f"value: {workspace}\n" not in content:
         raise ValueError(f"Rendered {output.name} is missing the workspace digest")
+    if f"value: {version}\n" not in content:
+        raise ValueError(f"Rendered {output.name} is missing the release version")
     output.write_text(content)
 
 
@@ -87,6 +91,7 @@ def main():
     parser.add_argument("--digests", required=True, type=Path)
     parser.add_argument("--namespace", required=True)
     parser.add_argument("--revision", required=True)
+    parser.add_argument("--version", required=True)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--kustomize", default="kustomize")
     args = parser.parse_args()
@@ -94,11 +99,12 @@ def main():
     images = image_inventory(args.digests, args.namespace)
     args.output.mkdir(parents=True, exist_ok=True)
     kubernetes_dir = Path("deploy/kubernetes")
-    render(kubernetes_dir, args.kustomize, images, args.output / "kubernetes-base.yaml")
+    render(kubernetes_dir, args.kustomize, images, args.version, args.output / "kubernetes-base.yaml")
     render(
         kubernetes_dir,
         args.kustomize,
         images,
+        args.version,
         args.output / "kubernetes-hermes.yaml",
         hermes=True,
     )

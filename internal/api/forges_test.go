@@ -94,7 +94,8 @@ func TestForgeImportPlansAtCapacityAndDeduplicates(t *testing.T) {
 		t.Fatal("import lost its issue link", board, err)
 	}
 	start := "/v1/board/" + first.ID + "/start"
-	body := fmt.Sprintf(`{"project_id":"default","revision":%d}`, board.Revision)
+	worker := create(t, s, "import-worker")
+	body := fmt.Sprintf(`{"project_id":"default","revision":%d,"workspace_id":%q}`, board.Revision, worker.ID)
 	if got := request(t, s, "POST", start, body); got.Code != 429 {
 		t.Fatal("dispatch should wait for worker capacity", got.Code, got.Body)
 	}

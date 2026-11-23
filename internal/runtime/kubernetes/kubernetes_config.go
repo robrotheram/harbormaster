@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 
 	"agent-workbench/internal/shared"
@@ -12,6 +13,11 @@ import (
 
 func KubernetesConfigFromEnv() (KubernetesConfig, error) {
 	c := KubernetesConfig{APIURL: shared.Env("KUBERNETES_API_SERVER", "https://kubernetes.default.svc"), CAFile: shared.Env("KUBERNETES_CA_FILE", "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"), Deployment: shared.Env("DEPLOYMENT_ID", "awb"), Image: shared.Env("WORKSPACE_IMAGE", ""), RuntimeClass: shared.Env("KUBERNETES_RUNTIME_CLASS", "kata"), StorageClass: shared.Env("KUBERNETES_STORAGE_CLASS", ""), ServiceAccount: shared.Env("KUBERNETES_WORKSPACE_SERVICE_ACCOUNT", "workspace"), InferenceURL: shared.Env("KUBERNETES_INFERENCE_URL", ""), BrokerURL: shared.Env("KUBERNETES_BROKER_URL", ""), CodexModel: shared.Env("CODEX_MODEL", ""), ClaudeModel: shared.Env("CLAUDE_MODEL", ""), MemoryLimit: shared.IntEnv("WORKSPACE_MEMORY_BYTES", 1<<30), RequireVerified: shared.Env("REQUIRE_VERIFIED_ISOLATION", "true") == "true"}
+	request, err := strconv.Atoi(shared.Env("KUBERNETES_WORKER_CPU_REQUEST_MILLIS", "1000"))
+	if err != nil || request < 1 || request > 1000 {
+		return c, errors.New("KUBERNETES_WORKER_CPU_REQUEST_MILLIS must be between 1 and 1000")
+	}
+	c.CPURequestMillis = request
 	c.ProvisionProjectNamespaces = shared.Env("PROVISION_PROJECT_NAMESPACES", "false") == "true"
 	c.ProvisionWorkspaceNamespaces = shared.Env("PROVISION_WORKSPACE_NAMESPACES", "false") == "true"
 	c.SharedGatewayProject = os.Getenv("KUBERNETES_SHARED_GATEWAY_PROJECT")
@@ -27,7 +33,6 @@ func KubernetesConfigFromEnv() (KubernetesConfig, error) {
 			return c, errors.New("invalid project allowlists")
 		}
 	}
-	var err error
 	if c.Token, err = shared.Secret("CONTROLLER_TOKEN"); err != nil {
 		return c, err
 	}

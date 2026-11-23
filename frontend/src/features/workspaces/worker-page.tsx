@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useState } from "react";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -83,6 +83,7 @@ function WorkerDetail({
 }) {
   const client = useQueryClient();
   const navigate = useNavigate();
+  const { tab } = useSearch({ strict: false });
   const params = { projectId: project.id, workerId: worker.id };
   const [dialog, setDialog] = useState<"start" | "branch" | "delete">();
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -98,8 +99,10 @@ function WorkerDetail({
     void navigate({ to: workerRoute, params, search: { panel: "settings" } });
   };
   const consoleEnabled = worker.console_enabled || worker.agent_kind === "t3";
+  const schedulingBlocked = worker.startup_reason === "WORKSPACE_UNSCHEDULABLE";
   const transitioning =
-    worker.state === "STARTING" || worker.state === "STOPPING";
+    (worker.state === "STARTING" && !schedulingBlocked) ||
+    worker.state === "STOPPING";
   const name = worker.name || worker.id;
 
   async function operate(action: "stop" | "open" | "pair" | "enable") {
@@ -176,7 +179,7 @@ function WorkerDetail({
               <h1 className="break-words text-xl font-semibold leading-tight [overflow-wrap:anywhere]">
                 {name}
               </h1>
-              <State value={worker.state} />
+              <State value={schedulingBlocked ? "BLOCKED" : worker.state} />
             </div>
           </div>
         </div>
@@ -203,7 +206,7 @@ function WorkerDetail({
               disabled={busy || transitioning}
               onClick={() => setDialog("start")}
             >
-              {worker.state === "STARTING"
+              {worker.state === "STARTING" && !schedulingBlocked
                 ? "Starting…"
                 : worker.state === "STOPPING"
                   ? "Stopping…"
@@ -234,6 +237,12 @@ function WorkerDetail({
           </Link>
         ))}
       </nav>
+      {schedulingBlocked && (
+        <p role="status" className="notice">
+          Kubernetes cannot schedule this worker. Stop an idle worker to free
+          capacity or contact your platform administrator.
+        </p>
+      )}
       {error != null && <ErrorNotice error={error} />}
       {message && (
         <p role="status" className="notice">
@@ -260,6 +269,8 @@ function WorkerDetail({
         <div className="min-w-0 space-y-4">
           <div className="min-w-0 rounded-md border bg-card p-4 sm:p-5">
             <WorkspaceSettings
+              key={tab}
+              initialSection={tab === "subscriptions" ? tab : "worker"}
               workspace={worker}
               onSaved={() => {
                 refresh();

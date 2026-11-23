@@ -19,7 +19,7 @@ export function WorkspaceForm({
   project: Project;
   parent?: Workspace;
   onClose: () => void;
-  onCreated: () => void;
+  onCreated: (worker: Workspace) => void;
 }) {
   const globalConnections = useConnectionProfiles();
   const [globalConnectionID, setGlobalConnectionID] = useState(

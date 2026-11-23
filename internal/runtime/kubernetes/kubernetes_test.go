@@ -171,6 +171,7 @@ func kubeProvider(t *testing.T) (*Kubernetes, *fakeKubernetes) {
 
 func TestKubernetesFixedSandboxOwnershipPersistenceAndObservedReadiness(t *testing.T) {
 	k, fake := kubeProvider(t)
+	k.cfg.CPURequestMillis = 500
 	k.cfg.CodexModel = "test-codex"
 	k.cfg.ClaudeModel = "test-claude"
 	ctx := context.Background()
@@ -185,6 +186,10 @@ func TestKubernetesFixedSandboxOwnershipPersistenceAndObservedReadiness(t *testi
 	body := fake.resources["project-one/test-ws-test"]
 	pod := body["spec"].(map[string]any)["podTemplate"].(map[string]any)["spec"].(map[string]any)
 	container := pod["containers"].([]any)[0].(map[string]any)
+	resources := container["resources"].(map[string]any)
+	if resources["requests"].(map[string]any)["cpu"] != "500m" || resources["limits"].(map[string]any)["cpu"] != "1" {
+		t.Fatal("CPU request override changed the limit or was ignored", resources)
+	}
 	models := map[string]string{}
 	for _, entry := range container["env"].([]any) {
 		v := entry.(map[string]any)
@@ -222,6 +227,31 @@ func TestKubernetesFixedSandboxOwnershipPersistenceAndObservedReadiness(t *testi
 	k.cfg.RequireVerified = true
 	if _, err = k.StartConfigured(ctx, "ws_test", spec); err == nil {
 		t.Fatal("secure gate bypassed")
+	}
+}
+
+func TestKubernetesReportsOnlyCurrentSchedulingFailure(t *testing.T) {
+	k, fake := kubeProvider(t)
+	spec := protocol.WorkspaceSpec{ProjectID: "proj_one", HomeID: "home_one", AgentKind: "t3"}
+	if _, err := k.StartConfigured(t.Context(), "ws_test", spec); err != nil {
+		t.Fatal(err)
+	}
+	fake.mu.Lock()
+	body := fake.resources["project-one/test-ws-test"]
+	body["metadata"].(map[string]any)["generation"] = float64(2)
+	condition := map[string]any{"type": "PodScheduled", "status": "False", "reason": "Unschedulable", "observedGeneration": float64(1)}
+	body["status"] = map[string]any{"conditions": []any{condition}}
+	fake.mu.Unlock()
+	o, err := k.Inspect(t.Context(), "ws_test")
+	if err != nil || !o.Running || o.Ready || o.StartupReason != "" {
+		t.Fatalf("stale condition affected observation: %+v %v", o, err)
+	}
+	fake.mu.Lock()
+	condition["observedGeneration"] = float64(2)
+	fake.mu.Unlock()
+	o, err = k.Inspect(t.Context(), "ws_test")
+	if err != nil || !o.Running || o.Ready || o.StartupReason != workspaceUnschedulable {
+		t.Fatalf("scheduling failure lost: %+v %v", o, err)
 	}
 }
 

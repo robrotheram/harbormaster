@@ -34,6 +34,12 @@ shown in project settings with normal Helm/Kustomize/CI. Workspace DNS remains
 restricted; the reference uses fixed gateway Service IPs. Platform services use
 normal cluster DNS. See the reference runbook for application network policy.
 
+Set `KUBERNETES_WORKER_CPU_REQUEST_MILLIS` on the runtime controller to size the
+CPU reservation for new worker Pods. The default is 1000 millicores. The
+container limit is one CPU, and Kubernetes adds any Kata runtime overhead to
+the request. Update existing worker templates while their Sandboxes are
+suspended.
+
 Pre-create SERVICE-secrets for each service in its namespace, with lowercase
 keys matching the TOKEN_FILE names in the rendered environment (for example
 controller_token). Gateway SERVICE-config Secrets supply inference-gateway.json

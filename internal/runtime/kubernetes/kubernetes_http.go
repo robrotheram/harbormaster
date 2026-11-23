@@ -3,6 +3,7 @@ package kubernetes
 import (
 	"context"
 	"crypto/subtle"
+	"errors"
 	"net/http"
 
 	"agent-workbench/internal/runtime/protocol"
@@ -50,7 +51,11 @@ func (k *Kubernetes) capabilities() protocol.RuntimeCapability {
 func (k *Kubernetes) startWorkspace(ctx context.Context, id string, spec protocol.WorkspaceSpec) (shared.Observation, *protocol.ControllerError) {
 	o, err := k.StartConfigured(ctx, id, spec)
 	if err != nil {
-		return shared.Observation{}, protocol.Failure(503, "RUNTIME_UNAVAILABLE")
+		var failure shared.CodedError
+		if errors.As(err, &failure) && (failure.Code == workspaceUnschedulable || failure.Code == "NOT_READY") {
+			return shared.Observation{}, protocol.Failure(http.StatusServiceUnavailable, failure.Code)
+		}
+		return shared.Observation{}, protocol.Failure(http.StatusServiceUnavailable, "RUNTIME_UNAVAILABLE")
 	}
 	return o, nil
 }

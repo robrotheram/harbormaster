@@ -320,7 +320,7 @@ jobs:
           GOBIN="$RUNNER_TEMP/bin" go install sigs.k8s.io/kustomize/kustomize/v5@v5.8.1
           python3 .github/scripts/render-release.py \
             --digests digests --namespace "ghcr.io/${GITHUB_REPOSITORY,,}" \
-            --revision "$GITHUB_SHA" --output release \
+            --revision "$GITHUB_SHA" --version "$GITHUB_REF_NAME" --output release \
             --kustomize "$RUNNER_TEMP/bin/kustomize"
       - name: Publish release images and assets
         env:

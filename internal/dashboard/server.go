@@ -108,6 +108,7 @@ func serviceHealthSummary(body []byte) ([]byte, error) {
 		At     time.Time `json:"observed_at"`
 	}
 	var snapshot struct {
+		Version   string    `json:"version"`
 		Generated time.Time `json:"generated_at"`
 		Services  struct {
 			Items []observation `json:"items"`
@@ -135,5 +136,5 @@ func serviceHealthSummary(body []byte) ([]byte, error) {
 		}
 		services = append(services, service)
 	}
-	return json.Marshal(map[string]any{"scope": "services", "generated_at": snapshot.Generated, "services": map[string]any{"items": services}})
+	return json.Marshal(map[string]any{"scope": "services", "version": snapshot.Version, "generated_at": snapshot.Generated, "services": map[string]any{"items": services}})
 }

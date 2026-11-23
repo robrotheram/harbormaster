@@ -77,7 +77,14 @@ const workerRoute = createRoute({
   path: "/projects/$projectId/workspaces/$workerId",
   validateSearch: (
     search: Record<string, unknown>,
-  ): { panel?: "environment" | "settings" | "activity" } => ({
+  ): {
+    panel?: "environment" | "settings" | "activity";
+    tab?: "subscriptions";
+  } => ({
+    tab:
+      search.panel === "settings" && search.tab === "subscriptions"
+        ? "subscriptions"
+        : undefined,
     panel:
       search.panel === "setup" || search.panel === "environment"
         ? "environment"

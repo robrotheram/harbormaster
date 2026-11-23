@@ -41,6 +41,7 @@ type KubernetesConfig struct {
 	ProjectAllowlists                                   map[string][]string
 	EgressURL                                           string
 	MemoryLimit                                         int64
+	CPURequestMillis                                    int
 	RequireVerified                                     bool
 	HermesApprovedImage, HermesModel, HermesMCPIP       string
 	DiscoverGateways                                    bool
@@ -56,6 +57,12 @@ var dnsLabel = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
 var pinnedImage = regexp.MustCompile(`^[a-z0-9][a-z0-9._:/-]*@sha256:[a-f0-9]{64}$`)
 
 func NewKubernetes(c KubernetesConfig) (*Kubernetes, error) {
+	if c.CPURequestMillis == 0 {
+		c.CPURequestMillis = 1000
+	}
+	if c.CPURequestMillis < 1 || c.CPURequestMillis > 1000 {
+		return nil, errors.New("invalid Kubernetes worker CPU request")
+	}
 	u, err := url.Parse(c.APIURL)
 	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || c.APIToken == "" || len(c.Token) < 32 || len(c.GatewayServiceToken) < 32 || len(c.GrantSecret) < 32 || !dnsLabel.MatchString(c.Deployment) || len(c.Deployment) > 20 || !pinnedImage.MatchString(c.Image) || c.RuntimeClass != "kata" || !dnsLabel.MatchString(c.ServiceAccount) || c.StorageClass == "" || len(c.ProjectNamespaces) == 0 {
 		return nil, errors.New("invalid Kubernetes runtime configuration")
@@ -148,8 +155,8 @@ type kubeResource struct {
 	} `json:"spec"`
 	Status struct {
 		Conditions []struct {
-			Type, Status       string
-			ObservedGeneration int64 `json:"observedGeneration"`
+			Type, Status, Reason string
+			ObservedGeneration   int64 `json:"observedGeneration"`
 		} `json:"conditions"`
 	} `json:"status"`
 }
@@ -281,6 +288,20 @@ func sandboxSuspended(r kubeResource) bool {
 	return false
 }
 
+const workspaceUnschedulable = "WORKSPACE_UNSCHEDULABLE"
+
+func sandboxUnschedulable(r kubeResource) bool {
+	if r.Spec.OperatingMode == "Suspended" || sandboxReady(r) {
+		return false
+	}
+	for _, c := range r.Status.Conditions {
+		if c.Type == "PodScheduled" && c.Status == "False" && c.Reason == "Unschedulable" && c.ObservedGeneration == r.Metadata.Generation {
+			return true
+		}
+	}
+	return false
+}
+
 func (k *Kubernetes) observe(ctx context.Context, r kubeResource) (shared.Observation, error) {
 	o := shared.Observation{RuntimeType: "kata", IsolationStatus: "unverified", NetworkStatus: "unverified", Running: true}
 	if r.Spec.OperatingMode == "Suspended" {
@@ -288,6 +309,9 @@ func (k *Kubernetes) observe(ctx context.Context, r kubeResource) (shared.Observ
 		return o, nil
 	}
 	if !sandboxReady(r) || k.cfg.RequireVerified {
+		if sandboxUnschedulable(r) {
+			o.StartupReason = workspaceUnschedulable
+		}
 		return o, nil
 	}
 	status, b, err := k.agent(ctx, r, "GET", "/v1/activity", nil)
@@ -382,11 +406,15 @@ func (k *Kubernetes) StartConfigured(ctx context.Context, id string, spec protoc
 	}
 	wait, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()
-	for {
-		resource, err = k.find(wait, id)
+	for wait.Err() == nil {
+		current, err := k.find(wait, id)
 		if err != nil {
+			if wait.Err() != nil {
+				break
+			}
 			return shared.Observation{}, err
 		}
+		resource = current
 		if sandboxReady(resource) {
 			status, _, e := k.agent(wait, resource, "POST", "/v1/resume", nil)
 			if e == nil && status == 200 {
@@ -395,10 +423,14 @@ func (k *Kubernetes) StartConfigured(ctx context.Context, id string, spec protoc
 		}
 		select {
 		case <-wait.Done():
-			return shared.Observation{}, shared.CodedError{Status: http.StatusServiceUnavailable, Code: "NOT_READY"}
 		case <-time.After(200 * time.Millisecond):
 		}
 	}
+	code := "NOT_READY"
+	if sandboxUnschedulable(resource) {
+		code = workspaceUnschedulable
+	}
+	return shared.Observation{}, shared.CodedError{Status: http.StatusServiceUnavailable, Code: code}
 }
 func (k *Kubernetes) sandbox(id string, spec protocol.WorkspaceSpec, namespace string, labels map[string]string, secretName string) map[string]any {
 	env := []map[string]any{}
@@ -413,7 +445,7 @@ func (k *Kubernetes) sandbox(id string, spec protocol.WorkspaceSpec, namespace s
 		env = append(env, map[string]any{"name": "HERMES_MODEL", "value": k.cfg.HermesModel}, map[string]any{"name": "HERMES_MCP_TRANSPORT", "value": "kubernetes-generation"})
 	}
 	env = append(env, map[string]any{"name": "WORKSPACE_TOKEN", "valueFrom": map[string]any{"secretKeyRef": map[string]string{"name": secretName, "key": "token"}}})
-	container := map[string]any{"name": "workspace", "image": k.cfg.Image, "imagePullPolicy": "IfNotPresent", "env": env, "ports": []any{map[string]any{"containerPort": 8080, "name": "workspace"}}, "securityContext": map[string]any{"allowPrivilegeEscalation": false, "readOnlyRootFilesystem": true, "capabilities": map[string]any{"drop": []string{"ALL"}}}, "resources": map[string]any{"requests": map[string]string{"cpu": "1", "memory": fmt.Sprint(k.cfg.MemoryLimit)}, "limits": map[string]string{"cpu": "1", "memory": fmt.Sprint(k.cfg.MemoryLimit)}}, "volumeMounts": []any{map[string]string{"name": "data", "mountPath": "/data"}, map[string]string{"name": "tmp", "mountPath": "/tmp"}}, "readinessProbe": map[string]any{"httpGet": map[string]any{"path": "/healthz", "port": 8080}, "periodSeconds": 2}}
+	container := map[string]any{"name": "workspace", "image": k.cfg.Image, "imagePullPolicy": "IfNotPresent", "env": env, "ports": []any{map[string]any{"containerPort": 8080, "name": "workspace"}}, "securityContext": map[string]any{"allowPrivilegeEscalation": false, "readOnlyRootFilesystem": true, "capabilities": map[string]any{"drop": []string{"ALL"}}}, "resources": map[string]any{"requests": map[string]string{"cpu": fmt.Sprintf("%dm", k.cfg.CPURequestMillis), "memory": fmt.Sprint(k.cfg.MemoryLimit)}, "limits": map[string]string{"cpu": "1", "memory": fmt.Sprint(k.cfg.MemoryLimit)}}, "volumeMounts": []any{map[string]string{"name": "data", "mountPath": "/data"}, map[string]string{"name": "tmp", "mountPath": "/tmp"}}, "readinessProbe": map[string]any{"httpGet": map[string]any{"path": "/healthz", "port": 8080}, "periodSeconds": 2}}
 	pod := map[string]any{"runtimeClassName": k.cfg.RuntimeClass, "priorityClassName": "harbormaster-workspace", "serviceAccountName": k.cfg.ServiceAccount, "automountServiceAccountToken": false, "restartPolicy": "Never", "securityContext": map[string]any{"runAsNonRoot": true, "runAsUser": 10001, "runAsGroup": 10001, "fsGroup": 10001, "seccompProfile": map[string]string{"type": "RuntimeDefault"}}, "containers": []any{container}, "volumes": []any{map[string]any{"name": "tmp", "emptyDir": map[string]string{"medium": "Memory", "sizeLimit": "64Mi"}}}}
 	if spec.AgentKind == "hermes" && k.cfg.HermesMCPIP != "" {
 		pod["hostAliases"] = []map[string]any{{"ip": k.cfg.HermesMCPIP, "hostnames": []string{"hermes-mcp.harbormaster.svc"}}}
