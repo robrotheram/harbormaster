@@ -72,12 +72,19 @@ export const workKeys = {
     ["project", project, "work", id, "attempts"] as const,
 };
 export const workApi = {
-  files: (project: string, id: string, signal: AbortSignal) =>
-    request<{ paths: string[]; truncated?: boolean }>(
+  files: async (project: string, id: string, signal: AbortSignal) => {
+    const listing = await request<{ paths: string[]; truncated?: boolean }>(
       path(id) + "/files" + scope(project),
       undefined,
       signal,
-    ),
+    );
+    if (
+      !Array.isArray(listing?.paths) ||
+      listing.paths.some((path) => typeof path !== "string")
+    )
+      throw new APIError("WORKSPACE_FILES_UNAVAILABLE", 503);
+    return listing;
+  },
   file: (project: string, id: string, file: string, signal: AbortSignal) =>
     request<{ path: string; content?: string }>(
       path(id) + "/files" + scope(project),

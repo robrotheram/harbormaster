@@ -154,6 +154,7 @@ async function setup(
       return route.fulfill({ json: { items: attempts } });
     if (path.endsWith("/changes"))
       return route.fulfill({ json: { files: [] } });
+    if (path.endsWith("/files")) return route.fulfill({ json: { paths: [] } });
     if (path.endsWith("/instruction"))
       return route.fulfill({
         json: {
@@ -269,8 +270,15 @@ test("review shows only the current task result and guards stale decisions", asy
   await expect(
     tools.getByRole("button", { name: "Task settings" }),
   ).toBeVisible();
+  await page.route(
+    "**/ui-api/work-items/work_review/files?project_id=prj_review",
+    (route) => route.fulfill({ json: { items: [] } }),
+  );
   await tools.getByRole("button", { name: "Files" }).click();
   const files = page.getByRole("region", { name: "Task files" });
+  await expect(
+    files.getByText("Could not load files from this worker."),
+  ).toBeVisible();
   await files.getByRole("button", { name: "fix.patch", exact: true }).click();
   await files.getByRole("button", { name: "Diff", exact: true }).click();
   await expect(
