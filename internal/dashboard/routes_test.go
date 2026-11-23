@@ -139,6 +139,7 @@ func TestFactoryWorkIngressIsExplicit(t *testing.T) {
 		{"GET", "/work-items", true}, {"POST", "/work-items", true},
 		{"GET", "/work-items/work_1", true}, {"POST", "/work-items/work_1", false},
 		{"GET", "/work-items/work_1/attempts", true}, {"POST", "/work-items/work_1/attempts", false},
+		{"GET", "/work-items/work_1/files", true}, {"POST", "/work-items/work_1/files", true},
 		{"GET", "/work-items/work_1/attempts/attempt_one/changes", true},
 		{"POST", "/work-items/work_1/attempts/attempt_one/changes", false},
 		{"GET", "/work-items/work_1/instruction", true}, {"POST", "/work-items/work_1/instruction", false},

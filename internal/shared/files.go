@@ -12,6 +12,11 @@ type FileHandoff struct {
 	Content []byte `json:"content,omitempty"`
 }
 
+type WorkspaceFiles struct {
+	Paths     []string `json:"paths"`
+	Truncated bool     `json:"truncated,omitempty"`
+}
+
 func ValidProjectFile(value string) bool {
 	if value == "" || len(value) > 512 || path.IsAbs(value) || path.Clean(value) != value || strings.ContainsAny(value, "\\\x00\r\n") {
 		return false

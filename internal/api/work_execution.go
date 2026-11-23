@@ -30,6 +30,7 @@ func workError(w http.ResponseWriter, err error) {
 }
 func (s *Server) registerWorkExecution(mux *http.ServeMux, repo orchestration.Repository) {
 	s.registerWorkImages(mux, repo)
+	s.registerWorkFiles(mux, repo)
 	mux.HandleFunc("POST /v1/work-items/{id}/run", func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
 			ProjectID string             `json:"project_id"`

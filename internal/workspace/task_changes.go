@@ -93,7 +93,7 @@ func (g taskGit) collectFiles(ctx context.Context, prefix string, input *bytes.B
 	}
 	for entry := range strings.SplitSeq(string(paths.Data), "\x00") {
 		name := prefix + strings.TrimSuffix(entry, "/")
-		if !utf8.ValidString(name) || !shared.ValidProjectFile(name) || name == "work-requests" || strings.HasPrefix(name, "work-requests/") {
+		if !reviewableProjectPath(name) {
 			continue
 		}
 		// The real index may still reference files beneath a directory that

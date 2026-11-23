@@ -53,6 +53,8 @@ var managementRoutes = []managementRoute{
 	{http.MethodGet, "/v1/work-items/{id}/attempts", 4096, 0, sharedHumanAttempts},
 	{http.MethodGet, "/v1/work-items/{id}/attempts/{attempt}/history", 4096, 0, noSharedHuman},
 	{http.MethodGet, "/v1/work-items/{id}/attempts/{attempt}/changes", 4096, 0, noSharedHuman},
+	{http.MethodGet, "/v1/work-items/{id}/files", 4096, 0, noSharedHuman},
+	{http.MethodPost, "/v1/work-items/{id}/files", 4096, 2048, noSharedHuman},
 	{http.MethodGet, "/v1/work-items/{id}/instruction", 4096, 0, noSharedHuman},
 	{http.MethodGet, "/v1/work-items/{id}/artifacts/{artifact}/content", 4096, 0, noSharedHuman},
 	{http.MethodPost, "/v1/work-items/{id}/responsibility", 4096, 4096, noSharedHuman},

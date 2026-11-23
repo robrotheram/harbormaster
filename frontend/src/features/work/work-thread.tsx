@@ -699,6 +699,34 @@ export function WorkConversation({
               >
                 <FileText size={15} /> Files
               </Button>
+              {filesOpen && attempts.length > 1 && latest && (
+                <NativeSelect
+                  aria-label="File changes by run"
+                  size="sm"
+                  value={route.attempt ?? ""}
+                  onChange={(event) =>
+                    void navigate({
+                      to: "/projects/$projectId/$section",
+                      params: { projectId: project.id, section: "work" },
+                      search: {
+                        work: id,
+                        attempt: event.target.value || undefined,
+                        view: "files",
+                      },
+                    })
+                  }
+                >
+                  <option value="">Latest changes</option>
+                  {attempts
+                    .map((run, index) => (
+                      <option key={run.id} value={run.id}>
+                        Run {index + 1}
+                        {run.id === latest.id ? " (latest)" : ""}
+                      </option>
+                    ))
+                    .reverse()}
+                </NativeSelect>
+              )}
             </>
           )}
           <Responsibility item={item} running={running}>
@@ -909,10 +937,12 @@ export function WorkConversation({
         {filesOpen && (
           <div className="thread-workspace">
             <WorkFiles
-              key={fileAttempt?.id}
+              key={project.id + ":" + item.id + ":" + item.workspace_id}
               project={project.id}
               item={item}
               attempt={fileAttempt}
+              attempts={attempts}
+              pinnedAttempt={route.attempt}
               sources={fileAttempt?.id === latest?.id ? outputSources : []}
               canReview={canReview}
               canRequest={

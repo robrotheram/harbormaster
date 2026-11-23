@@ -1,6 +1,6 @@
 import "./work-files.css";
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { ChevronDown, FileText, Files } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,6 +18,7 @@ import { workApi, type Attempt, type WorkItem } from "./api";
 import { activeAttempt } from "./conversation-api";
 import type { LineReference } from "./file-code";
 import { FileInspector, type ReviewFile } from "./file-inspector";
+import { WorkspaceFile } from "./workspace-file";
 import { filePatches } from "./file-diff";
 import type { ReplyOutput } from "./reply-outputs";
 
@@ -32,6 +33,8 @@ export function WorkFiles({
   project,
   item,
   attempt,
+  attempts,
+  pinnedAttempt,
   sources,
   canReview,
   canRequest,
@@ -40,29 +43,80 @@ export function WorkFiles({
   project: string;
   item: WorkItem;
   attempt?: Attempt;
+  attempts: Attempt[];
+  pinnedAttempt?: string;
   sources: ReplyOutput[];
   canReview: boolean;
   canRequest: boolean;
   onAsk: (message: string) => void;
 }) {
-  const running = !!attempt && activeAttempt(attempt.state);
+  const completedRuns = attempts
+    .filter(
+      (run) =>
+        run.task_id &&
+        !activeAttempt(run.state) &&
+        run.workspace_id === item.workspace_id,
+    )
+    .reverse();
+  const completedRun = completedRuns[0]?.id;
+  const workspace = useQuery({
+    ...privateContentOptions,
+    queryKey: [
+      "project",
+      project,
+      "workspace-files",
+      item.id,
+      item.workspace_id,
+      completedRun,
+    ],
+    queryFn: ({ signal }) => workApi.files(project, item.id, signal),
+    enabled: !!item.workspace_id,
+    placeholderData: keepPreviousData,
+  });
+  const running = !!pinnedAttempt && !!attempt && activeAttempt(attempt.state);
+  const candidates = pinnedAttempt
+    ? attempt?.task_id && !running
+      ? [attempt]
+      : []
+    : completedRuns;
   const changes = useQuery({
     ...privateContentOptions,
-    queryKey: ["project", project, "task-changes", item.id, attempt?.id],
-    queryFn: ({ signal }) =>
-      workApi.changes(project, item.id, attempt!.id, signal),
-    enabled: !!attempt?.task_id && !running,
+    queryKey: [
+      "project",
+      project,
+      "work-file-changes",
+      item.id,
+      item.workspace_id,
+      pinnedAttempt,
+      candidates.map((run) => run.id),
+    ],
+    queryFn: async ({ signal }) => {
+      for (const run of candidates) {
+        const captured = await workApi.changes(
+          project,
+          item.id,
+          run.id,
+          signal,
+        );
+        if (pinnedAttempt || captured?.files.length) return { run, captured };
+      }
+      return null;
+    },
+    enabled: candidates.length > 0,
+    placeholderData: (previous, query) =>
+      !pinnedAttempt && query?.queryKey[5] === undefined ? previous : undefined,
   });
+  const captured = changes.data?.captured;
+  const diffRun = changes.data?.run;
   const [filter, setFilter] = useState("");
-  const [path, setPath] = useState<string>();
+  const [selection, setSelection] = useState<{ path: string; group: string }>();
   const [panel, setPanel] = useState<"files" | "edits" | "agent" | "details">(
     "files",
   );
   const term = filter.trim().toLowerCase();
   const groups = useMemo(() => {
     const files = new Map<string, ReviewFile>();
-    for (const file of changes.data?.files ?? [])
-      files.set(file.path, { ...file });
+    for (const file of captured?.files ?? []) files.set(file.path, { ...file });
     for (const artifact of attempt?.artifacts ?? []) {
       const path =
         artifact.source_path || artifact.name || artifact.kind || "Output";
@@ -75,6 +129,12 @@ export function WorkFiles({
     return [
       { title: "Changed files", files: all.filter((file) => file.status) },
       {
+        title: "Workspace files",
+        files: (workspace.data?.paths ?? []).map((path): ReviewFile => ({
+          path,
+        })),
+      },
+      {
         title: "Saved files",
         files: all.filter((file) => !file.status && file.artifact),
       },
@@ -83,23 +143,31 @@ export function WorkFiles({
         files: all.filter((file) => !file.status && !file.artifact),
       },
     ];
-  }, [changes.data, attempt?.artifacts, sources]);
+  }, [captured, workspace.data, attempt?.artifacts, sources]);
   const patches = useMemo(
     () =>
       filePatches(
-        changes.data?.diff ?? "",
-        changes.data?.files.map((file) => file.path) ?? [],
+        captured?.diff ?? "",
+        captured?.files.map((file) => file.path) ?? [],
       ),
-    [changes.data],
+    [captured],
   );
   const matches = groups.map((group) => ({
     ...group,
     files: group.files.filter((file) => file.path.toLowerCase().includes(term)),
   }));
-  const visible = matches.flatMap((group) => group.files);
-  const selected = visible.find((file) => file.path === path) || visible[0];
+  const visible = matches.flatMap((group) =>
+    group.files.map((file) => ({ file, group: group.title })),
+  );
+  const current =
+    visible.find(
+      ({ file, group }) =>
+        file.path === selection?.path && group === selection.group,
+    ) ?? visible[0];
+  const selected = current?.file;
+  const selectedAttempt = selected?.status ? diffRun : attempt;
   const ask =
-    canRequest && selected && attempt
+    canRequest && selected && selectedAttempt
       ? (reference?: LineReference) => {
           const location = reference
             ? `:${Math.min(reference.start, reference.end)}${reference.start === reference.end ? "" : `-${Math.max(reference.start, reference.end)}`}`
@@ -109,7 +177,7 @@ export function WorkFiles({
               ? ", before this change"
               : "";
           onAsk(
-            `Explain ${JSON.stringify(selected.path + location)} (revision ${attempt.id}${side}): `,
+            `Explain ${JSON.stringify(selected.path + location)} (revision ${selectedAttempt.id}${side}): `,
           );
         }
       : undefined;
@@ -134,14 +202,14 @@ export function WorkFiles({
         <div className="file-explorer-list">
           {matches.map(
             (group, i) =>
-              (i === 0 || group.files.length > 0) && (
+              (i < 2 || group.files.length > 0) && (
                 <section key={group.title} aria-label={group.title}>
                   <h4>
                     {group.title} <span>{groups[i].files.length}</span>
                   </h4>
                   {i === 0 &&
                     (running ? (
-                      <p>Changes appear after the run finishes.</p>
+                      <p>Changes appear after this run finishes.</p>
                     ) : changes.isError ? (
                       <ErrorNotice
                         error={changes.error}
@@ -150,10 +218,32 @@ export function WorkFiles({
                       />
                     ) : changes.isLoading ? (
                       <p role="status">Loading changes…</p>
-                    ) : !changes.data ? (
-                      <p>No changes were captured.</p>
-                    ) : !changes.data.files.length ? (
-                      <p>No project files changed.</p>
+                    ) : !pinnedAttempt && !captured?.files.length ? (
+                      <p>No file changes have been recorded.</p>
+                    ) : !captured ? (
+                      <p>No changes were captured for this run.</p>
+                    ) : !captured.files.length ? (
+                      <p>No project files changed in this run.</p>
+                    ) : diffRun && diffRun.id !== attempt?.id ? (
+                      <p>
+                        Changes from run{" "}
+                        {attempts.findIndex((run) => run.id === diffRun.id) + 1}
+                        .
+                      </p>
+                    ) : null)}
+                  {i === 1 &&
+                    (workspace.isError ? (
+                      <ErrorNotice
+                        error={workspace.error}
+                        onRetry={() => void workspace.refetch()}
+                        retrying={workspace.isFetching}
+                      />
+                    ) : workspace.isLoading ? (
+                      <p role="status">Loading workspace files…</p>
+                    ) : workspace.data?.truncated ? (
+                      <p>Showing the first 1,000 project files.</p>
+                    ) : !workspace.data?.paths.length ? (
+                      <p>No workspace files to show.</p>
                     ) : null)}
                   {!!group.files.length && (
                     <ul>
@@ -167,12 +257,17 @@ export function WorkFiles({
                                 : undefined
                             }
                             aria-current={
-                              panel === "files" && file === selected
+                              panel === "files" &&
+                              file === selected &&
+                              current.group === group.title
                                 ? "true"
                                 : undefined
                             }
                             onClick={() => {
-                              setPath(file.path);
+                              setSelection({
+                                path: file.path,
+                                group: group.title,
+                              });
                               setPanel("files");
                             }}
                             title={file.path}
@@ -260,14 +355,29 @@ export function WorkFiles({
               <dd>{attempt?.specification_path || item.specification_path}</dd>
             </dl>
           </div>
-        ) : selected && attempt ? (
+        ) : selected && current.group === "Workspace files" ? (
+          <WorkspaceFile
+            key={selected.path}
+            project={project}
+            work={item.id}
+            workspace={item.workspace_id}
+            path={selected.path}
+            revision={completedRun}
+            changed={
+              diffRun?.workspace_id === item.workspace_id &&
+              !!captured?.files.some((file) => file.path === selected.path)
+            }
+            patch={patches.get(selected.path)}
+            truncated={!!captured?.truncated}
+          />
+        ) : selected && selectedAttempt ? (
           <FileInspector
             key={selected.path}
             file={selected}
             patch={patches.get(selected.path)}
-            truncated={!!changes.data?.truncated && !!selected.status}
+            truncated={!!captured?.truncated && !!selected.status}
             project={project}
-            attempt={attempt}
+            attempt={selectedAttempt}
             onAsk={ask}
             onAskAboutContent={canRequest ? onAsk : undefined}
           />
@@ -277,7 +387,7 @@ export function WorkFiles({
             <p>
               {term
                 ? "Clear or change the filter to find a file."
-                : changes.isLoading
+                : changes.isLoading || workspace.isLoading
                   ? "Loading files…"
                   : "No files to show."}
             </p>
