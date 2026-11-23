@@ -165,4 +165,31 @@ func TestWorkAttemptShowsRetainedGitChanges(t *testing.T) {
 	if got := request(t, s, "GET", changesPath+"?project_id="+other.ID, ""); got.Code != 404 {
 		t.Fatalf("another project could open the changes: %d %s", got.Code, got.Body.String())
 	}
+	workspaceFiles := path + "/files"
+	list := request(t, s, "GET", workspaceFiles+scope, "")
+	var listed shared.WorkspaceFiles
+	if list.Code != 200 || json.Unmarshal(list.Body.Bytes(), &listed) != nil ||
+		!reflect.DeepEqual(listed.Paths, []string{".gitignore", ":new file.txt", "existing.txt", "ignored.txt", "nested/page.html"}) {
+		t.Fatalf("unexpected workspace files: %d %s", list.Code, list.Body.String())
+	}
+	current := request(t, s, "POST", workspaceFiles+scope, `{"path":"existing.txt"}`)
+	var file shared.FileHandoff
+	if current.Code != 200 || json.Unmarshal(current.Body.Bytes(), &file) != nil || string(file.Content) != "later\n" {
+		t.Fatalf("expected current file content: %d %s", current.Code, current.Body.String())
+	}
+	for body, status := range map[string]int{
+		`{"path":"old-dir/page.html"}`:    404,
+		`{"path":".env"}`:                 400,
+		`{"path":"work-requests/run.md"}`: 400,
+	} {
+		if got := request(t, s, "POST", workspaceFiles+scope, body); got.Code != status {
+			t.Fatalf("unexpected response for %s: %d %s", body, got.Code, got.Body.String())
+		}
+	}
+	if got := request(t, s, "GET", workspaceFiles+"?project_id="+other.ID, ""); got.Code != 404 {
+		t.Fatalf("another project could list the workspace: %d %s", got.Code, got.Body.String())
+	}
+	if got := request(t, s, "POST", workspaceFiles+"?project_id="+other.ID, `{"path":"existing.txt"}`); got.Code != 404 {
+		t.Fatalf("another project could read the workspace: %d %s", got.Code, got.Body.String())
+	}
 }

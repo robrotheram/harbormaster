@@ -557,6 +557,8 @@ func (m *Manager) Handler() http.Handler {
 	api.HandleFunc("POST /v1/tasks/{id}/context", m.conversationContext)
 	api.HandleFunc("POST /v1/files/read", m.handoff)
 	api.HandleFunc("POST /v1/files/write-new", m.handoff)
+	api.HandleFunc("GET /v1/files", m.listReviewFiles)
+	api.HandleFunc("POST /v1/files/inspect", m.inspectReviewFile)
 	api.HandleFunc("/v1/t3/{path...}", m.consoleProxy)
 	api.HandleFunc("/v1/t3-desktop/{path...}", m.desktopProxy)
 	api.HandleFunc("POST /v1/quiesce", func(w http.ResponseWriter, r *http.Request) {

@@ -72,6 +72,18 @@ export const workKeys = {
     ["project", project, "work", id, "attempts"] as const,
 };
 export const workApi = {
+  files: (project: string, id: string, signal: AbortSignal) =>
+    request<{ paths: string[]; truncated?: boolean }>(
+      path(id) + "/files" + scope(project),
+      undefined,
+      signal,
+    ),
+  file: (project: string, id: string, file: string, signal: AbortSignal) =>
+    request<{ path: string; content?: string }>(
+      path(id) + "/files" + scope(project),
+      { path: file },
+      signal,
+    ),
   changes: (
     project: string,
     id: string,

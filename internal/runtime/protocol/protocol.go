@@ -68,7 +68,10 @@ func AllowedAgentPath(method, path string) bool {
 	if method == "GET" && path == "/v1/runtime-capabilities" {
 		return true
 	}
-	if path == "/v1/console/enable" || path == "/v1/files/read" || path == "/v1/files/write-new" || path == "/v1/tasks/from-file" {
+	if path == "/v1/files" {
+		return method == "GET"
+	}
+	if path == "/v1/console/enable" || path == "/v1/files/read" || path == "/v1/files/inspect" || path == "/v1/files/write-new" || path == "/v1/tasks/from-file" {
 		return method == "POST"
 	}
 	if path == "/v1/activity" {

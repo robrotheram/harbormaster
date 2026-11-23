@@ -99,6 +99,8 @@ const messages: Record<string, string> = {
     "Enter owner/repository for GitHub or group/project for GitLab. Nested GitLab groups are supported.",
   DESKTOP_NOT_INSTALLED:
     "Desktop support is not installed in this worker image. Install the updated runtime before starting a desktop.",
+  WORKSPACE_FILES_UNAVAILABLE: "Could not load files from this worker.",
+  WORKSPACE_FILE_TOO_LARGE: "Files larger than 1 MiB cannot be opened here.",
   APPLICATION_PORT_UNAVAILABLE:
     "The detected server is no longer listening. Start it again in the worker, then retry detection.",
   APPLICATION_PORT_BUSY:

@@ -273,9 +273,10 @@ async function conversationFixture(page: Page) {
       return route.fulfill({ json: { content: "", next_offset: -1 } });
     if (path.endsWith("/changes"))
       return route.fulfill({ body: "null", contentType: "application/json" });
+    if (path.endsWith("/files")) return route.fulfill({ json: { paths: [] } });
     return route.fulfill({ json: { items: [] } });
   });
-  return { item, attempts, posts, state, finish, errors, apps, ports };
+  return { item, attempts, posts, state, addRun, finish, errors, apps, ports };
 }
 
 test("starts work, shows live tools, inspects files, accepts, and sends changes in one conversation", async ({
@@ -1921,6 +1922,84 @@ test("retry is inside the task error and send has a visible label", async ({
   await expect(
     page.getByRole("button", { name: "Stop task", exact: true }),
   ).toBeVisible();
+});
+
+test("Files keeps workspace contents and the last diff after a no-op follow-up", async ({
+  page,
+}) => {
+  const f = await conversationFixture(page);
+  f.state.exists = true;
+  const first = f.addRun();
+  f.finish();
+  f.attempts[0].artifacts = [];
+  await page.route(
+    "**/ui-api/work-items/work_one/files?project_id=A",
+    (route) =>
+      route.fulfill({
+        json:
+          route.request().method() === "GET"
+            ? { paths: ["app/index.html", "README.md"] }
+            : {
+                path: "app/index.html",
+                content: Buffer.from("<h1>Live application</h1>\n").toString(
+                  "base64",
+                ),
+              },
+      }),
+  );
+  await page.route(
+    "**/ui-api/work-items/work_one/attempts/*/changes?project_id=A",
+    (route) =>
+      route.fulfill({
+        json: route.request().url().includes(first.id)
+          ? {
+              files: [{ path: "app/index.html", status: "A" }],
+              diff: "diff --git a/app/index.html b/app/index.html\n@@ -0,0 +1 @@\n+<h1>Recorded application</h1>\n",
+            }
+          : { files: [] },
+      }),
+  );
+  await page.goto("/app/projects/A/work?work=work_one&view=files");
+  const files = page.getByRole("region", { name: "Task files" });
+  const workspace = files.getByRole("region", { name: "Workspace files" });
+  await workspace.getByRole("button", { name: "app/index.html" }).click();
+  await expect(
+    files.getByRole("region", { name: "File contents" }),
+  ).toContainText("Live application");
+  await files.getByRole("button", { name: "Diff", exact: true }).click();
+  await expect(files.getByLabel("Git diff")).toContainText(
+    "Recorded application",
+  );
+  const second = f.addRun(first.id);
+  f.finish();
+  f.attempts[1].artifacts = [];
+  const run = page.getByRole("combobox", { name: "File changes by run" });
+  await expect(run).toHaveValue("");
+  await expect(files.getByText("Changes from run 1.")).toBeVisible();
+  await expect(
+    workspace.getByRole("button", { name: "README.md" }),
+  ).toBeVisible();
+  await expect(files.getByLabel("Git diff")).toContainText(
+    "Recorded application",
+  );
+  await run.selectOption(second.id);
+  await expect(
+    files.getByText("No project files changed in this run."),
+  ).toBeVisible();
+  await expect(
+    workspace.getByRole("button", { name: "app/index.html" }),
+  ).toHaveAttribute("aria-current", "true");
+  await expect(
+    files.getByRole("region", { name: "File contents" }),
+  ).toContainText("Live application");
+  await run.selectOption("");
+  await expect(
+    files.getByRole("button", { name: "app/index.html, Added" }),
+  ).toBeVisible();
+  expect(new URL(page.url()).searchParams.has("attempt")).toBe(false);
+  await page.reload();
+  await expect(run).toHaveValue("");
+  await expect(files.getByText("Changes from run 1.")).toBeVisible();
 });
 
 test("Files reviews diffs and sends line-specific feedback from the workspace", async ({
