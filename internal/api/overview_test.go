@@ -115,6 +115,15 @@ func TestStartPlannedTaskRetainsIdentityAndRetriesOneAttempt(t *testing.T) {
 	if got.Code != 409 {
 		t.Fatal("stale start", got.Code, got.Body)
 	}
+	if got := humanRequest(t, s, "alice@example.com", "POST", path, body); got.Code != 409 || !strings.Contains(got.Body.String(), "WORKER_SELECTION_REQUIRED") {
+		t.Fatal("unassigned start did not require a worker", got.Code, got.Body)
+	}
+	workers, err := s.Store.Workspaces(t.Context())
+	if err != nil || len(workers) != 0 {
+		t.Fatal("unassigned start allocated a worker", workers, err)
+	}
+	worker := domainWorkspace(t, s, "control-token", p.ID, "overview-worker")
+	body = fmt.Sprintf(`{"project_id":%q,"revision":%d,"workspace_id":%q}`, p.ID, c.Revision, worker.ID)
 	var receipt shared.WorkAttempt
 	for i := 0; i < 2; i++ {
 		got = humanRequest(t, s, "alice@example.com", "POST", path, body)
@@ -122,7 +131,7 @@ func TestStartPlannedTaskRetainsIdentityAndRetriesOneAttempt(t *testing.T) {
 		if got.Code != 202 && got.Code != 200 {
 			t.Fatal("start", got.Code, got.Body)
 		}
-		if json.Unmarshal(got.Body.Bytes(), &a) != nil || a.WorkItemID != c.ID || a.WorkspaceID == "" {
+		if json.Unmarshal(got.Body.Bytes(), &a) != nil || a.WorkItemID != c.ID || a.WorkspaceID != worker.ID {
 			t.Fatal("bad attempt", got.Body)
 		}
 		if i == 1 && receipt.ID != a.ID {
@@ -172,6 +181,8 @@ func TestRequiredDependenciesGateDispatch(t *testing.T) {
 		t.Fatal("blocked start allocated a worker", workers, err)
 	}
 	save(prerequisite.ID, fmt.Sprintf(`{"project_id":%q,"revision":%d,"stage":"done"}`, p.ID, prerequisite.Revision))
+	worker := domainWorkspace(t, s, "control-token", p.ID, "dependency-worker")
+	body = fmt.Sprintf(`{"project_id":%q,"revision":%d,"workspace_id":%q}`, p.ID, dependent.Revision, worker.ID)
 	if got := request(t, s, "POST", path, body); got.Code != 202 {
 		t.Fatal(got.Code, got.Body)
 	}

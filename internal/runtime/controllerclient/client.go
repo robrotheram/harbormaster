@@ -110,8 +110,11 @@ func (c *Client) StartConfigured(ctx context.Context, id string, spec protocol.W
 	}
 	if s != 200 {
 		var failure shared.APIError
-		if s == http.StatusServiceUnavailable && json.Unmarshal(b, &failure) == nil && failure.Code == protocol.DockerAddressPoolExhausted {
-			return o, shared.CodedError{Status: s, Code: failure.Code}
+		if s == http.StatusServiceUnavailable && json.Unmarshal(b, &failure) == nil {
+			switch failure.Code {
+			case protocol.DockerAddressPoolExhausted, "WORKSPACE_UNSCHEDULABLE", "NOT_READY":
+				return o, shared.CodedError{Status: s, Code: failure.Code}
+			}
 		}
 		return o, fmt.Errorf("runtime start refused: %d", s)
 	}

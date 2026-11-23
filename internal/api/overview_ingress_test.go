@@ -42,7 +42,8 @@ func TestOverviewThroughDashboardIngress(t *testing.T) {
 	if res.Code != 201 || json.Unmarshal(res.Body.Bytes(), &card) != nil {
 		t.Fatal("create blocked", res.Code, res.Body)
 	}
-	body := fmt.Sprintf(`{"project_id":%q,"revision":%d}`, p.ID, card.Revision)
+	worker := domainWorkspace(t, s, "control-token", p.ID, "ingress-worker")
+	body := fmt.Sprintf(`{"project_id":%q,"revision":%d,"workspace_id":%q}`, p.ID, card.Revision, worker.ID)
 	var id string
 	for i := 0; i < 2; i++ {
 		res = call("POST", "/board/"+card.ID+"/start", body)

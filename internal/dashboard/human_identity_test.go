@@ -36,7 +36,7 @@ func TestHumanIngressUsesVerifiedPrincipalNotBrowserHeaders(t *testing.T) {
 }
 func TestHumanHealthSummaryExcludesGlobalOperatorData(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"generated_at":"2026-11-17T10:00:00Z","workspaces":{"items":[{"id":"private-worker"}]},"usage":{"cpu_allocated":999},"active_tasks":["private-task"],"services":{"items":[{"name":"Control plane","status":"healthy","reason_code":"PROCESS_READY"},{"name":"MCP","status":"unknown","reason_code":"private-address"},{"name":"private-project","status":"healthy"}]}}`))
+		w.Write([]byte(`{"version":"v0.6.3","generated_at":"2026-11-17T10:00:00Z","workspaces":{"items":[{"id":"private-worker"}]},"usage":{"cpu_allocated":999},"active_tasks":["private-task"],"services":{"items":[{"name":"Control plane","status":"healthy","reason_code":"PROCESS_READY"},{"name":"MCP","status":"unknown","reason_code":"private-address"},{"name":"private-project","status":"healthy"}]}}`))
 	}))
 	defer upstream.Close()
 	h, _ := NewInteractiveHandler(upstream.URL, upstream.URL, "control")
@@ -51,7 +51,7 @@ func TestHumanHealthSummaryExcludesGlobalOperatorData(t *testing.T) {
 			t.Fatal("private data in health summary", w.Body)
 		}
 	}
-	if !strings.Contains(w.Body.String(), `"scope":"services"`) {
+	if !strings.Contains(w.Body.String(), `"scope":"services"`) || !strings.Contains(w.Body.String(), `"version":"v0.6.3"`) {
 		t.Fatal(w.Body)
 	}
 }

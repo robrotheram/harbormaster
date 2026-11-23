@@ -181,6 +181,10 @@ const messages: Record<string, string> = {
   SETUP_INTERRUPTED: "Setup preparation was interrupted. Try the change again.",
   WORKSPACE_BUSY:
     "This worker has active work or terminal processes. Finish them in T3 before retrying.",
+  WORKER_SELECTION_REQUIRED:
+    "Choose an existing worker or create one before starting this task.",
+  WORKSPACE_UNSCHEDULABLE:
+    "Kubernetes cannot schedule this worker. Free capacity by stopping an idle worker, or ask your platform administrator to check the cluster.",
   NOT_READY: "The worker is still starting. Check its state and retry shortly.",
   QUOTA_EXCEEDED:
     "The running worker quota is full. Stop an idle worker and retry.",

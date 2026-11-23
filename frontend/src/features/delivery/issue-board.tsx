@@ -33,6 +33,7 @@ import {
   type AgentModel,
 } from "@/features/work/agent-selection";
 import { workspaceOptions } from "@/features/workspaces/api";
+import { WorkspaceForm } from "@/features/workspaces/workspace-form";
 import { ErrorNotice, Modal, Form } from "@/shared/components";
 import { request } from "@/shared/http";
 import { label } from "@/shared/format";
@@ -161,6 +162,7 @@ function Board({ project }: { project: Project }) {
     onSettled: refresh,
   });
   const [startingCard, setStartingCard] = useState<BoardCard>();
+  const [creatingWorker, setCreatingWorker] = useState(false);
   const start = useMutation({
     mutationFn: ({
       card,
@@ -168,7 +170,7 @@ function Board({ project }: { project: Project }) {
       selection,
     }: {
       card: BoardCard;
-      workspace?: string;
+      workspace: string;
       selection?: AgentModel;
     }) =>
       request(`/board/${encodeURIComponent(card.id)}/start`, {
@@ -189,10 +191,8 @@ function Board({ project }: { project: Project }) {
     onError: refresh,
   });
   const startWork = (card: BoardCard) => {
-    if (capabilities.data?.requires_agent_selection) {
-      start.reset();
-      setStartingCard(card);
-    } else start.mutate({ card });
+    start.reset();
+    setStartingCard(card);
   };
   const current = cards.find((c) => c.id === selected);
   const scopes = ["open", "active", "planned", "completed"];
@@ -668,10 +668,12 @@ function Board({ project }: { project: Project }) {
           )}
         </SheetContent>
       </Sheet>
-      {startingCard && (
+      {startingCard && !creatingWorker && (
         <StartWorkDialog
           project={project.id}
           card={startingCard}
+          requireModel={capabilities.data?.requires_agent_selection === true}
+          onCreateWorker={() => setCreatingWorker(true)}
           pending={start.isPending}
           error={start.error}
           onClose={() => {
@@ -683,6 +685,29 @@ function Board({ project }: { project: Project }) {
           }
         />
       )}
+      {creatingWorker && (
+        <WorkspaceForm
+          project={project}
+          onClose={() => setCreatingWorker(false)}
+          onCreated={(worker) => {
+            setCreatingWorker(false);
+            setStartingCard(undefined);
+            void client.invalidateQueries({
+              queryKey: workspaceOptions(project.id).queryKey,
+            });
+            void navigate({
+              to: "/projects/$projectId/workspaces/$workerId",
+              params: { projectId: project.id, workerId: worker.id },
+              search: {
+                panel: "settings",
+                tab: capabilities.data?.requires_agent_selection
+                  ? "subscriptions"
+                  : undefined,
+              },
+            });
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -690,29 +715,41 @@ function Board({ project }: { project: Project }) {
 function StartWorkDialog({
   project,
   card,
+  requireModel,
   pending,
   error,
   onClose,
+  onCreateWorker,
   onStart,
 }: {
   project: string;
   card: BoardCard;
+  requireModel: boolean;
   pending: boolean;
   error: unknown;
   onClose: () => void;
-  onStart: (workspace: string, selection: AgentModel) => void;
+  onCreateWorker: () => void;
+  onStart: (workspace: string, selection?: AgentModel) => void;
 }) {
   const workers = useQuery(workspaceOptions(project));
-  const ready = (workers.data || []).filter(
+  const eligible = (workers.isError ? [] : workers.data || []).filter(
     (worker) =>
-      worker.ready &&
       worker.agent_kind !== "hermes" &&
       !worker.retained_preview &&
       (!card.work.workspace_id || worker.id === card.work.workspace_id),
   );
   const [chosenWorker, setChosenWorker] = useState("");
-  const [selection, setSelection] = useState<AgentModel>();
-  const worker = ready.find((item) => item.id === chosenWorker) || ready[0];
+  const [modelChoice, setModelChoice] = useState<{
+    workerID: string;
+    model: AgentModel;
+  }>();
+  const worker =
+    eligible.find((item) => item.id === chosenWorker) ||
+    eligible.find((item) => item.ready) ||
+    eligible[0];
+  const selection =
+    modelChoice?.workerID === worker?.id ? modelChoice?.model : undefined;
+  const canStart = worker?.ready && (!requireModel || !!selection?.model);
   return (
     <Modal
       title="Start work"
@@ -724,33 +761,35 @@ function StartWorkDialog({
     >
       <Form
         onSubmit={() => {
-          if (worker && selection?.model && !pending)
-            onStart(worker.id, selection);
+          if (worker && canStart && !pending) onStart(worker.id, selection);
         }}
       >
         <label>
           Worker
           <NativeSelect
             value={worker?.id || ""}
-            disabled={pending || ready.length < 2}
+            disabled={pending || eligible.length < 2}
             onChange={(event) => {
               setChosenWorker(event.target.value);
-              setSelection(undefined);
+              setModelChoice(undefined);
             }}
           >
-            {!ready.length && (
+            {!eligible.length && (
               <option value="">
-                {workers.isPending ? "Loading workers…" : "No ready workers"}
+                {workers.isPending
+                  ? "Loading workers…"
+                  : "No available workers"}
               </option>
             )}
-            {ready.map((item) => (
+            {eligible.map((item) => (
               <option key={item.id} value={item.id}>
                 {item.name || item.id}
+                {!item.ready && item.state ? ` (${label(item.state)})` : ""}
               </option>
             ))}
           </NativeSelect>
         </label>
-        {worker ? (
+        {worker?.ready && requireModel && (
           <AgentSelection
             key={worker.id}
             workspace={worker.id}
@@ -759,14 +798,26 @@ function StartWorkDialog({
             reasoning={selection?.reasoning_effort}
             disabled={pending}
             onReasoning={(effort, provider, model) =>
-              setSelection({ provider, model, reasoning_effort: effort })
+              setModelChoice({
+                workerID: worker.id,
+                model: { provider, model, reasoning_effort: effort },
+              })
             }
           />
-        ) : (
-          !workers.isPending &&
-          !workers.isError && (
-            <p>Start a worker and load its subscription to choose a model.</p>
-          )
+        )}
+        {worker && (!worker.ready || (requireModel && !selection?.model)) && (
+          <p>
+            {requireModel
+              ? "Start the worker and load your subscription in its settings to choose a model."
+              : "Start the worker before assigning work."}
+          </p>
+        )}
+        {!worker && workers.isSuccess && (
+          <p>
+            {card.work.workspace_id
+              ? "The worker assigned to this task is unavailable."
+              : "Create and start a worker to run this task."}
+          </p>
         )}
         {workers.isError && (
           <ErrorNotice
@@ -775,9 +826,37 @@ function StartWorkDialog({
           />
         )}
         {!!error && <ErrorNotice error={error} />}
-        <Button disabled={pending || !worker || !selection?.model}>
-          {pending ? "Starting…" : "Start work"}
-        </Button>
+        <div className="flex flex-wrap justify-end gap-2">
+          {!card.work.workspace_id &&
+            workers.isSuccess &&
+            !eligible.some((item) => item.shared) && (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={pending}
+                onClick={onCreateWorker}
+              >
+                Create worker
+              </Button>
+            )}
+          {worker && (!worker.ready || requireModel) && !pending && (
+            <Button variant="outline" asChild>
+              <Link
+                to="/projects/$projectId/workspaces/$workerId"
+                params={{ projectId: project, workerId: worker.id }}
+                search={{
+                  panel: "settings",
+                  tab: requireModel ? "subscriptions" : undefined,
+                }}
+              >
+                {requireModel ? "Subscription settings" : "Worker settings"}
+              </Link>
+            </Button>
+          )}
+          <Button disabled={pending || !canStart}>
+            {pending ? "Starting…" : "Start work"}
+          </Button>
+        </div>
       </Form>
     </Modal>
   );

@@ -39,6 +39,7 @@ type Workspace struct {
 	ID                        string            `json:"id"`
 	ProjectID                 string            `json:"project_id"`
 	State                     string            `json:"state"`
+	StartupReason             string            `json:"startup_reason,omitempty"`
 	Ready                     bool              `json:"ready"`
 	ActiveRuns                int               `json:"active_runs"`
 	BackgroundJobs            int               `json:"background_jobs"`
@@ -74,6 +75,7 @@ type Activity struct {
 	LastActivity   time.Time `json:"last_activity"`
 }
 type Observation struct {
+	StartupReason   string   `json:"startup_reason,omitempty"`
 	ConnectionMode  string   `json:"connection_mode,omitempty"`
 	Running         bool     `json:"running"`
 	Ready           bool     `json:"ready"`

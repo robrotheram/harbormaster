@@ -45,8 +45,11 @@ export function WorkspaceActivity({
     workspace.background_jobs,
     hasJobs && !query.isError ? query.data?.services || [] : [],
   );
-  const count =
-    workspace.state === "STOPPED"
+  const schedulingBlocked =
+    workspace.startup_reason === "WORKSPACE_UNSCHEDULABLE";
+  const count = schedulingBlocked
+    ? "Awaiting cluster capacity"
+    : workspace.state === "STOPPED"
       ? "Files retained"
       : workspace.active_runs || workspace.background_jobs
         ? `${workspace.active_runs} ${workspace.active_runs === 1 ? "run" : "runs"} / ${workspace.background_jobs} ${workspace.background_jobs === 1 ? "job" : "jobs"}`
@@ -55,7 +58,7 @@ export function WorkspaceActivity({
           : "Checking activity";
   return (
     <>
-      <State value={workspace.state} />
+      <State value={schedulingBlocked ? "BLOCKED" : workspace.state} />
       <div className="mt-2 text-xs text-muted-foreground">{count}</div>
       {hasJobs && (
         <button

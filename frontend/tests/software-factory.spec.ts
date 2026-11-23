@@ -96,6 +96,7 @@ async function fixture(page: Page, failedProject?: string) {
   await page.route("**/dashboard-api/v1/snapshot", (r) =>
     r.fulfill({
       json: {
+        version: "v0.6.3",
         generated_at: timestamp,
         usage: {
           running_workspaces: 4,
@@ -508,6 +509,9 @@ test("headers align in both sidebar states and services have a separate page", a
   ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "credential-broker", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Harbormaster v0.6.3", { exact: true }),
   ).toBeVisible();
   await expect(page.getByText("Degraded", { exact: true })).toBeVisible();
   await page.reload();

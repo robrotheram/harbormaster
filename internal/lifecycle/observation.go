@@ -16,6 +16,7 @@ func ApplyObservation(w *shared.Workspace, o shared.Observation, now time.Time, 
 	w.CPUCores = o.CPUCores
 	w.MemoryBytes = o.MemoryBytes
 	w.Ready = o.Ready
+	w.StartupReason = o.StartupReason
 	w.ActiveRuns = o.Activity.ActiveRuns
 	w.BackgroundJobs = o.Activity.BackgroundJobs
 	if !o.Running {

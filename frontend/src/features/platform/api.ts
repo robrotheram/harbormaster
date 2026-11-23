@@ -5,6 +5,7 @@ import {
 } from "@/shared/query-policy";
 import { APIError } from "@/shared/http";
 interface Snapshot {
+  version?: string;
   scope?: "services";
   generated_at: string;
   services?: {

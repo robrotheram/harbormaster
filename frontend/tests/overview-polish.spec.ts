@@ -115,6 +115,19 @@ async function overview(
           ],
         },
       });
+    if (path === "/ui-api/workspaces")
+      return r.fulfill({
+        json: {
+          items: [
+            {
+              id: "ws_existing",
+              name: "Existing worker",
+              project_id: "A",
+              ready: true,
+            },
+          ],
+        },
+      });
     if (path === "/ui-api/board") return r.fulfill({ json: { items: cards } });
     if (path === "/ui-api/work-items")
       return r.fulfill({ json: { items: cards.map((c) => c.work) } });
@@ -122,6 +135,7 @@ async function overview(
       const id = path.split("/")[3],
         card = cards.find((c) => c.id === id)!;
       if (path.endsWith("/start")) {
+        expect(r.request().postDataJSON().workspace_id).toBe("ws_existing");
         starts++;
         return r.fulfill({
           status: 202,
@@ -280,6 +294,10 @@ test("Overview edits, assigns, links dependencies and launches the same task", a
     .analyze();
   expect(issues.violations).toEqual([]);
   await dialog.getByRole("button", { name: "Start work", exact: true }).click();
+  await page
+    .getByRole("dialog", { name: "Start work" })
+    .getByRole("button", { name: "Start work", exact: true })
+    .click();
   await expect(page).toHaveURL(/\/work\?work=work_welcome/);
   expect(fixture.starts()).toBe(1);
 });
@@ -494,9 +512,42 @@ test("task tiles open details while execution actions remain independent", async
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await row.getByRole("button", { name: "Start work", exact: true }).click();
+  const startDialog = page.getByRole("dialog", { name: "Start work" });
+  await expect(startDialog.getByLabel("Worker")).toHaveValue("ws_existing");
+  expect(fixture.starts()).toBe(0);
+  await startDialog
+    .getByRole("button", { name: "Start work", exact: true })
+    .click();
   await expect(page).toHaveURL(/work\?work=work_welcome/);
   await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(fixture.starts()).toBe(1);
+});
+
+test("Overview offers explicit worker creation before dispatching", async ({
+  page,
+}) => {
+  const fixture = await overview(page);
+  await page.route("**/ui-api/workspaces?*", (route) =>
+    route.fulfill({ json: { items: [] } }),
+  );
+  await page.goto("/app/projects/A/team");
+  await page
+    .locator(".team-table tbody tr")
+    .first()
+    .getByRole("button", { name: "Start work", exact: true })
+    .click();
+  const start = page.getByRole("dialog", { name: "Start work" });
+  await expect(
+    start.getByText("Create and start a worker to run this task."),
+  ).toBeVisible();
+  await expect(
+    start.getByRole("button", { name: "Start work", exact: true }),
+  ).toBeDisabled();
+  await start.getByRole("button", { name: "Create worker" }).click();
+  await expect(
+    page.getByRole("dialog", { name: "Create worker" }),
+  ).toBeVisible();
+  expect(fixture.starts()).toBe(0);
 });
 
 test("activity pills distinguish execution states in both themes", async ({

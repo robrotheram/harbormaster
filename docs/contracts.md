@@ -20,6 +20,8 @@ The local CLI uses the control token as an Authorization bearer. Project credent
 - `GET /v1/usage`: current aggregate quota and usage, no historical data.
 
 Workspace: `{id,project_id,state,ready,active_runs,background_jobs,created_at,updated_at,idle_stop_at,runtime_type,isolation_status,network_status,cpu_limit,memory_limit_bytes,cpu_cores,memory_bytes,observed_at}`. Nullable measurements are unknown, never fabricated zeros. State: STOPPED, STARTING, READY, BUSY, STOPPING, ERROR, UNKNOWN. runtime_type: docker or kata. Isolation/network: unverified, verified, failed. No image/path/identity parameters accepted from callers. Workspace metadata also carries optional `name`, `parent_id` and `branch` fields.
+`startup_reason` can report `WORKSPACE_UNSCHEDULABLE` while Kubernetes waits to
+schedule a worker.
 
 Task: `{id,workspace_id,state,created_at,updated_at,error_code?}`. States queued,running,cancel_requested,succeeded,failed,cancelled. Task results and instructions exist only in workspace SQLite. Control-plane metadata mirrors status but must refresh from workspace; unreachable workspaces produce explicit unavailable responses.
 
@@ -29,7 +31,7 @@ Errors: `{code,message,retryable}` with no internal details. HTTP 400 INVALID_RE
 
 The dashboard proxies same-origin `GET /dashboard-api/v1/snapshot` to the control plane read listener on port 8081. Local mode derives a snapshot bearer from the control token. Hosted deployments supply a separate `DASHBOARD_READ_TOKEN` or `DASHBOARD_READ_TOKEN_FILE` to dashboard and control plane. Default host publication is `127.0.0.1:8080`.
 
-Snapshot: `{schema_version:1,generated_at,mode:"development",workspaces:{observed_at,status,items:[Workspace]},active_tasks:{observed_at,status,items:[Task]},usage:{observed_at,status,cpu_allocated,memory_allocated_bytes,running_workspaces,max_running_workspaces,cpu_quota,memory_quota_bytes},services:{observed_at,status,items:[{name,status,reason_code?,observed_at}]}}`. Status ok/partial/unavailable; service healthy/degraded/unavailable/unknown/not_configured. Never expose instructions, results, labels, paths, URLs, secrets or raw error text.
+Snapshot: `{schema_version:1,version,generated_at,mode:"development",workspaces:{observed_at,status,items:[Workspace]},active_tasks:{observed_at,status,items:[Task]},usage:{observed_at,status,cpu_allocated,memory_allocated_bytes,running_workspaces,max_running_workspaces,cpu_quota,memory_quota_bytes},services:{observed_at,status,items:[{name,status,reason_code?,observed_at}]}}`. Status ok/partial/unavailable; service healthy/degraded/unavailable/unknown/not_configured. Never expose instructions, results, labels, paths, URLs, secrets or raw error text.
 
 The dashboard app at `/app/` exposes worker controls in the project's **Workers** section. Local mode requires the operator password. Hosted mode uses signed human claims for project operations. Its `/ui-api/` adapter permits profile/workspace listing, creation, start/stop, desktop pairing and bounded file handoffs. Browser mutations require JSON, a custom request header and matching Origin. It has no Docker or Vault authority.
 
@@ -176,6 +178,10 @@ disabling, editing to a replacement worker, and deletion remain available. The
 same-origin UI proxy permits only the exact POST update/delete routes.
 
 ## Work conversations
+
+`POST /v1/board/{id}/start` accepts `project_id`, `revision`, an existing
+`workspace_id`, and optional agent `selection`. Supply `workspace_id` when the
+task has no assigned worker.
 
 `GET /v1/work-items/{id}/instruction?project_id=...` reads the private saved
 specification and verifies its digest. It returns `{project_id,work_item_id,
