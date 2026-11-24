@@ -1,9 +1,0 @@
-{{- $pages := slice -}}
-{{- range where site.RegularPages "Section" "docs" -}}
-  {{- $headings := slice -}}
-  {{- range .Fragments.HeadingsMap -}}
-    {{- $headings = $headings | append (dict "title" (.Title | plainify | htmlUnescape) "id" .ID) -}}
-  {{- end -}}
-  {{- $pages = $pages | append (dict "title" .Title "url" .RelPermalink "headings" $headings "text" (.Plain | htmlUnescape)) -}}
-{{- end -}}
-{{- $pages | jsonify -}}

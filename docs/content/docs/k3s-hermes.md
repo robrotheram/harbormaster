@@ -4,7 +4,7 @@ title = "Kubernetes Hermes v0.23"
 
 Hermes is opt-in. The controller requires `KUBERNETES_HERMES_V023_APPROVED_IMAGE`
 to equal `WORKSPACE_IMAGE` exactly (registry digest, no tags), plus `HERMES_MODEL`.
-That operator approval asserts compatibility with deploy/hermes/runtime.json and
+That operator approval asserts compatibility with workspace/hermes-runtime.json and
 its source's frozen uv.lock. It is not VM attestation. With
 `REQUIRE_VERIFIED_ISOLATION=true`, launch and grant verification remain closed.
 Use `false` only in an explicitly approved unverified acceptance installation.
@@ -17,9 +17,9 @@ run from the repository root:
 
 ```sh
 export HERMES_IMAGE='registry.example/workspace-hermes:acceptance'
-docker build -f Dockerfile --target workspace-hermes \
-  --build-arg HERMES_COMMIT="$(jq -r .commit deploy/hermes/runtime.json)" \
-  --build-arg HERMES_SOURCE_SHA256="$(jq -r .source_sha256 deploy/hermes/runtime.json)" \
+docker build -f workspace/Dockerfile --target workspace-hermes \
+  --build-arg HERMES_COMMIT="$(jq -r .commit workspace/hermes-runtime.json)" \
+  --build-arg HERMES_SOURCE_SHA256="$(jq -r .source_sha256 workspace/hermes-runtime.json)" \
   -t "$HERMES_IMAGE" .
 docker push "$HERMES_IMAGE"
 docker inspect --format '{{index .RepoDigests 0}}' "$HERMES_IMAGE"

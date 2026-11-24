@@ -135,8 +135,8 @@ by 1000. Never copy refresh tokens, API keys or entire login files. Reject missi
 or expired access tokens. Remove the temporary import file after use.
 
 Configure exact provider model IDs and public destination CIDRs in a private copy
-of `config/inference.json`; see its `subscriptions` schema and
-[the gateway configuration](../../../config/inference.json). Point
+of `deploy/config/inference.json`; see its `subscriptions` schema and
+[the gateway configuration](../../../deploy/config/inference.json). Point
 `INFERENCE_POLICY_FILE` at that copy and set `WORKSPACE_AGENT`, `CODEX_MODEL` and/or
 `CLAUDE_MODEL` in `.env`. DNS changes require reviewing and updating destination
 CIDRs. Apply configuration with:

@@ -101,7 +101,7 @@ func TestProjectMCPGenerationToolInvocation(t *testing.T) {
 	}
 
 	if source := os.Getenv("HERMES_SOURCE"); source != "" {
-		integration, _ := filepath.Abs("../../../integrations/hermes")
+		integration, _ := filepath.Abs("../../../workspace/hermes")
 		cmd := exec.CommandContext(ctx, filepath.Join(source, ".venv/bin/python"), "-m", "workbench_hermes_tests.live_discovery")
 		cmd.Env = append(os.Environ(), "PYTHONPATH="+filepath.Join(integration, "src")+string(os.PathListSeparator)+filepath.Join(integration, "tests")+string(os.PathListSeparator)+source, "TEST_MCP_ENDPOINT="+broker.URL+"/mcp", "TEST_MCP_GRANT="+f.grant(v))
 		if out, err := cmd.CombinedOutput(); err != nil {

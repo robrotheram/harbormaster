@@ -5,7 +5,7 @@ aliases = ["/docs/reference/config/readme/"]
 
 For native Codex/Claude **subscription** agents, use [subscription setup](../subscription-agents.md). The native routes use saved worker bindings or scoped Vault records.
 
-[`config/inference.json`](../../../../config/inference.json) and [`config/broker.json`](../../../../config/broker.json) are synthetic fixture policies, safe to run without live provider credentials. `DEMO-001` is a synthetic fixture case, not a claim about real authorization. The fixture inference response is deterministic and explicitly labeled synthetic.
+[`deploy/config/inference.json`](../../../../deploy/config/inference.json) and [`deploy/config/broker.json`](../../../../deploy/config/broker.json) are synthetic fixture policies, safe to run without live provider credentials. `DEMO-001` is a synthetic fixture case, not a claim about real authorization. The fixture inference response is deterministic and explicitly labeled synthetic.
 
 For real inference, use [`internal/gateway/config.example.json`](../../../../internal/gateway/config.example.json) as a policy template: choose a fixed HTTPS origin, explicit model names, and approved resolved destination CIDRs. Set the inference gateway's `GATEWAY_MODE=upstream` and mount an operator-provided key as `INFERENCE_API_KEY_FILE`. Set the controller's `INFERENCE_MODEL` to an approved model. The Chat Completions endpoint accepts nonstreaming requests with tool calls.
 

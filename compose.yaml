@@ -142,7 +142,7 @@ services:
       SUBSCRIPTION_VAULT_CA_FILE: /etc/workbench/vault-ca.pem
       SUBSCRIPTION_VAULT_TOKEN_FILE: /run/secrets/subscription_vault_token
     secrets: [gateway_service_token, subscription_vault_token]
-    volumes: ["${INFERENCE_POLICY_FILE:-./config/inference.json}:/etc/workbench/inference.json:ro", ./.local/vault-tls/cert.pem:/etc/workbench/vault-ca.pem:ro]
+    volumes: ["${INFERENCE_POLICY_FILE:-./deploy/config/inference.json}:/etc/workbench/inference.json:ro", ./.local/vault-tls/cert.pem:/etc/workbench/vault-ca.pem:ro]
     networks: [management, credentials, upstream]
 
   egress-gateway:
@@ -166,7 +166,7 @@ services:
       GATEWAY_SERVICE_TOKEN_FILE: /run/secrets/gateway_service_token
       VAULT_ADDR: https://vault:8200
     secrets: [gateway_service_token]
-    volumes: [./config/broker.json:/etc/workbench/broker.json:ro]
+    volumes: [./deploy/config/broker.json:/etc/workbench/broker.json:ro]
     networks: [management, credentials, upstream]
 
   vault:
@@ -182,7 +182,7 @@ services:
       SKIP_SETCAP: "1"
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
-    volumes: [vault:/vault/file, ./config/vault.hcl:/vault/config/vault.hcl:ro, ./.local/vault-tls/cert.pem:/vault/tls/cert.pem:ro]
+    volumes: [vault:/vault/file, ./deploy/config/vault.hcl:/vault/config/vault.hcl:ro, ./.local/vault-tls/cert.pem:/vault/tls/cert.pem:ro]
     secrets: [vault_tls_key]
     networks: [credentials]
     # Sealed/uninitialized is expected until the operator provisions Vault.
@@ -196,7 +196,7 @@ services:
   workspace-image:
     profiles: [build]
     image: agent-workbench-workspace:dev
-    build: {context: ., target: workspace, args: {SERVICE: workspace}}
+    build: {context: ., dockerfile: workspace/Dockerfile, target: workspace}
     entrypoint: [/bin/true]
     networks: [build-only]
 

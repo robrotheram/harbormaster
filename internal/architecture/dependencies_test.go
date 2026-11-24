@@ -1,4 +1,4 @@
-// Package architecture guards the dependency boundaries documented in docs/architecture.md.
+// Package architecture guards the dependency boundaries documented in docs/content/docs/architecture/_index.md.
 package architecture
 
 import (

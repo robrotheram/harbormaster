@@ -3,7 +3,7 @@ title = "Hermes workspace and Matrix connection"
 aliases = ["/docs/reference/deploy/hermes/readme/"]
 +++
 
-The [runtime manifest](../../../../deploy/hermes/runtime.json) pins Hermes v0.23.0 and its source checksum. This guide covers the Firecracker worker and its Matrix connection. For Kubernetes without Matrix, follow the [Kubernetes Hermes guide](../k3s-hermes.md). The guest build uses upstream's frozen
+The [runtime manifest](../../../../workspace/hermes-runtime.json) pins Hermes v0.23.0 and its source checksum. This guide covers the Firecracker worker and its Matrix connection. For Kubernetes without Matrix, follow the [Kubernetes Hermes guide](../k3s-hermes.md). The guest build uses upstream's frozen
 `uv.lock`, including Matrix encryption dependencies. The host installation and a
 real VM import check must pass before Hermes appears as available in the UI.
 
@@ -135,7 +135,7 @@ provider/account test.
 ### Digest fixture (one Workbench owner)
 
 Stage `digest-task.md` and `digest-source.json` from
-`integrations/hermes/examples/` into the owning Hermes guest's `files/jobs/`.
+`workspace/hermes/examples/` into the owning Hermes guest's `files/jobs/`.
 Substitute project, workspace and time in `digest-schedule.json` from the same
 directory, then POST that JSON to
 `/v1/schedules` using operator/project authorization. The existing scheduler

@@ -14,8 +14,8 @@ Harbormaster runs software and research tasks in project-owned workers. The dash
 
 - Project authorization and HTTP composition live in `internal/api`. Lifecycle policy lives in `internal/workspacesvc` and `internal/lifecycle`. Work attempts and schedules live in `internal/orchestration`.
 - Runtime contracts live in `internal/runtime/protocol`. Backend implementations stay independent. The Go tests in `internal/architecture` enforce the import boundaries.
-- Worker execution and storage live in `internal/workspace`. The root `Dockerfile` defines the worker image. The Hermes package lives in `integrations/hermes/`.
-- Dashboard features and browser tests live in `frontend/`. The dashboard ingress lives in `internal/dashboard`.
+- Worker execution and storage live in `internal/workspace`. The worker image and Hermes package live in `workspace/`.
+- Dashboard features and browser tests live in `dashboard/`. The dashboard ingress lives in `internal/dashboard`.
 - Hugo pages live in `docs/content/docs/`. Navigation lives in `docs/data/navigation.toml`. Keep diagrams and their editable sources together.
 
 ## Validate

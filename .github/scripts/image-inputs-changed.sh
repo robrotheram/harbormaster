@@ -9,8 +9,8 @@ if [[ -z ${1:-} ]] || ! git cat-file -e "$1^{commit}" 2>/dev/null ||
 fi
 
 if git diff --quiet "$1" "$2" -- \
-    .dockerignore Dockerfile go.mod go.sum cmd/ internal/ tools/ frontend/ integrations/hermes/ \
-    deploy/hermes/runtime.json .github/workflows/check.yml .github/scripts/ \
+    .dockerignore Dockerfile go.mod go.sum cmd/ internal/ workspace/ dashboard/ \
+    .github/workflows/check.yml .github/scripts/ \
     ':(exclude,glob)**/*.md'; then
   echo 'images=false'
 else

@@ -15,7 +15,7 @@ import (
 )
 
 // ErrPreReleaseSchema identifies a database that needs recreation before startup.
-var ErrPreReleaseSchema = errors.New("incompatible pre-release metadata database: configure a fresh database; see docs/operations.md")
+var ErrPreReleaseSchema = errors.New("incompatible pre-release metadata database: configure a fresh database; see docs/content/docs/operations/_index.md")
 
 // Migrations run before listeners or workers start.
 func (s *Store) migrate(ctx context.Context) error {

@@ -13,7 +13,7 @@ Install the Go version in [go.mod](../../../../go.mod), Node.js 24, npm, Python 
 git clone https://github.com/robrotheram/harbormaster.git
 cd harbormaster
 go mod download
-npm --prefix frontend ci
+npm --prefix dashboard ci
 ```
 
 ## Find the code you need
@@ -21,7 +21,7 @@ npm --prefix frontend ci
 | Change | Start here |
 | --- | --- |
 | Project permissions, worker startup, or task dispatch | [Backend ownership](code-map.md#backend-ownership) and [request flows](../architecture/request-flows.md) |
-| Dashboard interactions | [Frontend development](frontend.md) and the feature folder in `frontend/src/features/` |
+| Dashboard interactions | [Frontend development](frontend.md) and the feature folder in `dashboard/src/features/` |
 | Worker previews or agent-generated outputs | [Preview and output behaviour](preview.md) |
 | Datasets, charts, or reports | [Extend data analysis](analysis.md) and the [worker analysis API](../architecture/analysis-api.md) |
 | Hermes integration | [Hermes package](hermes.md) |
@@ -30,7 +30,7 @@ npm --prefix frontend ci
 ## Run the frontend against a local backend
 
 1. Start the [local Compose deployment](../deployment.md#start-the-local-compose-deployment).
-2. From the repository root, run `npm --prefix frontend run dev`.
+2. From the repository root, run `npm --prefix dashboard run dev`.
 3. Open `http://127.0.0.1:5173/app/` or use the port Vite reports. Sign in with the local dashboard credentials if prompted.
 
 Set `WORKBENCH_PROXY_TARGET` when the dashboard uses another address. Use the built dashboard origin to test hosted authentication, connection pages, and isolated previews. The [frontend guide](frontend.md) lists the test hosts and suites.
@@ -40,10 +40,10 @@ Set `WORKBENCH_PROXY_TARGET` when the dashboard uses another address. Use the bu
 From the repository root, build the standard worker image.
 
 ```sh
-docker build -f Dockerfile --target workspace -t harbormaster-workspace:local .
+docker build -f workspace/Dockerfile --target workspace -t harbormaster-workspace:local .
 ```
 
-The [workspace Dockerfile](../../../../Dockerfile) uses the repository root as its build context for shared Go code. The root Dockerfile builds both the platform and worker images. The `tools/` directory holds pinned worker dependencies and the viewer patch. The Hermes adapter is in `integrations/hermes/`. See the [Hermes image build](../k3s-hermes.md) and [Firecracker guest build](../firecracker.md#installation) for their additional build arguments.
+The [workspace Dockerfile](../../../../workspace/Dockerfile) uses the repository root as its build context for shared Go code. The `workspace/` directory holds the Dockerfile, pinned tool dependencies, viewer patch, and Hermes adapter. See the [Hermes image build](../k3s-hermes.md) and [Firecracker guest build](../firecracker.md#installation) for their additional build arguments.
 
 ## Check your changes
 
@@ -53,18 +53,18 @@ Run checks that exercise the changed behavior, then run `make check` from the re
 | --- | --- |
 | Go formatting, build, race tests, vet, plus frontend, Hermes, and Kubernetes checks | `make check` |
 | Workspace HTTP and lifecycle tests | `go test -race ./internal/api ./internal/workspacesvc` |
-| Frontend unit tests | `npm --prefix frontend test` |
-| TypeScript checks | `npm --prefix frontend run typecheck` |
+| Frontend unit tests | `npm --prefix dashboard test` |
+| TypeScript checks | `npm --prefix dashboard run typecheck` |
 | Hermes adapter tests | `make hermes-check` |
 | Kubernetes manifest and deployment contracts | `make kubernetes-check` |
 | Compose configuration | `docker compose config --quiet` |
 | Go dependency review | `make go-vuln-check` |
 
-Format changed Go files with `gofmt`. For frontend changes, use `npm --prefix frontend run format`. Review the diff before committing.
+Format changed Go files with `gofmt`. For frontend changes, use `npm --prefix dashboard run format`. Review the diff before committing.
 
 ### Run browser tests
 
-Run `npm --prefix frontend run test:browser:install` to install Chromium. Run `make browser-check` from the repository root. See [browser suites](frontend.md#browser-suites) for system dependencies, individual specs, and the dashboard connection-page suite.
+Run `npm --prefix dashboard run test:browser:install` to install Chromium. Run `make browser-check` from the repository root. See [browser suites](frontend.md#browser-suites) for system dependencies, individual specs, and the dashboard connection-page suite.
 
 ### Check PostgreSQL and the running platform
 
@@ -103,7 +103,7 @@ Keep the source and its SVG together. Update the image's alternative text if the
 
 ### Capture a dashboard screenshot
 
-Use a local dashboard with a sample project or the synthetic fixtures in [dashboard browser tests](../../../../frontend/tests). Use dark mode and capture the controls needed for the step. Save the PNG in `docs/static/screenshots/` and describe the controls in the image’s alternative text. Keep real project data and credentials out of captures.
+Use a local dashboard with a sample project or the synthetic fixtures in [dashboard browser tests](../../../../dashboard/tests). Use dark mode and capture the controls needed for the step. Save the PNG in `docs/static/screenshots/` and describe the controls in the image’s alternative text. Keep real project data and credentials out of captures.
 
 ## Prepare a change for review
 

@@ -76,9 +76,9 @@ configuration management with these inputs:
    binaries and desktop packages from the same source revision.
 
    ```sh
-   docker build -f Dockerfile --target firecracker-guest \
-     --build-arg HERMES_COMMIT="$(jq -r .commit deploy/hermes/runtime.json)" \
-     --build-arg HERMES_SOURCE_SHA256="$(jq -r .source_sha256 deploy/hermes/runtime.json)" \
+   docker build -f workspace/Dockerfile --target firecracker-guest \
+     --build-arg HERMES_COMMIT="$(jq -r .commit workspace/hermes-runtime.json)" \
+     --build-arg HERMES_SOURCE_SHA256="$(jq -r .source_sha256 workspace/hermes-runtime.json)" \
      -t harbormaster-firecracker-guest:local .
    ```
 2. Obtain matching Firecracker/jailer releases and a supported guest kernel from

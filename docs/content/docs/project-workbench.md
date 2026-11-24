@@ -26,7 +26,7 @@ The local bootstrap MCP token in `.local/secrets/mcp_token` is scoped to `defaul
 ## Schedule work
 
 1. Put the instruction file in the target worker's project files. Configure native execution for that worker.
-2. Use the project credential with `schedule_create` in MCP or `POST /v1/schedules` in the management API. Supply the worker, instruction path, and trigger. See the [Hermes schedule example](../../../integrations/hermes/examples/digest-schedule.json) for a file-based request.
+2. Use the project credential with `schedule_create` in MCP or `POST /v1/schedules` in the management API. Supply the worker, instruction path, and trigger. See the [Hermes schedule example](../../../workspace/hermes/examples/digest-schedule.json) for a file-based request.
 3. Check the stored schedule through `schedule_list`. Use `schedule_run_now` with a retry key to exercise one occurrence. Use `run_list` to inspect scheduled run records.
 4. Use `schedule_disable` to pause future automatic occurrences. Cancel accepted work separately if needed.
 

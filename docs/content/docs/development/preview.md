@@ -13,7 +13,7 @@ Start with the [dashboard preview guide](../application-previews.md) for the use
 
 | Area | Code |
 | --- | --- |
-| Preview controls, log viewer, and rendering | [Dashboard work feature](../../../../frontend/src/features/work) |
+| Preview controls, log viewer, and rendering | [Dashboard work feature](../../../../dashboard/src/features/work) |
 | Preview session policy | [Preview service](../../../../internal/previewsvc) |
 | Preview origin and proxy | [Dashboard ingress](../../../../internal/dashboard) |
 | Application supervision and forwarding | [Workspace supervisor](../../../../internal/workspace) |
@@ -69,4 +69,4 @@ HTML, scripts, remote data URLs or arbitrary chart-library configuration.
 
 ## Validate changes
 
-Run `go test ./internal/previewsvc ./internal/dashboard ./internal/workspace` for session, proxy, and supervisor changes. Open [the dashboard browser suite](../../../../frontend/tests/work.spec.ts) for embedded preview, expiry recovery, and reply rendering cases.
+Run `go test ./internal/previewsvc ./internal/dashboard ./internal/workspace` for session, proxy, and supervisor changes. Open [the dashboard browser suite](../../../../dashboard/tests/work.spec.ts) for embedded preview, expiry recovery, and reply rendering cases.

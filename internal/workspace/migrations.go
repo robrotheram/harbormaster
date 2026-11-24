@@ -10,7 +10,7 @@ import (
 )
 
 // ErrPreReleaseSchema identifies a database that needs recreation before startup.
-var ErrPreReleaseSchema = errors.New("incompatible pre-release workspace database: use a fresh workspace database; see docs/operations.md")
+var ErrPreReleaseSchema = errors.New("incompatible pre-release workspace database: use a fresh workspace database; see docs/content/docs/operations/_index.md")
 
 // The supervisor holds the workspace writer lock throughout database startup.
 func initWorkspaceDB(ctx context.Context, db *sql.DB) error {

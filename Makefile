@@ -1,6 +1,6 @@
 HUGO ?= $(or $(wildcard .local/tools/hugo),hugo)
 
-.PHONY: bootstrap build test check fmt-check frontend-check browser-check hermes-check kubernetes-check postgres-check go-vuln-check docs-build docs docs-serve up down logs smoke
+.PHONY: bootstrap build test check fmt-check frontend-check browser-check hermes-check kubernetes-check postgres-check go-vuln-check docs-build docs docs-serve workspace up down logs smoke
 bootstrap:
 	go run ./cmd/workbench bootstrap
 build:
@@ -10,11 +10,11 @@ test:
 fmt-check:
 	@test -z "$$(gofmt -l cmd internal deploy/kubernetes)" || (gofmt -l cmd internal deploy/kubernetes; exit 1)
 frontend-check:
-	cd frontend && npm ci && npm run format:check && npm test && npm run build
+	cd dashboard && npm ci && npm run format:check && npm test && npm run build
 browser-check:
-	cd frontend && npm run test:browser
+	cd dashboard && npm run test:browser
 hermes-check:
-	PYTHONPATH=integrations/hermes/src:integrations/hermes/tests python3 -m unittest discover -s integrations/hermes/tests -v
+	PYTHONPATH=workspace/hermes/src:workspace/hermes/tests python3 -m unittest discover -s workspace/hermes/tests -v
 kubernetes-check:
 	@mkdir -p .local/tools
 	GOBIN="$(CURDIR)/.local/tools" go install sigs.k8s.io/kustomize/kustomize/v5@v5.8.1
@@ -32,6 +32,9 @@ docs-serve: docs
 
 docs:
 	$(HUGO) server --source docs --bind 127.0.0.1
+workspace:
+	docker compose --profile build build workspace-image
+
 up: bootstrap
 	docker compose --profile build build
 	go run ./cmd/workbench check-runtime-host

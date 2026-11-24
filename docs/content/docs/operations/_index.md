@@ -27,7 +27,7 @@ Before a release:
 1. Run `make check`, `make browser-check` and `docker compose config --quiet`.
    Run `make postgres-check` with `TEST_DATABASE_URL` pointing to disposable
    PostgreSQL 17. See [CONTRIBUTING](../development/contributing.md).
-2. Run `make go-vuln-check` from the repository root and `npm audit` from `frontend/`. Review findings in build dependencies and shipped code.
+2. Run `make go-vuln-check` from the repository root and `npm audit` from `dashboard/`. Review findings in build dependencies and shipped code.
 3. Require a green GitHub Actions run on the exact commit being released. Review
    `git status --short` and `git diff --check`; ensure all required new source
    files are included and local configuration/secrets are excluded.

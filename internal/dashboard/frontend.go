@@ -11,7 +11,7 @@ func frontendDir() string {
 	if dir := os.Getenv("FRONTEND_DIR"); dir != "" {
 		return dir
 	}
-	return "frontend/dist"
+	return "dashboard/dist"
 }
 
 func serveFrontend(w http.ResponseWriter, r *http.Request) bool {

@@ -5,8 +5,8 @@ aliases = ["/docs/data-science-workbench-plan/"]
 
 1. Update the [artifact schema](../../../../internal/workspace/analysis/artifact-v1.schema.json).
 2. Update semantic validation and data projection in [the worker analysis package](../../../../internal/workspace/analysis). Keep requests bounded. Resolve logical source IDs against the authorized worker's data.
-3. Update the typed renderer in [the frontend analysis feature](../../../../frontend/src/features/analysis). Keep library-specific options in the frontend.
-4. Run the worker and API tests with `go test ./internal/workspace/analysis ./internal/api`. Run `npm --prefix frontend test` and `npm --prefix frontend run typecheck`.
+3. Update the typed renderer in [the frontend analysis feature](../../../../dashboard/src/features/analysis). Keep library-specific options in the frontend.
+4. Run the worker and API tests with `go test ./internal/workspace/analysis ./internal/api`. Run `npm --prefix dashboard test` and `npm --prefix dashboard run typecheck`.
 
 Use the [analysis API](../architecture/analysis-api.md) for the transport contract and the [data science guide](../data-science-workbench.md) for report and visualization workflows.
 

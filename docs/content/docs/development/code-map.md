@@ -28,6 +28,6 @@ Runtime providers share the neutral protocol and operate independently. Applicat
 
 ## Independent frontend features
 
-`frontend/src/app` owns bootstrap, routing, and the shell. It loads feature screens on demand. Each feature keeps its API client and query keys beside its views. To share a query, import the feature's API module. Shared components and HTTP utilities have no feature dependencies.
+`dashboard/src/app` owns bootstrap, routing, and the shell. It loads feature screens on demand. Each feature keeps its API client and query keys beside its views. To share a query, import the feature's API module. Shared components and HTTP utilities have no feature dependencies.
 
 The browser owns navigation, presentation, and local drafts. The backend owns multi-step operations such as assistant selection and startup. If multiple workers match the project assistant request, the backend returns a conflict and lets the caller choose a worker. See the [frontend development guide](frontend.md) for browser contracts and tests.

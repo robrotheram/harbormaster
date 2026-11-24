@@ -41,7 +41,7 @@ func TestPinnedHermesDigestPublishesThroughRealMCPAndWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	integration, err := filepath.Abs("../../integrations/hermes")
+	integration, err := filepath.Abs("../../workspace/hermes")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func TestPinnedHermesConsumerCreatesOneProjectWorkAttempt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	integration, err := filepath.Abs("../../integrations/hermes")
+	integration, err := filepath.Abs("../../workspace/hermes")
 	if err != nil {
 		t.Fatal(err)
 	}
