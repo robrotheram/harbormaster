@@ -35,6 +35,7 @@ async function conversationFixture(page: Page) {
   const state = {
     exists: false,
     failContinue: false,
+    applicationsError: 0,
     foreignHistory: false,
     alternateWorker: false,
     request: "Investigate the experiment.",
@@ -110,6 +111,16 @@ async function conversationFixture(page: Page) {
         apps.push(app);
         return route.fulfill({ status: 201, json: app });
       }
+      if (state.applicationsError)
+        return route.fulfill({
+          status: state.applicationsError,
+          json: {
+            code:
+              state.applicationsError === 403
+                ? "FORBIDDEN"
+                : "WORKSPACE_UNAVAILABLE",
+          },
+        });
       return route.fulfill({ json: { items: apps } });
     }
     if (path.endsWith("/services/service_live/revoke")) {
@@ -702,6 +713,34 @@ test("desktop development opens directly to the worker desktop and keeps it on m
   ).toBe(true);
   expect(portRequests).toEqual([]);
   expect(f.errors).toEqual([]);
+
+  const iframe = page.locator('iframe[title="Workspace desktop"]');
+  const connectedURL = await iframe.getAttribute("src");
+  f.state.applicationsError = 503;
+  await page.waitForResponse(
+    (res) => res.url().endsWith("/applications") && res.status() === 503,
+  );
+  await expect(iframe).toHaveAttribute("src", connectedURL!);
+  f.state.applicationsError = 0;
+  await page.waitForResponse(
+    (res) => res.url().endsWith("/applications") && res.ok(),
+  );
+  await expect(iframe).toHaveAttribute("src", connectedURL!);
+
+  const opened = page.waitForEvent("popup");
+  await previewTool(page, "Open preview in new tab");
+  const separated = await opened;
+  await expect(separated.getByRole("heading")).toHaveText("Desktop connected");
+  await expect(iframe).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Return desktop to this tab" })
+    .click();
+  await expect(iframe.contentFrame().getByRole("heading")).toHaveText(
+    "Desktop connected",
+  );
+  await separated.close();
+  f.state.applicationsError = 403;
+  await expect(iframe).toHaveCount(0, { timeout: 10000 });
 });
 
 test("preview selection adds a draft only from the selected frame and reload renews the connection", async ({

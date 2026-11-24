@@ -31,7 +31,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
-import { request } from "@/shared/http";
+import { APIError, request } from "@/shared/http";
 import { privateContentOptions } from "@/shared/private-content";
 
 import { ApplicationLogs, type Application } from "./application-logs";
@@ -79,6 +79,7 @@ export function WorkPreview({
   );
   const [sequence, setSequence] = useState(0);
   const [refresh, setRefresh] = useState(0);
+  const [externalDesktop, setExternalDesktop] = useState("");
   const [completedRevision, setCompletedRevision] = useState(revision);
   useEffect(() => {
     if (revision) setCompletedRevision(revision);
@@ -97,7 +98,13 @@ export function WorkPreview({
       ),
     refetchInterval: 3000,
   });
-  const apps = (query.isError ? [] : query.data?.items || []).filter((a) =>
+  const transientDesktopError =
+    mode === "desktop" &&
+    query.error instanceof APIError &&
+    (query.error.status === 0 || query.error.status >= 500);
+  const apps = (
+    query.isError && !transientDesktopError ? [] : query.data?.items || []
+  ).filter((a) =>
     mode === "desktop"
       ? a.application.kind === "desktop"
       : a.application.kind !== "desktop",
@@ -199,7 +206,16 @@ export function WorkPreview({
       throw new Error("Invalid preview address");
     return result.preview_url;
   }
-  const [url, setURL] = useState("");
+  const [connection, setConnection] = useState<{
+    service: string;
+    url: string;
+  }>();
+  const url = connection?.url || "";
+  // A status poll can fail while the desktop's WebSocket is still healthy.
+  const desktopConnected =
+    mode === "desktop" && !!selected && connection?.service === selected.id;
+  const desktopInSeparateTab =
+    mode === "desktop" && !!selected && externalDesktop === selected.id;
   useEffect(() => {
     if (!detected.data?.items.length) forward.reset();
   }, [detected.data]);
@@ -260,8 +276,14 @@ export function WorkPreview({
           `/workspaces/${workspace}/services/${selected!.id}/revoke`,
           {},
         );
-      const next = await connect(selected!.id, false);
-      popup.current?.location.replace(next);
+      const tab = popup.current;
+      if (!tab || tab.closed)
+        throw new Error("Allow pop-ups to open the preview in a new tab.");
+      const service = selected!.id;
+      const next = await connect(service, false);
+      if (tab.closed) return;
+      if (mode === "desktop") setExternalDesktop(service);
+      tab.location.replace(next);
     },
     onSuccess: async (_, action) => {
       if (action === "start" || action === "restart" || action === "desktop") {
@@ -350,7 +372,7 @@ export function WorkPreview({
               variant="ghost"
               size="icon-sm"
               aria-label="Reload preview"
-              disabled={!selected?.ready}
+              disabled={!selected?.ready || desktopInSeparateTab}
               onClick={() => setRefresh((v) => v + 1)}
             >
               <RefreshCw size={14} />
@@ -427,7 +449,11 @@ export function WorkPreview({
                     variant="ghost"
                     size="sm"
                     aria-label="Open preview in new tab"
-                    disabled={!selected?.ready || mutation.isPending}
+                    disabled={
+                      !selected?.ready ||
+                      mutation.isPending ||
+                      desktopInSeparateTab
+                    }
                     onClick={() => {
                       popup.current = window.open("about:blank", "_blank");
                       if (popup.current) popup.current.opener = null;
@@ -497,7 +523,7 @@ export function WorkPreview({
             Click an element to describe a change in the conversation.
           </p>
         )}
-        {query.isError ? (
+        {query.isError && !desktopConnected && !desktopInSeparateTab ? (
           <PreviewUnavailable>
             <ErrorNotice
               error={query.error}
@@ -536,7 +562,20 @@ export function WorkPreview({
           <div
             className={`visual-browser ${phone && mode === "web" ? "is-phone" : ""}`}
           >
-            {selected.ready ? (
+            {desktopInSeparateTab ? (
+              <PreviewUnavailable>
+                <p>The desktop uses one viewer at a time.</p>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    popup.current = null;
+                    setExternalDesktop("");
+                  }}
+                >
+                  Return desktop to this tab
+                </Button>
+              </PreviewUnavailable>
+            ) : selected.ready || desktopConnected ? (
               <ConnectedPreview
                 key={`${selected.id}:${refresh}:${mode}:${mode === "web" ? completedRevision : ""}`}
                 project={project}
@@ -549,7 +588,7 @@ export function WorkPreview({
                 }
                 frame={frame}
                 connect={connect}
-                onConnection={setURL}
+                onConnection={setConnection}
               />
             ) : (
               <div className="visual-empty" role="status">
@@ -772,7 +811,7 @@ function ConnectedPreview({
     embedded: boolean,
     signal?: AbortSignal,
   ) => Promise<string>;
-  onConnection: (url: string) => void;
+  onConnection: (connection?: { service: string; url: string }) => void;
 }) {
   const [instance] = useState(() => crypto.randomUUID());
   const connection = useQuery({
@@ -793,9 +832,9 @@ function ConnectedPreview({
   });
   const url = connection.isError ? "" : connection.data || "";
   useEffect(() => {
-    onConnection(url);
-    return () => onConnection("");
-  }, [url, onConnection]);
+    onConnection(url ? { service, url } : undefined);
+    return () => onConnection(undefined);
+  }, [service, url, onConnection]);
   if (connection.isError)
     return (
       <PreviewUnavailable>
