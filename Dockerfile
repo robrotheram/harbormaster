@@ -80,12 +80,13 @@ FROM workspace-tools AS workspace-base
 # Xwayland loads libEGL at runtime.
 RUN apt-get update && apt-get install -y --no-install-recommends dbus-daemon foot fonts-dejavu-core libegl1 libxcb-cursor0 python3-venv xwayland && rm -rf /var/lib/apt/lists/*
 COPY --from=xwayland-satellite-build /out/xwayland-satellite /usr/local/bin/xwayland-satellite
-RUN cd /opt/workspace-tools/node_modules/wland/dist && \
+RUN --mount=type=bind,source=tools/wland-viewer.patch,target=/tmp/wland-viewer.patch \
+    cd /opt/workspace-tools/node_modules/wland/dist && \
+    git apply /tmp/wland-viewer.patch && \
     relay=$(XDG_CACHE_HOME=/tmp/wland-build node --input-type=module -e 'import { serverBinary } from "./index.mjs"; console.log(serverBinary())') && \
     install -m 755 "$relay" /usr/local/bin/wlandr && rm -rf /tmp/wland-build && \
     mkdir -p /opt/wland/web && cp index.html wland.wasm *.mjs /opt/wland/web/ && \
-    rm /opt/wland/web/cli.mjs /opt/wland/web/headless.mjs /opt/wland/web/index.mjs && \
-    sed -i 's/npx wland run foot/workbench-desktop run foot/' /opt/wland/web/index.html
+    rm /opt/wland/web/cli.mjs /opt/wland/web/headless.mjs /opt/wland/web/index.mjs
 RUN --mount=type=cache,target=/root/.cache/pip python3 -m venv /opt/workbench-analysis && \
     /opt/workbench-analysis/bin/python -m pip install --only-binary=:all: duckdb==1.5.4
 COPY --from=workspace-build /out/workbench-tools /usr/local/bin/workbench-tools

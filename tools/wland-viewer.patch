@@ -1,0 +1,40 @@
+--- a/index.html
++++ b/index.html
+@@ -68,7 +68,7 @@
+ </header>
+ <div id="desktop"></div>
+ <div id="menu" role="menu" hidden></div>
+-<div id="hint"><div><h1>No windows yet</h1><p>Launch an app from a shell:</p><code>npx wland run foot</code></div></div>
++<div id="hint"><div><h1>No windows yet</h1><p>Launch an app from a shell:</p><code>workbench-desktop run foot</code></div></div>
+ <script type="module">
+ import { createWland } from './client.mjs';
+
+@@ -83,6 +83,7 @@
+   unfull: icon('M5 2v3H2M12 5H9V2M9 12V9h3M2 9h3v3'),
+ };
+ let wl;
++let reloadTimer;
+
+ // the bar and the menu never take DOM focus: that would take the keyboard
+ // from the focused window
+@@ -165,7 +166,10 @@
+     onWindowsChange: renderWindows,
+     onEvent(ev) {
+       switch (ev.type) {
+-        case 'open': setStatus('open', 'connected'); break;
++        case 'open':
++          clearTimeout(reloadTimer);
++          setStatus('open', 'connected');
++          break;
+         case 'error': console.warn('wland:', ev.detail); break;
+         case 'close':
+           // Taken over by another tab: no automatic reload, that would take
+@@ -178,7 +182,7 @@
+             status.append(back);
+           } else {
+             setStatus('closed', 'disconnected · reloading…');
+-            setTimeout(() => location.reload(), 3000);
++            reloadTimer = setTimeout(() => location.reload(), 3000);
+           }
+           break;
+       }

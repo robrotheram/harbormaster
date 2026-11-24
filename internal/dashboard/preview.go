@@ -10,7 +10,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"path"
 	"strings"
 	"sync"
 	"time"
@@ -213,10 +212,10 @@ func (p *previewIngress) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := strings.TrimPrefix(r.URL.Path, "/")
-	if !binding.Application && (name == "" || strings.HasSuffix(name, "/")) {
+	if name == "" || strings.HasSuffix(name, "/") {
 		name += "index.html"
 	}
-	if name != "" && (!shared.ValidProjectFile(strings.TrimSuffix(name, "/")) || path.Clean(strings.TrimSuffix(name, "/")) != strings.TrimSuffix(name, "/")) {
+	if !shared.ValidProjectFile(name) {
 		writeConnectionError(w, r, 400, "INVALID_PATH", "preview")
 		return
 	}
@@ -227,10 +226,8 @@ func (p *previewIngress) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var out struct {
-		Content  []byte `json:"content"`
-		Type     string `json:"content_type"`
-		Status   int    `json:"status"`
-		Location string `json:"location"`
+		Content []byte `json:"content"`
+		Type    string `json:"content_type"`
 	}
 	if json.Unmarshal(b, &out) != nil || len(out.Content) > 2<<20 {
 		writeConnectionError(w, r, 503, "INVALID_PREVIEW_RESPONSE", "preview")
@@ -244,16 +241,6 @@ func (p *previewIngress) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", out.Type)
-	if binding.Application {
-		if out.Status < 200 || out.Status > 599 {
-			writeConnectionError(w, r, 502, "INVALID_PREVIEW_RESPONSE", "preview")
-			return
-		}
-		if strings.HasPrefix(out.Location, "/") && !strings.HasPrefix(out.Location, "//") {
-			w.Header().Set("Location", out.Location)
-		}
-		w.WriteHeader(out.Status)
-	}
 	if r.Method != "HEAD" {
 		w.Write(out.Content)
 	}
