@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
 	"os/exec"
 	"strings"
 	"syscall"
@@ -80,21 +81,24 @@ func (m *Manager) tool(ctx context.Context, name string, raw json.RawMessage) st
 		}
 		commandCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
-		cmd := exec.CommandContext(commandCtx, "/bin/sh", "-lc", args.Command)
+		executable, err := os.Executable()
+		if err != nil {
+			return `{"error":"COMMAND_UNAVAILABLE"}`
+		}
+		cmd := exec.CommandContext(commandCtx, executable, commandSupervisorArg, args.Command)
 		cmd.Dir = m.cfg.DataDir + "/files"
 		// Do not inherit grant tokens, service addresses or host process environment.
 		cmd.Env = []string{"PATH=/usr/local/bin:/usr/bin:/bin", "HOME=" + cmd.Dir, "LANG=C.UTF-8"}
 		if m.cfg.EgressURL != "" && m.cfg.ConnectionMode != "open" {
 			cmd.Env = egress.Environment(cmd.Env, m.cfg.InferenceURL, m.cfg.BrokerURL)
 		}
-		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 		out := shared.NewCappedOutput(64 << 10)
 		cmd.Stdout = out
 		cmd.Stderr = out
-		cmd.WaitDelay = time.Second
+		cmd.WaitDelay = 3 * time.Second
 		cmd.Cancel = func() error {
 			if cmd.Process != nil {
-				return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+				return cmd.Process.Signal(syscall.SIGTERM)
 			}
 			return nil
 		}
@@ -103,7 +107,6 @@ func (m *Manager) tool(ctx context.Context, name string, raw json.RawMessage) st
 			return `{"error":"COMMAND_UNAVAILABLE"}`
 		}
 		e = cmd.Wait()
-		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 		code := 0
 		if e != nil {
 			code = -1

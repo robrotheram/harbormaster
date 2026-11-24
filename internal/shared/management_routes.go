@@ -193,6 +193,33 @@ func DashboardBodyLimit(method, path string) int64 {
 	return 0
 }
 
+// LocalDashboardRouteAllowed limits the local launcher's bearer to the
+// dashboard surface and its worker transports.
+func LocalDashboardRouteAllowed(method, path string) bool {
+	if !strings.HasPrefix(path, "/v1/") {
+		return false
+	}
+	if DashboardBodyLimit(method, strings.TrimPrefix(path, "/v1")) != 0 {
+		return true
+	}
+	parts := strings.Split(strings.TrimPrefix(path, "/v1/"), "/")
+	if len(parts) < 2 || parts[0] != "workspaces" || !ValidID(parts[1]) {
+		return false
+	}
+	if len(parts) == 2 {
+		return method == http.MethodGet
+	}
+	switch parts[2] {
+	case "console", "desktop":
+		return len(parts) >= 4
+	case "services":
+		return method == http.MethodPost && len(parts) == 5 && ValidID(parts[3]) && parts[4] == "fetch"
+	case "application-proxy":
+		return len(parts) >= 5 && ValidID(parts[3])
+	}
+	return false
+}
+
 // SharedHumanRouteAllowed preserves the authorization gate's matching rules.
 // ServeMux still resolves methods and paths, then handlers enforce membership.
 func SharedHumanRouteAllowed(method, path string) bool {

@@ -31,6 +31,7 @@ import (
 const fcBase = "/opt/agent-workbench/firecracker"
 const fcState = "/var/lib/agent-workbench/firecracker"
 const fcJails = "/srv/agent-workbench-jailer"
+const fcJailParent = fcJails + "/firecracker"
 const fcCgroups = "/sys/fs/cgroup/awb-firecracker"
 
 type fcVM struct {
@@ -39,6 +40,8 @@ type fcVM struct {
 	Spec                        protocol.WorkspaceSpec
 	Policy                      shared.ConnectionPolicy
 	listeners                   []net.Listener
+	cleanupMu                   sync.Mutex
+	launcher                    *os.Process
 	slots                       chan struct{}
 	running                     bool
 	stopping                    bool
@@ -55,6 +58,7 @@ type Firecracker struct {
 	hermes                 bool
 	matrixOwners           map[string]string
 	terminateCgroup        func(string) error
+	jailParent             string
 }
 
 // Bound console storage without limiting block-device writes to low offsets.
@@ -163,16 +167,8 @@ func NewFirecracker(token, service, secret string) (*Firecracker, error) {
 	}
 	// On a daemon restart, fail closed by killing stale cgroups before accepting
 	// requests. Never adopt a running VM based only on persisted metadata or PID.
-	groups, err := os.ReadDir(fcCgroups)
-	if err != nil {
+	if err := reapGenerations(fcCgroups, fcJailParent, terminateCgroup); err != nil {
 		return nil, err
-	}
-	for _, g := range groups {
-		if g.IsDir() && strings.HasPrefix(g.Name(), "fc-") {
-			if err := os.WriteFile(filepath.Join(fcCgroups, g.Name(), "cgroup.kill"), []byte("1"), 0600); err != nil {
-				return nil, err
-			}
-		}
 	}
 	artifacts := map[string]os.FileInfo{}
 	var manifest map[string]string
@@ -191,7 +187,7 @@ func NewFirecracker(token, service, secret string) (*Firecracker, error) {
 		}
 		artifacts[p] = i
 	}
-	return &Firecracker{token: token, service: service, secret: secret, vms: map[string]*fcVM{}, slots: make(chan struct{}, 128), artifacts: artifacts, hermes: hermes}, nil
+	return &Firecracker{token: token, service: service, secret: secret, vms: map[string]*fcVM{}, slots: make(chan struct{}, 128), artifacts: artifacts, hermes: hermes, jailParent: fcJailParent}, nil
 }
 
 func (f *Firecracker) checkArtifacts() error {
@@ -268,7 +264,7 @@ func (f *Firecracker) launch(ctx context.Context, id string, spec protocol.Works
 	oldRunning := old != nil && old.running && !old.stopping
 	count := 0
 	for _, x := range f.vms {
-		if x.running {
+		if x != old && x.running {
 			count++
 		}
 	}
@@ -311,21 +307,29 @@ func (f *Firecracker) launch(ctx context.Context, id string, spec protocol.Works
 	generation := "fc-" + shared.NewID("")
 	// Unique UID per generation, even after controller restarts; never share VMM UIDs.
 	counterFile := fcState + "/next-uid"
-	next := 200000
+	next := firstGuestUID
 	if b, e := os.ReadFile(counterFile); e == nil {
 		next, e = strconv.Atoi(strings.TrimSpace(string(b)))
-		if e != nil || next < 200000 || next >= 400000 {
+		if e != nil || next < firstGuestUID || next >= guestUIDLimit {
 			return nil, errors.New("UID pool unavailable")
 		}
+	} else if !os.IsNotExist(e) {
+		return nil, e
+	}
+	next, err = reserveHostUID(next, "/etc/subuid", "/etc/subgid")
+	if err != nil {
+		return nil, err
 	}
 	if err = os.WriteFile(counterFile, []byte(strconv.Itoa(next+1)), 0600); err != nil {
 		return nil, err
 	}
-	v = &fcVM{ID: id, Generation: generation, UID: next, Spec: spec, Policy: shared.ConnectionPolicy{Mode: "blocked", Destinations: []string{}}, Jail: fcJails + "/firecracker/" + generation + "/root", NetNS: "awb-" + generation}
+	v = &fcVM{ID: id, Generation: generation, UID: next, Spec: spec, Policy: shared.ConnectionPolicy{Mode: "blocked", Destinations: []string{}}, Jail: filepath.Join(f.jailParent, generation, "root"), NetNS: "awb-" + generation}
 	allocated := v
 	defer func() {
 		if err != nil {
-			f.kill(allocated)
+			if cleanupErr := f.kill(allocated); cleanupErr != nil {
+				err = errors.Join(err, cleanupErr)
+			}
 		}
 	}()
 	if err = os.MkdirAll(v.Jail, 0700); err != nil {
@@ -364,6 +368,7 @@ func (f *Firecracker) launch(ctx context.Context, id string, spec protocol.Works
 	if err = os.Mkdir(configDir, 0700); err != nil {
 		return nil, err
 	}
+	defer os.RemoveAll(configDir)
 	env := map[string]string{"WORKSPACE_ID": id, "PROJECT_ID": spec.ProjectID, "AGENT_HOME_ID": spec.HomeID, "AGENT_KIND": spec.AgentKind, "WORKSPACE_NAME": spec.Name, "WORKSPACE_BRANCH": spec.Branch, "WORKSPACE_TOKEN": f.grant(v), "WORKSPACE_CONNECTION_MODE": "blocked", "DATA_DIR": "/data", "INFERENCE_URL": "http://127.0.0.1:18081", "BROKER_URL": "http://127.0.0.1:18082", "EGRESS_URL": "http://127.0.0.1:18083", "WORKSPACE_AGENT": "codex", "CODEX_MODEL": "gpt-6.1-sol", "INFERENCE_MODEL": "fixture", "MONITOR_PROCESSES": "true", "WORKSPACE_T3": strconv.FormatBool(spec.AgentKind == "t3" || spec.ConsoleEnabled)}
 	if isHermes {
 		env["WORKSPACE_AGENT"] = "hermes"
@@ -390,7 +395,9 @@ func (f *Firecracker) launch(ctx context.Context, id string, spec protocol.Works
 	if err = fcCommand(ctx, "mkfs.ext4", "-q", "-F", "-L", "awb-config", "-d", configDir, boot); err != nil {
 		return nil, err
 	}
-	os.RemoveAll(configDir)
+	if err = os.RemoveAll(configDir); err != nil {
+		return nil, err
+	}
 	b, _ = json.Marshal(fcConfig(1024))
 	if err = os.WriteFile(v.Jail+"/config.json", b, 0400); err != nil {
 		return nil, err
@@ -423,13 +430,14 @@ func (f *Firecracker) launch(ctx context.Context, id string, spec protocol.Works
 		logFile.Close()
 		return nil, err
 	}
+	v.launcher = cmd.Process
+	go func() { _ = cmd.Wait(); logFile.Close() }()
 	f.mu.Lock()
 	v.running = true
 	f.vms[id] = v
 	f.mu.Unlock()
 	allocatedSlot = false
 	f.allocation.Unlock()
-	go func() { _ = cmd.Wait(); logFile.Close() }()
 	err = waitForFirecrackerResume(ctx, func() error {
 		return f.verifyVM(v)
 	}, func() (int, error) {
@@ -482,12 +490,19 @@ func checkFCSpec(a, b protocol.WorkspaceSpec) error {
 	return nil
 }
 func (f *Firecracker) kill(v *fcVM) error {
+	v.cleanupMu.Lock()
+	defer v.cleanupMu.Unlock()
 	f.mu.Lock()
 	v.stopping = true
 	v.Policy = shared.ConnectionPolicy{Mode: "blocked"}
 	f.mu.Unlock()
 	for _, l := range v.listeners {
 		l.Close()
+	}
+	// A launch that failed before registering its cgroup can still have
+	// a live jailer. Fence the process we started before checking the group.
+	if err := terminateLauncher(v.launcher); err != nil {
+		return err
 	}
 	terminate := f.terminateCgroup
 	if terminate == nil {
@@ -505,6 +520,19 @@ func (f *Firecracker) kill(v *fcVM) error {
 	if v.NetNS != "" {
 		_ = fcCommand(ctx, "ip", "netns", "delete", v.NetNS)
 	}
+	if f.jailParent != "" {
+		if err := removeGenerationJail(f.jailParent, v.Generation); err != nil {
+			return err
+		}
+	}
+	f.mu.Lock()
+	if f.vms[v.ID] == v {
+		delete(f.vms, v.ID)
+	}
+	if f.matrixOwners[v.Spec.ProjectID] == v.Generation {
+		delete(f.matrixOwners, v.Spec.ProjectID)
+	}
+	f.mu.Unlock()
 	return nil
 }
 func (f *Firecracker) verifyVM(v *fcVM) error {

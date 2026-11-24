@@ -26,6 +26,7 @@ type fakeKubernetes struct {
 	creates            int
 	requests           []string
 	extraNetworkPolicy map[string]any
+	failResumeOnce     bool
 }
 
 func (f *fakeKubernetes) serve(w http.ResponseWriter, r *http.Request) {
@@ -86,6 +87,27 @@ func (f *fakeKubernetes) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		var body map[string]any
 		json.NewDecoder(r.Body).Decode(&body)
+		if r.Method == "PATCH" {
+			current, ok := f.secrets[key]
+			if !ok {
+				w.WriteHeader(404)
+				return
+			}
+			metadata := current["metadata"].(map[string]any)
+			patch := body["metadata"].(map[string]any)
+			if metadata["resourceVersion"] != patch["resourceVersion"] {
+				w.WriteHeader(409)
+				return
+			}
+			for label, value := range patch["labels"].(map[string]any) {
+				metadata["labels"].(map[string]any)[label] = value
+			}
+			metadata["resourceVersion"] = "2"
+			current["data"] = body["data"]
+			shared.JSON(w, 200, current)
+			return
+		}
+		body["metadata"].(map[string]any)["resourceVersion"] = "1"
 		name := body["metadata"].(map[string]any)["name"].(string)
 		f.secrets[namespace+"/"+name] = body
 		shared.JSON(w, 201, body)
@@ -128,8 +150,22 @@ func (f *fakeKubernetes) serve(w http.ResponseWriter, r *http.Request) {
 		var patch map[string]any
 		json.NewDecoder(r.Body).Decode(&patch)
 		mode := patch["spec"].(map[string]any)["operatingMode"].(string)
-		body["spec"].(map[string]any)["operatingMode"] = mode
 		meta := body["metadata"].(map[string]any)
+		if update, ok := patch["metadata"].(map[string]any); ok {
+			if f.failResumeOnce {
+				f.failResumeOnce = false
+				w.WriteHeader(503)
+				return
+			}
+			if update["resourceVersion"] != meta["resourceVersion"] {
+				w.WriteHeader(409)
+				return
+			}
+			for label, value := range update["labels"].(map[string]any) {
+				meta["labels"].(map[string]any)[label] = value
+			}
+		}
+		body["spec"].(map[string]any)["operatingMode"] = mode
 		generation := meta["generation"].(float64) + 1
 		meta["generation"] = generation
 		condition := "Ready"
@@ -167,6 +203,18 @@ func kubeProvider(t *testing.T) (*Kubernetes, *fakeKubernetes) {
 		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(body))}, nil
 	})}
 	return k, fake
+}
+
+func TestKubernetesWorkspaceTransportBoundsIdleConnections(t *testing.T) {
+	fixture, _ := kubeProvider(t)
+	k, err := NewKubernetes(fixture.cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport := k.agentHTTP.Transport.(*http.Transport)
+	if transport.MaxIdleConns <= 0 || transport.IdleConnTimeout <= 0 {
+		t.Fatal("workspace connections require an aggregate idle limit and idle expiry")
+	}
 }
 
 func TestKubernetesFixedSandboxOwnershipPersistenceAndObservedReadiness(t *testing.T) {
@@ -214,15 +262,35 @@ func TestKubernetesFixedSandboxOwnershipPersistenceAndObservedReadiness(t *testi
 	if err = k.Stop(ctx, "ws_test"); err != nil {
 		t.Fatal(err)
 	}
+	originalGrant := body["metadata"].(map[string]any)["labels"].(map[string]any)["workbench.generation"].(string)
 	o, err = k.Inspect(ctx, "ws_test")
 	if err != nil || o.Running {
 		t.Fatal("observed suspension not retained")
 	}
+	fake.failResumeOnce = true
+	if _, err = k.StartConfigured(ctx, "ws_test", spec); err == nil {
+		t.Fatal("failed resume reported success")
+	}
+	staged := fake.secrets["project-one/test-ws-test-grant"]["metadata"].(map[string]any)["labels"].(map[string]any)["workbench.grant-generation"]
 	if _, err = k.StartConfigured(ctx, "ws_test", spec); err != nil {
 		t.Fatal(err)
 	}
 	if fake.creates != 1 || len(fake.secrets) != 1 {
 		t.Fatal("resume duplicated sandbox identity or private state")
+	}
+	labels := body["metadata"].(map[string]any)["labels"].(map[string]any)
+	rotated, _ := labels["workbench.grant-generation"].(string)
+	if rotated == "" || rotated != staged || rotated == originalGrant || labels["workbench.generation"] != originalGrant {
+		t.Fatal("resume did not rotate grant independently of the disk fence")
+	}
+	if _, err := k.findGrantWorkspace(ctx, k.token("ws_test", originalGrant)); !isNotFound(err) {
+		t.Fatal("previous grant remained valid", err)
+	}
+	if _, err := k.findGrantWorkspace(ctx, k.token("ws_test", rotated)); err != nil {
+		t.Fatal("rotated grant rejected", err)
+	}
+	if _, err := k.StartConfigured(ctx, "ws_test", spec); err != nil || labels["workbench.grant-generation"] != rotated {
+		t.Fatal("idempotent start rotated a live grant", err)
 	}
 	k.cfg.RequireVerified = true
 	if _, err = k.StartConfigured(ctx, "ws_test", spec); err == nil {

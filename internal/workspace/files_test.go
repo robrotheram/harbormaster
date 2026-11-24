@@ -23,7 +23,13 @@ func TestFileHandoffRejectsEscapingSymlinksAndOversize(t *testing.T) {
 	if err = os.Symlink(out, filepath.Join(dir, "files/escape")); err != nil {
 		t.Fatal(err)
 	}
-	for _, p := range []string{"escape/secret", "../workspace.db"} {
+	if err = os.WriteFile(filepath.Join(dir, "files/.env"), []byte("private fixture"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Symlink(".env", filepath.Join(dir, "files/local-link")); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{"escape/secret", "../workspace.db", "local-link"} {
 		body, _ := json.Marshal(shared.FileHandoff{Path: p})
 		if invoke(t, m.Handler(), "POST", "/v1/files/read", string(body)).Code < 400 {
 			t.Fatal("escaping read accepted")

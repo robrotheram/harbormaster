@@ -4,7 +4,7 @@ Use WorkOS AuthKit to verify a hosted user's identity. The control plane checks 
 
 ## Configure WorkOS
 
-1. Configure the [scoped dashboard credentials](../deploy/kubernetes/README.md#configure-hosted-dashboard-access) on the control plane and dashboard. Remove the dashboard's control token. If you adapt Compose for hosted sign-in, use an override that removes the inherited control-token setting and mount. The stock Compose deployment uses local Basic authentication.
+1. Configure the [scoped dashboard credentials](../deploy/kubernetes/README.md#configure-hosted-dashboard-access) on the control plane and dashboard. If you use hosted sign-in with Compose, remove the local operator credential and its mount from the dashboard service. The stock Compose deployment uses local Basic authentication.
 2. Set `WORKOS_CLIENT_ID` and `WORKOS_ALLOWED_EMAILS` on the dashboard. Use a comma-separated list of approved verified emails. Supply the API key through a Kubernetes Secret or [mount it as a file in Compose](#mount-the-workos-api-key-in-compose).
 3. Set `WORKOS_REDIRECT_URI` to the dashboard origin followed by `/auth/callback`. Use HTTPS for a hosted deployment. HTTP is permitted on loopback.
 4. In WorkOS, register the redirect URI, the same origin followed by `/auth/login` as the sign-in URI, and the same origin followed by `/app/` as the sign-out URI.

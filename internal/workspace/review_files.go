@@ -109,12 +109,22 @@ func openReviewFile(root *os.Root, name string) (*os.File, error) {
 }
 
 func openReviewDirectory(root *os.Root, name string) (*os.File, error) {
+	return openProjectDirectory(root, name, false)
+}
+
+func openProjectDirectory(root *os.Root, name string, create bool) (*os.File, error) {
 	dir, err := root.Open(".")
 	if err != nil || name == "." {
 		return dir, err
 	}
 	for segment := range strings.SplitSeq(name, "/") {
 		next, err := unix.Openat(int(dir.Fd()), segment, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+		if create && err == unix.ENOENT {
+			err = unix.Mkdirat(int(dir.Fd()), segment, 0700)
+			if err == nil || err == unix.EEXIST {
+				next, err = unix.Openat(int(dir.Fd()), segment, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+			}
+		}
 		dir.Close()
 		if err != nil {
 			return nil, err

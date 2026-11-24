@@ -40,13 +40,16 @@ services:
       SHARED_WORKSPACE_ID: ${SHARED_WORKSPACE_ID:-}
       WORKSPACE_MEMORY_BYTES: ${WORKSPACE_MEMORY_BYTES:-1073741824}
       MEMORY_QUOTA_BYTES: ${MEMORY_QUOTA_BYTES:-4294967296}
+      MAX_RUNNING_WORKSPACES_PER_USER: ${MAX_RUNNING_WORKSPACES_PER_USER:-2}
       CONTROL_TOKEN_FILE: /run/secrets/control_token
+      DASHBOARD_READ_TOKEN_FILE: /run/secrets/dashboard_read_token
+      DASHBOARD_LOCAL_OPERATOR_TOKEN_FILE: /run/secrets/dashboard_local_operator_token
       CONTROLLER_TOKEN_FILE: /run/secrets/controller_token
       CREDENTIAL_ENCRYPTION_KEY_FILE: /run/secrets/credential_encryption_key
       PROJECT_SIGNING_KEY_FILE: /run/secrets/project_signing_key
       DATABASE_URL_FILE: /run/secrets/database_url
       CONTROLLER_URL: http://runtime-controller-management:8080
-    secrets: [control_token, controller_token, database_url, credential_encryption_key, project_signing_key]
+    secrets: [control_token, controller_token, database_url, credential_encryption_key, project_signing_key, dashboard_read_token, dashboard_local_operator_token]
     networks: [metadata, management, dashboard, ingress, host-access]
     ports: ["127.0.0.1:${CONTROL_PORT:-8090}:8080"]
     depends_on:
@@ -104,8 +107,9 @@ services:
       WORKOS_ALLOWED_EMAILS: ${WORKOS_ALLOWED_EMAILS:-}
       CONTROLPLANE_READ_URL: http://controlplane:8081
       CONTROLPLANE_URL: http://controlplane:8080
-      CONTROL_TOKEN_FILE: /run/secrets/control_token
-    secrets: [control_token, dashboard_local_password]
+      DASHBOARD_READ_TOKEN_FILE: /run/secrets/dashboard_read_token
+      DASHBOARD_LOCAL_OPERATOR_TOKEN_FILE: /run/secrets/dashboard_local_operator_token
+    secrets: [dashboard_read_token, dashboard_local_operator_token, dashboard_local_password]
     networks: [dashboard, ingress, host-access]
     ports: ["127.0.0.1:${DASHBOARD_PORT:-8080}:8080"]
     depends_on:
@@ -223,5 +227,7 @@ secrets:
   subscription_vault_token: {file: ./.local/secrets/subscription_vault_token}
   vault_tls_key: {file: ./.local/secrets/vault_tls_key}
   dashboard_local_password: {file: ./.local/secrets/dashboard_local_password}
+  dashboard_local_operator_token: {file: ./.local/secrets/dashboard_local_operator_token}
+  dashboard_read_token: {file: ./.local/secrets/dashboard_read_token}
   credential_encryption_key: {file: ./.local/secrets/credential_encryption_key}
   project_signing_key: {file: ./.local/secrets/project_signing_key}

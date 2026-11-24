@@ -6,7 +6,7 @@ import (
 	"agent-workbench/internal/shared"
 )
 
-func limitConnections[T any](items map[string]T, human *shared.HumanIdentity, limit int, binding func(T) (*shared.HumanIdentity, time.Time)) {
+func limitConnections[T any](items map[string]T, human *shared.HumanIdentity, limit int, binding func(T) (*shared.HumanIdentity, time.Time), discard func(T)) {
 	now := time.Now()
 	count := 0
 	var oldestKey string
@@ -14,6 +14,9 @@ func limitConnections[T any](items map[string]T, human *shared.HumanIdentity, li
 	for key, item := range items {
 		owner, expiry := binding(item)
 		if !now.Before(expiry) {
+			if discard != nil {
+				discard(item)
+			}
 			delete(items, key)
 			continue
 		}
@@ -25,6 +28,9 @@ func limitConnections[T any](items map[string]T, human *shared.HumanIdentity, li
 		}
 	}
 	if limit > 0 && count >= limit {
+		if discard != nil {
+			discard(items[oldestKey])
+		}
 		delete(items, oldestKey)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"io"
 	"maps"
 	"net/http"
 	"net/url"
@@ -21,33 +22,35 @@ import (
 )
 
 type Config struct {
-	Version                    string
-	DashboardReadToken         string
-	HumanSigningKey            string
-	ProjectSigningKey          string
-	ProjectCreatorEmails       map[string]bool
-	MaxProjectsPerUser         int
-	CredentialKeys             CredentialKeys
-	SubscriptionGatewayToken   string
-	RequireAgentSelection      bool
-	VerifySubscriptionGrant    func(context.Context, string, string, string) bool
-	ProvisionProjectNamespaces bool
-	SharedWorkspaceID          string
-	Token                      string
-	ProjectTokens              map[string]string
-	IdleTimeout                time.Duration
-	MaxRunning                 int
-	CPUQuota                   float64
-	MemoryQuota                int64
-	WorkspaceMemory            int64
-	HealthEndpoints            map[string]string
+	RequireScopedCredentials    bool
+	Version                     string
+	DashboardReadToken          string
+	DashboardLocalOperatorToken string
+	HumanSigningKey             string
+	ProjectSigningKey           string
+	ProjectCreatorEmails        map[string]bool
+	MaxProjectsPerUser          int
+	CredentialKeys              CredentialKeys
+	SubscriptionGatewayToken    string
+	RequireAgentSelection       bool
+	VerifySubscriptionGrant     func(context.Context, string, string, string) bool
+	ProvisionProjectNamespaces  bool
+	SharedWorkspaceID           string
+	Token                       string
+	ProjectTokens               map[string]string
+	IdleTimeout                 time.Duration
+	MaxRunning                  int
+	MaxRunningPerUser           int
+	CPUQuota                    float64
+	MemoryQuota                 int64
+	WorkspaceMemory             int64
+	HealthEndpoints             map[string]string
 }
 type Server struct {
 	coordination    *coordination.Service
 	schedulerCursor orchestration.Cursor
 	workReady       chan struct{}
-	eventSeen       map[string]map[string]bool
-	eventState      map[string]string
+	eventCache      map[string]*workspaceEventCache
 	matrixSetup     matrixOnboarding
 	Store           *store.Store
 	Runtime         protocol.Runtime
@@ -64,13 +67,13 @@ func New(s *store.Store, rt protocol.Runtime, c Config) *Server {
 	if c.IdleTimeout == 0 {
 		c.IdleTimeout = 60 * time.Minute
 	}
-	if c.DashboardReadToken == "" {
+	if !c.RequireScopedCredentials && c.DashboardReadToken == "" {
 		c.DashboardReadToken = shared.DashboardReadToken(c.Token)
 	}
-	if c.HumanSigningKey == "" {
+	if !c.RequireScopedCredentials && c.HumanSigningKey == "" {
 		c.HumanSigningKey = c.Token
 	}
-	if c.ProjectSigningKey == "" {
+	if !c.RequireScopedCredentials && c.ProjectSigningKey == "" {
 		c.ProjectSigningKey = c.Token
 	}
 	if c.MaxRunning == 0 {
@@ -97,7 +100,7 @@ func New(s *store.Store, rt protocol.Runtime, c Config) *Server {
 }
 func reserved(w shared.Workspace) bool { return workspacesvc.Reserved(w) }
 func (s *Server) lifecycle() *workspacesvc.Service {
-	return &workspacesvc.Service{Store: s.Store, Runtime: s.Runtime, Config: workspacesvc.Config{IdleTimeout: s.cfg.IdleTimeout, MaxRunning: s.cfg.MaxRunning, CPUQuota: s.cfg.CPUQuota, MemoryQuota: s.cfg.MemoryQuota, SharedWorkspaceID: s.cfg.SharedWorkspaceID}, Now: s.now, HermesAvailable: s.hermesAvailable, Coordinator: &s.operations, BeforeStop: func(ctx context.Context, ws shared.Workspace) {
+	return &workspacesvc.Service{Store: s.Store, Runtime: s.Runtime, Config: workspacesvc.Config{IdleTimeout: s.cfg.IdleTimeout, MaxRunning: s.cfg.MaxRunning, MaxRunningPerUser: s.cfg.MaxRunningPerUser, CPUQuota: s.cfg.CPUQuota, MemoryQuota: s.cfg.MemoryQuota, SharedWorkspaceID: s.cfg.SharedWorkspaceID}, Now: s.now, HermesAvailable: s.hermesAvailable, Coordinator: &s.operations, BeforeStop: func(ctx context.Context, ws shared.Workspace) {
 		s.syncHistory(ctx, ws, 16, 4*time.Second)
 	}}
 }
@@ -164,6 +167,9 @@ func workspaceProxy(s *Server, forward func(http.ResponseWriter, *http.Request, 
 	return func(w http.ResponseWriter, r *http.Request) {
 		ws, ok := s.workspace(w, r)
 		if !ok {
+			return
+		}
+		if !s.projectAdmin(w, r, ws.ProjectID) {
 			return
 		}
 		if ws.AgentKind != "t3" && !ws.ConsoleEnabled {
@@ -538,12 +544,14 @@ func (s *Server) Reconcile(ctx context.Context) {
 						Items []shared.Task `json:"items"`
 					}
 					if json.Unmarshal(b, &list) == nil {
+						tasks := list.Items[:0]
 						for _, t := range list.Items {
 							if validTask(t, ws.ID) {
 								t.ErrorCode = sanitizedTaskError(t.ErrorCode)
-								s.reportWrite("task_observation", t.ID, s.Store.SaveTask(ctx, t))
+								tasks = append(tasks, t)
 							}
 						}
+						s.reportWrite("task_observation", ws.ID, s.Store.SaveObservedTasks(ctx, ws.ID, tasks))
 					}
 				}
 			}
@@ -582,15 +590,16 @@ func (s *Server) probeServices(ctx context.Context) {
 	var wg sync.WaitGroup
 	client := &http.Client{Timeout: 2 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	for name, endpoint := range s.cfg.HealthEndpoints {
-		wg.Add(1)
-		go func(name, endpoint string) {
-			defer wg.Done()
+		wg.Go(func() {
 			req, e := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
 			status := "unavailable"
 			reason := "HEALTH_CHECK_FAILED"
 			if e == nil {
 				resp, err := client.Do(req)
 				if err == nil {
+					// Health handlers return short bodies. Read to EOF when
+					// bounded so the next probe can reuse the connection.
+					_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 					resp.Body.Close()
 					if resp.StatusCode == 200 {
 						status = "healthy"
@@ -601,7 +610,7 @@ func (s *Server) probeServices(ctx context.Context) {
 			s.mu.Lock()
 			s.health[name] = map[string]any{"name": name, "status": status, "reason_code": reason, "observed_at": s.now()}
 			s.mu.Unlock()
-		}(name, endpoint)
+		})
 	}
 	wg.Wait()
 }

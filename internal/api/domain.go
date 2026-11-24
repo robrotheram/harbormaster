@@ -30,6 +30,14 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 		valid := s.cfg.Token != "" && subtle.ConstantTimeCompare([]byte(got), []byte(s.cfg.Token)) == 1
 		if valid {
 			p.admin = true
+		} else if s.cfg.DashboardLocalOperatorToken != "" && subtle.ConstantTimeCompare([]byte(got), []byte(s.cfg.DashboardLocalOperatorToken)) == 1 {
+			if !shared.LocalDashboardRouteAllowed(r.Method, r.URL.Path) {
+				shared.Error(w, 403, "OPERATOR_ACCESS_REQUIRED")
+				return
+			}
+			r.Header.Del(subscriptionUserHeader)
+			p.admin = true
+			valid = true
 		} else if human, err := shared.VerifyHumanAccess(s.cfg.HumanSigningKey, got, s.now()); err == nil {
 			p.human = human
 			valid = true
@@ -55,6 +63,9 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 			return
 		}
 		ctx := context.WithValue(r.Context(), principalKey{}, p)
+		if p.human.ID != "" {
+			ctx = shared.WithWorkspaceQuotaUser(ctx, p.human.ID)
+		}
 		if !p.admin {
 			actor := p.human.ID
 			if actor == "" {

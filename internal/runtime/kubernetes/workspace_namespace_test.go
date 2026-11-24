@@ -17,10 +17,12 @@ func TestWorkspaceNamespacesArePrivateRetainedAndRediscovered(t *testing.T) {
 	objects := map[string]map[string]any{}
 	posts := 0
 	sandboxItems := []any{}
+	var requests []string
 	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		status := 200
 		var body any
 		path := r.URL.Path
+		requests = append(requests, r.URL.RequestURI())
 		switch {
 		case path == "/api/v1/namespaces/harbormaster/secrets/harbormaster-registry":
 			body = map[string]any{"type": "kubernetes.io/dockerconfigjson", "data": map[string]any{".dockerconfigjson": "e30="}}
@@ -31,7 +33,10 @@ func TestWorkspaceNamespacesArePrivateRetainedAndRediscovered(t *testing.T) {
 			items := []any{}
 			for _, o := range objects {
 				if o["kind"] == "Namespace" {
-					items = append(items, o)
+					name := o["metadata"].(map[string]any)["name"].(string)
+					if field := r.URL.Query().Get("fieldSelector"); field == "" || field == "metadata.name="+name {
+						items = append(items, o)
+					}
 				}
 			}
 			body = map[string]any{"items": items}
@@ -127,6 +132,17 @@ func TestWorkspaceNamespacesArePrivateRetainedAndRediscovered(t *testing.T) {
 	}
 	labels := map[string]any{"workbench.deployment": k.cfg.Deployment, "workbench.workspace": "ws_private", "workbench.project": projects[0], "workbench.generation": "gen_private", "workbench.home": "home_private"}
 	sandboxItems = append(sandboxItems, map[string]any{"metadata": map[string]any{"name": k.name("ws_private"), "namespace": workspaceNamespace(projects[0]), "labels": labels, "generation": 1}, "spec": map[string]any{"operatingMode": "Running"}, "status": map[string]any{"conditions": []any{map[string]any{"type": "Ready", "status": "True", "observedGeneration": 1}}}})
+	ns := workspaceNamespace(projects[0])
+	if _, err := restarted.find(ctx, "ws_private"); err != nil {
+		t.Fatal("cold workspace discovery", err)
+	}
+	requests = nil
+	if _, err := restarted.find(ctx, "ws_private"); err != nil {
+		t.Fatal("warm workspace lookup", err)
+	}
+	if len(requests) != 3 || !strings.HasPrefix(requests[0], k.collection(ns)+"?") || !strings.Contains(requests[1], "fieldSelector=metadata.name%3D"+ns) || !strings.HasSuffix(requests[2], "/namespaces/"+ns+"/rolebindings/workbench-runtime") {
+		t.Fatalf("warm workspace lookup searched unrelated namespaces: %v", requests)
+	}
 	verify := func() *httptest.ResponseRecorder {
 		b, _ := json.Marshal(map[string]string{"token": k.token("ws_private", "gen_private"), "audience": "inference"})
 		r := httptest.NewRequest("POST", "/v1/grants/verify", strings.NewReader(string(b)))
@@ -137,6 +153,18 @@ func TestWorkspaceNamespacesArePrivateRetainedAndRediscovered(t *testing.T) {
 	if got := verify(); got.Code != 200 || !strings.Contains(got.Body.String(), projects[0]) {
 		t.Fatal("dynamic workspace grant rejected after restart", got.Code, got.Body)
 	}
+	requests = nil
+	if got := verify(); got.Code != 200 {
+		t.Fatal("warm grant rejected", got.Code, got.Body)
+	}
+	if len(requests) != 4 || !strings.HasPrefix(requests[0], k.collection(ns)+"?") || !strings.Contains(requests[1], "fieldSelector=metadata.name%3D"+ns) {
+		t.Fatalf("warm grant looked outside the workspace namespace: %v", requests)
+	}
+	labels["workbench.generation"] = "gen_replacement"
+	if got := verify(); got.Code != 403 {
+		t.Fatal("cached grant authorized a different generation", got.Code, got.Body)
+	}
+	labels["workbench.generation"] = "gen_private"
 	labels["workbench.project"] = projects[1]
 	if got := verify(); got.Code != 403 {
 		t.Fatal("cross-project grant accepted", got.Code, got.Body)
@@ -159,8 +187,10 @@ func TestWorkspaceNamespacesArePrivateRetainedAndRediscovered(t *testing.T) {
 			t.Fatal("unsafe project accepted", id)
 		}
 	}
-	ns := workspaceNamespace(projects[0])
 	objects["/api/v1/namespaces/"+ns]["metadata"].(map[string]any)["labels"].(map[string]any)["workbench.project"] = projects[1]
+	if _, err := restarted.find(ctx, "ws_private"); err == nil {
+		t.Fatal("cached route accepted namespace ownership drift")
+	}
 	if err := k.ensureWorkspaceNamespace(ctx, projects[0]); err == nil {
 		t.Fatal("foreign namespace adopted")
 	}

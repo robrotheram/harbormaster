@@ -7,8 +7,6 @@ import (
 	"encoding/hex"
 	"io"
 	"net/http"
-	"os"
-	"syscall"
 	"time"
 )
 
@@ -48,7 +46,11 @@ func (m *Manager) publishArtifact(w http.ResponseWriter, r *http.Request) {
 		shared.Error(w, 503, "STORAGE_UNAVAILABLE")
 		return
 	}
-	f, err := m.root.OpenFile(input.SourcePath, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if m.closed || m.quiescing {
+		shared.Error(w, 409, "WORKSPACE_STOPPING")
+		return
+	}
+	f, err := openReviewFile(m.root, input.SourcePath)
 	if err != nil {
 		shared.Error(w, 400, "INVALID_ARTIFACT_SOURCE")
 		return

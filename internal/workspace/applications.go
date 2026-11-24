@@ -258,7 +258,7 @@ type applicationFetch struct {
 	Body        []byte `json:"body,omitempty"`
 }
 
-func (m *Manager) fetchApplication(w http.ResponseWriter, r *http.Request, s retainedService, in applicationFetch) bool {
+func (m *Manager) fetchApplication(w http.ResponseWriter, r *http.Request, s retainedService, in applicationFetch, reply func(map[string]any)) bool {
 	var raw string
 	err := m.db.QueryRow(`SELECT configuration FROM workspace_applications WHERE service_id=?`, s.ID).Scan(&raw)
 	if err == sql.ErrNoRows {
@@ -325,7 +325,7 @@ func (m *Manager) fetchApplication(w http.ResponseWriter, r *http.Request, s ret
 	if contentType == "" {
 		contentType = http.DetectContentType(data)
 	}
-	shared.JSON(w, 200, map[string]any{"content": data, "content_type": contentType, "status": res.StatusCode, "location": location, "websocket": false})
+	reply(map[string]any{"content": data, "content_type": contentType, "status": res.StatusCode, "location": location, "websocket": false})
 	return true
 }
 

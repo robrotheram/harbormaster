@@ -411,6 +411,11 @@ func (a *authHandler) authenticate(r *http.Request) (*workos.AuthenticateSession
 	if entry.revoked {
 		return nil, nil
 	}
+	defer func() {
+		if entry.revoked {
+			revokeWorkerSessions(a.next, "workos:"+a.cfg.ClientID, entry.userID)
+		}
+	}()
 	session := a.newSession(entry.sealed)
 	result, err := session.AuthenticateContext(r.Context())
 	if err != nil {
@@ -449,6 +454,7 @@ func (a *authHandler) logout(w http.ResponseWriter, r *http.Request) {
 		// Revoke locally first, even if the browser cannot reach WorkOS afterwards.
 		entry.revoked = true
 		logoutURL = a.client.UserManagement().GetLogoutURL(&workos.UserManagementGetLogoutURLParams{SessionID: entry.sessionID, ReturnTo: &returnTo})
+		revokeWorkerSessions(a.next, "workos:"+a.cfg.ClientID, entry.userID)
 		entry.mu.Unlock()
 	}
 	if cookie, err := uniqueCookie(r, hostCookieName("awb_session", a.secure)); err == nil {

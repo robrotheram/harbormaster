@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"agent-workbench/internal/runtime/protocol"
 	"agent-workbench/internal/shared"
 )
 
@@ -27,48 +28,36 @@ func (k *Kubernetes) workspaceNamespace(project string) string {
 	return ""
 }
 
-// Discover owned namespaces on every lookup so restart and concurrent project
-// creation never lose bindings or require a mutable, process-local tenant map.
+type workspaceNamespaceMetadata struct {
+	Metadata struct {
+		Name   string            `json:"name"`
+		Labels map[string]string `json:"labels"`
+	} `json:"metadata"`
+}
+
+// Cold discovery and grant verification use the authoritative inventory.
 func (k *Kubernetes) runtimeNamespaces(ctx context.Context) ([]string, error) {
 	namespaces := k.namespaces()
 	if !k.cfg.ProvisionWorkspaceNamespaces {
 		return namespaces, nil
 	}
-	var result struct {
-		Items []struct {
-			Metadata struct {
-				Name   string            `json:"name"`
-				Labels map[string]string `json:"labels"`
-			} `json:"metadata"`
-		} `json:"items"`
-	}
-	selector := "app.kubernetes.io/managed-by=harbormaster,harbormaster.io/deployment=" + k.cfg.Deployment + ",harbormaster.io/purpose=workspace"
-	if err := k.call(ctx, "GET", "/api/v1/namespaces?labelSelector="+url.QueryEscape(selector), nil, &result); err != nil {
+	items, err := k.listWorkspaceNamespaces(ctx, "")
+	if err != nil {
 		return nil, err
 	}
 	seen := map[string]bool{}
 	for _, ns := range namespaces {
 		seen[ns] = true
 	}
-	for _, item := range result.Items {
+	for _, item := range items {
 		project := item.Metadata.Labels["workbench.project"]
-		if workspaceNamespace(project) == "" || k.workspaceNamespace(project) != item.Metadata.Name || item.Metadata.Labels["harbormaster.io/project"] != project || item.Metadata.Labels["workbench.security"] != "enforced" {
-			return nil, errors.New("workspace namespace ownership conflict")
-		}
 		// A failed provisioning attempt may have created only the namespace.
 		// Do not let it break lookups for every already-running project.
-		var binding map[string]any
-		if err := k.call(ctx, "GET", "/apis/rbac.authorization.k8s.io/v1/namespaces/"+item.Metadata.Name+"/rolebindings/workbench-runtime", nil, &binding); err != nil {
+		if err := k.checkWorkspaceNamespace(ctx, item, project); err != nil {
 			if isNotFound(err) {
 				continue
 			}
 			return nil, err
-		}
-		if !containsDesired(binding, map[string]any{
-			"roleRef":  map[string]any{"apiGroup": "rbac.authorization.k8s.io", "kind": "ClusterRole", "name": "harbormaster-workspace-runtime"},
-			"subjects": []any{map[string]any{"kind": "ServiceAccount", "name": "runtime-controller", "namespace": k.cfg.CoreNamespace}},
-		}) {
-			return nil, errors.New("workspace runtime binding conflict")
 		}
 		if !seen[item.Metadata.Name] {
 			namespaces = append(namespaces, item.Metadata.Name)
@@ -77,6 +66,54 @@ func (k *Kubernetes) runtimeNamespaces(ctx context.Context) ([]string, error) {
 	}
 	sort.Strings(namespaces)
 	return namespaces, nil
+}
+
+func (k *Kubernetes) listWorkspaceNamespaces(ctx context.Context, name string) ([]workspaceNamespaceMetadata, error) {
+	var result struct {
+		Items []workspaceNamespaceMetadata `json:"items"`
+	}
+	selector := "app.kubernetes.io/managed-by=harbormaster,harbormaster.io/deployment=" + k.cfg.Deployment + ",harbormaster.io/purpose=workspace"
+	query := url.Values{"labelSelector": {selector}}
+	if name != "" {
+		query.Set("fieldSelector", "metadata.name="+name)
+	}
+	err := k.call(ctx, "GET", "/api/v1/namespaces?"+query.Encode(), nil, &result)
+	return result.Items, err
+}
+
+func (k *Kubernetes) checkWorkspaceRoute(ctx context.Context, namespace, project string) error {
+	if k.cfg.ProjectNamespaces[project] == namespace {
+		return nil
+	}
+	items, err := k.listWorkspaceNamespaces(ctx, namespace)
+	if err != nil {
+		return err
+	}
+	if len(items) == 0 {
+		return protocol.APIError{Status: 404}
+	}
+	if len(items) != 1 || items[0].Metadata.Name != namespace {
+		return errors.New("ambiguous workspace namespace")
+	}
+	return k.checkWorkspaceNamespace(ctx, items[0], project)
+}
+
+func (k *Kubernetes) checkWorkspaceNamespace(ctx context.Context, item workspaceNamespaceMetadata, project string) error {
+	name, labels := item.Metadata.Name, item.Metadata.Labels
+	if workspaceNamespace(project) == "" || k.workspaceNamespace(project) != name || labels["workbench.project"] != project || labels["harbormaster.io/project"] != project || labels["workbench.security"] != "enforced" {
+		return errors.New("workspace namespace ownership conflict")
+	}
+	var binding map[string]any
+	if err := k.call(ctx, "GET", "/apis/rbac.authorization.k8s.io/v1/namespaces/"+name+"/rolebindings/workbench-runtime", nil, &binding); err != nil {
+		return err
+	}
+	if !containsDesired(binding, map[string]any{
+		"roleRef":  map[string]any{"apiGroup": "rbac.authorization.k8s.io", "kind": "ClusterRole", "name": "harbormaster-workspace-runtime"},
+		"subjects": []any{map[string]any{"kind": "ServiceAccount", "name": "runtime-controller", "namespace": k.cfg.CoreNamespace}},
+	}) {
+		return errors.New("workspace runtime binding conflict")
+	}
+	return nil
 }
 
 func (k *Kubernetes) ensureWorkspaceNamespace(ctx context.Context, project string) error {

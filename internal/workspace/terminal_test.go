@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -161,8 +162,8 @@ func TestTerminalCloseKillsJobsAndBoundsOutput(t *testing.T) {
 	}
 	for deadline := time.Now().Add(3 * time.Second); ; {
 		s.mu.Lock()
-		truncated := s.base > 0
-		size := len(s.output)
+		size := len(s.output.data)
+		truncated := s.output.end > int64(size)
 		s.mu.Unlock()
 		if truncated {
 			if size > terminalBufferLimit {
@@ -207,5 +208,34 @@ func TestTerminalCloseKillsJobsAndBoundsOutput(t *testing.T) {
 			t.Fatal("terminal job survived close")
 		}
 		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+func TestTerminalOutputWrapsAndKeepsOffsets(t *testing.T) {
+	var output terminalOutput
+	var history []byte
+	for _, chunk := range [][]byte{
+		[]byte("first"),
+		bytes.Repeat([]byte("12"), terminalBufferLimit/2),
+		bytes.Repeat([]byte("345"), terminalBufferLimit/2),
+		[]byte("last"),
+	} {
+		output.append(chunk)
+		history = append(history, chunk...)
+		end := int64(len(history))
+		base := max(0, end-terminalBufferLimit)
+		if output.end != end || int64(len(output.data)) != end-base {
+			t.Fatalf("buffer ends at %d and retains %d bytes; want %d and %d", output.end, len(output.data), end, end-base)
+		}
+		for _, offset := range []int64{0, base, (base + end) / 2, end} {
+			got, truncated := output.read(offset)
+			if !bytes.Equal(got, history[max(offset, base):]) || truncated != (offset < base) {
+				t.Fatalf("incorrect output at byte %d of %d (truncated=%v)", offset, end, truncated)
+			}
+		}
+	}
+	chunk := make([]byte, 8192)
+	if got := testing.AllocsPerRun(64, func() { output.append(chunk) }); got != 0 {
+		t.Fatalf("full scrollback allocated %v times per append", got)
 	}
 }

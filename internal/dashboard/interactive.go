@@ -26,6 +26,13 @@ func NewInteractiveHandler(readURL, controlURL, token string) (http.Handler, err
 	return newInteractiveHandler(readURL, controlURL, shared.DashboardReadToken(token), token)
 }
 
+func NewLocalInteractiveHandler(readURL, controlURL, readToken, operatorToken string) (http.Handler, error) {
+	if len(readToken) < 32 || len(operatorToken) < 32 || readToken == operatorToken {
+		return nil, errors.New("local dashboard requires distinct snapshot and operator credentials")
+	}
+	return newInteractiveHandler(readURL, controlURL, readToken, operatorToken)
+}
+
 func NewHostedInteractiveHandler(readURL, controlURL, readToken, signingKey string) (http.Handler, error) {
 	if len(readToken) < 32 || len(signingKey) < 32 || readToken == signingKey {
 		return nil, errors.New("hosted dashboard requires distinct snapshot and signing credentials")
@@ -46,6 +53,8 @@ func newInteractiveHandler(readURL, controlURL, readToken, token string) (http.H
 		human   *shared.HumanIdentity
 		id      string
 		expires time.Time
+		session context.Context
+		cancel  context.CancelFunc
 	}
 	binding := func(t ticket) (*shared.HumanIdentity, time.Time) { return t.human, t.expires }
 	var ticketsMu sync.Mutex
@@ -53,12 +62,30 @@ func newInteractiveHandler(readURL, controlURL, readToken, token string) (http.H
 	consoleSessions := map[string]ticket{}
 	client := &http.Client{Timeout: 35 * time.Second, Transport: &http.Transport{Proxy: nil}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	previews := newPreviewIngress(client, controlURL, token)
+	closeTicket := func(t ticket) {
+		if t.cancel != nil {
+			t.cancel()
+		}
+	}
+	revoke := func(user string) {
+		ticketsMu.Lock()
+		for _, entries := range []map[string]ticket{tickets, consoleSessions} {
+			for key, entry := range entries {
+				if entry.human != nil && entry.human.ID == user {
+					closeTicket(entry)
+					delete(entries, key)
+				}
+			}
+		}
+		ticketsMu.Unlock()
+		previews.revoke(user)
+	}
 	sign := func(id, expires string) string {
 		mac := hmac.New(sha256.New, []byte(token))
 		mac.Write([]byte("console:" + id + ":" + expires))
 		return expires + "." + hex.EncodeToString(mac.Sum(nil))
 	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		host := strings.ToLower(r.Host)
 		if h, _, err := net.SplitHostPort(host); err == nil {
 			host = h
@@ -122,8 +149,8 @@ func newInteractiveHandler(readURL, controlURL, readToken, token string) (http.H
 				ticketsMu.Lock()
 				issued, ok := tickets[input.Ticket]
 				delete(tickets, input.Ticket)
-				ticketsMu.Unlock()
 				if !ok || issued.id != id || time.Now().After(issued.expires) {
+					ticketsMu.Unlock()
 					writeError(w, 403, "CONNECTION_EXPIRED")
 					return
 				}
@@ -131,16 +158,16 @@ func newInteractiveHandler(readURL, controlURL, readToken, token string) (http.H
 				cookieValue := sign(id, strconv.FormatInt(expiry.Unix(), 10))
 				if issued.human != nil {
 					cookieValue = shared.NewID("session_")
-					ticketsMu.Lock()
-					limitConnections(consoleSessions, issued.human, 16, binding)
+					limitConnections(consoleSessions, issued.human, 16, binding, closeTicket)
 					if len(consoleSessions) >= 256 {
 						ticketsMu.Unlock()
 						writeError(w, 429, "TOO_MANY_CONNECTIONS")
 						return
 					}
-					consoleSessions[cookieValue] = ticket{human: issued.human, id: id, expires: expiry}
-					ticketsMu.Unlock()
+					session, cancel := context.WithDeadline(context.Background(), expiry)
+					consoleSessions[cookieValue] = ticket{human: issued.human, id: id, expires: expiry, session: session, cancel: cancel}
 				}
+				ticketsMu.Unlock()
 				http.SetCookie(w, &http.Cookie{Name: hostCookieName("awb_console", workerSecure(r)), Value: cookieValue, Path: "/", HttpOnly: true, Secure: workerSecure(r), SameSite: http.SameSiteStrictMode, Expires: expiry})
 				shared.JSON(w, 200, map[string]bool{"connected": true})
 				return
@@ -154,6 +181,11 @@ func newInteractiveHandler(readURL, controlURL, readToken, token string) (http.H
 				if ok && session.id == id && time.Now().Before(session.expires) && session.human != nil {
 					valid = true
 					r = r.WithContext(context.WithValue(r.Context(), humanIdentityKey{}, *session.human))
+					if session.session != nil {
+						var done func()
+						r, done = withWorkerSession(r, session.session)
+						defer done()
+					}
 				}
 				parts := strings.Split(cookie.Value, ".")
 				if len(parts) == 2 {
@@ -284,7 +316,7 @@ func newInteractiveHandler(readURL, controlURL, readToken, token string) (http.H
 					if h, ok := r.Context().Value(humanIdentityKey{}).(shared.HumanIdentity); ok {
 						human = &h
 					}
-					limitConnections(tickets, human, 8, binding)
+					limitConnections(tickets, human, 8, binding, nil)
 					if len(tickets) >= 256 {
 						ticketsMu.Unlock()
 						writeError(w, 429, "TOO_MANY_CONNECTIONS")
@@ -302,5 +334,6 @@ func newInteractiveHandler(readURL, controlURL, readToken, token string) (http.H
 		}
 
 		read.ServeHTTP(w, r)
-	}), nil
+	})
+	return interactiveSessions{Handler: handler, revoke: revoke}, nil
 }

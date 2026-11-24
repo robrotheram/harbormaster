@@ -8,8 +8,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"os"
-	"syscall"
 	"unicode/utf8"
 
 	"agent-workbench/internal/shared"
@@ -64,7 +62,7 @@ func (m *Manager) submitFile(w http.ResponseWriter, r *http.Request) {
 		shared.Error(w, 409, "WORKSPACE_BUSY")
 		return
 	}
-	f, err := m.root.OpenFile(input.Path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	f, err := openReviewFile(m.root, input.Path)
 	if err != nil {
 		shared.Error(w, 404, "INSTRUCTION_FILE_UNAVAILABLE")
 		return

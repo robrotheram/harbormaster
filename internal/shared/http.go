@@ -133,6 +133,15 @@ func serveListener(ctx context.Context, listener net.Listener, server *http.Serv
 		handlers.Add(1)
 		handlerMu.Unlock()
 		defer handlers.Done()
+		if server.ReadTimeout == 0 && r.Body != nil && r.Body != http.NoBody {
+			timeout := 30 * time.Second
+			if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/analysis/datasets/upload") {
+				timeout = AnalysisUploadTimeout
+			}
+			controller := http.NewResponseController(w)
+			_ = controller.SetReadDeadline(time.Now().Add(timeout))
+			defer controller.SetReadDeadline(time.Time{})
+		}
 		h.ServeHTTP(w, r)
 	})
 	joinHandlers := func() {

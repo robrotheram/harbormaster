@@ -46,7 +46,7 @@ func Bootstrap(root string, out io.Writer) error {
 			return err
 		}
 	}
-	for _, name := range []string{"control_token", "controller_token", "gateway_service_token", "grant_secret", "mcp_token", "postgres_password", "dashboard_local_password", "credential_encryption_key", "project_signing_key"} {
+	for _, name := range []string{"control_token", "controller_token", "gateway_service_token", "grant_secret", "mcp_token", "postgres_password", "dashboard_local_password", "dashboard_local_operator_token", "dashboard_read_token", "credential_encryption_key", "project_signing_key"} {
 		value := make([]byte, 32)
 		if _, err := rand.Read(value); err != nil {
 			return err

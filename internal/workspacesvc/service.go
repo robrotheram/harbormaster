@@ -24,9 +24,11 @@ type Config struct {
 	SharedWorkspaceID string
 	IdleTimeout       time.Duration
 	MaxRunning        int
+	MaxRunningPerUser int
 	CPUQuota          float64
 	MemoryQuota       int64
 }
+
 type Service struct {
 	Store           Repository
 	Runtime         protocol.Runtime
@@ -192,24 +194,40 @@ func (s *Service) checkQuota(ctx context.Context, w *shared.Workspace) error {
 		return e
 	}
 	count := 0
+	userCount := 0
+	user := quotaUser(ctx, *w)
 	cpu := 0.0
 	var mem int64
 	for _, other := range all {
 		if other.ID != w.ID && Reserved(other) {
 			count++
+			if user != "" && other.QuotaUserID == user {
+				userCount++
+			}
 			cpu += other.CPULimit
 			mem += other.MemoryLimitBytes
 		}
+	}
+	if user != "" && s.Config.MaxRunningPerUser > 0 && userCount >= s.Config.MaxRunningPerUser {
+		return shared.ErrQuotaExceeded
 	}
 	if count >= s.Config.MaxRunning || cpu+w.CPULimit > s.Config.CPUQuota || mem+w.MemoryLimitBytes > s.Config.MemoryQuota {
 		return shared.ErrQuotaExceeded
 	}
 	return nil
 }
+func quotaUser(ctx context.Context, w shared.Workspace) string {
+	if user := shared.WorkspaceQuotaUser(ctx); user != "" && (!Reserved(w) || w.QuotaUserID == "") {
+		return user
+	}
+	return w.QuotaUserID
+}
+
 func (s *Service) reserve(ctx context.Context, w *shared.Workspace) error {
 	if err := s.checkQuota(ctx, w); err != nil {
 		return err
 	}
+	w.QuotaUserID = quotaUser(ctx, *w)
 	w.State = "STARTING"
 	w.StartupReason = ""
 	w.UpdatedAt = s.Now()

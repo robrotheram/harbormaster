@@ -28,8 +28,8 @@ spec:
           value: http://controlplane:8080
         - name: CONTROLPLANE_READ_URL
           value: http://controlplane:8081
-        - name: CONTROL_TOKEN_FILE
-          value: /run/secrets/control_token
+        - name: DASHBOARD_READ_TOKEN_FILE
+          value: /run/secrets/dashboard_read_token
         securityContext:
           allowPrivilegeEscalation: false
           readOnlyRootFilesystem: true

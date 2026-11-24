@@ -86,7 +86,7 @@ func (s *Store) createWorkspace(ctx context.Context, w shared.Workspace, key str
 	if err = tx.QueryRowContext(ctx, `SELECT id FROM projects WHERE id=$1 AND NOT EXISTS (SELECT 1 FROM deleted_resources WHERE kind='project' AND deleted_resources.id=projects.id)`, w.ProjectID).Scan(&exists); err != nil {
 		return err
 	}
-	b, err := json.Marshal(w)
+	b, err := json.Marshal(workspaceRecord{Workspace: w, QuotaUser: w.QuotaUserID})
 	if err != nil {
 		return err
 	}
@@ -111,7 +111,7 @@ func (s *Store) saveWorkspace(ctx context.Context, w shared.Workspace) error {
 	if old.ProjectID != w.ProjectID || old.HomeID != w.HomeID || old.AgentKind != w.AgentKind || old.ParentID != w.ParentID || old.TemplateID != w.TemplateID || old.Branch != w.Branch {
 		return ErrOwnership
 	}
-	data, err := json.Marshal(w)
+	data, err := json.Marshal(workspaceRecord{Workspace: w, QuotaUser: w.QuotaUserID})
 	if err != nil {
 		return err
 	}

@@ -51,6 +51,8 @@ type Kubernetes struct {
 	cfg                KubernetesConfig
 	apiHTTP, agentHTTP *http.Client
 	mu                 sync.Mutex
+	routeMu            sync.Mutex
+	routes             map[workspaceRouteKey]workspaceRoute
 }
 
 var dnsLabel = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
@@ -124,11 +126,32 @@ func NewKubernetes(c KubernetesConfig) (*Kubernetes, error) {
 		}
 	}
 	denyRedirect := func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	k := &Kubernetes{cfg: c, apiHTTP: &http.Client{Timeout: 30 * time.Second, CheckRedirect: denyRedirect, Transport: &http.Transport{Proxy: nil, TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: pool}}}, agentHTTP: &http.Client{Timeout: 10 * time.Second, CheckRedirect: denyRedirect, Transport: &http.Transport{Proxy: nil}}}
+	k := &Kubernetes{
+		cfg: c,
+		apiHTTP: &http.Client{
+			Timeout:       30 * time.Second,
+			CheckRedirect: denyRedirect,
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: pool},
+				IdleConnTimeout: 90 * time.Second,
+			},
+		},
+		agentHTTP: &http.Client{
+			Timeout:       10 * time.Second,
+			CheckRedirect: denyRedirect,
+			Transport: &http.Transport{
+				// Each workspace has a distinct service hostname. Bound the
+				// aggregate pool and retire connections to stopped workspaces.
+				MaxIdleConns:    100,
+				IdleConnTimeout: 90 * time.Second,
+			},
+		},
+	}
 	if c.DiscoverGateways {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 		if err := k.discoverGateways(ctx); err != nil {
+			k.apiHTTP.CloseIdleConnections()
 			return nil, err
 		}
 	}
@@ -159,6 +182,13 @@ type kubeResource struct {
 			ObservedGeneration   int64 `json:"observedGeneration"`
 		} `json:"conditions"`
 	} `json:"status"`
+}
+
+func grantGeneration(r kubeResource) string {
+	if generation := r.Metadata.Labels["workbench.grant-generation"]; generation != "" {
+		return generation
+	}
+	return r.Metadata.Labels["workbench.generation"]
 }
 
 func (k *Kubernetes) call(ctx context.Context, method, path string, body any, out any) error {
@@ -214,36 +244,7 @@ func (k *Kubernetes) owned(resource kubeResource, id string) bool {
 	l := resource.Metadata.Labels
 	return protocol.HasOwnershipLabels(l) && l["workbench.deployment"] == k.cfg.Deployment && l["workbench.workspace"] == id && k.workspaceNamespace(l["workbench.project"]) == resource.Metadata.Namespace && resource.Metadata.Name == k.name(id)
 }
-func (k *Kubernetes) find(ctx context.Context, id string) (kubeResource, error) {
-	if !shared.ValidID(id) || !dnsLabel.MatchString(k.name(id)) {
-		return kubeResource{}, errors.New("invalid workspace")
-	}
-	var found *kubeResource
-	namespaces, err := k.runtimeNamespaces(ctx)
-	if err != nil {
-		return kubeResource{}, err
-	}
-	for _, namespace := range namespaces {
-		var list struct {
-			Items []kubeResource `json:"items"`
-		}
-		selector := url.QueryEscape("workbench.deployment=" + k.cfg.Deployment + ",workbench.workspace=" + id)
-		if err := k.call(ctx, "GET", k.collection(namespace)+"?labelSelector="+selector, nil, &list); err != nil {
-			return kubeResource{}, err
-		}
-		for _, item := range list.Items {
-			if !k.owned(item, id) || found != nil {
-				return kubeResource{}, errors.New("ambiguous or invalid workspace ownership")
-			}
-			copy := item
-			found = &copy
-		}
-	}
-	if found == nil {
-		return kubeResource{}, protocol.APIError{Status: 404}
-	}
-	return *found, nil
-}
+
 func (k *Kubernetes) endpoint(resource kubeResource) string {
 	return "http://" + resource.Metadata.Name + "." + resource.Metadata.Namespace + ".svc:8080"
 }
@@ -256,7 +257,7 @@ func (k *Kubernetes) agentReader(ctx context.Context, resource kubeResource, met
 	if err != nil {
 		return 0, nil, err
 	}
-	r.Header.Set("Authorization", "Bearer "+k.token(resource.Metadata.Labels["workbench.workspace"], resource.Metadata.Labels["workbench.generation"]))
+	r.Header.Set("Authorization", "Bearer "+k.token(resource.Metadata.Labels["workbench.workspace"], grantGeneration(resource)))
 	r.Header.Set("Content-Type", "application/json")
 	res, err := client.Do(r)
 	if err != nil {
@@ -365,7 +366,7 @@ func (k *Kubernetes) StartConfigured(ctx context.Context, id string, spec protoc
 	}
 	k.mu.Lock()
 	defer k.mu.Unlock()
-	resource, err := k.find(ctx, id)
+	resource, err := k.discoverWorkspace(ctx, id)
 	var absent protocol.APIError
 	if err != nil && (!errors.As(err, &absent) || absent.Status != 404) {
 		return shared.Observation{}, err
@@ -377,8 +378,13 @@ func (k *Kubernetes) StartConfigured(ctx context.Context, id string, spec protoc
 		if protocol.CheckOwnership(resource.Metadata.Labels, spec) != nil || resource.Metadata.Labels["workbench.agent"] != spec.AgentKind || resource.Spec.PodTemplate.Spec.RuntimeClassName != k.cfg.RuntimeClass || len(resource.Spec.PodTemplate.Spec.Containers) != 1 || resource.Spec.PodTemplate.Spec.Containers[0].Image != k.cfg.Image {
 			return shared.Observation{}, errors.New("sandbox ownership or policy drift")
 		}
-		if err = k.call(ctx, "PATCH", k.collection(namespace)+"/"+resource.Metadata.Name, map[string]any{"spec": map[string]string{"operatingMode": "Running"}}, nil); err != nil {
-			return shared.Observation{}, err
+		if resource.Spec.OperatingMode == "Suspended" {
+			if !sandboxSuspended(resource) {
+				return shared.Observation{}, shared.CodedError{Status: http.StatusConflict, Code: "STOP_UNCONFIRMED"}
+			}
+			if err := k.resumeSandbox(ctx, resource); err != nil {
+				return shared.Observation{}, err
+			}
 		}
 	} else {
 		labels := map[string]string{"workbench.deployment": k.cfg.Deployment, "workbench.workspace": id, "workbench.project": spec.ProjectID, "workbench.home": spec.HomeID, "workbench.agent": spec.AgentKind, "workbench.template": spec.TemplateID, "workbench.generation": shared.NewID("gen_")}
@@ -411,7 +417,7 @@ func (k *Kubernetes) StartConfigured(ctx context.Context, id string, spec protoc
 	wait, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()
 	for wait.Err() == nil {
-		current, err := k.find(wait, id)
+		current, err := k.findInNamespace(wait, id, namespace)
 		if err != nil {
 			if wait.Err() != nil {
 				break
@@ -501,7 +507,7 @@ func (k *Kubernetes) stop(ctx context.Context, id string, force bool) error {
 	wait, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()
 	for {
-		r, err = k.find(wait, id)
+		r, err = k.findInNamespace(wait, id, r.Metadata.Namespace)
 		if err != nil {
 			return err
 		}
@@ -555,7 +561,7 @@ func (k *Kubernetes) proxy(w http.ResponseWriter, r *http.Request, id, path, rou
 		shared.Error(w, 503, "CONSOLE_UNAVAILABLE")
 		return
 	}
-	shared.Proxy(w, r, k.endpoint(resource), route+strings.TrimPrefix(path, "/"), k.token(id, resource.Metadata.Labels["workbench.generation"]))
+	shared.Proxy(w, r, k.endpoint(resource), route+strings.TrimPrefix(path, "/"), k.token(id, grantGeneration(resource)))
 }
 
 // Approval binds the exact digest to the pinned v0.23 runtime contract.

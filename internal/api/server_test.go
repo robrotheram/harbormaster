@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -19,6 +21,34 @@ import (
 	"agent-workbench/internal/store"
 	"agent-workbench/internal/workspace"
 )
+
+func TestHealthProbesReuseConnections(t *testing.T) {
+	var connections atomic.Int32
+	endpoint := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		shared.JSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	}))
+	endpoint.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		if state == http.StateNew {
+			connections.Add(1)
+		}
+	}
+	endpoint.Start()
+	defer endpoint.Close()
+
+	s := &Server{
+		cfg:    Config{HealthEndpoints: map[string]string{"fixture": endpoint.URL}},
+		now:    time.Now,
+		health: make(map[string]map[string]any),
+	}
+	s.probeServices(t.Context())
+	s.probeServices(t.Context())
+	if got := connections.Load(); got != 1 {
+		t.Fatalf("two probes used %d connections; want 1", got)
+	}
+	if s.health["fixture"]["status"] != "healthy" {
+		t.Fatalf("unexpected service health: %v", s.health["fixture"])
+	}
+}
 
 // embeddedRuntime provides the full controller contract for API tests.
 // Tests embed it and override the operations relevant to their scenario.

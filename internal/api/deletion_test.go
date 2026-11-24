@@ -11,6 +11,7 @@ func TestDeleteWorkspaceAndEntireProject(t *testing.T) {
 	s, _ := setup(t)
 	project := domainProject(t, s, "delete-project")
 	ws := domainWorkspace(t, s, "control-token", project.ID, "delete-ws")
+	s.captureEvents(t.Context(), ws, nil)
 	res := request(t, s, "POST", "/v1/workspaces/"+ws.ID+"/delete", `{"confirm_id":"wrong"}`)
 	if res.Code != 400 {
 		t.Fatalf("confirmation %d", res.Code)
@@ -35,6 +36,9 @@ func TestDeleteWorkspaceAndEntireProject(t *testing.T) {
 	}
 	if _, err := s.Store.Workspace(t.Context(), ws.ID); err == nil {
 		t.Fatal("deleted workspace accessible")
+	}
+	if _, cached := s.eventCache[ws.ID]; cached {
+		t.Fatal("deleted workspace still has cached event history")
 	}
 }
 
@@ -91,6 +95,7 @@ func TestDeleteDefaultProjectPreservesSharedRuntimeOwner(t *testing.T) {
 func TestDeleteWorkspaceRequiresConfirmedIdleStop(t *testing.T) {
 	s, rt := setup(t)
 	ws := create(t, s, "delete-running")
+	s.captureEvents(t.Context(), ws, nil)
 	request(t, s, "POST", "/v1/workspaces/"+ws.ID+"/start", `{"idempotency_key":"delete-start"}`)
 	path := "/v1/workspaces/" + ws.ID + "/delete"
 	payload := fmt.Sprintf(`{"confirm_id":%q}`, ws.ID)
@@ -101,12 +106,18 @@ func TestDeleteWorkspaceRequiresConfirmedIdleStop(t *testing.T) {
 	if _, err := s.Store.Workspace(t.Context(), ws.ID); err != nil {
 		t.Fatal("failed stop hid workspace")
 	}
+	if _, cached := s.eventCache[ws.ID]; !cached {
+		t.Fatal("failed deletion cleared the event cache")
+	}
 	rt.unknown = false
 	if res := request(t, s, "POST", path, payload); res.Code != 200 {
 		t.Fatalf("delete %d %s", res.Code, res.Body)
 	}
 	if _, err := s.Store.Workspace(t.Context(), ws.ID); err == nil {
 		t.Fatal("workspace still accessible")
+	}
+	if _, cached := s.eventCache[ws.ID]; cached {
+		t.Fatal("deleted workspace still has cached event history")
 	}
 }
 

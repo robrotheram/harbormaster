@@ -104,6 +104,11 @@ func (s *Server) registerDeletion(mux *http.ServeMux) {
 				shared.Error(w, 503, "STORAGE_UNAVAILABLE")
 				return
 			}
+			s.eventsMu.Lock()
+			for _, ws := range targets {
+				delete(s.eventCache, ws.ID)
+			}
+			s.eventsMu.Unlock()
 			shared.JSON(w, 200, map[string]any{"id": id, "deleted": true, "private_disks": "retained"})
 		})
 	}

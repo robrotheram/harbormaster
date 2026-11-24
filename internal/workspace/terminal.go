@@ -26,13 +26,45 @@ type terminalSession struct {
 	ioMu     sync.Mutex
 	cmd      *exec.Cmd
 	tty      *os.File
-	output   []byte
-	base     int64
+	output   terminalOutput
 	exited   bool
 	lastSeen time.Time
 	done     chan struct{}
 	home     string
 	stopOnce sync.Once
+}
+
+// terminalOutput retains the last terminalBufferLimit bytes in a circular
+// buffer. Offsets count all bytes received, including those already overwritten.
+type terminalOutput struct {
+	data []byte
+	end  int64
+}
+
+func (b *terminalOutput) append(p []byte) {
+	if available := terminalBufferLimit - len(b.data); available > 0 {
+		n := min(len(p), available)
+		b.data = append(b.data, p[:n]...)
+		b.end += int64(n)
+		p = p[n:]
+	}
+	b.end += int64(len(p))
+	if len(p) > terminalBufferLimit {
+		p = p[len(p)-terminalBufferLimit:]
+	}
+	start := int((b.end - int64(len(p))) % terminalBufferLimit)
+	n := copy(b.data[start:], p)
+	copy(b.data, p[n:])
+}
+
+func (b *terminalOutput) read(offset int64) ([]byte, bool) {
+	base := b.end - int64(len(b.data))
+	truncated := offset < base
+	offset = max(offset, base)
+	result := make([]byte, b.end-offset)
+	n := copy(result, b.data[int(offset%terminalBufferLimit):])
+	copy(result[n:], b.data)
+	return result, truncated
 }
 
 type terminalInput struct {
@@ -124,11 +156,7 @@ func (m *Manager) runTerminal(id string, s *terminalSession) {
 			n, err := s.tty.Read(buffer)
 			if n > 0 {
 				s.mu.Lock()
-				s.output = append(s.output, buffer[:n]...)
-				if excess := len(s.output) - terminalBufferLimit; excess > 0 {
-					s.base += int64(excess)
-					s.output = append([]byte(nil), s.output[excess:]...)
-				}
+				s.output.append(buffer[:n])
 				s.mu.Unlock()
 			}
 			if err != nil {
@@ -166,20 +194,17 @@ func (m *Manager) runTerminal(id string, s *terminalSession) {
 			}
 			return
 		case <-ticker.C:
+			m.mu.Lock()
+			current := m.terminals[id] == s
 			s.mu.Lock()
 			expired := time.Since(s.lastSeen) > terminalLease
 			s.mu.Unlock()
-			if expired {
-				s.stop()
-			}
-			m.mu.Lock()
-			_, present := m.terminals[id]
-			if expired {
+			if current && expired {
 				delete(m.terminals, id)
 			}
 			closing := m.closed
 			m.mu.Unlock()
-			if !present || expired || closing {
+			if !current || expired || closing {
 				s.stop()
 				if exited != nil {
 					<-exited
@@ -264,7 +289,7 @@ func (m *Manager) terminalRoute(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	s.lastSeen = time.Now()
 	exited := s.exited
-	end := s.base + int64(len(s.output))
+	end := s.output.end
 	s.mu.Unlock()
 	if in.Offset > end {
 		shared.Error(w, 400, "INVALID_REQUEST")
@@ -284,14 +309,10 @@ func (m *Manager) terminalRoute(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	offset := in.Offset
-	truncated := offset < s.base
-	if truncated {
-		offset = s.base
-	}
-	data := append([]byte{}, s.output[offset-s.base:]...)
-	shared.JSON(w, 200, map[string]any{"output": data, "offset": s.base + int64(len(s.output)), "exited": s.exited, "truncated": truncated})
+	data, truncated := s.output.read(in.Offset)
+	end, exited = s.output.end, s.exited
+	s.mu.Unlock()
+	shared.JSON(w, 200, map[string]any{"output": data, "offset": end, "exited": exited, "truncated": truncated})
 }
 
 // SyscallConn holds the descriptor alive during ioctl and preserves nonblocking

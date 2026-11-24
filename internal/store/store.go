@@ -49,8 +49,15 @@ func (s *Store) ByKey(ctx context.Context, key string) (shared.Workspace, error)
 	return s.workspaceMetadata(ctx, `SELECT metadata FROM workspaces WHERE create_key=$1 AND id NOT IN (SELECT id FROM deleted_resources WHERE kind='workspace')`, key)
 }
 func (s *Store) Workspaces(ctx context.Context) ([]shared.Workspace, error) {
-	workspaces, err := jsonmetadata.Query[shared.Workspace](ctx, s.DB, `SELECT metadata FROM workspaces WHERE id NOT IN (SELECT id FROM deleted_resources WHERE kind='workspace') ORDER BY id`)
-	return workspaces, err
+	records, err := jsonmetadata.Query[workspaceRecord](ctx, s.DB, `SELECT metadata FROM workspaces WHERE id NOT IN (SELECT id FROM deleted_resources WHERE kind='workspace') ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	workspaces := make([]shared.Workspace, 0, len(records))
+	for _, record := range records {
+		workspaces = append(workspaces, record.workspace())
+	}
+	return workspaces, nil
 }
 func (s *Store) Workspace(ctx context.Context, id string) (shared.Workspace, error) {
 	return s.workspaceMetadata(ctx, `SELECT metadata FROM workspaces WHERE id=$1 AND id NOT IN (SELECT id FROM deleted_resources WHERE kind='workspace')`, id)
@@ -62,9 +69,19 @@ func (s *Store) workspaceMetadata(ctx context.Context, query string, args ...any
 	if err := s.DB.QueryRowContext(ctx, query, args...).Scan(&metadata); err != nil {
 		return shared.Workspace{}, err
 	}
-	var workspace shared.Workspace
-	err := json.Unmarshal([]byte(metadata), &workspace)
-	return workspace, err
+	var record workspaceRecord
+	err := json.Unmarshal([]byte(metadata), &record)
+	return record.workspace(), err
+}
+
+type workspaceRecord struct {
+	shared.Workspace
+	QuotaUser string `json:"quota_user_id,omitempty"`
+}
+
+func (r workspaceRecord) workspace() shared.Workspace {
+	r.Workspace.QuotaUserID = r.QuotaUser
+	return r.Workspace
 }
 
 func (s *Store) Save(ctx context.Context, w shared.Workspace) error { return s.saveWorkspace(ctx, w) }

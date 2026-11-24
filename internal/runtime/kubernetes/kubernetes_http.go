@@ -2,7 +2,6 @@ package kubernetes
 
 import (
 	"context"
-	"crypto/subtle"
 	"errors"
 	"io"
 	"net/http"
@@ -132,44 +131,32 @@ func (k *Kubernetes) verify(w http.ResponseWriter, r *http.Request) {
 		shared.Error(w, 403, "GRANT_REJECTED")
 		return
 	}
-	namespaces, err := k.runtimeNamespaces(r.Context())
+	item, err := k.findGrantWorkspace(r.Context(), request.Token)
 	if err != nil {
+		if isNotFound(err) {
+			shared.Error(w, 403, "GRANT_REJECTED")
+			return
+		}
 		shared.Error(w, 503, "GRANT_VERIFIER_UNAVAILABLE")
 		return
 	}
-	for _, namespace := range namespaces {
-		var list struct {
-			Items []kubeResource `json:"items"`
-		}
-		if k.call(r.Context(), "GET", k.collection(namespace), nil, &list) != nil {
-			shared.Error(w, 503, "GRANT_VERIFIER_UNAVAILABLE")
+	labels := item.Metadata.Labels
+	if k.networkEvidence(r.Context(), item.Metadata.Namespace, labels["workbench.project"]) != nil {
+		shared.Error(w, 503, "NETWORK_POLICY_DRIFT")
+		return
+	}
+	if request.Audience == "hermes-mcp" && (labels["workbench.agent"] != "hermes" || !k.hermesEnabled() || item.Spec.OperatingMode == "Suspended" || len(item.Spec.PodTemplate.Spec.Containers) != 1 || item.Spec.PodTemplate.Spec.Containers[0].Image != k.cfg.Image) {
+		shared.Error(w, 403, "GRANT_REJECTED")
+		return
+	}
+	identity := map[string]any{"workspace_id": labels["workbench.workspace"], "project_id": labels["workbench.project"], "principal_id": "local-operator"}
+	if request.Audience == "egress" {
+		p, err := k.readPolicy(r.Context(), item)
+		if err != nil || p.Mode == "blocked" {
+			shared.Error(w, 403, "GRANT_REJECTED")
 			return
 		}
-		for _, item := range list.Items {
-			id := item.Metadata.Labels["workbench.workspace"]
-			generation := item.Metadata.Labels["workbench.generation"]
-			if generation != "" && k.owned(item, id) && sandboxReady(item) && subtle.ConstantTimeCompare([]byte(request.Token), []byte(k.token(id, generation))) == 1 {
-				if k.networkEvidence(r.Context(), namespace, item.Metadata.Labels["workbench.project"]) != nil {
-					shared.Error(w, 503, "NETWORK_POLICY_DRIFT")
-					return
-				}
-				if request.Audience == "hermes-mcp" && (item.Metadata.Labels["workbench.agent"] != "hermes" || !k.hermesEnabled() || item.Spec.OperatingMode == "Suspended" || len(item.Spec.PodTemplate.Spec.Containers) != 1 || item.Spec.PodTemplate.Spec.Containers[0].Image != k.cfg.Image) {
-					shared.Error(w, 403, "GRANT_REJECTED")
-					return
-				}
-				identity := map[string]any{"workspace_id": id, "project_id": item.Metadata.Labels["workbench.project"], "principal_id": "local-operator"}
-				if request.Audience == "egress" {
-					p, err := k.readPolicy(r.Context(), item)
-					if err != nil || p.Mode == "blocked" {
-						shared.Error(w, 403, "GRANT_REJECTED")
-						return
-					}
-					identity["connections"] = p
-				}
-				shared.JSON(w, 200, identity)
-				return
-			}
-		}
+		identity["connections"] = p
 	}
-	shared.Error(w, 403, "GRANT_REJECTED")
+	shared.JSON(w, 200, identity)
 }

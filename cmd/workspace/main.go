@@ -14,6 +14,9 @@ import (
 )
 
 func main() {
+	if code, handled := workspace.CommandSupervisor(os.Args[1:]); handled {
+		os.Exit(code)
+	}
 	token, e := shared.Secret("WORKSPACE_TOKEN")
 	if e != nil || token == "" {
 		slog.Error("workspace token required")

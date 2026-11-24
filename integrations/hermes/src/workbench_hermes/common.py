@@ -1,7 +1,4 @@
 """Shared policy and framing for the pinned workspace-local Hermes adapters."""
-import base64
-import time
-from urllib.parse import urlsplit
 import json
 import os
 from pathlib import Path
@@ -46,21 +43,10 @@ def configure():
     if mcp_url or token_file:
         if not mcp_url or not token_file:
             raise ValueError('MCP URL and project credential file required together')
-        parsed = urlsplit(mcp_url)
-        if mcp_url not in ('http://127.0.0.1:18085/mcp', 'http://hermes-mcp.harbormaster.svc:8080/hermes-mcp') and (parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.query or parsed.fragment):
-            raise ValueError('MCP requires an explicit HTTPS endpoint')
+        workbench_endpoint()
         token = Path(token_file).read_text().strip()
-        # Shape/binding check only. The MCP ingress verifies the signature.
-        parts = token.split('.')
-        if mcp_url in ('http://127.0.0.1:18085/mcp', 'http://hermes-mcp.harbormaster.svc:8080/hermes-mcp'):
-            if not token or not os.environ.get('WORKBENCH_PROJECT_ID'):
-                raise ValueError('Missing generation grant or project')
-        elif len(parts) != 3 or parts[0] != 'wpa1':
-            raise ValueError('MCP requires project access, never management credentials')
-        if mcp_url not in ('http://127.0.0.1:18085/mcp', 'http://hermes-mcp.harbormaster.svc:8080/hermes-mcp'):
-            claims = json.loads(base64.urlsafe_b64decode(parts[1] + '=' * (-len(parts[1]) % 4)))
-            if claims.get('project_id') != os.environ.get('WORKBENCH_PROJECT_ID') or not claims.get('project_id') or claims.get('aud') != 'workbench-project' or claims.get('exp', 0) <= time.time():
-                raise ValueError('MCP project binding expired or mismatched')
+        if len(token) != 64 or any(c not in '0123456789abcdef' for c in token) or not os.environ.get('WORKBENCH_PROJECT_ID'):
+            raise ValueError('Missing generation grant or project')
         config['mcp_servers'] = {'workbench': {'url': mcp_url,
             'headers': {'Authorization': 'Bearer ' + token},
             'tools': {'include': project_tool_names()}}}

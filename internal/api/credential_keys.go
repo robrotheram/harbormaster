@@ -9,10 +9,11 @@ import (
 )
 
 // CredentialKeys configures a controlplane-only encryption keyring. Untagged
-// records predate key IDs and are read using the legacy control token.
+// records predate key IDs and require an explicitly configured legacy key.
 type CredentialKeys struct {
 	Active string            `json:"active"`
 	Keys   map[string]string `json:"keys"`
+	Legacy string            `json:"legacy,omitempty"`
 }
 
 func (k CredentialKeys) Validate(controlToken string) error {
@@ -31,6 +32,9 @@ func (k CredentialKeys) Validate(controlToken string) error {
 func (s *Server) credentialWriteKey() (key, prefix string) {
 	k := s.cfg.CredentialKeys
 	if k.Active == "" {
+		if s.cfg.RequireScopedCredentials {
+			return "", ""
+		}
 		return s.cfg.Token, ""
 	}
 	return k.Keys[k.Active], k.Active + ":"
@@ -39,7 +43,13 @@ func (s *Server) credentialWriteKey() (key, prefix string) {
 func (s *Server) credentialReadKey(ciphertext string) (key, payload string) {
 	id, body, tagged := strings.Cut(ciphertext, ":")
 	if !tagged {
-		return s.cfg.Token, ciphertext
+		if s.cfg.CredentialKeys.Legacy != "" {
+			return s.cfg.CredentialKeys.Legacy, ciphertext
+		}
+		if !s.cfg.RequireScopedCredentials && s.cfg.CredentialKeys.Active == "" {
+			return s.cfg.Token, ciphertext
+		}
+		return "", ciphertext
 	}
 	return s.cfg.CredentialKeys.Keys[id], body
 }

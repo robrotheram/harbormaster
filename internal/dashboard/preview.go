@@ -21,6 +21,8 @@ import (
 // authenticated workspace services, which check revocation on every request.
 type previewBinding struct {
 	Human                             *shared.HumanIdentity
+	session                           context.Context
+	cancel                            context.CancelFunc
 	Embedded                          bool
 	ParentOrigin                      string
 	Application                       bool
@@ -28,6 +30,25 @@ type previewBinding struct {
 	ServiceExpiry                     time.Time
 	Workspace, Service, Host, Project string
 	Expiry                            time.Time
+}
+
+func (b previewBinding) close() {
+	if b.cancel != nil {
+		b.cancel()
+	}
+}
+
+func (p *previewIngress) revoke(user string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for _, entries := range []map[string]previewBinding{p.tickets, p.sessions} {
+		for key, binding := range entries {
+			if binding.Human != nil && binding.Human.ID == user {
+				binding.close()
+				delete(entries, key)
+			}
+		}
+	}
 }
 
 func previewConnectionBinding(p previewBinding) (*shared.HumanIdentity, time.Time) {
@@ -117,8 +138,8 @@ func (p *previewIngress) issue(w http.ResponseWriter, r *http.Request, workspace
 	if h, ok := r.Context().Value(humanIdentityKey{}).(shared.HumanIdentity); ok {
 		human = &h
 	}
-	limitConnections(p.tickets, human, 8, previewConnectionBinding)
-	limitConnections(p.sessions, nil, 0, previewConnectionBinding)
+	limitConnections(p.tickets, human, 8, previewConnectionBinding, nil)
+	limitConnections(p.sessions, nil, 0, previewConnectionBinding, previewBinding.close)
 	if len(p.tickets)+len(p.sessions) >= 512 {
 		writeError(w, 429, "TOO_MANY_CONNECTIONS")
 		return
@@ -163,7 +184,8 @@ func (p *previewIngress) serve(w http.ResponseWriter, r *http.Request) {
 			binding.Expiry = binding.ServiceExpiry
 		}
 		key := shared.NewID("session_")
-		limitConnections(p.sessions, binding.Human, 16, previewConnectionBinding)
+		limitConnections(p.sessions, binding.Human, 16, previewConnectionBinding, previewBinding.close)
+		binding.session, binding.cancel = context.WithDeadline(context.Background(), binding.Expiry)
 		p.sessions[key] = binding
 		p.mu.Unlock()
 		cookie := &http.Cookie{Name: hostCookieName("awb_preview", workerSecure(r)), Value: key, Path: "/", HttpOnly: true, Secure: workerSecure(r), SameSite: http.SameSiteStrictMode, Expires: binding.Expiry}
@@ -194,6 +216,11 @@ func (p *previewIngress) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	if binding.Human != nil {
 		r = r.WithContext(context.WithValue(r.Context(), humanIdentityKey{}, *binding.Human))
+	}
+	if binding.session != nil {
+		var done func()
+		r, done = withWorkerSession(r, binding.session)
+		defer done()
 	}
 	if binding.Application {
 		if (r.Header.Get("Upgrade") != "" || (r.Method != "GET" && r.Method != "HEAD" && r.Method != "OPTIONS")) && r.Header.Get("Origin") != previewOrigin(r) {

@@ -10,18 +10,25 @@ import (
 	"net/http"
 )
 
-// Only safe metadata is
-// mirrored into platform storage, so logs remain readable after a VM stops.
+type workspaceEventCache struct {
+	seen  map[string]bool
+	state string
+}
+
+// Mirror safe metadata into platform storage so logs remain readable after a VM stops.
 func (s *Server) captureEvents(ctx context.Context, ws shared.Workspace, body []byte) {
 	s.eventsMu.Lock()
 	defer s.eventsMu.Unlock()
-	if s.eventSeen == nil {
-		s.eventSeen = map[string]map[string]bool{}
+	if s.eventCache == nil {
+		s.eventCache = make(map[string]*workspaceEventCache)
 	}
-	seen := s.eventSeen[ws.ID]
-	if seen == nil || len(seen) > 2400 {
-		seen = map[string]bool{}
-		s.eventSeen[ws.ID] = seen
+	cache := s.eventCache[ws.ID]
+	if cache == nil {
+		cache = &workspaceEventCache{}
+		s.eventCache[ws.ID] = cache
+	}
+	if cache.seen == nil || len(cache.seen) > 2400 {
+		cache.seen = make(map[string]bool)
 	}
 	var list struct {
 		Events    []shared.ActivityEvent `json:"events"`
@@ -33,16 +40,13 @@ func (s *Server) captureEvents(ctx context.Context, ws shared.Workspace, body []
 			if i >= 200 {
 				break
 			}
-			if shared.SafeActivityEvent(v) && !seen[v.ID] {
+			if shared.SafeActivityEvent(v) && !cache.seen[v.ID] {
 				batch = append(batch, v)
 			}
 		}
 	}
-	if s.eventState == nil {
-		s.eventState = map[string]string{}
-	}
 	state := fmt.Sprintf("%s/%d/%d", ws.State, ws.ActiveRuns, ws.BackgroundJobs)
-	if s.eventState[ws.ID] != state {
+	if cache.state != state {
 		batch = append(batch, shared.ActivityEvent{ID: shared.NewID("evt_"), At: s.now(), Source: "workspace", Kind: "workspace.state", Status: ws.State})
 	}
 	// Native task metadata provides baseline history for older guest images.
@@ -59,7 +63,7 @@ func (s *Server) captureEvents(ctx context.Context, ws shared.Workspace, body []
 			}
 			hash := sha256.Sum256([]byte(ws.ID + "/" + t.ID + "/" + t.State + "/" + t.UpdatedAt.String()))
 			eventID := "evt_" + hex.EncodeToString(hash[:16])
-			if seen[eventID] {
+			if cache.seen[eventID] {
 				continue
 			}
 			kind := "task." + t.State
@@ -78,9 +82,9 @@ func (s *Server) captureEvents(ctx context.Context, ws shared.Workspace, body []
 	}
 	if s.Store.SaveEvents(ctx, ws, batch) == nil {
 		for _, v := range batch {
-			seen[v.ID] = true
+			cache.seen[v.ID] = true
 		}
-		s.eventState[ws.ID] = state
+		cache.state = state
 	}
 }
 func (s *Server) registerEvents(mux *http.ServeMux) {

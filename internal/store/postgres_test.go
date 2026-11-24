@@ -58,6 +58,7 @@ func TestPostgresMetadataContract(t *testing.T) {
 	if err := s.DB.QueryRowContext(ctx, `SELECT count(*), max(version) FROM schema_migrations`).Scan(&count, &version); err != nil || count != 6 || version != 6 {
 		t.Fatal("expected PostgreSQL schema version 6", count, version, err)
 	}
+	t.Run("task observations", func(t *testing.T) { testObservedTasks(t, s) })
 
 	now := time.Now().UTC()
 	project := shared.Project{ID: "project_test", Name: "Test project", CreatedAt: now}

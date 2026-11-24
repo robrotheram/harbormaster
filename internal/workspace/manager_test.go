@@ -9,13 +9,51 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
 )
+
+func TestMain(m *testing.M) {
+	if code, handled := CommandSupervisor(os.Args[1:]); handled {
+		os.Exit(code)
+	}
+	os.Exit(m.Run())
+}
+
+func TestCommandSupervisorReapsBackgroundSession(t *testing.T) {
+	if _, err := exec.LookPath("setsid"); err != nil {
+		t.Skip("setsid required")
+	}
+	m, err := New(Config{ID: "ws_command", HomeID: "home_test", DataDir: t.TempDir(), Token: "test-workspace-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	result := m.tool(t.Context(), "run_command", json.RawMessage(`{"command":"setsid sh -c 'echo $$ > child.pid; exec sleep 30' & while [ ! -s child.pid ]; do sleep .01; done"}`))
+	var reply struct {
+		ExitCode int `json:"exit_code"`
+	}
+	if err := json.Unmarshal([]byte(result), &reply); err != nil || reply.ExitCode != 0 {
+		t.Fatalf("command failed: %s", result)
+	}
+	data, err := os.ReadFile(filepath.Join(m.cfg.DataDir, "files", "child.pid"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil || pid <= 1 {
+		t.Fatalf("invalid child PID: %q", data)
+	}
+	if err := syscall.Kill(pid, 0); err != syscall.ESRCH {
+		t.Fatalf("child was not reaped: %v", err)
+	}
+}
 
 func invoke(t *testing.T, h http.Handler, method, path, body string) *httptest.ResponseRecorder {
 	t.Helper()

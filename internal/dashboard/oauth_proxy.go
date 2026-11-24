@@ -159,6 +159,7 @@ func NewOAuthProxyHandler(next http.Handler, cfg OAuthProxyConfig) (http.Handler
 			return
 		}
 		if r.URL.Path == "/auth/logout" {
+			revokeWorkerSessions(next, "oauth:"+cfg.PublicURL, id)
 			key := shared.NewID("logout_")
 			logoutMu.Lock()
 			for ticket, expires := range logoutTickets {

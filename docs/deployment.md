@@ -35,15 +35,15 @@ PostgreSQL, Vault, and the runtime controller use private Compose networks. Keep
 - Keep `GATEWAY_MODE=fixture` and `INFERENCE_MODEL=fixture` for synthetic tests. Vault can stay sealed or uninitialized in this mode.
 - For Codex or Claude with a subscription, configure the provider, model, and credential path, then follow [subscription setup](subscription-agents.md). A saved personal subscription needs a worker binding. The default Compose policy does not enable personal subscriptions.
 - For API-key inference or certificate-backed data requests, configure each gateway, mount its scoped credentials, and verify its allowed destinations. Follow [gateway configuration](../config/README.md).
-- For hosted sign-in, configure [WorkOS AuthKit](authkit.md) or OAuth2 Proxy with scoped dashboard credentials. The stock local Compose service mounts the control token. Current dashboard binaries reject that token when hosted authentication is enabled.
+- For hosted sign-in, configure [WorkOS AuthKit](authkit.md) or OAuth2 Proxy with scoped dashboard credentials. If you use Compose, remove the dashboard's local operator credential and mount.
 
-Keep `.env`, `.local/secrets`, and Vault recovery material private. Back up the credential encryption key with the database. Retain the original control token while any credentials written with the legacy key remain in use.
+Keep `.env`, `.local/secrets`, and Vault recovery material private. Back up the credential encryption key with the database. For older credential records, follow the [security upgrade procedure](operations.md#security-release-upgrade).
 
 ## Install the Kubernetes reference deployment
 
 1. Prepare a cluster with ValidatingAdmissionPolicy, NetworkPolicy enforcement, a working Kata handler, and a CSI StorageClass that supports ReadWriteOncePod. The application base includes Agent Sandbox. Follow [cluster dependency setup](../deploy/kubernetes/infrastructure/README.md) for Kata.
 2. Create an environment overlay based on [the example overlay](../deploy/kubernetes/overlays/example/kustomization.yaml). Pin the platform and worker images to digests from the same release. Configure the StorageClass, project bindings and destination policy, ingress class, selectors, DNS, and TLS.
-3. Provision a PostgreSQL database and the Secrets required by the rendered workloads. Update the dashboard patch to remove its legacy control token and supply the scoped credentials. Use the [Kubernetes configuration guide](../deploy/kubernetes/README.md) for the credential mapping and gateway mode.
+3. Provision a PostgreSQL database and the Secrets required by the rendered workloads. Configure the dashboard's scoped credentials in your overlay. Use the [Kubernetes configuration guide](../deploy/kubernetes/README.md) for the credential mapping and gateway mode.
 4. Create any required namespaces and cluster prerequisites through your environment's provisioning process. Render the overlay, check it against the cluster API, then review the diff. Replace the context and overlay path before running these commands.
 
    ```sh
@@ -75,7 +75,7 @@ Before you upgrade, record the current image digests and stop new work. Capture 
 | Symptom | Check |
 | --- | --- |
 | Local dashboard returns 401 | Use `operator` and the password from the same checkout's `.local/secrets/dashboard_local_password`. |
-| Dashboard exits after hosted auth is configured | Check for a legacy control-token mount. Verify the scoped read token and human signing key on both dashboard and control plane. |
+| Dashboard exits after hosted auth is configured | Remove the local operator credential from the dashboard. Verify the scoped read token and human signing key on both dashboard and control plane. |
 | Workspace remains stopped | Open **Workers**, then **Check & start**. Read the failed policy, runtime, or quota check before retrying. |
 | Fixture task works, but native inference fails | Check the provider model, worker subscription binding or Vault record, and gateway destination policy. |
 | Kubernetes pods are pending | Check pod events, the Kata RuntimeClass, and PVC binding. Keep existing PVCs attached to their recorded owners. |

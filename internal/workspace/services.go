@@ -199,10 +199,9 @@ func (m *Manager) fetchService(w http.ResponseWriter, r *http.Request) {
 		shared.Error(w, 400, "INVALID_PATH")
 		return
 	}
-	// Serialize access and revocation to avoid handing out content after acknowledgement.
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	s, err := m.service(r.PathValue("id"))
+	m.mu.Unlock()
 	if err != nil {
 		shared.Error(w, 404, "SERVICE_NOT_FOUND")
 		return
@@ -211,7 +210,18 @@ func (m *Manager) fetchService(w http.ResponseWriter, r *http.Request) {
 		shared.Error(w, 410, "SERVICE_REVOKED")
 		return
 	}
-	if m.fetchApplication(w, r, s, in) {
+	if m.fetchApplication(w, r, s, in, func(response map[string]any) {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		if m.serviceAvailable(w, s.ID) {
+			shared.JSON(w, 200, response)
+		}
+	}) {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.serviceAvailable(w, s.ID) {
 		return
 	}
 	var snapshot []byte
@@ -231,6 +241,16 @@ func (m *Manager) fetchService(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	shared.JSON(w, 200, map[string]any{"content": b, "content_type": mime.TypeByExtension(path.Ext(in.Path)), "attachment": "isolated-origin-required", "websocket": false})
+}
+
+// Call with m.mu held to serialize response delivery with revocation.
+func (m *Manager) serviceAvailable(w http.ResponseWriter, id string) bool {
+	s, err := m.service(id)
+	if err != nil || s.State != "active" {
+		shared.Error(w, 410, "SERVICE_REVOKED")
+		return false
+	}
+	return true
 }
 
 func (m *Manager) expireServices() {

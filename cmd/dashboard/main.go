@@ -46,7 +46,7 @@ func handler() (http.Handler, error) {
 		return nil, errors.New("choose WorkOS or OAuth2 Proxy authentication")
 	}
 	readToken, readErr := shared.Secret("DASHBOARD_READ_TOKEN")
-	token, tokenErr := shared.Secret("CONTROL_TOKEN")
+	operatorToken, tokenErr := shared.Secret("DASHBOARD_LOCAL_OPERATOR_TOKEN")
 	signingKey, signingErr := shared.Secret("DASHBOARD_HUMAN_SIGNING_KEY")
 	if readErr != nil || tokenErr != nil || signingErr != nil {
 		return nil, errors.New("dashboard credential unavailable")
@@ -55,8 +55,8 @@ func handler() (http.Handler, error) {
 	controlURL := shared.Env("CONTROLPLANE_URL", "http://controlplane:8080")
 	switch {
 	case authKit || oauthProxy || proxy.Origin != "":
-		if token != "" {
-			return nil, errors.New("hosted dashboard must not receive the control token")
+		if operatorToken != "" {
+			return nil, errors.New("hosted dashboard must not receive the local operator credential")
 		}
 		var h http.Handler
 		if signingKey != "" {
@@ -73,7 +73,7 @@ func handler() (http.Handler, error) {
 		return dashboard.NewOAuthProxyHandler(h, proxy)
 	case signingKey != "":
 		return nil, errors.New("dashboard signing key requires hosted authentication")
-	case token != "":
+	case operatorToken != "":
 		if os.Getenv("DASHBOARD_AUTH") != "local" {
 			return nil, errors.New("interactive dashboard requires explicit DASHBOARD_AUTH=local")
 		}
@@ -81,7 +81,7 @@ func handler() (http.Handler, error) {
 		if err != nil {
 			return nil, errors.New("local dashboard password unavailable")
 		}
-		h, err := dashboard.NewInteractiveHandler(readURL, controlURL, token)
+		h, err := dashboard.NewLocalInteractiveHandler(readURL, controlURL, readToken, operatorToken)
 		if err != nil {
 			return nil, err
 		}
@@ -90,6 +90,8 @@ func handler() (http.Handler, error) {
 			return nil, err
 		}
 		return dashboard.NewLocalAuthHandler(h, password)
+	case os.Getenv("DASHBOARD_AUTH") == "local":
+		return nil, errors.New("local dashboard operator credential required")
 	default:
 		return dashboard.NewHandler(readURL, readToken)
 	}

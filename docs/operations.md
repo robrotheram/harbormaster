@@ -95,6 +95,14 @@ error. Leave the old databases and their migration records intact for recovery.
 
 ## Security release upgrade
 
+Run `make bootstrap` to create the scoped dashboard credentials before restarting Compose.
+`MAX_RUNNING_WORKSPACES_PER_USER` defaults to two. The global limit also applies.
+
+If the database contains credentials encrypted with the former control token, rotate
+`CONTROL_TOKEN`. Supply the previous value to the control plane through
+`CREDENTIAL_LEGACY_DECRYPTION_KEY_FILE`. Keep the active encryption key configured.
+Re-save the affected credentials before removing the legacy key.
+
 Rerun `make bootstrap` before restarting an existing Compose deployment so
 the local launcher and credential encryption key files are present. Direct
 Compose invocations must set `DOCKER_SOCKET_GID` to the group of the Docker

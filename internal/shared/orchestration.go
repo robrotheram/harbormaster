@@ -3,6 +3,7 @@ package shared
 import "time"
 
 type Schedule struct {
+	CreatorID       string     `json:"creator_id,omitempty"`
 	Revision        int        `json:"revision"`
 	DeletedAt       *time.Time `json:"deleted_at,omitempty"`
 	ID              string     `json:"id"`

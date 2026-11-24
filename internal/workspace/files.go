@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"os"
 	"path"
-	"syscall"
 	"time"
 
 	"agent-workbench/internal/shared"
+	"golang.org/x/sys/unix"
 )
 
 func (m *Manager) handoff(w http.ResponseWriter, r *http.Request) {
@@ -29,7 +29,7 @@ func (m *Manager) handoff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Path == "/v1/files/read" {
-		f, err := m.root.OpenFile(file.Path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+		f, err := openReviewFile(m.root, file.Path)
 		if err != nil {
 			shared.Error(w, 404, "FILE_UNAVAILABLE")
 			return
@@ -48,17 +48,20 @@ func (m *Manager) handoff(w http.ResponseWriter, r *http.Request) {
 		shared.JSON(w, 200, shared.FileHandoff{Path: file.Path, Content: content})
 		return
 	}
-	if err := m.root.MkdirAll(path.Dir(file.Path), 0700); err != nil {
+	dir, err := openProjectDirectory(m.root, path.Dir(file.Path), true)
+	if err != nil {
 		shared.Error(w, 400, "INVALID_PROJECT_FILE")
 		return
 	}
-	tmp := path.Join(path.Dir(file.Path), "."+shared.NewID("handoff"))
-	f, err := m.root.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	defer dir.Close()
+	tmp := "." + shared.NewID("handoff")
+	fd, err := unix.Openat(int(dir.Fd()), tmp, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0600)
 	if err != nil {
 		shared.Error(w, 503, "WRITE_FAILED")
 		return
 	}
-	defer m.root.Remove(tmp)
+	defer unix.Unlinkat(int(dir.Fd()), tmp, 0)
+	f := os.NewFile(uintptr(fd), tmp)
 	_, err = f.Write(file.Content)
 	if err == nil {
 		err = f.Sync()
@@ -69,7 +72,7 @@ func (m *Manager) handoff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Publish the complete file atomically without replacing any destination.
-	if err = m.root.Link(tmp, file.Path); err != nil {
+	if err = unix.Linkat(int(dir.Fd()), tmp, int(dir.Fd()), path.Base(file.Path), 0); err != nil {
 		if errors.Is(err, os.ErrExist) {
 			shared.Error(w, 409, "DESTINATION_EXISTS")
 		} else {

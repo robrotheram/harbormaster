@@ -62,7 +62,7 @@ func (s *Server) registerOrchestration(mux *http.ServeMux) {
 			return
 		}
 		now := s.now()
-		schedule := shared.Schedule{ID: shared.NewID("schedule_"), ProjectID: input.ProjectID, WorkspaceID: input.WorkspaceID, Name: input.Name, InstructionPath: input.InstructionPath, Provider: input.Provider, Enabled: true, RunAt: input.RunAt.UTC(), IntervalSeconds: input.Interval, NextRunAt: input.RunAt.UTC(), CreatedAt: now}
+		schedule := shared.Schedule{ID: shared.NewID("schedule_"), CreatorID: shared.WorkspaceQuotaUser(r.Context()), ProjectID: input.ProjectID, WorkspaceID: input.WorkspaceID, Name: input.Name, InstructionPath: input.InstructionPath, Provider: input.Provider, Enabled: true, RunAt: input.RunAt.UTC(), IntervalSeconds: input.Interval, NextRunAt: input.RunAt.UTC(), CreatedAt: now}
 		stored, created, err := repo.CreateSchedule(r.Context(), schedule, input.Key)
 		if errors.Is(err, orchestration.ErrConflict) {
 			shared.Error(w, 409, "IDEMPOTENCY_CONFLICT")

@@ -17,7 +17,10 @@ func TestCredentialKeyringReadsOldAndLegacyRecords(t *testing.T) {
 	s.cfg.CredentialKeys = CredentialKeys{
 		Active: "first",
 		Keys:   map[string]string{"first": strings.Repeat("a", 32), "second": strings.Repeat("b", 32)},
+		Legacy: strings.Repeat("x", 32),
 	}
+	s.cfg.RequireScopedCredentials = true
+	s.cfg.Token = strings.Repeat("z", 32)
 	first, err := s.sealSubscription("owner", "default", credential)
 	if err != nil || !strings.HasPrefix(first, "first:") {
 		t.Fatal("credential missing its key ID")
@@ -31,5 +34,9 @@ func TestCredentialKeyringReadsOldAndLegacyRecords(t *testing.T) {
 	}
 	if _, err := s.openSubscription("other", "default", first); err == nil {
 		t.Fatal("keyed record lost its owner binding")
+	}
+	s.cfg.CredentialKeys.Legacy = ""
+	if _, err := s.openSubscription("owner", "default", legacy); err == nil {
+		t.Fatal("legacy decrypt succeeded without an explicit key")
 	}
 }

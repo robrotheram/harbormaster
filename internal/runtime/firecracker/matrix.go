@@ -53,6 +53,10 @@ func (f *Firecracker) enableMatrixRoute(w http.ResponseWriter, r *http.Request) 
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.vms[v.ID] != v || !v.running || v.stopping {
+		shared.Error(w, 409, "MATRIX_RESTART_REQUIRED")
+		return
+	}
 	if f.matrixOwners == nil {
 		f.matrixOwners = map[string]string{}
 	}

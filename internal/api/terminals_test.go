@@ -56,6 +56,9 @@ func TestProjectAdminCanManageWorkerTerminal(t *testing.T) {
 	if r := request(t, s, "POST", worker+"/start", `{"idempotency_key":"project-terminal-start"}`); r.Code != 200 {
 		t.Fatal(r.Code, r.Body.String())
 	}
+	if r := humanRequest(t, s, "member@example.com", "GET", worker+"/console/api/auth/session", ""); r.Code != 403 {
+		t.Fatal("project member reached the interactive console", r.Code, r.Body.String())
+	}
 
 	for _, action := range []struct {
 		path string

@@ -57,16 +57,10 @@ Create the platform Secrets in the `harbormaster` namespace through your secret 
 
 ## Configure hosted dashboard access
 
-The example overlay still inherits `CONTROL_TOKEN_FILE` from the base. Current dashboard binaries reject this setting when WorkOS or OAuth2 Proxy is enabled. Amend `dashboard-patch.yaml` before deploying the example.
-
 1. Provision `dashboard_read_token` and `dashboard_human_signing_key` as separate random values of at least 32 characters. Use identical values in `controlplane-secrets` and `dashboard-secrets`. Keep the control token and credential encryption key in the control-plane Secret.
 2. In the dashboard container's `env` patch, add the following entries. Keep the example's WorkOS entries when you use WorkOS.
 
    ```yaml
-   - name: CONTROL_TOKEN_FILE
-     $patch: delete
-   - name: DASHBOARD_READ_TOKEN_FILE
-     value: /run/secrets/dashboard_read_token
    - name: DASHBOARD_HUMAN_SIGNING_KEY
      valueFrom:
        secretKeyRef:
