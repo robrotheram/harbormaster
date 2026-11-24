@@ -42,7 +42,7 @@ RUN --mount=type=cache,target=/root/.npm npm ci --prefix /opt/workspace-tools --
     codex --version && codex-native --version && claude --version && t3 --version && mise --version && skills --version && \
     useradd -m -u 10001 workbench && mkdir -p /data/files && chown -R 10001:10001 /data
 
-FROM rust:1.94-trixie@sha256:652612f07bfbbdfa3af34761c1e435094c00dde4a98036132fca28c7bb2b165c AS xwayland-satellite-build
+FROM rust:1.99-trixie@sha256:8a4e90c7946b74626488b1446f712c0fe0ed1a596cbd3d871684bc9c5433ae07 AS xwayland-satellite-build
 RUN apt-get update && apt-get install -y --no-install-recommends clang libxcb1-dev libxcb-cursor-dev && rm -rf /var/lib/apt/lists/*
 ADD --checksum=sha256:8b32873d7d740143ce9efa3cfb43c17d0176b89d2e8ffaa497db709f154fc478 https://codeload.github.com/Supreeeme/xwayland-satellite/tar.gz/refs/tags/v0.8.3 /tmp/xwayland-satellite.tgz
 WORKDIR /src
