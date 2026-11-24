@@ -551,7 +551,7 @@ test("preview areas follow scrolling and ship together with their comments in on
   ).toBeVisible();
   await expect(
     toolbar.getByRole("tab", { name: "Desktop", exact: true }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(toolbar.getByLabel("Preview application")).toBeVisible();
   await expect(toolbar.getByRole("button", { name: "Markup" })).toBeVisible();
   const child = preview.contentFrame();

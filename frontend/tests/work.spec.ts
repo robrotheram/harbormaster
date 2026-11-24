@@ -35,6 +35,7 @@ async function conversationFixture(page: Page) {
   const state = {
     exists: false,
     failContinue: false,
+    applicationsError: 0,
     foreignHistory: false,
     alternateWorker: false,
     request: "Investigate the experiment.",
@@ -110,6 +111,16 @@ async function conversationFixture(page: Page) {
         apps.push(app);
         return route.fulfill({ status: 201, json: app });
       }
+      if (state.applicationsError)
+        return route.fulfill({
+          status: state.applicationsError,
+          json: {
+            code:
+              state.applicationsError === 403
+                ? "FORBIDDEN"
+                : "WORKSPACE_UNAVAILABLE",
+          },
+        });
       return route.fulfill({ json: { items: apps } });
     }
     if (path.endsWith("/services/service_live/revoke")) {
@@ -483,6 +494,7 @@ test("conversation is scoped to the selected task and project and fits narrow sc
     });
   }
   await page.setViewportSize({ width: 1440, height: 900 });
+  await page.getByLabel("Message to your agent").fill("Private project draft");
   await page
     .getByRole("button", { name: "Switch project: Research", exact: true })
     .click();
@@ -494,7 +506,10 @@ test("conversation is scoped to the selected task and project and fits narrow sc
       exact: true,
     }),
   ).toHaveCount(0);
-  await expect(page.getByLabel("Message to your agent")).toHaveValue("");
+  await expect(page.getByLabel("Message to your agent")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Create thread", exact: true }),
+  ).toBeVisible();
   f.state.foreignHistory = true;
   await page.goto("/app/projects/A/work?work=work_one");
   await expect(page.getByRole("alert").first()).toBeVisible();
@@ -702,6 +717,34 @@ test("desktop development opens directly to the worker desktop and keeps it on m
   ).toBe(true);
   expect(portRequests).toEqual([]);
   expect(f.errors).toEqual([]);
+
+  const iframe = page.locator('iframe[title="Workspace desktop"]');
+  const connectedURL = await iframe.getAttribute("src");
+  f.state.applicationsError = 503;
+  await page.waitForResponse(
+    (res) => res.url().endsWith("/applications") && res.status() === 503,
+  );
+  await expect(iframe).toHaveAttribute("src", connectedURL!);
+  f.state.applicationsError = 0;
+  await page.waitForResponse(
+    (res) => res.url().endsWith("/applications") && res.ok(),
+  );
+  await expect(iframe).toHaveAttribute("src", connectedURL!);
+
+  const opened = page.waitForEvent("popup");
+  await previewTool(page, "Open preview in new tab");
+  const separated = await opened;
+  await expect(separated.getByRole("heading")).toHaveText("Desktop connected");
+  await expect(iframe).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Return desktop to this tab" })
+    .click();
+  await expect(iframe.contentFrame().getByRole("heading")).toHaveText(
+    "Desktop connected",
+  );
+  await separated.close();
+  f.state.applicationsError = 403;
+  await expect(iframe).toHaveCount(0, { timeout: 10000 });
 });
 
 test("preview selection adds a draft only from the selected frame and reload renews the connection", async ({
@@ -2014,10 +2057,16 @@ test("catalog failure offers a retry without creating a thread", async ({
     ),
   );
   await page.goto("/app/projects/A/work");
-  await expect(page.getByLabel("Model", { exact: true })).toBeDisabled();
+  const retry = page.getByRole("button", { name: "Retry loading models" });
+  await expect(retry).toBeVisible();
+  const model = page.getByLabel("Model", { exact: true });
+  await expect(model).toBeDisabled();
   unavailable = false;
-  await page.getByRole("button", { name: "Retry loading models" }).click();
-  await expect(page.getByLabel("Model", { exact: true })).toBeEnabled();
+  await retry.click();
+  await expect(model).toBeEnabled();
+  await expect(
+    model.getByRole("option", { name: "fresh-model · Codex" }),
+  ).toHaveCount(1);
   expect(f.posts).toEqual([]);
 });
 

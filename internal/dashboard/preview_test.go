@@ -192,3 +192,34 @@ func TestEmbeddedPreviewUsesPartitionedSessionAndBoundInspector(t *testing.T) {
 		t.Fatal("embedding policy", out.Header())
 	}
 }
+
+func TestDesktopPreviewEnablesWebAssembly(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/workspaces/ws_one":
+			shared.JSON(w, 200, map[string]string{"project_id": "project_one"})
+		case "/v1/workspaces/ws_one/services/service_one":
+			shared.JSON(w, 200, map[string]any{
+				"kind": "application", "application_kind": "desktop",
+				"state": "active", "expires_at": time.Now().Add(time.Hour).Unix(),
+			})
+		default:
+			w.WriteHeader(200)
+		}
+	}))
+	defer upstream.Close()
+	p := newPreviewIngress(upstream.Client(), upstream.URL, "operator")
+	out := httptest.NewRecorder()
+	p.issue(out, httptest.NewRequest("POST", "http://localhost:8080/connect", strings.NewReader(`{}`)), "ws_one", "service_one")
+	if out.Code != 200 || len(p.tickets) != 1 {
+		t.Fatal("desktop connection was not issued", out.Code, out.Body.String())
+	}
+	for _, binding := range p.tickets {
+		out = httptest.NewRecorder()
+		p.live(out, httptest.NewRequest("GET", "http://"+binding.Host+"/", nil), binding)
+		policy := out.Header().Get("Content-Security-Policy")
+		if out.Code != 200 || !strings.Contains(policy, "'wasm-unsafe-eval'") || strings.Contains(policy, "'unsafe-eval'") {
+			t.Fatal("desktop script policy", out.Code, policy)
+		}
+	}
+}

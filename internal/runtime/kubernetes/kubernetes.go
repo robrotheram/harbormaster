@@ -557,18 +557,8 @@ func (k *Kubernetes) proxy(w http.ResponseWriter, r *http.Request, id, path, rou
 	}
 	shared.Proxy(w, r, k.endpoint(resource), route+strings.TrimPrefix(path, "/"), k.token(id, resource.Metadata.Labels["workbench.generation"]))
 }
-func (k *Kubernetes) Console(w http.ResponseWriter, r *http.Request, id, path string) {
-	k.proxy(w, r, id, path, "/v1/t3/")
-}
-func (k *Kubernetes) Desktop(w http.ResponseWriter, r *http.Request, id, path string) {
-	k.proxy(w, r, id, path, "/v1/t3-desktop/")
-}
 
 // Approval binds the exact digest to the pinned v0.23 runtime contract.
 func (k *Kubernetes) hermesEnabled() bool {
 	return pinnedImage.MatchString(k.cfg.Image) && k.cfg.HermesApprovedImage == k.cfg.Image && k.cfg.HermesModel != ""
-}
-
-func (k *Kubernetes) Application(w http.ResponseWriter, r *http.Request, id, path string) {
-	k.proxy(w, r, id, path, "/v1/application-proxy/")
 }

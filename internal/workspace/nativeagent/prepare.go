@@ -21,9 +21,7 @@ func prepare(cfg Config, provider string) (invocation, string) {
 	}
 	env := []string{"WORKBENCH_WORKSPACE_GRANT=" + cfg.Token, "PATH=" + path, "HOME=" + home, "LANG=C.UTF-8", "TMPDIR=/tmp", "DATA_DIR=" + cfg.DataDir, "DISABLE_AUTOUPDATER=1", "DISABLE_UPDATES=1", "USE_BUILTIN_RIPGREP=0"}
 
-	if cfg.Display != "" {
-		env = append(env, "DISPLAY="+cfg.Display)
-	}
+	env = append(env, cfg.DesktopEnv...)
 	if cfg.TaskID != "" {
 		env = append(env, "WORKBENCH_TASK_ID="+cfg.TaskID)
 	}

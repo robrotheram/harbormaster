@@ -4,6 +4,7 @@ import (
 	"agent-workbench/internal/shared"
 	"agent-workbench/internal/workspace/nativeagent"
 	"agent-workbench/internal/workspace/setup"
+	"agent-workbench/internal/workspacetools"
 	"context"
 	"time"
 )
@@ -21,7 +22,7 @@ Say where to review the app in Workspace → Preview → Web. If the preview cou
 
 const workspaceDesktopGuidance = `Desktop app development
 
-Review runnable GUI apps in Workspace → Preview → Desktop. Use the worker's X11 desktop on DISPLAY=:99. For GUI testing, run workbench-preview status to check for an active desktop. If needed, run workbench-preview desktop to start a supervised session. Verify the GUI on that display and give the launch command so the app can be reopened from the desktop terminal. If the worker cannot start a desktop, report the blocker and provide the available verification results. Use the desktop for GUI review and deliver other results in the thread.`
+Review runnable GUI apps in Workspace → Preview → Desktop. Use the worker's Wayland desktop. For GUI testing, run workbench-preview status to check for an active desktop. If needed, run workbench-preview desktop to start a supervised session. Launch the app with workbench-desktop run <app> [args...] to use the current Wayland session and its XWayland display for X11 apps. Verify the GUI and give the launch command so the app can be reopened from the desktop terminal. If the worker cannot start a desktop, report the blocker and provide the available verification results. Use the desktop for GUI review and deliver other results in the thread.`
 
 const workspaceAnalysisGuidance = `For uploaded or large data, use the worker-local analysis tools. Run workbench-analysis list, schema ID, or preview ID REQUEST.json to inspect CSV or Parquet. Preview requests accept limit, cursor, columns, sort, and filters. Run workbench-analysis path ID to resolve a dataset in the agent shell. Use /opt/workbench-analysis/bin/python with the duckdb package for SQL and Python processing. Materialize bounded chart aggregations or other derived results as Parquet outside the Git checkout, then run workbench-analysis register-result FILE. Use ingest FILE for a derived dataset. Keep raw data and intermediate results outside Git. Never copy bulk data into messages or render it using the inline chart format.
 To publish a visualization, write a version 1.0 JSON file and run workbench-analysis register-artifact SPEC.json. The envelope has schema_version, artifact_id, type, title, data (source_type and reference), and visualization. Use source_type dataset or query_result and the ID returned by the tool. A table uses optional page_size, columns as [{"field":"name"}], sortable, and filterable.
@@ -69,7 +70,7 @@ func (m *Manager) runNativeTask(ctx context.Context, provider, instruction, task
 	var desktops int
 	m.db.QueryRow(`SELECT count(*) FROM workspace_applications a JOIN retained_services s ON s.id=a.service_id WHERE s.state='active' AND s.expires_at>? AND json_extract(a.configuration,'$.kind')='desktop'`, time.Now().Unix()).Scan(&desktops)
 	if desktops > 0 || workKind == shared.WorkKindDesktop {
-		cfg.Display = ":99"
+		cfg.DesktopEnv = workspacetools.DesktopEnvironment()
 	}
 	return nativeagent.Run(ctx, cfg, provider, workInstruction(instruction, workKind, true), &nativeEvents{m: m, source: provider, task: taskID}, &nativeEvents{m: m, source: provider, task: taskID})
 }

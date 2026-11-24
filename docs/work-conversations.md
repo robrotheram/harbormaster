@@ -77,7 +77,7 @@ Switch between **Conversation** and **Workspace** at the top of the thread. **Co
 In **Workspace**, **Preview** shows the live app when available. The **Output** view appears when charts or images are available. Use **Files** to inspect or download files and **Settings** to manage the task.
 
 - With **Web Development**, select **Markup** in **Web** to annotate the running app. Open **Preview options** to change the viewport, open a separate tab, or select an element. Element selection adds text to your message draft. Describe the change before sending.
-- With **Desktop App Development**, open **Desktop** to send mouse and keyboard input to the worker's private X11 desktop. If no session is running, select **Start worker desktop** on a worker image that supports it. Agents can start the same session with `workbench-preview desktop` and test GUI apps on `DISPLAY=:99`.
+- With **Desktop App Development**, open **Desktop** to use the worker's Wayland session. If the session is stopped, select **Start worker desktop** or run `workbench-preview desktop` in the worker. Use `workbench-desktop run <app> [args...]` to launch a Wayland or X11 app from a worker shell. Open app windows survive a browser reload while the session is active.
 - While you use **Workspace**, new replies continue to arrive. Select **View message** to return to **Conversation** without clearing the message draft.
 
 Managed application services count as background activity for idle shutdown. You can continue the conversation while a managed app runs.

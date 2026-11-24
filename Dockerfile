@@ -43,7 +43,8 @@ ADD --checksum=sha256:be6f46a4cc3d5532acf359f163cf7ce80ceb43e5718d7b9049165a340f
 ADD --checksum=sha256:2fd4b495e19d8a10dcfc0e0badea539fd745bd697473b59d18acc2ee8ef8c815 https://github.com/jdx/mise/releases/download/v2026.11.11/mise-v2026.11.11-linux-arm64 /opt/mise/arm64/mise
 
 # T3's standalone executable needs glibc, libatomic and its adjacent assets.
-FROM node:26-bookworm-slim@sha256:5df79989ed685e09f0a98019db4cebfb22fb9df1a53c0161664a011f7ff6b0f1 AS workspace-tools
+# Trixie provides the Xwayland version required by xwayland-satellite.
+FROM node:26-trixie-slim@sha256:abe7e5a82b61a8ef67b315b85497c9e65173387ccf2f4a029248184b8e020be5 AS workspace-tools
 ARG TARGETARCH
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates git python3 ripgrep libatomic1 && \
     rm -rf /var/lib/apt/lists/*
@@ -68,8 +69,24 @@ RUN --mount=type=cache,target=/root/.npm npm ci --prefix /opt/workspace-tools --
     codex --version && codex-native --version && claude --version && t3 --version && mise --version && skills --version && \
     useradd -m -u 10001 workbench && mkdir -p /data/files && chown -R 10001:10001 /data
 
+FROM rust:1.94-trixie@sha256:652612f07bfbbdfa3af34761c1e435094c00dde4a98036132fca28c7bb2b165c AS xwayland-satellite-build
+RUN apt-get update && apt-get install -y --no-install-recommends clang libxcb1-dev libxcb-cursor-dev && rm -rf /var/lib/apt/lists/*
+ADD --checksum=sha256:8b32873d7d740143ce9efa3cfb43c17d0176b89d2e8ffaa497db709f154fc478 https://codeload.github.com/Supreeeme/xwayland-satellite/tar.gz/refs/tags/v0.8.3 /tmp/xwayland-satellite.tgz
+WORKDIR /src
+RUN tar -xzf /tmp/xwayland-satellite.tgz --strip-components=1 && cargo build --locked --release --bin xwayland-satellite && \
+    install -D -s -m 755 target/release/xwayland-satellite /out/xwayland-satellite
+
 FROM workspace-tools AS workspace-base
-RUN apt-get update && apt-get install -y --no-install-recommends xvfb fluxbox x11vnc novnc websockify xterm x11-utils fonts-dejavu-core python3-venv && rm -rf /var/lib/apt/lists/*
+# Xwayland loads libEGL at runtime.
+RUN apt-get update && apt-get install -y --no-install-recommends dbus-daemon foot fonts-dejavu-core libegl1 libxcb-cursor0 python3-venv xwayland && rm -rf /var/lib/apt/lists/*
+COPY --from=xwayland-satellite-build /out/xwayland-satellite /usr/local/bin/xwayland-satellite
+RUN --mount=type=bind,source=tools/wland-viewer.patch,target=/tmp/wland-viewer.patch \
+    wland_dist=/opt/workspace-tools/node_modules/wland/dist && \
+    git -C "$wland_dist" apply /tmp/wland-viewer.patch && \
+    relay=$(XDG_CACHE_HOME=/tmp/wland-build node --input-type=module -e 'const { serverBinary } = await import(process.argv[1]); console.log(serverBinary())' "$wland_dist/index.mjs") && \
+    install -m 755 "$relay" /usr/local/bin/wlandr && rm -rf /tmp/wland-build && \
+    mkdir -p /opt/wland/web && cp "$wland_dist/index.html" "$wland_dist/wland.wasm" "$wland_dist"/*.mjs /opt/wland/web/ && \
+    rm /opt/wland/web/cli.mjs /opt/wland/web/headless.mjs /opt/wland/web/index.mjs
 RUN --mount=type=cache,target=/root/.cache/pip python3 -m venv /opt/workbench-analysis && \
     /opt/workbench-analysis/bin/python -m pip install --only-binary=:all: duckdb==1.5.4
 COPY --from=workspace-build /out/workbench-tools /usr/local/bin/workbench-tools

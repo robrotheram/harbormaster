@@ -27,7 +27,7 @@ const OutputLimit = 1 << 20
 
 type Config struct {
 	HermesMCPTransport MCPTransport
-	Display            string
+	DesktopEnv         []string
 	ReasoningEffort    string
 	ToolPath           string
 
