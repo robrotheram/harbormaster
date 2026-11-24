@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"time"
 
 	"agent-workbench/internal/orchestration"
 	"agent-workbench/internal/shared"
@@ -137,15 +138,53 @@ func (s *Server) registerOrchestration(mux *http.ServeMux) {
 	}
 }
 
-func (s *Server) tickOrchestration(ctx context.Context) {
-	service := orchestration.Scheduler{Repository: orchestration.Repository{DB: s.Store.DB}, Workspaces: s.Store, Lifecycle: s.lifecycle(), Agent: s.Runtime, Now: s.now, Lock: s.operations.Lock, Cursor: &s.schedulerCursor, CanUseWorkspace: s.workspaceInProject, ProjectAvailable: func(ctx context.Context, project string) (bool, error) {
+func (s *Server) scheduler(repo orchestration.Repository) orchestration.Scheduler {
+	return orchestration.Scheduler{Repository: repo, Workspaces: s.Store, Lifecycle: s.lifecycle(), Agent: s.Runtime, Now: s.now, Lock: s.operations.Lock, Cursor: &s.schedulerCursor, CanUseWorkspace: s.workspaceInProject, ProjectAvailable: func(ctx context.Context, project string) (bool, error) {
 		_, err := s.Store.Project(ctx, project)
 		if errors.Is(err, sql.ErrNoRows) {
 			return false, nil
 		}
 		return err == nil, err
 	}}
+}
+
+func (s *Server) tickOrchestration(ctx context.Context) {
+	service := s.scheduler(orchestration.Repository{DB: s.Store.DB})
 	if err := service.Tick(ctx); err != nil {
 		s.reportWrite("scheduling", "", err)
+	}
+}
+
+// The database holds the queue. A pending signal covers all submissions made
+// before the next scan, and periodic ticks recover missed signals and retries.
+func (s *Server) notifyWorkReady() {
+	select {
+	case s.workReady <- struct{}{}:
+	default:
+	}
+}
+
+func (s *Server) runOrchestration(ctx context.Context) {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	repo := orchestration.Repository{DB: s.Store.DB}
+	service := s.scheduler(repo)
+	tick := func() {
+		tickCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		s.tickOrchestration(tickCtx)
+	}
+	tick()
+	for ctx.Err() == nil {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			tick()
+		case <-s.workReady:
+			dispatchCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			s.reportWrite("work_dispatch", "", repo.TickWork(dispatchCtx, &service))
+			cancel()
+		}
 	}
 }

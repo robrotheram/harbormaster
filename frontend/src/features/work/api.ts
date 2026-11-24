@@ -21,7 +21,7 @@ export type WorkItem = {
   workspace_id: string;
   specification_path: string;
   specification_digest: string;
-  kind: "software" | "research" | "digest";
+  kind: "software" | "research" | "digest" | "data-science";
   state: string;
   artifact_paths?: string[];
   latest_attempt_id?: string;
@@ -72,6 +72,17 @@ export const workKeys = {
     ["project", project, "work", id, "attempts"] as const,
 };
 export const workApi = {
+  saveReport: (
+    project: string,
+    id: string,
+    worker: string,
+    report: { path: string; markdown: string; previous?: string },
+  ) =>
+    request<{ path: string }>(path(id) + "/reports", {
+      project_id: project,
+      worker_id: worker,
+      ...report,
+    }),
   files: async (project: string, id: string, signal: AbortSignal) => {
     const listing = await request<{ paths: string[]; truncated?: boolean }>(
       path(id) + "/files" + scope(project),
@@ -242,4 +253,20 @@ export function workActions(state: string) {
       "pending_review",
     ].includes(s),
   };
+}
+
+export function canContinueWork(item: WorkItem) {
+  return (
+    !!item.latest_attempt_id &&
+    [
+      "planned",
+      "in_progress",
+      "changes_requested",
+      "completed",
+      "accepted",
+      "awaiting_review",
+      "failed",
+      "cancelled",
+    ].includes(item.state)
+  );
 }

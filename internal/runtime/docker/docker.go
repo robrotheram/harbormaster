@@ -292,18 +292,22 @@ func (c *Controller) ensure(ctx context.Context, id string, spec protocol.Worksp
 	return c.inspect(ctx, id)
 }
 func (c *Controller) agent(ctx context.Context, info containerInfo, method, path string, b []byte) (int, []byte, error) {
+	return c.agentReader(ctx, info, method, path, bytes.NewReader(b), c.agentHTTP)
+}
+
+func (c *Controller) agentReader(ctx context.Context, info containerInfo, method, path string, body io.Reader, client *http.Client) (int, []byte, error) {
 	id := info.Config.Labels["workbench.workspace"]
 	endpoint, ok := info.NetworkSettings.Networks[c.name(id)]
 	if !ok || net.ParseIP(endpoint.IPAddress) == nil {
 		return 0, nil, errors.New("workspace address unavailable")
 	}
-	req, e := http.NewRequestWithContext(ctx, method, "http://"+net.JoinHostPort(endpoint.IPAddress, "8080")+path, bytes.NewReader(b))
+	req, e := http.NewRequestWithContext(ctx, method, "http://"+net.JoinHostPort(endpoint.IPAddress, "8080")+path, body)
 	if e != nil {
 		return 0, nil, e
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+c.token(id, info.Config.Labels["workbench.generation"]))
-	resp, e := c.agentHTTP.Do(req)
+	resp, e := client.Do(req)
 	if e != nil {
 		return 0, nil, e
 	}
@@ -378,7 +382,7 @@ func (c *Controller) Handler() http.Handler {
 		Health: c.health, VerifyGrant: c.verify,
 		Start: c.start, Stop: c.stop, ForceStop: c.forceStop, Inspect: c.inspectWorkspace,
 		BindNetworkPolicy: protocol.BindNetworkPolicy(c.applyNetwork), Reconcile: c.reconcileNetwork, Capabilities: c.capabilities,
-		Proxy: c.proxy, Agent: protocol.BufferedAgent(c.proxyAgent),
+		Proxy: c.proxy, Agent: protocol.BufferedAgent(c.proxyAgent), UploadDataset: c.uploadDataset,
 		StartBodyLimit: 2048, AllowEmptyStart: true, ValidateAgentID: true, AgentNoStore: true,
 	})
 }
@@ -571,14 +575,24 @@ func (c *Controller) proxy(w http.ResponseWriter, r *http.Request, id, path, pre
 	shared.Proxy(w, r, "http://"+net.JoinHostPort(endpoint.IPAddress, "8080"), prefix+path, c.token(id, info.Config.Labels["workbench.generation"]))
 }
 
+func (c *Controller) uploadDataset(ctx context.Context, id, path string, body io.Reader) (int, []byte, *protocol.ControllerError) {
+	client := *c.agentHTTP
+	client.Timeout = shared.AnalysisUploadTimeout
+	return c.proxyAgentReader(ctx, id, http.MethodPost, path, body, &client)
+}
+
 func (c *Controller) proxyAgent(ctx context.Context, id, method, path string, body []byte) (int, []byte, *protocol.ControllerError) {
+	return c.proxyAgentReader(ctx, id, method, path, bytes.NewReader(body), c.agentHTTP)
+}
+
+func (c *Controller) proxyAgentReader(ctx context.Context, id, method, path string, body io.Reader, client *http.Client) (int, []byte, *protocol.ControllerError) {
 	c.mu.Lock()
 	info, e := c.inspect(ctx, id)
 	c.mu.Unlock()
 	if e != nil || !info.State.Running {
 		return 0, nil, protocol.Failure(503, "NOT_READY")
 	}
-	status, b, e := c.agent(ctx, info, method, path, body)
+	status, b, e := c.agentReader(ctx, info, method, path, body, client)
 	if e != nil {
 		return 0, nil, protocol.Failure(503, "WORKSPACE_UNAVAILABLE")
 	}

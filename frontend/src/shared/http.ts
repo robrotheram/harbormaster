@@ -1,4 +1,34 @@
 const messages: Record<string, string> = {
+  INVALID_DATASET:
+    "DuckDB could not read this file. Check the CSV or Parquet format.",
+  INVALID_DATASET_UPLOAD: "Choose a CSV or Parquet file of at most 1 GiB.",
+  DATASET_TOO_LARGE:
+    "The file exceeds the upload limit or remaining worker storage.",
+  ANALYSIS_STORAGE_LIMIT: "The worker has reached its analysis storage limit.",
+  ANALYSIS_UPLOAD_BUSY: "Another dataset upload is running on this worker.",
+  ANALYSIS_QUERY_BUSY:
+    "The worker is running another data query. Try again when it finishes.",
+  ANALYSIS_QUERY_TIMEOUT:
+    "The data query timed out. Try fewer columns or a smaller selection.",
+  ANALYSIS_QUERY_FAILED:
+    "The worker could not read these rows. Check the file and filter values.",
+  ANALYSIS_ENGINE_UNAVAILABLE: "This worker image lacks the analysis engine.",
+  ANALYSIS_UNKNOWN_FIELD: "A requested field is absent from this dataset.",
+  ANALYSIS_SCHEMA_TOO_WIDE:
+    "The dataset schema exceeds the worker's column or schema size limit.",
+  ANALYSIS_DATA_UNAVAILABLE: "The source data is unavailable on this worker.",
+  ANALYSIS_ARTIFACT_UNAVAILABLE:
+    "The visualization is unavailable on this worker.",
+  INVALID_VISUALIZATION_TITLE:
+    "Enter a title of 1 to 200 characters on one line.",
+  INVALID_VISUALIZATION_DESCRIPTION:
+    "Enter a description of 2,000 characters or fewer.",
+  INVALID_ANALYSIS_CURSOR:
+    "The page cursor expired or the query changed. Return to the first page.",
+  ANALYSIS_RESPONSE_TOO_LARGE:
+    "The response exceeds the transfer limit. Try fewer columns.",
+  ANALYSIS_ROW_TOO_WIDE:
+    "A row exceeds the transfer limit. Choose fewer columns.",
   PROJECT_ISOLATED_WORKERS_REQUIRED:
     "This deployment uses a shared worker across projects. Ask the operator to configure project-isolated workers before running or opening private output with project membership.",
   PROJECT_ADMIN_REQUIRED: "A project administrator must make this change.",
@@ -100,6 +130,10 @@ const messages: Record<string, string> = {
   DESKTOP_NOT_INSTALLED:
     "Desktop support is not installed in this worker image. Install the updated runtime before starting a desktop.",
   WORKSPACE_FILES_UNAVAILABLE: "Could not load files from this worker.",
+  REPORT_CHANGED:
+    "This report changed on the worker. Reopen it and apply your edits to the latest version.",
+  REPORT_SAVE_FAILED: "Could not save the report on this worker.",
+  INVALID_REPORT: "Use a Markdown report of up to 256 KiB.",
   WORKSPACE_FILE_TOO_LARGE: "Files larger than 1 MiB cannot be opened here.",
   APPLICATION_PORT_UNAVAILABLE:
     "The detected server is no longer listening. Start it again in the worker, then retry detection.",
@@ -299,16 +333,50 @@ export async function request<T>(
   body?: unknown,
   signal?: AbortSignal,
 ): Promise<T> {
-  const timeout = AbortSignal.timeout(body === undefined ? 15000 : 45000);
+  return send<T>(
+    path,
+    body === undefined
+      ? { method: "GET" }
+      : {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Workbench-Request": "1",
+          },
+          body: JSON.stringify(body),
+        },
+    body === undefined ? 15000 : 45000,
+    signal,
+  );
+}
+
+export function uploadFile<T>(path: string, file: File, signal: AbortSignal) {
+  return send<T>(
+    path,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "X-Workbench-Request": "1",
+      },
+      body: file,
+    },
+    600_000,
+    signal,
+  );
+}
+
+async function send<T>(
+  path: string,
+  init: RequestInit,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<T> {
+  const timeout = AbortSignal.timeout(timeoutMs);
   let response: Response;
   try {
     response = await fetch("/ui-api" + path, {
-      method: body === undefined ? "GET" : "POST",
-      headers:
-        body === undefined
-          ? {}
-          : { "Content-Type": "application/json", "X-Workbench-Request": "1" },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      ...init,
       cache: "no-store",
       redirect: "error",
       signal: signal ? AbortSignal.any([signal, timeout]) : timeout,

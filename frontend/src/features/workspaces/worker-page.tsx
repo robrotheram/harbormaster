@@ -1,3 +1,4 @@
+import { WorkerDatasets } from "@/features/analysis/worker-datasets";
 import { lazy, Suspense, useCallback, useState } from "react";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -27,10 +28,11 @@ const WorkerTerminal = lazy(() =>
 
 const workerRoute = "/projects/$projectId/workspaces/$workerId";
 const listRoute = "/projects/$projectId/$section";
-type Panel = "environment" | "settings" | "activity";
+type Panel = "environment" | "datasets" | "settings" | "activity";
 const panels = [
   [undefined, "Terminal"],
   ["environment", "Environment"],
+  ["datasets", "Datasets"],
   ["settings", "Settings"],
   ["activity", "Activity"],
 ] as const;
@@ -217,7 +219,7 @@ function WorkerDetail({
       </header>
       <nav
         aria-label="Worker sections"
-        className="grid grid-cols-[1fr_1.25fr_1fr_1fr] border-b sm:flex sm:gap-x-3"
+        className="grid grid-cols-[1fr_1.25fr_1fr_1fr_1fr] border-b sm:flex sm:gap-x-3"
       >
         {panels.map(([value, label]) => (
           <Link
@@ -262,6 +264,9 @@ function WorkerDetail({
             Start the worker to connect to its terminal.
           </section>
         ))}
+      {panel === "datasets" && (
+        <WorkerDatasets key={worker.id} worker={worker} project={project.id} />
+      )}
       {panel === "environment" && (
         <WorkerSetup workspace={worker} onSettings={openSettings} />
       )}

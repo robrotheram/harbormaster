@@ -35,6 +35,7 @@ type Backend struct {
 	Capabilities      func() RuntimeCapability
 	Proxy             func(http.ResponseWriter, *http.Request, string, string, string)
 	Agent             func(context.Context, string, string, string, io.Reader) (int, []byte, *ControllerError)
+	UploadDataset     func(context.Context, string, string, io.Reader) (int, []byte, *ControllerError)
 
 	StartBodyLimit  int64
 	AllowEmptyStart bool
@@ -158,7 +159,18 @@ func (b Backend) serveAgent(w http.ResponseWriter, r *http.Request) {
 	if query != "" {
 		path += "?" + query
 	}
-	status, out, failure := b.Agent(r.Context(), id, r.Method, path, body)
+	var status int
+	var out []byte
+	var failure *ControllerError
+	if strings.HasPrefix(path, shared.AnalysisUploadPath+"?") {
+		if b.UploadDataset == nil {
+			shared.Error(w, 503, "DATASET_UPLOAD_UNAVAILABLE")
+			return
+		}
+		status, out, failure = b.UploadDataset(r.Context(), id, path, body)
+	} else {
+		status, out, failure = b.Agent(r.Context(), id, r.Method, path, body)
+	}
 	if failure != nil {
 		shared.Error(w, failure.Status, failure.Code)
 		return

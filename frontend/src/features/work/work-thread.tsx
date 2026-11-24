@@ -1,3 +1,5 @@
+import { SavedVisualizations } from "@/features/analysis/saved-visualizations";
+import { WorkerDatasets } from "@/features/analysis/worker-datasets";
 import "@/features/delivery/review-feedback.css";
 import {
   AreaComments,
@@ -18,15 +20,22 @@ import { boardKey } from "@/features/delivery/board-api";
 import { useUserSession } from "@/features/auth/session";
 import { WorkspaceSettings } from "@/features/workspaces/settings";
 import { Responsibility, memberOptions } from "./responsibility";
-import { usePersonalWork, useLayoutPreference } from "./personal-work";
+import {
+  usePersonalWork,
+  useLayoutPreference,
+  type WorkEdit,
+} from "./personal-work";
 import { AgentSelection, type AgentModel } from "./agent-selection";
 import { Link, useSearch, useNavigate } from "@tanstack/react-router";
 import { replyOutputs } from "./reply-outputs";
 import { instructionOptions } from "./conversation-title";
 import { composerKeyDown } from "./composer-keydown";
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -39,14 +48,17 @@ import {
   ArrowUp,
   RotateCcw,
   CircleAlert,
+  Bookmark,
   Server,
   Play,
+  Database,
   FileText,
   Loader2,
   Square,
   Terminal,
   PanelRightOpen,
   MessageSquare,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -66,17 +78,22 @@ import { workspacesApi, workspaceOptions } from "@/features/workspaces/api";
 import type { HistoryRecord, Snapshot } from "@/features/history/history-api";
 import { resultOptions } from "@/features/tasks/api";
 import {
+  canContinueWork,
   workActions,
   workApi,
   workKeys,
+  workOptions,
   type Attempt,
   type WorkItem,
 } from "./api";
 import {
   activeAttempt,
+  historyAfter,
+  mergeRunHistory,
   runHistory,
   refreshRunHistory,
   userMessage,
+  watchRunHistory,
 } from "./conversation-api";
 import { WorkFiles } from "./work-files";
 import { WorkOutput, retainedVisuals } from "./work-output";
@@ -88,6 +105,13 @@ import {
 } from "./review-image";
 import { WorkPreview, type PreviewView } from "./work-preview";
 import { MessageContent, WorkspaceImage } from "./message-content";
+
+const activeRunPollInterval = 1000;
+const WorkReport = lazy(() =>
+  import("./work-report").then(({ WorkReport }) => ({
+    default: WorkReport,
+  })),
+);
 
 export function WorkConversation({
   project,
@@ -113,6 +137,8 @@ export function WorkConversation({
   const [earlier, setEarlier] = useState(false);
   const [previewView, setPreviewView] = useState<PreviewView>();
   const personal = usePersonalWork();
+  const revision = personal.editRevisions[id];
+  const { focusComposer } = personal;
   const route = useSearch({ strict: false });
   const navigate = useNavigate();
   const [layout, setLayout] = useLayoutPreference<string>("output", "closed");
@@ -185,19 +211,61 @@ export function WorkConversation({
       if (latestMessage) el?.focus({ preventScroll: true });
     });
   };
+  const showWorkspace = (
+    view: "workspace" | "datasets" | "saved" | "files" | "report",
+    latestRevision = false,
+  ) =>
+    navigate({
+      to: "/projects/$projectId/$section",
+      params: { projectId: project.id, section: "work" },
+      search: {
+        work: id,
+        attempt: latestRevision ? undefined : route.attempt,
+        view,
+      },
+    });
   const itemQuery = useQuery({
     queryKey: workKeys.detail(project.id, id),
     queryFn: ({ signal }) => workApi.detail(project.id, id, signal),
-    refetchInterval: 3000,
+    refetchInterval: ({ state }) =>
+      state.data && activeAttempt(state.data.state)
+        ? activeRunPollInterval
+        : 3000,
   });
   const attemptQuery = useQuery({
     queryKey: workKeys.attempts(project.id, id),
     queryFn: ({ signal }) => workApi.attempts(project.id, id, signal),
     enabled: !!itemQuery.data && !itemQuery.isError,
-    refetchInterval: 3000,
+    refetchInterval:
+      itemQuery.data && activeAttempt(itemQuery.data.state)
+        ? activeRunPollInterval
+        : 3000,
   });
   const workers = useQuery(workspaceOptions(project.id));
   const item = itemQuery.isError ? undefined : itemQuery.data;
+  const dataScience = item?.kind === "data-science";
+  const datasetsOpen =
+    dataScience && route.view === "datasets" && route.work === id;
+  const savedOpen = dataScience && route.view === "saved" && route.work === id;
+  const reportOpen =
+    dataScience && route.view === "report" && route.work === id;
+  const projectWork = useQuery({
+    ...workOptions(project.id),
+    enabled: savedOpen,
+    refetchInterval: false,
+  });
+  useEffect(() => {
+    if (
+      item?.id === id &&
+      !savedOpen &&
+      !datasetsOpen &&
+      !reportOpen &&
+      focusComposer.current === id
+    ) {
+      focusComposer.current = "";
+      composer.current?.focus();
+    }
+  }, [datasetsOpen, focusComposer, id, item?.id, reportOpen, savedOpen]);
   const attempts = attemptQuery.isError
     ? []
     : [...(attemptQuery.data || [])].sort((a, b) =>
@@ -220,7 +288,7 @@ export function WorkConversation({
   const [subscriptionSettings, setSubscriptionSettings] = useState(false);
   const [selection, setSelection] = useState<AgentModel>();
   const [move, setMove] = useState<{ work: string; worker: string }>();
-  const destination = move?.work === id ? move.worker : undefined;
+  const destination = !revision && move?.work === id ? move.worker : undefined;
   const alternateWorkers =
     workers.data?.filter(
       (candidate) =>
@@ -279,7 +347,13 @@ export function WorkConversation({
     trigger: HTMLElement;
   }>();
   const compiledImage = useRef<{ key: string; content: string }>(null);
+  const revisionInstruction = revision
+    ? "path" in revision
+      ? `Revise the Markdown report at ${JSON.stringify(revision.path)}. Apply the requested changes to that same file, preserve its visualization references unless asked to change them, and mention the report path in your reply.`
+      : `Revise saved visualization ${revision.artifact_id}. Read its specification with workbench-analysis artifact ${revision.artifact_id}. Apply the requested changes, register a new artifact ID on this worker, and embed the revised artifact in your reply.`
+    : "";
   const instructionText = [
+    revisionInstruction,
     message,
     areas.length
       ? "Apply the numbered changes in the attached annotated preview image.\n" +
@@ -295,6 +369,14 @@ export function WorkConversation({
     .join("\n\n");
   const messageTooLong =
     new TextEncoder().encode(instructionText).length > 16000;
+  function clearEditRevision() {
+    personal.setEditRevisions((old) => {
+      if (!old[id]) return old;
+      const next = { ...old };
+      delete next[id];
+      return next;
+    });
+  }
   function updateAreas(next: ReviewArea[]) {
     personal.setReviewAreas((old) => ({
       ...old,
@@ -334,6 +416,9 @@ export function WorkConversation({
         actionSequence,
         id,
         message,
+        revision:
+          revision &&
+          ("path" in revision ? revision.path : revision.artifact_id),
         selection,
         destination,
         areas: areaDraft?.key,
@@ -387,6 +472,7 @@ export function WorkConversation({
     onSuccess: async (_, action, submittedDraft) => {
       setActionSequence((v) => v + 1);
       if (action === "continue") {
+        clearEditRevision();
         setMove(undefined);
         setMessage("");
         personal.setReviewAreas((old) => {
@@ -456,22 +542,56 @@ export function WorkConversation({
         Loading conversation…
       </section>
     );
-  const canContinue =
-    !!item.latest_attempt_id &&
-    [
-      "planned",
-      "in_progress",
-      "changes_requested",
-      "completed",
-      "accepted",
-      "awaiting_review",
-      "failed",
-      "cancelled",
-    ].includes(item.state);
+  const canContinue = canContinueWork(item);
+  const revisionOnWorker =
+    !revision || item.workspace_id === revision.worker_id;
+  function startEditRevision(edit: WorkEdit) {
+    const sourceWorker = workers.data?.find(
+      (candidate) =>
+        candidate.id === edit.worker_id &&
+        candidate.project_id === project.id &&
+        !["STOPPING", "UNKNOWN"].includes(candidate.state),
+    );
+    if (!sourceWorker) return false;
+    const target =
+      canContinue &&
+      controlsAgent &&
+      !mutation.isPending &&
+      !attemptQuery.isError &&
+      item?.workspace_id === sourceWorker.id
+        ? item
+        : projectWork.data?.find(
+            (candidate) =>
+              candidate.id !== id &&
+              candidate.workspace_id === sourceWorker.id &&
+              candidate.kind === "data-science" &&
+              canContinueWork(candidate) &&
+              (local || (!!user && candidate.controller_id === user)),
+          );
+    if (!target) return false;
+    personal.setEditRevisions((old) => ({
+      ...old,
+      [target.id]: edit,
+    }));
+    focusComposer.current = target.id;
+    if (target.id === id) {
+      setMove(undefined);
+      void showWorkspace("workspace", true);
+    } else {
+      void navigate({
+        to: "/projects/$projectId/$section",
+        params: { projectId: project.id, section: "work" },
+        search: { work: target.id, view: "workspace" },
+      });
+    }
+    return true;
+  }
   const canSend =
     !running &&
     !mutation.isPending &&
     canContinue &&
+    revisionOnWorker &&
+    (!revision || (controlsAgent && !!message.trim())) &&
     (!destination || alternateWorkers.some((w) => w.id === destination)) &&
     !capturingArea &&
     !readingImage &&
@@ -668,34 +788,51 @@ export function WorkConversation({
               <Button
                 variant="ghost"
                 size="sm"
-                aria-pressed={!filesOpen}
+                aria-pressed={
+                  !filesOpen && !datasetsOpen && !savedOpen && !reportOpen
+                }
                 onClick={() => {
-                  if (filesOpen) {
-                    void navigate({
-                      to: "/projects/$projectId/$section",
-                      params: { projectId: project.id, section: "work" },
-                      search: {
-                        work: id,
-                        attempt: route.attempt,
-                        view: "workspace",
-                      },
-                    });
-                  } else setPreviewView("web");
+                  if (filesOpen || datasetsOpen || savedOpen || reportOpen) {
+                    void showWorkspace("workspace");
+                  } else if (!dataScience) setPreviewView("web");
                 }}
               >
-                <PanelRightOpen size={15} /> Preview
+                <PanelRightOpen size={15} />{" "}
+                {dataScience ? "Analysis" : "Preview"}
               </Button>
+              {dataScience && (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-pressed={savedOpen}
+                    onClick={() => void showWorkspace("saved")}
+                  >
+                    <Bookmark size={15} /> Saved
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-pressed={datasetsOpen}
+                    onClick={() => void showWorkspace("datasets")}
+                  >
+                    <Database size={15} /> Datasets
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-pressed={reportOpen}
+                    onClick={() => void showWorkspace("report")}
+                  >
+                    <FileText size={15} /> Report
+                  </Button>
+                </>
+              )}
               <Button
                 variant="ghost"
                 size="sm"
                 aria-pressed={filesOpen}
-                onClick={() =>
-                  void navigate({
-                    to: "/projects/$projectId/$section",
-                    params: { projectId: project.id, section: "work" },
-                    search: { work: id, attempt: route.attempt, view: "files" },
-                  })
-                }
+                onClick={() => void showWorkspace("files")}
               >
                 <FileText size={15} /> Files
               </Button>
@@ -844,6 +981,7 @@ export function WorkConversation({
                 action={a.id === latest?.id ? runAction : null}
                 onReply={a.id === fileAttempt?.id ? recordReply : undefined}
                 onAsk={selectElement}
+                saveVisualizations={dataScience}
                 onActivity={announceActivity}
                 onOlder={() => {
                   follow.current = false;
@@ -887,53 +1025,152 @@ export function WorkConversation({
         <section
           className="thread-workspace"
           aria-label="Task workspace"
-          hidden={!workspaceOpen || filesOpen}
+          hidden={
+            !workspaceOpen ||
+            filesOpen ||
+            datasetsOpen ||
+            savedOpen ||
+            reportOpen
+          }
         >
-          <WorkPreview
-            project={project.id}
-            workspace={item.workspace_id}
-            revision={
-              latest && !activeAttempt(latest.state) ? latest.id : undefined
-            }
-            view={previewView}
-            onViewChange={setPreviewView}
-            onSelection={selectElement}
-            output={
-              workspaceOpen && hasOutput && fileAttempt ? (
-                <WorkOutput
-                  key={fileAttempt.id}
-                  project={project.id}
-                  attempt={fileAttempt}
-                  sources={outputSources}
-                  files={visualFiles}
-                  onAsk={selectElement}
-                />
-              ) : undefined
-            }
-            renderReview={
-              workspaceOpen &&
-              !filesOpen &&
-              controlsAgent &&
-              !!latest &&
-              fileAttempt?.id === latest.id &&
-              !running &&
-              !attemptQuery.isError
-                ? ({ frame, origin, service }) => (
-                    <ReviewPreviewMarkup
-                      key={origin + service}
-                      frame={frame}
-                      origin={origin}
-                      service={service}
-                      areas={areas}
-                      disabled={mutation.isPending}
-                      onArea={(area) => updateAreas([...areas, area])}
-                      onBusy={setCapturingArea}
-                    />
-                  )
-                : undefined
-            }
-          />
+          {dataScience ? (
+            workspaceOpen &&
+            !filesOpen &&
+            !datasetsOpen &&
+            !savedOpen &&
+            !reportOpen && (
+              <div className="analysis-results min-w-0 space-y-4 px-4 py-5 sm:px-6">
+                {hasOutput && fileAttempt && (
+                  <WorkOutput
+                    key={fileAttempt.id}
+                    project={project.id}
+                    attempt={fileAttempt}
+                    sources={outputSources}
+                    files={visualFiles}
+                    onAsk={selectElement}
+                    saveVisualizations
+                  />
+                )}
+                {!hasOutput && (
+                  <p className="text-sm text-muted-foreground">
+                    Visualizations appear here when the agent shares them.
+                  </p>
+                )}
+              </div>
+            )
+          ) : (
+            <WorkPreview
+              project={project.id}
+              workspace={item.workspace_id}
+              revision={
+                latest && !activeAttempt(latest.state) ? latest.id : undefined
+              }
+              view={previewView}
+              onViewChange={setPreviewView}
+              onSelection={selectElement}
+              output={
+                workspaceOpen && hasOutput && fileAttempt ? (
+                  <WorkOutput
+                    key={fileAttempt.id}
+                    project={project.id}
+                    attempt={fileAttempt}
+                    sources={outputSources}
+                    files={visualFiles}
+                    onAsk={selectElement}
+                  />
+                ) : undefined
+              }
+              renderReview={
+                workspaceOpen &&
+                !filesOpen &&
+                controlsAgent &&
+                !!latest &&
+                fileAttempt?.id === latest.id &&
+                !running &&
+                !attemptQuery.isError
+                  ? ({ frame, origin, service }) => (
+                      <ReviewPreviewMarkup
+                        key={origin + service}
+                        frame={frame}
+                        origin={origin}
+                        service={service}
+                        areas={areas}
+                        disabled={mutation.isPending}
+                        onArea={(area) => updateAreas([...areas, area])}
+                        onBusy={setCapturingArea}
+                      />
+                    )
+                  : undefined
+              }
+            />
+          )}
         </section>
+        {savedOpen && (
+          <section
+            className="thread-workspace"
+            aria-label="Saved visualizations"
+          >
+            <SavedVisualizations
+              project={project.id}
+              onRevise={startEditRevision}
+              onCreate={
+                controlsAgent && canContinue && !mutation.isPending
+                  ? () => {
+                      clearEditRevision();
+                      focusComposer.current = id;
+                      void showWorkspace("workspace", true);
+                    }
+                  : undefined
+              }
+            />
+          </section>
+        )}
+        {datasetsOpen && dataScience && (
+          <section className="thread-workspace" aria-label="Datasets page">
+            <div className="min-w-0 space-y-4 px-4 py-5 sm:px-6">
+              <h2 className="text-lg font-semibold">Datasets</h2>
+              {worker ? (
+                <WorkerDatasets
+                  key={worker.id}
+                  worker={worker}
+                  project={project.id}
+                />
+              ) : (
+                <p role="status">The task worker is unavailable.</p>
+              )}
+            </div>
+          </section>
+        )}
+        {reportOpen && (
+          <section className="thread-workspace" aria-label="Report">
+            <Suspense
+              fallback={
+                <p role="status" className="p-4 text-sm">
+                  Loading reports…
+                </p>
+              }
+            >
+              <WorkReport
+                project={project.id}
+                work={item}
+                attempts={attempts}
+                pinnedAttempt={route.attempt}
+                loadingAttempts={
+                  attemptQuery.isPending && !!item.latest_attempt_id
+                }
+                reply={output}
+                replyAttempt={fileAttempt?.id}
+                key={`${id}:${item.workspace_id}:${route.attempt ?? ""}`}
+                canEdit={controlsAgent && !running}
+                onAskAgent={
+                  canContinue && !mutation.isPending
+                    ? startEditRevision
+                    : undefined
+                }
+              />
+            </Suspense>
+          </section>
+        )}
         {filesOpen && (
           <div className="thread-workspace">
             <WorkFiles
@@ -971,7 +1208,10 @@ export function WorkConversation({
         {workspaceOpen && runAction && (
           <div className="thread-workspace-recovery">{runAction}</div>
         )}
-        <div className="conversation-composer">
+        <div
+          className="conversation-composer"
+          hidden={datasetsOpen || savedOpen || reportOpen}
+        >
           {mutation.isError && mutation.variables !== "run" && (
             <>
               <ErrorNotice error={mutation.error} />
@@ -1028,6 +1268,37 @@ export function WorkConversation({
               Message to your agent
             </label>
             <div className="conversation-compose-input">
+              {revision && (
+                <div className="px-3 pt-2">
+                  <div className="flex w-fit max-w-full items-center gap-1 rounded-md border px-2 text-xs">
+                    <span className="min-w-0 truncate">
+                      Editing {revision.title}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-xs"
+                      aria-label={
+                        "path" in revision
+                          ? "Clear report edit"
+                          : "Clear visualization edit"
+                      }
+                      onClick={clearEditRevision}
+                      disabled={mutation.isPending}
+                    >
+                      <X />
+                    </Button>
+                  </div>
+                  {!revisionOnWorker && (
+                    <p
+                      role="status"
+                      className="pt-1 text-xs text-muted-foreground"
+                    >
+                      Open a task on the original worker to request this edit.
+                    </p>
+                  )}
+                </div>
+              )}
               <Textarea
                 ref={composer}
                 id="work-followup"
@@ -1042,11 +1313,15 @@ export function WorkConversation({
                 placeholder={
                   running
                     ? "Draft your next instruction…"
-                    : "Tell the agent what to do next…"
+                    : revision
+                      ? "Describe what to change…"
+                      : dataScience
+                        ? "Describe the visualization or analysis you want…"
+                        : "Tell the agent what to do next…"
                 }
                 disabled={!item.latest_attempt_id || mutation.isPending}
               />
-              {canContinue && alternateWorkers.length > 0 && (
+              {canContinue && !revision && alternateWorkers.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2 px-2 pb-2">
                   <NativeSelect
                     aria-label="Worker for next message"
@@ -1224,6 +1499,7 @@ function RunConversation({
   action,
   onLoad,
   onReply,
+  saveVisualizations,
 }: {
   project: string;
   attempt: Attempt;
@@ -1233,36 +1509,58 @@ function RunConversation({
   onOlder: () => void;
   onAsk: (message: string) => void;
   onActivity: () => void;
+  saveVisualizations: boolean;
 }) {
   const [older, setOlder] = useState<HistoryRecord[]>([]);
   const [cursor, setCursor] = useState<number>();
+  const [live, setLive] = useState(false);
   const observed = useRef<Snapshot | undefined>(undefined);
+  const { id, work_item_id, workspace_id, task_id, state } = attempt;
+  const run = useMemo(
+    () => ({ id, work_item_id, workspace_id, task_id }),
+    [id, work_item_id, workspace_id, task_id],
+  );
+  const client = useQueryClient();
+  const historyKey = useMemo(
+    () => ["project", project, "work-conversation", workspace_id, id, state],
+    [project, workspace_id, id, state],
+  );
+  const active = activeAttempt(state);
   const history = useQuery({
     ...privateContentOptions,
-    queryKey: [
-      "project",
-      project,
-      "work-conversation",
-      attempt.workspace_id,
-      attempt.id,
-      attempt.state,
-    ],
+    queryKey: historyKey,
     queryFn: async ({ signal }) => {
-      const value = await refreshRunHistory(
-        project,
-        attempt,
-        observed.current,
-        signal,
-      );
-      if (!signal.aborted) observed.current = value;
-      return value;
+      const previous = observed.current;
+      const value = await refreshRunHistory(project, run, previous, signal);
+      if (signal.aborted) return value;
+      observed.current =
+        previous === observed.current
+          ? value
+          : mergeRunHistory(observed.current, value);
+      return observed.current;
     },
-    enabled: !!attempt.task_id,
+    enabled: !!task_id,
     refetchInterval: (query) =>
-      activeAttempt(attempt.state) || query.state.data?.page.next_after
-        ? 2000
+      !live && (active || query.state.data?.page.next_after)
+        ? activeRunPollInterval
         : false,
   });
+  const canStream =
+    active && !!task_id && history.isSuccess && !history.data?.cache;
+  useEffect(() => {
+    setLive(false);
+    if (!canStream || typeof EventSource === "undefined") return;
+    return watchRunHistory(
+      project,
+      run,
+      historyAfter(observed.current) ?? 0,
+      setLive,
+      (page) => {
+        observed.current = mergeRunHistory(observed.current, page);
+        client.setQueryData(historyKey, observed.current);
+      },
+    );
+  }, [canStream, client, historyKey, project, run]);
   const more = useMutation({
     mutationFn: () =>
       runHistory(project, attempt, cursor ?? history.data!.page.next_before),
@@ -1285,11 +1583,21 @@ function RunConversation({
       onActivity();
     lastSequence.current = newestSequence;
   }, [newestSequence, onActivity]);
-  const records = [
+  const combinedRecords = [
     ...new Map(
       [...older, ...(history.data?.page.records || [])].map((r) => [r.id, r]),
     ).values(),
   ].sort((a, b) => a.seq - b.seq);
+  const replyTexts = new Set(
+    combinedRecords
+      .filter((record) => record.kind === "assistant.message")
+      .map((record) => record.content?.trim()),
+  );
+  const records = combinedRecords.filter(
+    (record) =>
+      record.kind !== "assistant.progress" ||
+      !replyTexts.has(record.content?.trim()),
+  );
   const result = useQuery(
     resultOptions(
       project,
@@ -1367,7 +1675,8 @@ function RunConversation({
               : undefined;
           if (
             record.kind === "user.message" ||
-            record.kind === "assistant.message"
+            record.kind === "assistant.message" ||
+            record.kind === "assistant.progress"
           )
             return (
               <article
@@ -1407,6 +1716,7 @@ function RunConversation({
                       project={project}
                       attempt={attempt}
                       onAsk={onAsk}
+                      saveVisualizations={saveVisualizations}
                     />
                   )}
                 </div>
@@ -1475,6 +1785,7 @@ function RunConversation({
               project={project}
               attempt={attempt}
               onAsk={onAsk}
+              saveVisualizations={saveVisualizations}
             />
           </div>
           {!attempt.error_code && action}

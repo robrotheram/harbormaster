@@ -131,6 +131,26 @@ func TestT3HistoryNativeIDBoundary(t *testing.T) {
 	}
 }
 
+func TestCodexProgressRecordsCompletedMessagesWithRedaction(t *testing.T) {
+	m, err := New(Config{ID: "ws_history", HomeID: "home_test", DataDir: t.TempDir(), Token: "test-secret"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	m.captureHistoryLine("codex", "task_test", []byte(`{"type":"item.updated","item":{"id":"item_1","type":"agent_message","text":"partial"}}`))
+	message := []byte(`{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"Progress test-secret"}}`)
+	m.captureHistoryLine("codex", "task_test", message)
+	m.captureHistoryLine("codex", "task_test", message)
+	page := readHistoryTest(t, m, "episode=task_test")
+	if len(page.Records) != 1 {
+		t.Fatal("unexpected progress records", len(page.Records))
+	}
+	got := page.Records[0]
+	if got.Kind != "assistant.progress" || !got.Redacted || got.Content != "Progress [REDACTED]" {
+		t.Fatal("unexpected progress record", got.Kind, got.Redacted)
+	}
+}
+
 type historyRoundTrip func(*http.Request) (*http.Response, error)
 
 func (fn historyRoundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return fn(r) }

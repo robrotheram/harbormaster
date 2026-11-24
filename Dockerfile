@@ -69,9 +69,11 @@ RUN --mount=type=cache,target=/root/.npm npm ci --prefix /opt/workspace-tools --
     useradd -m -u 10001 workbench && mkdir -p /data/files && chown -R 10001:10001 /data
 
 FROM workspace-tools AS workspace-base
-RUN apt-get update && apt-get install -y --no-install-recommends xvfb fluxbox x11vnc novnc websockify xterm x11-utils fonts-dejavu-core && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends xvfb fluxbox x11vnc novnc websockify xterm x11-utils fonts-dejavu-core python3-venv && rm -rf /var/lib/apt/lists/*
+RUN --mount=type=cache,target=/root/.cache/pip python3 -m venv /opt/workbench-analysis && \
+    /opt/workbench-analysis/bin/python -m pip install --only-binary=:all: duckdb==1.5.4
 COPY --from=workspace-build /out/workbench-tools /usr/local/bin/workbench-tools
-RUN ln -s workbench-tools /usr/local/bin/workbench-desktop && ln -s workbench-tools /usr/local/bin/workbench-preview
+RUN ln -s workbench-tools /usr/local/bin/workbench-desktop && ln -s workbench-tools /usr/local/bin/workbench-preview && ln -s workbench-tools /usr/local/bin/workbench-analysis
 COPY --from=workspace-build /out/service /usr/local/bin/service
 COPY --from=workspace-build /out/healthcheck /usr/local/bin/healthcheck
 COPY --from=workspace-build /out/workspace-mcp /usr/local/bin/workspace-mcp

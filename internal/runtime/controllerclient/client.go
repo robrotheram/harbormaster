@@ -84,13 +84,23 @@ func (c *Client) MatrixCredentialPresent(ctx context.Context, id string) bool {
 	return err == nil && status == 200 && json.Unmarshal(b, &out) == nil && out.Configured
 }
 func (c *Client) do(ctx context.Context, method, path string, body []byte) (int, []byte, error) {
-	r, e := http.NewRequestWithContext(ctx, method, c.URL+path, bytes.NewReader(body))
+	return c.doReader(ctx, method, path, bytes.NewReader(body), c.HTTP)
+}
+
+func (c *Client) UploadDataset(ctx context.Context, id, path string, body io.Reader) (int, []byte, error) {
+	client := *c.HTTP
+	client.Timeout = shared.AnalysisUploadTimeout
+	return c.doReader(ctx, http.MethodPost, "/v1/workspaces/"+id+"/agent"+path, body, &client)
+}
+
+func (c *Client) doReader(ctx context.Context, method, path string, body io.Reader, client *http.Client) (int, []byte, error) {
+	r, e := http.NewRequestWithContext(ctx, method, c.URL+path, body)
 	if e != nil {
 		return 0, nil, e
 	}
 	r.Header.Set("Authorization", "Bearer "+c.Token)
 	r.Header.Set("Content-Type", "application/json")
-	resp, e := c.HTTP.Do(r)
+	resp, e := client.Do(r)
 	if e != nil {
 		return 0, nil, e
 	}

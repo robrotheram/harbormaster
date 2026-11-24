@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
+import { readFile } from "node:fs/promises";
 
 async function previewTool(page: Page, name: string) {
   await page
@@ -39,6 +40,8 @@ async function conversationFixture(page: Page) {
     request: "Investigate the experiment.",
     reply: "All four tests passed. The report is ready.",
     connects: 0,
+    report:
+      "# Results\nAll four tests passed.\n<script>window.untrusted=true</script>",
   };
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
@@ -215,7 +218,7 @@ async function conversationFixture(page: Page) {
       });
     if (path.includes("/artifacts/"))
       return route.fulfill({
-        body: "# Results\nAll four tests passed.\n<script>window.untrusted=true</script>",
+        body: state.report,
         contentType: "application/octet-stream",
       });
     if (path.endsWith("/history")) {
@@ -293,6 +296,7 @@ test("starts work, shows live tools, inspects files, accepts, and sends changes 
     .selectOption(JSON.stringify(["claude", "chosen-model"]));
   await page.getByText("Keep specific output files", { exact: true }).click();
   await page.getByLabel("Retained output paths").fill("outputs/report.md");
+  await page.getByLabel("Work type").selectOption("software");
   await page.getByRole("button", { name: "Start work", exact: true }).click();
   await expect(page).toHaveURL(/work=work_one/);
   expect(
@@ -1284,6 +1288,53 @@ test("thread titles refresh when a follow-up changes the saved request", async (
   expect(f.errors).toEqual([]);
 });
 
+test("shows streamed progress before work ends and falls back to recorded history", async ({
+  page,
+}) => {
+  const f = await conversationFixture(page);
+  f.state.exists = true;
+  const attempt = f.addRun();
+  const progress = "I’m checking the recorded results.";
+  await page.route("**/history/events?*", (route) => {
+    expect(new URL(route.request().url()).searchParams.get("after")).toBe("2");
+    const data = {
+      project_id: "A",
+      workspace_id: attempt.workspace_id,
+      page: {
+        records: [
+          {
+            id: "hist_progress",
+            seq: 3,
+            episode_id: attempt.task_id,
+            at: attempt.created_at,
+            captured_at: attempt.created_at,
+            source: "codex",
+            kind: "assistant.progress",
+            content: progress,
+            capture_scope: "live",
+          },
+        ],
+        schema_version: 1,
+        next_before: 0,
+        high_watermark: 3,
+        bytes_used: 100,
+        capture_limited: false,
+      },
+    };
+    return route.fulfill({
+      contentType: "text/event-stream",
+      body: `id: 3\nevent: history\ndata: ${JSON.stringify(data)}\n\nevent: unavailable\ndata: {}\n\n`,
+    });
+  });
+  await page.goto("/app/projects/A/work?work=work_one");
+  await expect(page.getByText(progress, { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Stop task" })).toBeVisible();
+  f.finish();
+  await expect(page.getByText(f.state.reply, { exact: true })).toBeVisible();
+  await expect(page.getByText(progress, { exact: true })).toHaveCount(1);
+  expect(f.errors).toEqual([]);
+});
+
 test("reading older activity preserves position and only new records announce new activity", async ({
   page,
 }) => {
@@ -1714,6 +1765,7 @@ test("new work explains byte and output-file limits without submitting or losing
   await expect(message).toHaveValue("Review the source and save a report.");
   await outputs.fill("outputs/report.md");
   await expect(page.getByRole("alert")).toHaveCount(0);
+  await page.getByLabel("Work type").selectOption("research");
   await expect(start).toBeEnabled();
   expect(fixture.posts).toEqual([]);
 });
@@ -1777,6 +1829,7 @@ test("worker catalog supplies models and restores the worker default", async ({
   await page
     .getByLabel("Message to your agent")
     .fill("Use the worker configuration.");
+  await page.getByLabel("Work type").selectOption("software");
   await page.getByRole("button", { name: "Start work", exact: true }).click();
   await expect(page).toHaveURL(/work=work_one/);
   expect(
@@ -2403,4 +2456,1360 @@ test("reads a stopped worker's cached conversation and sends the next message to
     )
     .toBe("ws_two");
   expect(f.posts.some((post) => post.path.endsWith("/start"))).toBe(false);
+});
+
+test("uploads worker data and sends only paginated preview requests", async ({
+  page,
+}) => {
+  await conversationFixture(page);
+  const dataset = {
+    dataset_id: "dataset_sensor",
+    name: "sensor.csv",
+    format: "csv",
+    size_bytes: 20,
+    sha256: "c".repeat(64),
+  };
+  let uploaded = false;
+  const previews: Record<string, unknown>[] = [];
+  await page.route("**/workspaces/ws_one/analysis/**", async (route) => {
+    const req = route.request();
+    const url = new URL(req.url());
+    expect(url.searchParams.get("project_id")).toBe("A");
+    if (url.pathname.endsWith("/upload")) {
+      expect(url.searchParams.get("name")).toBe("sensor.csv");
+      expect(req.headers()["content-type"]).toBe("application/octet-stream");
+      expect(req.postData()).toBe("x,y\n2,3\n1,4");
+      uploaded = true;
+      return route.fulfill({ status: 201, json: dataset });
+    }
+    const columns = [
+      { name: "x", type: "BIGINT" },
+      { name: "y", type: "BIGINT" },
+    ];
+    if (url.pathname.endsWith("/schema"))
+      return route.fulfill({ json: { ...dataset, columns } });
+    if (url.pathname.endsWith("/preview")) {
+      const query = req.postDataJSON();
+      previews.push(query);
+      const more = !query.cursor && !query.filters;
+      return route.fulfill({
+        json: {
+          columns,
+          rows: query.cursor ? [[1, 4]] : [[2, 3]],
+          has_more: more,
+          next_cursor: more ? "cursor-2" : null,
+          truncated: false,
+          sampled: false,
+        },
+      });
+    }
+    return route.fulfill({ json: { items: uploaded ? [dataset] : [] } });
+  });
+  await page.goto("/app/projects/A/workspaces/ws_one?panel=datasets");
+  await page.getByLabel("CSV or Parquet file").setInputFiles({
+    name: "sensor.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from("x,y\n2,3\n1,4"),
+  });
+  await page.getByRole("button", { name: "Upload dataset" }).click();
+  await expect(page.getByRole("table")).toContainText("BIGINT");
+  await page.getByRole("button", { name: "Next", exact: true }).click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Page 2" }),
+  ).toBeVisible();
+  await expect(page.getByRole("table")).toContainText("4");
+  await page.getByRole("button", { name: "x", exact: true }).click();
+  await expect(page.getByRole("columnheader", { name: /^x/ })).toHaveAttribute(
+    "aria-sort",
+    "ascending",
+  );
+  await page.getByLabel("Filter column").selectOption("x");
+  await page.getByLabel("Value", { exact: true }).fill("2");
+  await page.getByRole("button", { name: "Apply filter" }).click();
+  await expect
+    .poll(() => previews.at(-1))
+    .toEqual({
+      limit: 100,
+      sort: [{ field: "x", direction: "asc" }],
+      filters: [{ field: "x", op: "contains", value: "2" }],
+    });
+});
+
+test("renders the same worker chart in a reply and a report, then handles missing worker data", async ({
+  page,
+}) => {
+  const f = await conversationFixture(page);
+  f.state.exists = true;
+  const fence = "```harbormaster-visualization\nchart_anomaly\n```";
+  f.state.reply = "The tail contains anomalous readings.\n\n" + fence;
+  f.state.report =
+    "# Sensor investigation\n\n```harbormaster-visualization\nws_one/chart_anomaly\n```";
+  f.addRun();
+  f.finish();
+  let workerExists = true;
+  await page.route(
+    "**/workspaces/ws_one/analysis/artifacts/chart_anomaly**",
+    async (route) => {
+      const url = new URL(route.request().url());
+      expect(url.searchParams.get("project_id")).toBe("A");
+      if (!workerExists)
+        return route.fulfill({
+          status: 404,
+          json: { code: "NOT_FOUND_OR_FORBIDDEN" },
+        });
+      if (url.pathname.endsWith("/data")) {
+        expect(route.request().postDataJSON()).toEqual({});
+        return route.fulfill({
+          json: {
+            columns: [
+              { name: "bin", type: "BIGINT" },
+              { name: "count", type: "BIGINT" },
+            ],
+            rows: [
+              [0, 108],
+              [10, 2],
+            ],
+            next_cursor: null,
+            has_more: false,
+            truncated: false,
+            sampled: false,
+          },
+        });
+      }
+      return route.fulfill({
+        json: {
+          schema_version: "1.0",
+          artifact_id: "chart_anomaly",
+          type: "chart",
+          title: "Sensor anomaly histogram",
+          data: { source_type: "query_result", reference: "result_bins" },
+          visualization: {
+            chart_type: "histogram",
+            encoding: {
+              x: { field: "bin", type: "quantitative" },
+              y: { field: "count", type: "quantitative" },
+            },
+          },
+        },
+      });
+    },
+  );
+  await page.goto("/app/projects/A/work?work=work_one");
+  const chart = page.getByRole("region", { name: "Sensor anomaly histogram" });
+  await expect(chart.locator("svg")).toBeVisible();
+  await conversationTool(page, "Files");
+  const files = page.getByRole("region", { name: "Task files" });
+  await files
+    .getByRole("button", { name: "outputs/report.md", exact: true })
+    .click();
+  await files.getByRole("button", { name: "Rendered", exact: true }).click();
+  await expect(
+    files
+      .getByRole("region", { name: "Sensor anomaly histogram" })
+      .locator("svg"),
+  ).toBeVisible();
+  workerExists = false;
+  await page.reload();
+  await conversationTool(page, "Files");
+  await files
+    .getByRole("button", { name: "outputs/report.md", exact: true })
+    .click();
+  await files.getByRole("button", { name: "Rendered", exact: true }).click();
+  await expect(
+    files.getByRole("heading", { name: "Sensor investigation" }),
+  ).toBeVisible();
+  await expect(files.getByText(/^Worker data is unavailable/)).toBeVisible();
+  expect(f.errors).toEqual([]);
+});
+
+for (const compatibility of [false, true]) {
+  test(`draws geographic and Cartesian point artifacts${compatibility ? " with compatibility heatmaps" : ""}`, async ({
+    playwright,
+    baseURL,
+  }) => {
+    const browser = await playwright.chromium.launch({
+      args: ["--enable-unsafe-swiftshader", "--use-angle=swiftshader"],
+    });
+    try {
+      const page = await browser.newPage({ baseURL });
+      if (compatibility) {
+        await page.addInitScript(() => {
+          const getExtension = WebGL2RenderingContext.prototype.getExtension;
+          WebGL2RenderingContext.prototype.getExtension = function (
+            name: string,
+          ) {
+            return name === "EXT_float_blend"
+              ? null
+              : getExtension.call(this, name);
+          };
+        });
+      }
+      const f = await conversationFixture(page);
+      f.state.exists = true;
+      f.state.reply =
+        "Coordinate checks\n\n```harbormaster-visualization\ngeo_map\n```\n\n```harbormaster-visualization\ngeo_xy\n```\n\n```harbormaster-visualization\ngeo_heat\n```";
+      f.addRun();
+      f.finish();
+      await page.route(
+        "**/workspaces/ws_one/analysis/artifacts/geo_**",
+        async (route) => {
+          const url = new URL(route.request().url());
+          const heatmap = url.pathname.includes("geo_heat");
+          const geographic = heatmap || url.pathname.includes("geo_map");
+          if (url.pathname.endsWith("/data"))
+            return route.fulfill({
+              json: {
+                columns: [
+                  { name: "x", type: "DOUBLE" },
+                  { name: "y", type: "DOUBLE" },
+                  { name: "sensor", type: "VARCHAR" },
+                ],
+                rows: geographic
+                  ? [
+                      [-0.12, 51.5, "Above Ground"],
+                      [-0.115, 51.502, "Ground Plane"],
+                    ]
+                  : [[451000, 120000, "Sensor A"]],
+                next_cursor: null,
+                has_more: true,
+                truncated: false,
+                sampled: true,
+              },
+            });
+          return route.fulfill({
+            json: {
+              schema_version: "1.0",
+              artifact_id: heatmap
+                ? "geo_heat"
+                : geographic
+                  ? "geo_map"
+                  : "geo_xy",
+              type: "geo",
+              title: heatmap
+                ? "Observation density"
+                : geographic
+                  ? "Geographic map"
+                  : "Cartesian display",
+              data: { source_type: "dataset", reference: "dataset_coords" },
+              visualization: {
+                geometry: "point",
+                ...(heatmap ? { layer: "heatmap", radius_px: 48 } : {}),
+                coordinate_system: geographic
+                  ? { type: "geographic", crs: "EPSG:4326" }
+                  : { type: "cartesian" },
+                encoding: heatmap
+                  ? { x: "x", y: "y", group: "sensor" }
+                  : { x: "x", y: "y", color: "sensor" },
+                view: {
+                  mode: geographic ? "map" : "cartesian",
+                  auto_fit: true,
+                },
+              },
+            },
+          });
+        },
+      );
+      const provider = "https://tiles.openfreemap.org";
+      let tileRequests = 0;
+      let online = true;
+      await page.route(`${provider}/**`, (route) => {
+        if (!online) return route.abort("internetdisconnected");
+        if (route.request().url().endsWith("/styles/positron")) {
+          return route.fulfill({
+            json: {
+              version: 8,
+              sources: {
+                streets: {
+                  type: "raster",
+                  tiles: [`${provider}/fixture/{z}/{x}/{y}.png`],
+                  attribution: "Fixture street tiles",
+                },
+              },
+              layers: [{ id: "streets", type: "raster", source: "streets" }],
+            },
+          });
+        }
+        tileRequests++;
+        return route.fulfill({
+          contentType: "image/png",
+          body: Buffer.from(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNYsGABAAPEAeGUtBWxAAAAAElFTkSuQmCC",
+            "base64",
+          ),
+        });
+      });
+      await page.goto("/app/projects/A/work?work=work_one");
+      const map = page.getByRole("region", { name: "Geographic map" });
+      await expect(map.locator(".maplibregl-canvas")).toBeVisible();
+      await expect.poll(() => tileRequests).toBeGreaterThan(0);
+      await expect(map.locator(".maplibregl-ctrl-attrib")).toContainText(
+        "Fixture street tiles",
+      );
+      await expect(
+        map.getByRole("button", { name: "Show detailed tiles" }),
+      ).toHaveCount(0);
+      await expect(map.getByText("Showing a sample of 2 rows.")).toBeVisible();
+      await map.getByRole("button", { name: "Zoom in" }).click();
+
+      const layers = map.getByRole("group", { name: "Map layers" });
+      const aboveGround = layers.getByRole("checkbox", {
+        name: "Above Ground",
+      });
+      const groundPlane = layers.getByRole("checkbox", {
+        name: "Ground Plane",
+      });
+      const canvas = await map.locator(".maplibregl-canvas").elementHandle();
+      await expect(aboveGround).toBeChecked();
+      await aboveGround.uncheck();
+      await expect(groundPlane).toBeChecked();
+      await expect(aboveGround).not.toBeChecked();
+      expect(
+        await map
+          .locator(".maplibregl-canvas")
+          .evaluate((node, old) => node === old, canvas),
+      ).toBe(true);
+
+      const xy = page.getByRole("region", { name: "Cartesian display" });
+      await expect(xy.locator("canvas")).toBeVisible();
+      await expect(xy.locator(".maplibregl-canvas")).toHaveCount(0);
+      await expect(async () => {
+        await xy.locator("canvas").click();
+        await expect(xy.getByText("Sensor A", { exact: true })).toBeVisible({
+          timeout: 1000,
+        });
+      }).toPass({ timeout: 10000 });
+      const density = page.getByRole("region", { name: "Observation density" });
+      await expect(density.locator(".maplibregl-canvas")).toBeVisible();
+      const densityLayers = density.getByRole("group", { name: "Map layers" });
+      await expect(
+        densityLayers.getByRole("checkbox", { name: "Above Ground" }),
+      ).toBeChecked();
+      await densityLayers
+        .getByRole("checkbox", { name: "Ground Plane" })
+        .uncheck();
+      await expect(
+        densityLayers.getByRole("checkbox", { name: "Above Ground" }),
+      ).toBeChecked();
+      await expect(density.locator(".maplibregl-ctrl-attrib")).toContainText(
+        "Fixture street tiles",
+      );
+      await expect(
+        density.getByText(
+          /Using the compatibility heatmap renderer|Density is scaled separately|EPSG:4326/,
+        ),
+      ).toHaveCount(0);
+      online = false;
+      await page.reload();
+      await expect(
+        map.getByText(
+          "Detailed tiles are unavailable. Showing the offline map.",
+        ),
+      ).toBeVisible();
+      await expect(map.locator(".maplibregl-ctrl-attrib")).toContainText(
+        "Natural Earth",
+      );
+      expect(f.errors).toEqual([]);
+    } finally {
+      await browser.close();
+    }
+  });
+}
+
+test("analysis renders chart colors and pie percentages", async ({ page }) => {
+  const f = await conversationFixture(page);
+  f.state.exists = true;
+  const specs = {
+    chart_fur: {
+      title: "Fur color observations",
+      visualization: {
+        chart_type: "bar",
+        encoding: {
+          x: { field: "category", type: "nominal" },
+          y: { field: "count", type: "quantitative" },
+        },
+        style: {
+          category_colors: { Cinnamon: "#d98d59" },
+          gridlines: { y: false },
+        },
+      },
+    },
+    chart_line: {
+      title: "Observations over time",
+      visualization: {
+        chart_type: "line",
+        encoding: {
+          x: { field: "category", type: "nominal" },
+          y: { field: "count", type: "quantitative", label: "Observations" },
+        },
+        style: { series_colors: { Observations: "#678fdd" } },
+      },
+    },
+    chart_share: {
+      title: "Share of observations by fur color",
+      visualization: {
+        chart_type: "pie",
+        encoding: { category: "category", value: "count" },
+        style: { category_colors: { Cinnamon: "#d98d59" } },
+      },
+    },
+  };
+  f.state.reply = Object.keys(specs)
+    .map((id) => "```harbormaster-visualization\n" + id + "\n```")
+    .join("\n\n");
+  f.addRun();
+  f.finish();
+  await page.route(
+    "**/workspaces/ws_one/analysis/artifacts/chart_**",
+    (route) => {
+      const path = new URL(route.request().url()).pathname.split("/");
+      const data = path.at(-1) === "data";
+      const id = path.at(data ? -2 : -1) as keyof typeof specs;
+      return route.fulfill({
+        json: data
+          ? {
+              columns: [
+                { name: "category", type: "VARCHAR" },
+                { name: "count", type: "BIGINT" },
+              ],
+              rows: [
+                ["Cinnamon", 20],
+                ["Gray", 80],
+              ],
+              next_cursor: null,
+              has_more: false,
+              sampled: false,
+              truncated: false,
+            }
+          : {
+              schema_version: "1.0",
+              artifact_id: id,
+              type: "chart",
+              data: { source_type: "query_result", reference: "result_counts" },
+              ...specs[id],
+            },
+      });
+    },
+  );
+  await page.goto("/app/projects/A/work?work=work_one");
+  const bars = page.getByRole("region", { name: specs.chart_fur.title });
+  await expect(bars.locator("svg path[fill='#d98d59']")).toBeVisible();
+  const line = page.getByRole("region", { name: specs.chart_line.title });
+  await expect(
+    line.locator("svg path[stroke='#678fdd']").first(),
+  ).toBeVisible();
+  const pie = page.getByRole("region", { name: specs.chart_share.title });
+  await expect(pie.locator("svg path[fill='#d98d59']").first()).toBeVisible();
+  await expect(pie.getByText("80%", { exact: true })).toBeVisible();
+  const label = bars.getByText("Cinnamon", { exact: true });
+  await expect(label).toHaveAttribute("fill", "#b4becd");
+  await page.getByRole("button", { name: "Switch to light theme" }).click();
+  await expect(label).toHaveAttribute("fill", "#4e5b6c");
+  expect(f.errors).toEqual([]);
+});
+
+test("saved visualizations remain available when a new analysis replaces the output", async ({
+  page,
+}) => {
+  const f = await conversationFixture(page);
+  f.item.kind = "data-science";
+  f.state.exists = true;
+  f.state.reply = "```harbormaster-visualization\nchart_original\n```";
+  f.addRun();
+  f.finish();
+  const titles: Record<string, string> = {
+    chart_original: "Original temperature chart",
+    chart_followup: "Follow-up temperature chart",
+  };
+  const saves = new Set<string>();
+  const customDetails = new Map<
+    string,
+    { title?: string; description?: string }
+  >();
+  await page.route("**/projects/A/analysis/saved-visualizations", (route) => {
+    if (route.request().method() === "POST") {
+      const { worker_id, artifact_id, saved, title, description } = route
+        .request()
+        .postDataJSON();
+      expect(worker_id).toBe("ws_one");
+      expect(titles[artifact_id]).toBeDefined();
+      if (typeof title === "string" || typeof description === "string") {
+        expect(saved).toBeUndefined();
+        const changed = {
+          ...customDetails.get(artifact_id),
+          ...(typeof title === "string" ? { title } : {}),
+          ...(typeof description === "string" ? { description } : {}),
+        };
+        customDetails.set(artifact_id, changed);
+        return route.fulfill({ json: { worker_id, artifact_id, ...changed } });
+      }
+      if (saved) saves.add(artifact_id);
+      else saves.delete(artifact_id);
+      return route.fulfill({ json: { saved } });
+    }
+    return route.fulfill({
+      json: {
+        items: [...saves].reverse().map((id) => ({
+          worker_id: "ws_one",
+          artifact_id: id,
+          title: customDetails.get(id)?.title ?? titles[id],
+          type: "chart",
+        })),
+        titles: [...customDetails].map(([artifact_id, changes]) => ({
+          worker_id: "ws_one",
+          artifact_id,
+          ...changes,
+        })),
+      },
+    });
+  });
+  let sourceAvailable = true;
+  await page.route(
+    "**/workspaces/ws_one/analysis/artifacts/chart_**",
+    (route) => {
+      const path = new URL(route.request().url()).pathname.split("/");
+      const data = path.at(-1) === "data";
+      const id = path.at(data ? -2 : -1)!;
+      if (id === "chart_original" && !sourceAvailable)
+        return route.fulfill({
+          status: 404,
+          json: { code: "NOT_FOUND_OR_FORBIDDEN" },
+        });
+      return route.fulfill({
+        json: data
+          ? {
+              columns: [
+                { name: "x", type: "DOUBLE" },
+                { name: "y", type: "DOUBLE" },
+              ],
+              rows: [
+                [1, 10],
+                [2, 12],
+              ],
+              next_cursor: null,
+              has_more: false,
+              truncated: false,
+              sampled: false,
+            }
+          : {
+              schema_version: "1.0",
+              artifact_id: id,
+              type: "chart",
+              title: titles[id],
+              description: "Agent description.",
+              data: {
+                source_type: "query_result",
+                reference: "result_temperature",
+              },
+              visualization: {
+                chart_type: "line",
+                encoding: {
+                  x: { field: "x", type: "quantitative" },
+                  y: { field: "y", type: "quantitative" },
+                },
+              },
+            },
+      });
+    },
+  );
+
+  await page.goto("/app/projects/A/work?work=work_one&view=workspace");
+  const editDetails = page
+    .getByRole("region", { name: titles.chart_original })
+    .getByRole("button", { name: "Edit visualization details" });
+  const dialog = page.getByRole("dialog", {
+    name: "Edit visualization details",
+  });
+  const input = dialog.getByRole("textbox", { name: "Title" });
+  const description = dialog.getByRole("textbox", { name: "Description" });
+  await editDetails.click();
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue(titles.chart_original);
+  await input.fill("Discard this edit");
+  await input.press("Escape");
+  await expect(editDetails).toBeFocused();
+  await editDetails.click();
+  await expect(input).toHaveValue(titles.chart_original);
+  await expect(description).toHaveValue("Agent description.");
+  await input.fill("a".repeat(201));
+  await expect(
+    dialog.getByRole("button", { name: "Save changes" }),
+  ).toBeDisabled();
+  const renamedTitle = "Morning temperature";
+  await input.fill("  " + renamedTitle + "  ");
+  await description.fill("Two morning readings.\nTaken before sunrise.");
+  await input.press("Enter");
+  await expect(dialog).toHaveCount(0);
+  const original = page.getByRole("region", { name: renamedTitle });
+  await expect(
+    original.getByText("Two morning readings. Taken before sunrise."),
+  ).toBeVisible();
+  const save = original.getByRole("button", { name: "Save visualization" });
+  await expect(save).toHaveAttribute("aria-pressed", "false");
+  await save.click();
+  await expect(save).toHaveAttribute("aria-pressed", "true");
+  await conversationTool(page, "Saved");
+  const library = page.getByRole("region", { name: "Saved visualizations" });
+  await expect(original.locator('div[role="img"] svg')).toBeVisible();
+  await library.getByRole("button", { name: "New visualization" }).click();
+  const composer = page.getByRole("textbox", { name: "Message to your agent" });
+  await expect(composer).toBeFocused();
+  await conversationTool(page, "Saved");
+  await library.getByRole("button", { name: "Ask agent to edit" }).click();
+  await expect(composer).toBeFocused();
+  await expect(
+    page.getByText("Editing Morning temperature", { exact: true }),
+  ).toBeVisible();
+  const send = page.getByRole("button", { name: "Send", exact: true });
+  await expect(send).toBeDisabled();
+  await composer.fill("Use a dashed line.");
+  await send.click();
+  await expect.poll(() => f.item.latest_attempt_id).toBe("attempt_2");
+  const request = f.posts.find(({ path }) => path.endsWith("/continue"));
+  expect(request?.body.instruction).toContain(
+    "workbench-analysis artifact chart_original",
+  );
+  expect(request?.body.instruction).toContain(
+    "register a new artifact ID on this worker",
+  );
+  expect(request?.body.instruction).toContain("Use a dashed line.");
+  expect(request?.body.workspace_id).toBeUndefined();
+  f.state.reply = "```harbormaster-visualization\nchart_followup\n```";
+  f.finish();
+  await expect(original).toHaveCount(0);
+  const followup = page.getByRole("region", { name: titles.chart_followup });
+  await expect(followup.locator('div[role="img"] svg')).toBeVisible();
+  await followup.getByRole("button", { name: "Save visualization" }).click();
+  await expect(
+    followup.getByRole("button", { name: "Save visualization" }),
+  ).toHaveAttribute("aria-pressed", "true");
+
+  await conversationTool(page, "Saved");
+  await page.reload();
+  await expect(library.getByRole("listitem")).toHaveCount(2);
+  const savedOriginal = library.getByRole("button", {
+    name: renamedTitle,
+  });
+  await savedOriginal.click();
+  await expect(savedOriginal).toHaveAttribute("aria-pressed", "true");
+  await expect(original.locator('div[role="img"] svg')).toBeVisible();
+  await expect(
+    original.getByText("Two morning readings. Taken before sunrise."),
+  ).toBeVisible();
+  sourceAvailable = false;
+  await page.reload();
+  await savedOriginal.click();
+  await expect(library.getByText(/^Worker data is unavailable/)).toBeVisible();
+  await original
+    .getByRole("button", { name: "Edit visualization details" })
+    .click();
+  await input.fill("Archived temperature");
+  await description.fill("");
+  await dialog.getByRole("button", { name: "Save changes" }).click();
+  await expect(dialog).toHaveCount(0);
+  const archived = library.getByRole("button", {
+    name: "Archived temperature",
+  });
+  await expect(archived).toBeVisible();
+  await library.getByRole("button", { name: "Remove from saved" }).click();
+  await expect(archived).toHaveCount(0);
+  await expect(followup.locator('div[role="img"] svg')).toBeVisible();
+  expect(f.errors).toEqual([]);
+});
+
+test("selects agent reports, exports the captured Markdown, and opens an agent edit", async ({
+  page,
+}) => {
+  const f = await conversationFixture(page);
+  f.item.kind = "data-science";
+  f.state.exists = true;
+  f.state.reply = "Created the report in `reports/field-report.md`.";
+  f.addRun();
+  f.finish();
+  f.addRun("attempt_1");
+  f.finish();
+  const previous = "# First field report\n\nFirst captured observations.\n";
+  const completed =
+    "# Completed field report\n\n## Findings\n\nMorning readings were higher.\n\n" +
+    "| Location | Count |\n| --- | --- |\n| North | 15 |\n\n" +
+    "```harbormaster-visualization\nchart_field\n```\n\n## Interpretation\n\nSampling was uneven.\n\n" +
+    Array.from(
+      { length: 45 },
+      (_, index) => `Field note ${index + 1}.\n\n`,
+    ).join("");
+  let releaseRefresh!: () => void;
+  const refreshReady = new Promise<void>((resolve) => {
+    releaseRefresh = resolve;
+  });
+  await page.route(
+    "**/work-items/work_one/attempts/*/changes?project_id=A",
+    async (route) => {
+      const url = route.request().url();
+      const earlier = url.includes("/attempt_1/");
+      const updated = url.includes("/attempt_3/");
+      if (updated) await refreshReady;
+      return route.fulfill({
+        json: {
+          files: [
+            {
+              path: "reports/field-report.md",
+              status: earlier ? "A" : "M",
+              source: Buffer.from(
+                earlier
+                  ? previous
+                  : updated
+                    ? completed.replace("Field note 45.", "Updated field note.")
+                    : completed,
+              ).toString("base64"),
+            },
+            ...(earlier
+              ? []
+              : [
+                  {
+                    path: "reports/second-report.md",
+                    status: "A",
+                    source: Buffer.from(
+                      "# Second field report\n\nAnother investigation.\n",
+                    ).toString("base64"),
+                  },
+                ]),
+          ],
+        },
+      });
+    },
+  );
+  await page.route(
+    "**/workspaces/ws_one/analysis/artifacts/chart_field**",
+    (route) => {
+      expect(
+        new URL(route.request().url()).searchParams.get("project_id"),
+      ).toBe("A");
+      return route.fulfill({
+        json:
+          route.request().method() === "POST"
+            ? {
+                columns: [
+                  { name: "hour", type: "DOUBLE" },
+                  { name: "count", type: "DOUBLE" },
+                ],
+                rows: [
+                  [9, 15],
+                  [11, 5],
+                ],
+                next_cursor: null,
+                has_more: false,
+                truncated: false,
+                sampled: false,
+              }
+            : {
+                schema_version: "1.0",
+                artifact_id: "chart_field",
+                type: "chart",
+                title: "Counts by hour",
+                data: {
+                  source_type: "query_result",
+                  reference: "result_field",
+                },
+                visualization: {
+                  chart_type: "line",
+                  encoding: {
+                    x: { field: "hour", type: "quantitative" },
+                    y: { field: "count", type: "quantitative" },
+                  },
+                },
+              },
+      });
+    },
+  );
+
+  await page.goto("/app/projects/A/work?work=work_one&view=report");
+  const article = page.getByRole("article", {
+    name: "Report content",
+  });
+  await expect(
+    article.getByRole("heading", { name: "Completed field report" }),
+  ).toBeVisible();
+  await expect(
+    article.getByText("Morning readings were higher."),
+  ).toBeVisible();
+  await expect(
+    article.getByRole("cell", { name: "15", exact: true }),
+  ).toBeVisible();
+  await expect(
+    article.getByRole("img", { name: "Counts by hour" }),
+  ).toBeVisible();
+  await expect(article.getByText("Sampling was uneven.")).toBeVisible();
+  await expect(
+    page.getByRole("textbox", { name: "Findings (Markdown)" }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  const [markdown] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("menuitem", { name: "Download Markdown" }).click(),
+  ]);
+  expect(markdown.suggestedFilename()).toBe("completed-field-report.md");
+  expect(await readFile((await markdown.path())!, "utf8")).toBe(completed);
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  const [html] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("menuitem", { name: "Download HTML" }).click(),
+  ]);
+  expect(await readFile((await html.path())!, "utf8")).toContain(
+    "data:image/svg+xml,",
+  );
+  const scroller = page.getByRole("region", { name: "Report", exact: true });
+  const chart = article.getByRole("img", { name: "Counts by hour" });
+  await chart.evaluate((img) => {
+    img.dataset.scrollTest = "original";
+  });
+  const position = await scroller.evaluate((element) => {
+    element.scrollTop = 1100;
+    return element.scrollTop;
+  });
+  expect(position).toBeGreaterThan(500);
+  try {
+    const refreshing = page.waitForRequest(
+      "**/attempts/attempt_3/changes?project_id=A",
+    );
+    f.addRun("attempt_2");
+    f.finish();
+    await refreshing;
+    await expect(
+      article.getByText("Field note 45.", { exact: true }),
+    ).toBeAttached();
+    expect(await scroller.evaluate((element) => element.scrollTop)).toBe(
+      position,
+    );
+  } finally {
+    releaseRefresh();
+  }
+  await expect(
+    article.getByText("Updated field note.", { exact: true }),
+  ).toBeAttached();
+  expect(await scroller.evaluate((element) => element.scrollTop)).toBe(
+    position,
+  );
+  await expect(chart).toHaveAttribute("data-scroll-test", "original");
+
+  await page
+    .getByRole("button", { name: "Second field report", exact: true })
+    .click();
+  await expect(article.getByText("Another investigation.")).toBeVisible();
+  await page
+    .getByRole("button", { name: "Completed field report", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Report title" })).toHaveValue(
+    "Completed field report",
+  );
+  await expect(
+    page.getByRole("textbox", { name: "Findings (Markdown)" }),
+  ).toContainText("Morning readings were higher.");
+  await page.getByRole("button", { name: "Ask agent to edit" }).click();
+  await expect(page.getByText("Editing Completed field report")).toBeVisible();
+  await page
+    .getByRole("textbox", { name: "Message to your agent" })
+    .fill("Expand on the sampling caveat.");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect
+    .poll(
+      () =>
+        f.posts.find(({ path }) => path.endsWith("/continue"))?.body
+          .instruction,
+    )
+    .toContain('Revise the Markdown report at "reports/field-report.md".');
+
+  await page.goto(
+    "/app/projects/A/work?work=work_one&attempt=attempt_1&view=report",
+  );
+  await expect(
+    article.getByRole("heading", { name: "First field report" }),
+  ).toBeVisible();
+  await expect(article.getByText("First captured observations.")).toBeVisible();
+  expect(f.errors).toEqual([]);
+});
+
+test("exports a report with findings, a bounded table, a chart, and a map", async ({
+  playwright,
+  baseURL,
+}) => {
+  const browser = await playwright.chromium.launch({
+    args: ["--enable-unsafe-swiftshader", "--use-angle=swiftshader"],
+  });
+  try {
+    const page = await browser.newPage({
+      baseURL,
+      acceptDownloads: true,
+      permissions: ["clipboard-read", "clipboard-write"],
+    });
+    const f = await conversationFixture(page);
+    f.item.kind = "data-science";
+    f.state.exists = true;
+    f.state.reply =
+      "## Findings\n\nEarly readings were higher.\n\n```harbormaster-visualization\nold_chart\n```";
+    f.addRun();
+    f.finish();
+    f.attempts[0].artifacts = [];
+    const files = new Map<string, string>();
+    await page.route("**/work-items/work_one/files?project_id=A", (route) => {
+      if (route.request().method() === "GET")
+        return route.fulfill({ json: { paths: [...files.keys()] } });
+      const { path } = route.request().postDataJSON();
+      return route.fulfill({
+        json: {
+          path,
+          content: Buffer.from(files.get(path)!).toString("base64"),
+        },
+      });
+    });
+    await page.route("**/work-items/work_one/reports", (route) => {
+      const { path, markdown, previous, worker_id } = route
+        .request()
+        .postDataJSON();
+      expect(worker_id).toBe("ws_one");
+      expect(previous).toBe(files.get(path));
+      files.set(path, markdown);
+      return route.fulfill({ json: { path } });
+    });
+    const items = [
+      {
+        artifact_id: "table_readings",
+        worker_id: "ws_one",
+        title: "Recorded readings",
+        type: "table",
+      },
+      {
+        artifact_id: "chart_totals",
+        worker_id: "ws_one",
+        title: "Reading totals",
+        type: "chart",
+      },
+      {
+        artifact_id: "geo_readings",
+        worker_id: "ws_two",
+        title: "Reading locations",
+        type: "geo",
+      },
+      {
+        artifact_id: "old_table",
+        worker_id: "ws_old",
+        title: "Archived table",
+        type: "table",
+      },
+    ];
+    await page.route("**/projects/A/analysis/saved-visualizations", (route) =>
+      route.fulfill({
+        json: {
+          items,
+          titles: [
+            {
+              worker_id: "ws_one",
+              artifact_id: "chart_totals",
+              description: "Checked against the source.",
+            },
+          ],
+        },
+      }),
+    );
+    await page.route("https://tiles.openfreemap.org/**", (route) =>
+      route.abort(),
+    );
+    await page.route("**/workspaces/*/analysis/artifacts/**", (route) => {
+      const url = new URL(route.request().url());
+      expect(url.searchParams.get("project_id")).toBe("A");
+      const path = url.pathname.split("/");
+      const data = path.at(-1) === "data";
+      const id = path.at(data ? -2 : -1);
+      const item = items.find(({ artifact_id }) => artifact_id === id);
+      if (!item || id === "old_table")
+        return route.fulfill({
+          status: 404,
+          json: { code: "ANALYSIS_ARTIFACT_UNAVAILABLE" },
+        });
+      expect(url.pathname).toContain("/workspaces/" + item.worker_id + "/");
+      if (data) {
+        expect(route.request().postDataJSON()).toEqual(
+          item.type === "table" ? { limit: 25 } : {},
+        );
+        return route.fulfill({
+          json: {
+            ...{
+              table: {
+                columns: [
+                  { name: "Sensor | label", type: "VARCHAR" },
+                  { name: "Count", type: "BIGINT" },
+                ],
+                rows: [
+                  ["South <gate>", 15],
+                  ["North", null],
+                ],
+              },
+              chart: {
+                columns: [
+                  { name: "bin", type: "DOUBLE" },
+                  { name: "count", type: "DOUBLE" },
+                ],
+                rows: [
+                  [1, 10],
+                  [2, 15],
+                ],
+              },
+              geo: {
+                columns: [
+                  { name: "lon", type: "DOUBLE" },
+                  { name: "lat", type: "DOUBLE" },
+                  { name: "group", type: "VARCHAR" },
+                ],
+                rows: [
+                  [-0.118, 51.5, "North"],
+                  [-0.122, 51.498, "South"],
+                ],
+              },
+            }[item.type],
+            next_cursor: item.type === "table" ? "another_page" : null,
+            has_more: item.type === "table",
+            sampled: item.type === "geo",
+            truncated: false,
+          },
+        });
+      }
+      return route.fulfill({
+        json: {
+          ...item,
+          schema_version: "1.0",
+          data: { source_type: "query_result", reference: "result_readings" },
+          visualization: {
+            table: { page_size: 25 },
+            chart: {
+              chart_type: "line",
+              encoding: {
+                x: { field: "bin", type: "quantitative" },
+                y: { field: "count", type: "quantitative" },
+              },
+            },
+            geo: {
+              geometry: "point",
+              coordinate_system: { type: "geographic", crs: "EPSG:4326" },
+              encoding: { x: "lon", y: "lat", group: "group" },
+              view: { mode: "map" },
+            },
+          }[item.type],
+        },
+      });
+    });
+    await page.goto("/app/projects/A/work?work=work_one&view=report");
+    const findings = page.getByRole("textbox", { name: "Findings (Markdown)" });
+    await expect(findings).toHaveValue(
+      "## Findings\n\nEarly readings were higher.",
+    );
+    await page
+      .getByRole("textbox", { name: "Report title" })
+      .fill("Field report");
+    await findings.fill("");
+    await page.getByRole("button", { name: "Heading", exact: true }).click();
+    await expect(findings).toHaveValue("## Heading");
+    await expect
+      .poll(() =>
+        findings.evaluate((input: HTMLTextAreaElement) =>
+          input.value.slice(input.selectionStart, input.selectionEnd),
+        ),
+      )
+      .toBe("Heading");
+    await page.keyboard.insertText("Findings");
+    await findings.press("End");
+    await findings.press("Enter");
+    await findings.press("Enter");
+    await page.getByRole("button", { name: "Bold", exact: true }).click();
+    await expect(findings).toHaveValue("## Findings\n\n**bold text**");
+    await expect
+      .poll(() =>
+        findings.evaluate((input: HTMLTextAreaElement) =>
+          input.value.slice(input.selectionStart, input.selectionEnd),
+        ),
+      )
+      .toBe("bold text");
+    await page.keyboard.insertText("Early readings were higher.");
+    for (const { title, worker_id, artifact_id } of [...items, items[1]]) {
+      const copy = page.getByRole("button", {
+        name: `Copy Markdown for ${title}`,
+        exact: true,
+      });
+      await copy.click();
+      await expect(
+        page
+          .getByRole("status")
+          .filter({ hasText: `Copied Markdown for ${title}.` }),
+      ).toBeVisible();
+      const snippet = await page.evaluate(() => navigator.clipboard.readText());
+      expect(snippet).toBe(
+        [
+          "```harbormaster-visualization",
+          `${worker_id}/${artifact_id}`,
+          "```",
+        ].join("\n"),
+      );
+      const before = await findings.inputValue();
+      await findings.fill(before + "\n\n");
+      await findings.press("Control+End");
+      await findings.press("Control+v");
+      await expect(findings).toHaveValue(before + "\n\n" + snippet);
+      await expect(copy).toBeVisible();
+    }
+    await page.getByRole("button", { name: "Save and preview" }).click();
+    const report = page.getByRole("article", { name: "Report content" });
+    await expect(
+      report.getByRole("heading", { name: "Field report" }),
+    ).toBeVisible({ timeout: 20000 });
+    await expect(report.getByText("Early readings were higher.")).toBeVisible();
+    await expect(
+      report.getByRole("columnheader", { name: "Sensor | label" }),
+    ).toBeVisible();
+    await expect(
+      report.getByRole("cell", { name: "South <gate>" }),
+    ).toBeVisible();
+    await expect(report.getByText("Showing the first 2 rows.")).toBeVisible();
+    await expect(
+      report.getByText("Data is unavailable on the originating worker."),
+    ).toBeVisible();
+    await expect(
+      report.getByRole("img", { name: "Reading locations" }),
+    ).toHaveAttribute("src", /^data:image\/png;/);
+    await expect(report.getByText("Natural Earth")).toBeVisible();
+    await expect(
+      report.getByRole("img", { name: "Reading totals" }),
+    ).toHaveCount(2);
+    await expect(
+      report.getByRole("img", { name: "Reading totals" }).first(),
+    ).toHaveAttribute("src", /^data:image\/svg\+xml,/);
+
+    async function download(label: string, file: string) {
+      await page.getByRole("button", { name: "Export", exact: true }).click();
+      const pending = page.waitForEvent("download");
+      await page.getByRole("menuitem", { name: label }).click();
+      const result = await pending;
+      expect(result.suggestedFilename()).toBe(file);
+      return readFile((await result.path())!, "utf8");
+    }
+    const markdown = await download("Download Markdown", "field-report.md");
+    expect(markdown).toContain("ws_one/chart_totals");
+    expect(markdown).toContain("ws_two/geo_readings");
+    expect(markdown).not.toContain("old_chart");
+    const html = await download("Download HTML", "field-report.html");
+    const offline = await browser.newPage({ offline: true });
+    await offline.setContent(html);
+    await expect(
+      offline.getByText("Early readings were higher."),
+    ).toBeVisible();
+    await expect
+      .poll(() =>
+        offline
+          .locator("figure img")
+          .evaluateAll((images) =>
+            images.map((image) => (image as HTMLImageElement).naturalWidth),
+          ),
+      )
+      .toEqual([880, 880, 880]);
+    await offline.close();
+
+    await page.evaluate(() => {
+      window.print = () => {
+        throw new Error("Native PDF export must not open the print dialog");
+      };
+    });
+    const pdf = await download("Download PDF", "field-report.pdf");
+    expect(pdf.startsWith("%PDF-")).toBe(true);
+    expect(pdf).toContain("/Subtype /Image");
+    expect(pdf).toContain("/Type /Font");
+    expect(pdf.length).toBeGreaterThan(10_000);
+
+    await page.getByRole("button", { name: "Edit", exact: true }).click();
+    await expect(
+      page.getByRole("textbox", { name: "Report title" }),
+    ).toHaveValue("Field report");
+    await page
+      .getByRole("textbox", { name: "Report title" })
+      .fill("Revised field report");
+    await page.getByRole("button", { name: "Save and preview" }).click();
+    await expect(
+      report.getByRole("heading", { name: "Revised field report" }),
+    ).toBeVisible();
+    expect(files.size).toBe(1);
+    await page.getByRole("button", { name: "New report", exact: true }).click();
+    await page.getByRole("textbox", { name: "Report title" }).fill("Follow-up");
+    await findings.fill("Separately collected readings.");
+    await page.getByRole("button", { name: "Save and preview" }).click();
+    await expect(
+      report.getByText("Separately collected readings."),
+    ).toBeVisible();
+    expect(files.size).toBe(2);
+    await page.reload();
+    await page
+      .getByRole("button", { name: "Revised field report", exact: true })
+      .click();
+    await expect(report.getByText("Early readings were higher.")).toBeVisible();
+    await page.getByRole("button", { name: "Follow-up", exact: true }).click();
+    await expect(
+      report.getByText("Separately collected readings."),
+    ).toBeVisible();
+    expect(f.errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+});
+
+test("selecting data science starts in the analysis workspace without web preview", async ({
+  page,
+}) => {
+  const f = await conversationFixture(page);
+  f.item.kind = "data-science";
+  await page.route("**/workspaces/ws_one/analysis/datasets?**", (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            dataset_id: "dataset_sensor",
+            name: "sensors.csv",
+            format: "csv",
+            size_bytes: 32,
+            sha256: "a".repeat(64),
+          },
+        ],
+      },
+    }),
+  );
+  await page.goto("/app/projects/A/work");
+  await page
+    .getByLabel("Message to your agent")
+    .fill("Find anomalies in the sensor readings.");
+  const start = page.getByRole("button", { name: "Start work", exact: true });
+  await expect(start).toBeDisabled();
+  await page.getByLabel("Work type").selectOption("data-science");
+  await start.click();
+  const datasetList = page.getByRole("region", { name: "Worker datasets" });
+  const tools = page.getByRole("group", { name: "Workspace tools" });
+  const analysis = tools.getByRole("button", { name: "Analysis", exact: true });
+  await expect(analysis).toHaveAttribute("aria-pressed", "true");
+  await expect(datasetList).toHaveCount(0);
+  await tools.getByRole("button", { name: "Datasets", exact: true }).click();
+  await expect(page).toHaveURL(/view=datasets/);
+  await expect(
+    page.getByRole("region", { name: "Datasets page" }),
+  ).toBeVisible();
+  await expect(datasetList).toContainText("sensors.csv");
+  await expect(
+    page.getByRole("region", { name: "Task workspace" }),
+  ).toBeHidden();
+  await analysis.click();
+  await expect(datasetList).toHaveCount(0);
+  await expect(
+    tools.getByRole("button", { name: "Preview", exact: true }),
+  ).toHaveCount(0);
+  expect(f.posts.find((p) => p.path === "/ui-api/work-items")?.body.kind).toBe(
+    "data-science",
+  );
+});
+
+test("renders the geographic aggregation and shape layers", async ({
+  playwright,
+  baseURL,
+}) => {
+  const browser = await playwright.chromium.launch({
+    args: ["--enable-unsafe-swiftshader", "--use-angle=swiftshader"],
+  });
+  try {
+    const page = await browser.newPage({ baseURL });
+    const f = await conversationFixture(page);
+    f.state.exists = true;
+    f.state.reply = "```harbormaster-visualization\ngeo_layers\n```";
+    f.addRun();
+    f.finish();
+    const path = [
+      [-0.12, 51.5],
+      [-0.113, 51.51],
+      [-0.103, 51.503],
+    ];
+    const rings = [[...path, path[0]]];
+    const shapes = {
+      path,
+      polygon: rings,
+      geojson: { type: "Polygon", coordinates: rings },
+    };
+    let layer:
+      "grid" | "hexagon" | "contour" | "screen_grid" | keyof typeof shapes =
+      "grid";
+    await page.route("https://tiles.openfreemap.org/**", (route) =>
+      route.abort(),
+    );
+    await page.route(
+      "**/workspaces/ws_one/analysis/artifacts/geo_layers**",
+      (route) => {
+        const shape =
+          layer in shapes ? (layer as keyof typeof shapes) : undefined;
+        if (new URL(route.request().url()).pathname.endsWith("/data")) {
+          return route.fulfill({
+            json: {
+              columns: shape
+                ? [{ name: "shape", type: "VARCHAR" }]
+                : [
+                    { name: "x", type: "DOUBLE" },
+                    { name: "y", type: "DOUBLE" },
+                  ],
+              rows: shape ? [[JSON.stringify(shapes[shape])]] : path,
+              next_cursor: null,
+              has_more: false,
+              truncated: false,
+              sampled: false,
+            },
+          });
+        }
+        return route.fulfill({
+          json: {
+            schema_version: "1.0",
+            artifact_id: "geo_layers",
+            type: "geo",
+            title: "Geographic layers",
+            data: { source_type: "dataset", reference: "dataset_geo" },
+            visualization: {
+              ...(shape
+                ? { geometry: shape, encoding: { shape: "shape" } }
+                : {
+                    geometry: "point",
+                    layer,
+                    encoding: { x: "x", y: "y" },
+                  }),
+              coordinate_system: { type: "geographic", crs: "EPSG:4326" },
+              view: { mode: "map", auto_fit: true },
+            },
+          },
+        });
+      },
+    );
+    for (const next of [
+      "grid",
+      "hexagon",
+      "contour",
+      "screen_grid",
+      "path",
+      "polygon",
+      "geojson",
+    ] as const) {
+      layer = next;
+      await page.goto("/app/projects/A/work?work=work_one");
+      const map = page.getByRole("region", { name: "Geographic layers" });
+      await expect(
+        map.getByLabel(`Geographic ${next.replace("_", " ")}`),
+      ).toBeVisible();
+      await expect(map.locator(".maplibregl-ctrl-attrib")).toContainText(
+        "Natural Earth",
+      );
+      // A click after initialization schedules another render with the deck.gl overlay.
+      await map.getByRole("button", { name: "Zoom in" }).click();
+      await expect(map.locator(".maplibregl-canvas")).toBeVisible();
+      await expect(
+        map.getByText(/geographic renderer could not draw/i),
+      ).toHaveCount(0);
+    }
+    expect(f.errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
 });

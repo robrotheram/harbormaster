@@ -31,6 +31,7 @@ func workError(w http.ResponseWriter, err error) {
 func (s *Server) registerWorkExecution(mux *http.ServeMux, repo orchestration.Repository) {
 	s.registerWorkImages(mux, repo)
 	s.registerWorkFiles(mux, repo)
+	s.registerWorkReports(mux, repo)
 	mux.HandleFunc("POST /v1/work-items/{id}/run", func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
 			ProjectID string             `json:"project_id"`
@@ -104,6 +105,7 @@ func (s *Server) registerWorkExecution(mux *http.ServeMux, repo orchestration.Re
 			workError(w, err)
 			return
 		}
+		s.notifyWorkReady()
 		shared.JSON(w, 202, a)
 	})
 	mux.HandleFunc("GET /v1/work-items/{id}/attempts", func(w http.ResponseWriter, r *http.Request) {

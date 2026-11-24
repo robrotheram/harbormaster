@@ -31,12 +31,16 @@ const projectRoute = createRoute({
   ): {
     work?: string;
     attempt?: string;
-    view?: "workspace" | "files";
+    view?: "workspace" | "files" | "datasets" | "saved" | "report";
     worker?: string;
     tab?: "general" | "hermes" | "audit";
   } => ({
     view:
-      search.view === "workspace" || search.view === "files"
+      search.view === "workspace" ||
+      search.view === "files" ||
+      search.view === "datasets" ||
+      search.view === "saved" ||
+      search.view === "report"
         ? search.view
         : undefined,
     tab:
@@ -78,7 +82,7 @@ const workerRoute = createRoute({
   validateSearch: (
     search: Record<string, unknown>,
   ): {
-    panel?: "environment" | "settings" | "activity";
+    panel?: "environment" | "datasets" | "settings" | "activity";
     tab?: "subscriptions";
   } => ({
     tab:
@@ -88,7 +92,9 @@ const workerRoute = createRoute({
     panel:
       search.panel === "setup" || search.panel === "environment"
         ? "environment"
-        : search.panel === "settings" || search.panel === "activity"
+        : search.panel === "settings" ||
+            search.panel === "activity" ||
+            search.panel === "datasets"
           ? search.panel
           : undefined,
   }),

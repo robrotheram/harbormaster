@@ -173,6 +173,7 @@ func (s *Server) registerBoardStart(mux *http.ServeMux) {
 			workError(w, err)
 			return
 		}
+		s.notifyWorkReady()
 		shared.JSON(w, 202, attempt)
 	})
 }

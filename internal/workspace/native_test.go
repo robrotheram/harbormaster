@@ -17,7 +17,7 @@ func TestNativeRunnerUsesOnlyWorkspaceGrant(t *testing.T) {
 		script := `#!/bin/sh
 test -z "$OPENAI_API_KEY$ANTHROPIC_API_KEY$VAULT_TOKEN$WORKSPACE_TOKEN" || exit 11
 input=$(cat)
-case "$input" in *'If this task delivers or changes a runnable web app'*'workbench-preview start'*'check that workbench-preview status'*'implement sample') ;; *) exit 12;; esac
+case "$input" in *'If this task delivers or changes a runnable web app'*'workbench-preview start'*'check that workbench-preview status'*'workbench-analysis register-artifact'*'harbormaster-visualization'*'implement sample') ;; *) exit 12;; esac
 test "$WORKBENCH_WORKSPACE_GRANT" = workspace-only-grant || exit 15
 case "$*" in *selected-model*) ;; *) exit 16;; esac
 printf 'native file\n' > native.txt
@@ -42,7 +42,7 @@ fi
 	}
 	defer m.Close()
 	for _, provider := range []string{"codex", "claude"} {
-		result, code := m.runNativeTask(context.Background(), provider, "implement sample", "", "selected-model", "high")
+		result, code := m.runNativeTask(context.Background(), provider, "implement sample", "", "selected-model", "high", false)
 		if code != "" || result != provider+" result" {
 			t.Fatalf("%s runner: %s %q", provider, code, result)
 		}
@@ -78,7 +78,7 @@ func TestNativeCancellationKillsProcess(t *testing.T) {
 	defer m.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
-	if _, code := m.runNativeTask(ctx, "claude", "wait", "", "", ""); code != "EXECUTION_INTERRUPTED" {
+	if _, code := m.runNativeTask(ctx, "claude", "wait", "", "", "", false); code != "EXECUTION_INTERRUPTED" {
 		t.Fatal("native cancellation failed")
 	}
 }
@@ -88,5 +88,17 @@ func TestProcessStateHandlesNamesAndZombies(t *testing.T) {
 		if got := processState(tt.stat); got != tt.want {
 			t.Fatalf("%q: %q", tt.stat, got)
 		}
+	}
+}
+
+func TestDataScienceInstructionUsesArtifactDelivery(t *testing.T) {
+	got := dataScienceInstruction("Find anomalies.")
+	for _, want := range []string{"Find anomalies.", "workbench-analysis register-artifact", "Do not build a website"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("data science prompt is missing %q", want)
+		}
+	}
+	if strings.Contains(got, workspacePreviewGuidance) {
+		t.Fatal("data science prompt asks for a web preview")
 	}
 }

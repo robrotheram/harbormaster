@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { runHistory, refreshRunHistory, userMessage } from "./conversation-api";
+import {
+  runHistory,
+  refreshRunHistory,
+  userMessage,
+  watchRunHistory,
+} from "./conversation-api";
 import type { Attempt } from "./api";
 import type { Snapshot, HistoryRecord } from "@/features/history/history-api";
 
@@ -89,6 +94,41 @@ describe("work conversation boundaries", () => {
     );
     expect(second.page.next_before).toBe(21);
     expect(second.page.next_after).toBe(0);
+  });
+  it("resumes the scoped event stream and falls back when history is invalid", () => {
+    const source = Object.assign(new EventTarget(), {
+      close: vi.fn(),
+      onopen: () => {},
+    });
+    const connect = vi.fn(function () {
+      return source;
+    });
+    vi.stubGlobal("EventSource", connect);
+    const live = vi.fn();
+    const publish = vi.fn();
+    const stop = watchRunHistory("project_one", attempt, 42, live, publish);
+    expect(connect).toHaveBeenCalledWith(
+      "/ui-api/work-items/work_one/attempts/attempt_one/history/events?project_id=project_one&after=42",
+    );
+    source.onopen();
+    expect(live).toHaveBeenLastCalledWith(true);
+    const value = {
+      project_id: "project_one",
+      workspace_id: "ws_one",
+      page: { schema_version: 1, records: [{ episode_id: "task_one" }] },
+    };
+    const emit = () =>
+      source.dispatchEvent(
+        new MessageEvent("history", { data: JSON.stringify(value) }),
+      );
+    emit();
+    expect(publish).toHaveBeenCalledWith(value);
+    value.page.records[0].episode_id = "task_other";
+    emit();
+    expect(publish).toHaveBeenCalledTimes(1);
+    expect(live).toHaveBeenLastCalledWith(false);
+    expect(source.close).toHaveBeenCalledTimes(1);
+    stop();
   });
   it("hides the presentation protocol on initial requests", () => {
     expect(

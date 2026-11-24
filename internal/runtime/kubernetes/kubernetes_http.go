@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"errors"
+	"io"
 	"net/http"
 
 	"agent-workbench/internal/runtime/protocol"
@@ -16,7 +17,7 @@ func (k *Kubernetes) Handler() http.Handler {
 		Health: k.health, VerifyGrant: k.verify, RegisterManagement: k.registerManagement,
 		Start: k.startWorkspace, Stop: k.stopWorkspace, ForceStop: k.forceStopWorkspace, Inspect: k.inspectWorkspace,
 		BindNetworkPolicy: protocol.BindNetworkPolicy(k.applyWorkspaceNetwork), Reconcile: k.reconcileWorkspaceNetwork,
-		Capabilities: k.capabilities, Proxy: k.proxy, Agent: protocol.BufferedAgent(k.proxyAgent),
+		Capabilities: k.capabilities, Proxy: k.proxy, Agent: protocol.BufferedAgent(k.proxyAgent), UploadDataset: k.uploadDataset,
 		StartBodyLimit: 2048, AgentNoStore: true,
 	})
 }
@@ -97,6 +98,14 @@ func (k *Kubernetes) reconcileWorkspaceNetwork(ctx context.Context, id string) *
 		return protocol.Failure(503, "RUNTIME_UNAVAILABLE")
 	}
 	return nil
+}
+
+func (k *Kubernetes) uploadDataset(ctx context.Context, id, path string, body io.Reader) (int, []byte, *protocol.ControllerError) {
+	status, out, err := k.UploadDataset(ctx, id, path, body)
+	if err != nil {
+		return 0, nil, protocol.Failure(503, "WORKSPACE_UNAVAILABLE")
+	}
+	return status, out, nil
 }
 
 func (k *Kubernetes) proxyAgent(ctx context.Context, id, method, path string, body []byte) (int, []byte, *protocol.ControllerError) {

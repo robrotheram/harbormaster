@@ -1,9 +1,11 @@
+import { artifactReference } from "@/features/analysis/api";
 import { dataPath, imagePath } from "./workspace-output";
 export type ReplyOutput = {
   name: string;
   path?: string;
   source?: string;
   label?: string;
+  artifact?: string;
 };
 
 // Only explicit links and chart blocks in agent replies become output sources.
@@ -19,6 +21,17 @@ export function replyOutputs(content: string): ReplyOutput[] {
       });
       return "";
     })
+    .replace(
+      /```harbormaster-visualization\s*\n([\s\S]*?)```/g,
+      (_, source: string) => {
+        const id = artifactReference(source);
+        if (id && !seen.has(id)) {
+          seen.add(id);
+          outputs.push({ name: id, artifact: id });
+        }
+        return "";
+      },
+    )
     .replace(/```[\s\S]*?```/g, "");
   for (const match of prose.matchAll(
     /!?\[([^\]]*)\]\(<?([^\s)>]+)>?(?:\s+"[^"]*")?\)/g,

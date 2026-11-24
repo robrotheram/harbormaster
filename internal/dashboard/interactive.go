@@ -188,8 +188,12 @@ func newInteractiveHandler(readURL, controlURL, readToken, token string) (http.H
 			path := strings.TrimPrefix(r.URL.Path, "/ui-api")
 			parts := strings.Split(strings.Trim(path, "/"), "/")
 			query := r.URL.Query()
+			upload := r.Method == http.MethodPost && len(parts) == 5 && parts[0] == "workspaces" && parts[2] == "analysis" && parts[3] == "datasets" && parts[4] == "upload"
 			validQuery := true
 			for key, values := range query {
+				if upload && key == "name" && len(values) == 1 && shared.AnalysisFilename(values[0]) {
+					continue
+				}
 				if key == "page" && len(values) == 1 && r.Method == "GET" && len(parts) == 3 && parts[0] == "forge-connections" && parts[2] == "issues" {
 					continue
 				}
@@ -223,7 +227,15 @@ func newInteractiveHandler(readURL, controlURL, readToken, token string) (http.H
 				writeError(w, 404, "NOT_FOUND")
 				return
 			}
-			if r.Method == "POST" && (r.Header.Get("X-Workbench-Request") != "1" || !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json")) {
+			validContent := strings.HasPrefix(r.Header.Get("Content-Type"), "application/json")
+			if upload {
+				validContent = r.Header.Get("Content-Type") == "application/octet-stream"
+				if !shared.AnalysisFilename(query.Get("name")) || r.ContentLength > shared.AnalysisUploadLimit {
+					writeError(w, 400, "INVALID_DATASET_UPLOAD")
+					return
+				}
+			}
+			if r.Method == "POST" && (r.Header.Get("X-Workbench-Request") != "1" || !validContent) {
 				writeError(w, 403, "ORIGIN_REJECTED")
 				return
 			}
