@@ -18,7 +18,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build CGO_ENABLED=0 go build -trim
     CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/healthcheck ./cmd/healthcheck && \
     mkdir -p /out/data/files
 
-FROM gcr.io/distroless/static-debian13:nonroot@sha256:aafe993665bf6200db38a02c11a9351e782a84b6a45e7f33b6695638c88e3931 AS platform
+FROM gcr.io/distroless/static-debian13:nonroot@sha256:8ce6dd87e9823c5b48dcfb2c8604714ccb351ce59607327bcc4957448da279b5 AS platform
 COPY --from=platform-build --chown=10001:10001 /out/data/ /data/
 COPY --from=platform-build /out/service /usr/local/bin/service
 COPY --from=platform-build /out/healthcheck /usr/local/bin/healthcheck
