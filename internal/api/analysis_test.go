@@ -71,6 +71,12 @@ func TestAnalysisGatewayStreamsAndAuthorizes(t *testing.T) {
 			if id == ws.ID && method == "GET" && path == "/v1/analysis/datasets/dataset_test/schema" {
 				return 200, []byte(`{"dataset_id":"dataset_test"}`), nil
 			}
+			if id == ws.ID && method == "GET" && path == "/v1/analysis/artifacts" {
+				return 200, []byte(`{"items":[{"artifact_id":"heatmap","title":"Density","type":"geo"}]}`), nil
+			}
+			if id == ws.ID && method == "POST" && path == "/v1/analysis/artifacts/heatmap/delete" {
+				return 200, []byte(`{"deleted":true}`), nil
+			}
 			return 404, []byte(`{"code":"ANALYSIS_DATA_UNAVAILABLE"}`), nil
 		},
 	}))
@@ -87,6 +93,8 @@ func TestAnalysisGatewayStreamsAndAuthorizes(t *testing.T) {
 		{"GET", ws.ID + "/analysis/datasets?project_id=foreign", "control-token", 404},
 		{"GET", ws.ID + "/analysis/datasets/a%2Fb/schema", "control-token", 404},
 		{"POST", ws.ID + "/analysis/results/upload?name=sensor.csv", "control-token", 404},
+		{"GET", ws.ID + "/analysis/artifacts", "foreign-token", 404},
+		{"POST", ws.ID + "/analysis/artifacts/heatmap/delete", "foreign-token", 404},
 	} {
 		r := httptest.NewRequest(test.method, "/v1/workspaces/"+test.url, nil)
 		r.Header.Set("Authorization", "Bearer "+test.token)
@@ -152,6 +160,29 @@ func TestAnalysisGatewayStreamsAndAuthorizes(t *testing.T) {
 		t.Fatalf("unexpected upload response %d, %v", result.response.StatusCode, metadata)
 	}
 
+	for _, tc := range []struct{ method, path, want string }{
+		{"GET", "/artifacts", `"artifact_id":"heatmap"`},
+		{"POST", "/artifacts/heatmap/delete", `"deleted":true`},
+	} {
+		req, err := http.NewRequestWithContext(ctx, tc.method, ui.URL+"/ui-api/workspaces/"+ws.ID+"/analysis"+tc.path+"?project_id=default", strings.NewReader("{}"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tc.method == "POST" {
+			req.Header.Set("X-Workbench-Request", "1")
+			req.Header.Set("Content-Type", "application/json")
+		}
+		res, err := ui.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, err := io.ReadAll(res.Body)
+		res.Body.Close()
+		if err != nil || res.StatusCode != 200 || !strings.Contains(string(body), tc.want) {
+			t.Fatalf("%s %s: %d %s (%v)", tc.method, tc.path, res.StatusCode, body, err)
+		}
+	}
+
 	path := "/v1/workspaces/%s/analysis/datasets/dataset_test/schema"
 	r := request(t, s, "GET", strings.Replace(path, "%s", ws.ID, 1), "")
 	if r.Code != 200 {
@@ -166,7 +197,7 @@ func TestAnalysisGatewayStreamsAndAuthorizes(t *testing.T) {
 		t.Fatal(r.Code, r.Body)
 	}
 	r = request(t, s, "GET", strings.Replace(path, "%s", ws.ID, 1), "")
-	if r.Code != 404 || calls.Load() != 3 {
+	if r.Code != 404 || calls.Load() != 5 {
 		t.Fatalf("deleted worker still routable: %d, controller calls %d", r.Code, calls.Load())
 	}
 }

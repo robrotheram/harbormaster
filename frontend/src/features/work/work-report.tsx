@@ -1,11 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  keepPreviousData,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { FileText, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
 import { ErrorNotice } from "@/shared/components";
 import { privateContentOptions } from "@/shared/private-content";
 import { ReportBuilder } from "@/features/analysis/report-builder";
@@ -17,16 +14,14 @@ import {
   reportFindings,
   reportReference,
   reportReferences,
-  type ReportRevision,
 } from "@/features/analysis/report-model";
 import { ReportPreview } from "@/features/analysis/report-preview";
 import { workApi, type Attempt, type WorkItem } from "./api";
 import {
-  loadCompletedReports,
-  reportPathsInReply,
+  reportPathPrefix,
+  useCompletedReports,
   type CompletedReport,
 } from "./completed-report";
-import { activeAttempt } from "./conversation-api";
 import { usePersonalWork } from "./personal-work";
 
 function reportKey({ worker, path }: CompletedReport) {
@@ -42,7 +37,6 @@ export function WorkReport({
   reply,
   replyAttempt,
   canEdit,
-  onAskAgent,
 }: {
   project: string;
   work: WorkItem;
@@ -52,54 +46,30 @@ export function WorkReport({
   reply: string;
   replyAttempt?: string;
   canEdit: boolean;
-  onAskAgent?: (report: ReportRevision) => boolean;
 }) {
   const client = useQueryClient();
   const personal = usePersonalWork();
   const [selected, setSelected] = useState<string>();
+  const [version, setVersion] = useState<number>();
   const [editing, setEditing] = useState<CompletedReport | "new">();
-  const [agentUnavailable, setAgentUnavailable] = useState(false);
   const newPath = useRef<string>(undefined);
-  const mentionedPaths = useMemo(() => reportPathsInReply(reply), [reply]);
-  const candidates = attempts
-    .filter(
-      (attempt) =>
-        !activeAttempt(attempt.state) &&
-        (!pinnedAttempt || attempt.id === pinnedAttempt),
-    )
-    .reverse();
-  const queryKey = [
-    "project",
+  const { library, queryKey } = useCompletedReports({
     project,
-    "work-reports",
-    work.id,
-    work.workspace_id,
+    work,
+    attempts,
     pinnedAttempt,
-    candidates.map((attempt) => attempt.id),
+    reply,
     replyAttempt,
-    mentionedPaths,
-  ] as const;
-  const library = useQuery({
-    ...privateContentOptions,
-    queryKey,
     enabled: !loadingAttempts,
-    placeholderData: keepPreviousData,
-    retry: false,
-    queryFn: ({ signal }) =>
-      loadCompletedReports({
-        project,
-        work,
-        attempts: candidates,
-        replyAttempt,
-        mentionedPaths,
-        live: !pinnedAttempt,
-        signal,
-      }),
   });
   const reports = library.data ?? [];
   const current =
     reports.find((report) => reportKey(report) === selected) ?? reports[0];
   const currentKey = current && reportKey(current);
+  const captures = current?.captures ?? [];
+  const earlier =
+    captures.at(-1) === current?.markdown ? captures.slice(0, -1) : captures;
+  const historical = version === undefined ? undefined : earlier[version];
   useEffect(() => {
     if (currentKey) setSelected((previous) => previous ?? currentKey);
   }, [currentKey]);
@@ -125,13 +95,13 @@ export function WorkReport({
     });
   }
 
-  async function save(title: string, markdown: string, askAgent: boolean) {
+  async function save(title: string, markdown: string) {
     if (!source && !newPath.current) {
       const suffix = Array.from(
         crypto.getRandomValues(new Uint8Array(6)),
         (value) => value.toString(16).padStart(2, "0"),
       ).join("");
-      newPath.current = `reports/${reportFilename(title)}-${suffix}.md`;
+      newPath.current = `${reportPathPrefix(work.id)}${reportFilename(title)}-${suffix}.md`;
     }
     const path = source?.path ?? newPath.current!;
     if (markdown !== source?.markdown)
@@ -140,7 +110,7 @@ export function WorkReport({
         markdown,
         previous: source?.markdown,
       });
-    const saved = { path, worker, markdown };
+    const saved = { path, worker, markdown, captures: source?.captures };
     await client.cancelQueries({ queryKey, exact: true });
     client.setQueryData<CompletedReport[]>(queryKey, (old = []) => {
       const index = old.findIndex(
@@ -153,10 +123,8 @@ export function WorkReport({
     clearDraft();
     newPath.current = undefined;
     setSelected(reportKey(saved));
+    setVersion(undefined);
     setEditing(undefined);
-    setAgentUnavailable(
-      askAgent && !onAskAgent?.({ path, title, worker_id: worker }),
-    );
   }
 
   return (
@@ -171,10 +139,7 @@ export function WorkReport({
             <Button
               size="xs"
               variant="outline"
-              onClick={() => {
-                setAgentUnavailable(false);
-                setEditing("new");
-              }}
+              onClick={() => setEditing("new")}
             >
               <Plus /> New report
             </Button>
@@ -195,8 +160,8 @@ export function WorkReport({
                     size="sm"
                     title={report.path}
                     onClick={() => {
-                      setAgentUnavailable(false);
                       setSelected(key);
+                      setVersion(undefined);
                       setEditing(undefined);
                     }}
                   >
@@ -222,26 +187,18 @@ export function WorkReport({
             />
           </div>
         )}
-        {agentUnavailable && (
-          <p
-            role="status"
-            className="px-4 pt-4 text-sm text-muted-foreground sm:px-6"
-          >
-            This report is saved. Open an available task on its worker to
-            request an agent edit.
-          </p>
-        )}
         {showEditor ? (
           <ReportBuilder
             key={draftKey}
             project={project}
+            work={work.id}
+            worker={worker}
             source={source}
             draft={draft}
             onChange={(draft) =>
               personal.setReportDrafts((old) => ({ ...old, [draftKey]: draft }))
             }
             onSave={save}
-            onAskAgent={!!onAskAgent}
             onCancel={
               current
                 ? () => {
@@ -257,15 +214,44 @@ export function WorkReport({
           <WorkspaceReportPreview
             key={reportKey(current)}
             project={project}
-            source={current}
+            source={
+              historical === undefined
+                ? current
+                : { ...current, markdown: historical }
+            }
+            versionPicker={
+              earlier.length > 0 && (
+                <NativeSelect
+                  size="sm"
+                  aria-label="Report version"
+                  value={historical === undefined ? "latest" : version}
+                  onChange={(event) =>
+                    setVersion(
+                      event.target.value === "latest"
+                        ? undefined
+                        : Number(event.target.value),
+                    )
+                  }
+                >
+                  <option value="latest">
+                    Version {earlier.length + 1} (latest)
+                  </option>
+                  {earlier
+                    .map((_, index) => (
+                      <option key={index} value={index}>
+                        Version {index + 1}
+                      </option>
+                    ))
+                    .reverse()}
+                </NativeSelect>
+              )
+            }
             onEdit={
               editable &&
+              historical === undefined &&
               !library.isPlaceholderData &&
               current.worker === work.workspace_id
-                ? () => {
-                    setAgentUnavailable(false);
-                    setEditing(current);
-                  }
+                ? () => setEditing(current)
                 : undefined
             }
           />
@@ -288,10 +274,12 @@ export function WorkReport({
 function WorkspaceReportPreview({
   project,
   source,
+  versionPicker,
   onEdit,
 }: {
   project: string;
   source: CompletedReport;
+  versionPicker?: ReactNode;
   onEdit?: () => void;
 }) {
   const items = useMemo(
@@ -319,6 +307,7 @@ function WorkspaceReportPreview({
       }}
       source={source}
       preparing={items.length > 0 && parts.isPending}
+      versionPicker={versionPicker}
       onEdit={onEdit}
     />
   );

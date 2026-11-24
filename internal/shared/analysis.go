@@ -43,8 +43,9 @@ func AnalysisAgentRoute(method, route string) bool {
 			len(parts) == 3 && ValidID(parts[1]) &&
 				(parts[2] == "schema" && method == http.MethodGet || parts[2] == "preview" && method == http.MethodPost)
 	case "artifacts":
-		return len(parts) == 2 && ValidID(parts[1]) && method == http.MethodGet ||
-			len(parts) == 3 && ValidID(parts[1]) && parts[2] == "data" && method == http.MethodPost
+		return len(parts) == 1 && method == http.MethodGet ||
+			len(parts) == 2 && ValidID(parts[1]) && method == http.MethodGet ||
+			len(parts) == 3 && ValidID(parts[1]) && (parts[2] == "data" || parts[2] == "delete") && method == http.MethodPost
 	}
 	return false
 }

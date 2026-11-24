@@ -7,7 +7,7 @@ import { DataError, DataNotice } from "./data-state";
 import type { DataPage, PreviewRequest, TableSpec } from "./api";
 
 const control =
-  "h-9 min-w-0 rounded-md border bg-background px-2 focus-visible:outline-2 focus-visible:outline-ring";
+  "h-9 min-w-0 max-w-full rounded-md border bg-background px-2 focus-visible:outline-2 focus-visible:outline-ring";
 type Filter = NonNullable<PreviewRequest["filters"]>[number];
 
 export function DataTable({
@@ -16,11 +16,13 @@ export function DataTable({
   id,
   spec,
   load,
+  compact = false,
 }: {
   project: string;
   worker: string;
   id: string;
   spec: TableSpec;
+  compact?: boolean;
   load: (params: PreviewRequest, signal: AbortSignal) => Promise<DataPage>;
 }) {
   const [limit, setLimit] = useState(spec.page_size || 100);
@@ -65,7 +67,7 @@ export function DataTable({
               setCursors([]);
             }}
           >
-            <label className="grid gap-1">
+            <label className="grid min-w-0 gap-1">
               Filter column
               <select
                 className={control}
@@ -78,7 +80,7 @@ export function DataTable({
                 ))}
               </select>
             </label>
-            <label className="grid gap-1">
+            <label className="grid min-w-0 gap-1">
               Match
               <select
                 className={control}
@@ -92,7 +94,7 @@ export function DataTable({
               </select>
             </label>
             {(filterOp === "contains" || filterOp === "eq") && (
-              <label className="grid gap-1">
+              <label className="grid min-w-0 gap-1">
                 Value
                 <Input
                   value={filterValue}
@@ -101,12 +103,12 @@ export function DataTable({
                 />
               </label>
             )}
-            <Button size="sm" variant="outline" disabled={!filterField || busy}>
+            <Button size="lg" variant="outline" disabled={!filterField || busy}>
               Apply filter
             </Button>
             {filter && (
               <Button
-                size="sm"
+                size="lg"
                 type="button"
                 variant="ghost"
                 onClick={() => {
@@ -120,7 +122,7 @@ export function DataTable({
             )}
           </form>
         )}
-        <label className="grid gap-1">
+        <label className="grid min-w-0 gap-1">
           Rows per page
           <select
             className={control}
@@ -155,7 +157,11 @@ export function DataTable({
         <>
           <DataNotice data={data} />
           <div
-            className="max-h-[30rem] overflow-auto rounded-md border"
+            className={
+              compact
+                ? "max-h-[min(40dvh,26rem)] overflow-auto rounded-md border"
+                : "max-h-[30rem] overflow-auto rounded-md border"
+            }
             tabIndex={0}
             role="region"
             aria-label="Data rows"
@@ -168,7 +174,11 @@ export function DataTable({
                       sort?.[0]?.field === name ? sort[0].direction : undefined;
                     return (
                       <th
-                        className="min-w-24 px-3 py-2 align-top font-medium"
+                        className={
+                          compact
+                            ? "min-w-24 whitespace-nowrap px-3 py-2 align-top font-medium"
+                            : "min-w-24 px-3 py-2 align-top font-medium"
+                        }
                         key={name}
                         scope="col"
                         aria-sort={
@@ -222,7 +232,14 @@ export function DataTable({
                     {row.map((value, j) => (
                       <td
                         key={j}
-                        className="max-w-80 px-3 py-2 align-top tabular-nums [overflow-wrap:anywhere]"
+                        className={
+                          compact
+                            ? "max-w-80 truncate px-3 py-1.5 align-top tabular-nums"
+                            : "max-w-80 px-3 py-2 align-top tabular-nums [overflow-wrap:anywhere]"
+                        }
+                        title={
+                          compact && value !== null ? String(value) : undefined
+                        }
                       >
                         {value === null ? (
                           <i className="text-muted-foreground">null</i>

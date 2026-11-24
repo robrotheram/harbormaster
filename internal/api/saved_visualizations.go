@@ -11,19 +11,56 @@ import (
 	"agent-workbench/internal/store"
 )
 
+func (s *Server) visualizationDetails(w http.ResponseWriter, r *http.Request) {
+	project := r.PathValue("id")
+	if !s.AuthorizeProject(w, r, project) {
+		return
+	}
+	p, _ := r.Context().Value(principalKey{}).(principal)
+	owner := visualizationOwner(p)
+	if owner == "" {
+		shared.Error(w, 403, "FORBIDDEN")
+		return
+	}
+	if r.Method == http.MethodGet {
+		edits, err := s.Store.VisualizationEdits(r.Context(), project, owner)
+		if err != nil {
+			shared.Error(w, 503, "STORAGE_UNAVAILABLE")
+			return
+		}
+		shared.JSON(w, 200, map[string]any{"titles": edits})
+		return
+	}
+	var item store.VisualizationDetails
+	if !decodeRouteBody(w, r, &item) {
+		return
+	}
+	if !shared.ValidID(item.WorkerID) || !shared.ValidID(item.ArtifactID) ||
+		(item.Title == nil && item.Description == nil) {
+		shared.Error(w, 400, "INVALID_REQUEST")
+		return
+	}
+	s.editVisualizationDetails(w, r, p, project, owner, item)
+}
+
+func visualizationOwner(p principal) string {
+	if p.admin {
+		return "local-operator"
+	}
+	if p.human.ID != "" {
+		return "user:" + p.human.ID
+	}
+	return ""
+}
+
 func (s *Server) savedVisualizations(w http.ResponseWriter, r *http.Request) {
 	project := r.PathValue("id")
 	if !s.AuthorizeProject(w, r, project) {
 		return
 	}
 	p, _ := r.Context().Value(principalKey{}).(principal)
-	var owner string
-	switch {
-	case p.admin:
-		owner = "local-operator"
-	case p.human.ID != "":
-		owner = "user:" + p.human.ID
-	default:
+	owner := visualizationOwner(p)
+	if owner == "" {
 		shared.Error(w, 403, "FORBIDDEN")
 		return
 	}

@@ -116,7 +116,8 @@ test("Workspace keeps drafts through exact-revision review and Overview uses sav
   await expect(
     page.getByRole("link", { name: "Reviews", exact: true }),
   ).toHaveCount(0);
-  await expect(page.getByText("This revision was approved.")).toBeVisible();
+  await expect(page.getByText("This revision was approved.")).toHaveCount(0);
+  await expect(page.getByText("Previous output approved")).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Approve this revision" }),
   ).toHaveCount(0);

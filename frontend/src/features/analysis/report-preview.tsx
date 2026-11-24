@@ -140,11 +140,13 @@ export function ReportPreview({
   report,
   source,
   preparing = false,
+  versionPicker,
   onEdit,
 }: {
   report: ReportDocument;
   source: { path: string; worker: string };
   preparing?: boolean;
+  versionPicker?: React.ReactNode;
   onEdit?: () => void;
 }) {
   const article = useRef<HTMLElement>(null);
@@ -163,7 +165,7 @@ export function ReportPreview({
   );
   useEffect(() => {
     article.current?.focus({ preventScroll: true });
-  }, [report.title, source.path]);
+  }, [source.path]);
 
   async function exportPDF() {
     if (!article.current || exporting) return;
@@ -182,7 +184,8 @@ export function ReportPreview({
 
   return (
     <div className="min-w-0 px-4 py-5 sm:px-6">
-      <header className="mb-4 flex justify-end">
+      <header className="mb-4 flex flex-wrap items-center justify-end gap-2">
+        {versionPicker && <div className="mr-auto">{versionPicker}</div>}
         <div className="flex items-center gap-2">
           {onEdit && (
             <Button type="button" size="sm" variant="outline" onClick={onEdit}>

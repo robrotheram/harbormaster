@@ -146,14 +146,14 @@ export function MessageContent({
   attempt,
   onAsk,
   embedData = false,
-  saveVisualizations = false,
+  editVisualizations = false,
 }: {
   content: string;
   project: string;
   attempt: Attempt;
   onAsk?: (message: string) => void;
   embedData?: boolean;
-  saveVisualizations?: boolean;
+  editVisualizations?: boolean;
 }) {
   const components = useMemo<Components>(
     () => ({
@@ -175,7 +175,7 @@ export function MessageContent({
               project={project}
               worker={reference.worker_id}
               id={reference.artifact_id}
-              canSave={saveVisualizations}
+              canEditDetails={editVisualizations}
             />
           ) : (
             <p role="status">Invalid visualization reference.</p>
@@ -227,7 +227,7 @@ export function MessageContent({
       project,
       onAsk,
       embedData,
-      saveVisualizations,
+      editVisualizations,
       attempt.id,
       attempt.state,
       attempt.artifacts,

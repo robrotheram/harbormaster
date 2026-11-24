@@ -2,10 +2,7 @@ import type { ReviewArea } from "@/features/delivery/review-preview-markup";
 import type { ReviewScreenshot } from "@/features/delivery/review-screenshot-editor";
 import { useUserSession } from "@/features/auth/session";
 import type { VisualizationRevision } from "@/features/analysis/api";
-import type {
-  ReportDraft,
-  ReportRevision,
-} from "@/features/analysis/report-model";
+import type { ReportDraft } from "@/features/analysis/report-model";
 import {
   createContext,
   useContext,
@@ -15,15 +12,13 @@ import {
 } from "react";
 
 // Private text lives only for this mounted project/session, including route changes.
-export type WorkEdit = VisualizationRevision | ReportRevision;
-
 function usePersonalState() {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [reportDrafts, setReportDrafts] = useState<Record<string, ReportDraft>>(
     {},
   );
   const [editRevisions, setEditRevisions] = useState<
-    Record<string, WorkEdit | undefined>
+    Record<string, VisualizationRevision | undefined>
   >({});
   const focusComposer = useRef("");
   const [reviewScreenshots, setReviewScreenshots] = useState<

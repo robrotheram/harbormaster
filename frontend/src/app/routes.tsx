@@ -31,7 +31,9 @@ const projectRoute = createRoute({
   ): {
     work?: string;
     attempt?: string;
-    view?: "workspace" | "files" | "datasets" | "saved" | "report";
+    artifact?: string;
+    dataset?: string;
+    view?: "workspace" | "files" | "datasets" | "report";
     worker?: string;
     tab?: "general" | "hermes" | "audit";
   } => ({
@@ -39,15 +41,25 @@ const projectRoute = createRoute({
       search.view === "workspace" ||
       search.view === "files" ||
       search.view === "datasets" ||
-      search.view === "saved" ||
       search.view === "report"
         ? search.view
-        : undefined,
+        : search.view === "saved" || search.view === "visualizations"
+          ? "workspace"
+          : undefined,
     tab:
       search.tab === "hermes" || search.tab === "audit"
         ? search.tab
         : undefined,
     attempt: typeof search.attempt === "string" ? search.attempt : undefined,
+    dataset:
+      search.view === "datasets" && typeof search.dataset === "string"
+        ? search.dataset
+        : undefined,
+    artifact:
+      (search.view === "workspace" || search.view === "visualizations") &&
+      typeof search.artifact === "string"
+        ? search.artifact
+        : undefined,
     work: typeof search.work === "string" ? search.work : undefined,
     worker: typeof search.worker === "string" ? search.worker : undefined,
   }),

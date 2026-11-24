@@ -1,39 +1,30 @@
 import { useEffect, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { bytes } from "@/shared/format";
-import { privateContentOptions } from "@/shared/private-content";
 import type { Workspace } from "@/shared/types";
 import { analysisAPI } from "./api";
 import { DataError } from "./data-state";
-import { DataTable } from "./data-table";
+import { DatasetPreview } from "./dataset-preview";
+import { useWorkerDatasets, workerDatasetsKey } from "./use-worker-datasets";
 
 export function WorkerDatasets({
   worker,
   project,
+  initialDataset,
+  onExplore,
 }: {
   worker: Workspace;
   project: string;
+  initialDataset?: string;
+  onExplore?: (dataset: string) => void;
 }) {
   const api = analysisAPI(project, worker.id);
   const client = useQueryClient();
-  const key = ["project", project, "analysis-datasets", worker.id];
-  const data = useQuery({
-    ...privateContentOptions,
-    queryKey: key,
-    queryFn: ({ signal }) => api.list(signal),
-    enabled: worker.ready,
-    retry: false,
-  });
-  const [selected, setSelected] = useState("");
-  const schema = useQuery({
-    ...privateContentOptions,
-    queryKey: [...key, "schema", selected],
-    queryFn: ({ signal }) => api.schema(selected, signal),
-    enabled: worker.ready && !!selected,
-    retry: false,
-  });
+  const key = workerDatasetsKey(project, worker.id);
+  const data = useWorkerDatasets(project, worker.id, worker.ready);
+  const [selected, setSelected] = useState(initialDataset ?? "");
   const upload = useRef<AbortController>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -73,7 +64,7 @@ export function WorkerDatasets({
               }
             }}
           >
-            <label className="grid gap-1 text-sm">
+            <label className="grid min-w-0 basis-full gap-1 text-sm sm:max-w-sm sm:basis-auto">
               CSV or Parquet file
               <Input
                 ref={fileInput}
@@ -83,11 +74,14 @@ export function WorkerDatasets({
                 disabled={busy}
               />
             </label>
-            <Button disabled={busy}>Upload dataset</Button>
+            <Button size="lg" disabled={busy}>
+              Upload dataset
+            </Button>
             {busy && (
               <Button
                 type="button"
                 variant="outline"
+                size="lg"
                 onClick={() => upload.current?.abort()}
               >
                 Cancel upload
@@ -134,36 +128,23 @@ export function WorkerDatasets({
             </ul>
           )}
           {selected && (
-            <section
-              aria-label="Dataset schema and preview"
-              className="space-y-3"
-            >
-              {schema.isError ? (
-                <DataError
-                  error={schema.error}
-                  retry={() => void schema.refetch()}
-                />
-              ) : !schema.data ? (
-                <p role="status">Loading schema…</p>
-              ) : (
-                <>
-                  <h2 className="font-medium">{schema.data.name}</h2>
-                  <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">
-                    SHA-256 {schema.data.sha256}
-                  </p>
-                  <DataTable
-                    key={selected}
-                    project={project}
-                    worker={worker.id}
-                    id={selected}
-                    spec={{ sortable: true, filterable: true }}
-                    load={(params, signal) =>
-                      api.preview(selected, params, signal)
-                    }
-                  />
-                </>
-              )}
-            </section>
+            <DatasetPreview
+              project={project}
+              worker={worker.id}
+              dataset={selected}
+              actions={
+                onExplore && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onExplore(selected)}
+                  >
+                    Explore with AI
+                  </Button>
+                )
+              }
+            />
           )}
         </>
       ) : (

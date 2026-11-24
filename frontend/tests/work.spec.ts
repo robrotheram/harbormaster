@@ -336,7 +336,9 @@ test("starts work, shows live tools, inspects files, accepts, and sends changes 
   await page
     .getByRole("button", { name: "Approve this revision", exact: true })
     .click();
-  await expect(page.getByText("This revision was approved.")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Approve this revision" }),
+  ).toHaveCount(0);
   await page.getByRole("button", { name: "Conversation", exact: true }).click();
   await page.getByRole("button", { name: "Filter threads by status" }).click();
   await expect(
@@ -2913,7 +2915,7 @@ test("analysis renders chart colors and pie percentages", async ({ page }) => {
   expect(f.errors).toEqual([]);
 });
 
-test("saved visualizations remain available when a new analysis replaces the output", async ({
+test("worker visualizations persist across runs and can be deleted individually", async ({
   page,
 }) => {
   const f = await conversationFixture(page);
@@ -2926,40 +2928,24 @@ test("saved visualizations remain available when a new analysis replaces the out
     chart_original: "Original temperature chart",
     chart_followup: "Follow-up temperature chart",
   };
-  const saves = new Set<string>();
+  const registered = new Set(["chart_original"]);
   const customDetails = new Map<
     string,
     { title?: string; description?: string }
   >();
-  await page.route("**/projects/A/analysis/saved-visualizations", (route) => {
+  await page.route("**/projects/A/analysis/visualization-details", (route) => {
     if (route.request().method() === "POST") {
-      const { worker_id, artifact_id, saved, title, description } = route
+      const { worker_id, artifact_id, title, description } = route
         .request()
         .postDataJSON();
       expect(worker_id).toBe("ws_one");
-      expect(titles[artifact_id]).toBeDefined();
-      if (typeof title === "string" || typeof description === "string") {
-        expect(saved).toBeUndefined();
-        const changed = {
-          ...customDetails.get(artifact_id),
-          ...(typeof title === "string" ? { title } : {}),
-          ...(typeof description === "string" ? { description } : {}),
-        };
-        customDetails.set(artifact_id, changed);
-        return route.fulfill({ json: { worker_id, artifact_id, ...changed } });
-      }
-      if (saved) saves.add(artifact_id);
-      else saves.delete(artifact_id);
-      return route.fulfill({ json: { saved } });
+      expect(registered.has(artifact_id)).toBe(true);
+      const changed = { ...customDetails.get(artifact_id), title, description };
+      customDetails.set(artifact_id, changed);
+      return route.fulfill({ json: { worker_id, artifact_id, ...changed } });
     }
     return route.fulfill({
       json: {
-        items: [...saves].reverse().map((id) => ({
-          worker_id: "ws_one",
-          artifact_id: id,
-          title: customDetails.get(id)?.title ?? titles[id],
-          type: "chart",
-        })),
         titles: [...customDetails].map(([artifact_id, changes]) => ({
           worker_id: "ws_one",
           artifact_id,
@@ -2968,14 +2954,31 @@ test("saved visualizations remain available when a new analysis replaces the out
       },
     });
   });
-  let sourceAvailable = true;
+  await page.route(
+    "**/workspaces/ws_one/analysis/artifacts?project_id=A",
+    (route) =>
+      route.fulfill({
+        json: {
+          items: [...registered].map((artifact_id) => ({
+            artifact_id,
+            title: titles[artifact_id],
+            type: "chart",
+          })),
+        },
+      }),
+  );
   await page.route(
     "**/workspaces/ws_one/analysis/artifacts/chart_**",
     (route) => {
       const path = new URL(route.request().url()).pathname.split("/");
+      if (path.at(-1) === "delete") {
+        expect(route.request().method()).toBe("POST");
+        registered.delete(path.at(-2)!);
+        return route.fulfill({ json: { deleted: true } });
+      }
       const data = path.at(-1) === "data";
       const id = path.at(data ? -2 : -1)!;
-      if (id === "chart_original" && !sourceAvailable)
+      if (!registered.has(id))
         return route.fulfill({
           status: 404,
           json: { code: "NOT_FOUND_OR_FORBIDDEN" },
@@ -3049,18 +3052,30 @@ test("saved visualizations remain available when a new analysis replaces the out
   await expect(
     original.getByText("Two morning readings. Taken before sunrise."),
   ).toBeVisible();
-  const save = original.getByRole("button", { name: "Save visualization" });
-  await expect(save).toHaveAttribute("aria-pressed", "false");
-  await save.click();
-  await expect(save).toHaveAttribute("aria-pressed", "true");
-  await conversationTool(page, "Saved");
-  const library = page.getByRole("region", { name: "Saved visualizations" });
+  await expect(
+    original.getByRole("button", { name: "Save visualization" }),
+  ).toHaveCount(0);
+  const library = page.getByRole("region", {
+    name: "Task workspace",
+    exact: true,
+  });
   await expect(original.locator('div[role="img"] svg')).toBeVisible();
   await library.getByRole("button", { name: "New visualization" }).click();
   const composer = page.getByRole("textbox", { name: "Message to your agent" });
   await expect(composer).toBeFocused();
-  await conversationTool(page, "Saved");
-  await library.getByRole("button", { name: "Ask agent to edit" }).click();
+  await library.getByRole("button", { name: "Actions", exact: true }).click();
+  await page
+    .getByRole("menuitem", { name: "Ask about this result", exact: true })
+    .click();
+  await expect(composer).toHaveValue(/Explain visualization chart_original/);
+  await expect(page.locator('[data-slot="dropdown-menu-content"]')).toHaveCount(
+    0,
+  );
+  await composer.clear();
+  await library.getByRole("button", { name: "Actions", exact: true }).click();
+  await page
+    .getByRole("menuitem", { name: "Ask agent to edit", exact: true })
+    .click();
   await expect(composer).toBeFocused();
   await expect(
     page.getByText("Editing Morning temperature", { exact: true }),
@@ -3079,50 +3094,48 @@ test("saved visualizations remain available when a new analysis replaces the out
   );
   expect(request?.body.instruction).toContain("Use a dashed line.");
   expect(request?.body.workspace_id).toBeUndefined();
+  registered.add("chart_followup");
   f.state.reply = "```harbormaster-visualization\nchart_followup\n```";
   f.finish();
   await expect(original).toHaveCount(0);
   const followup = page.getByRole("region", { name: titles.chart_followup });
   await expect(followup.locator('div[role="img"] svg')).toBeVisible();
-  await followup.getByRole("button", { name: "Save visualization" }).click();
-  await expect(
-    followup.getByRole("button", { name: "Save visualization" }),
-  ).toHaveAttribute("aria-pressed", "true");
-
-  await conversationTool(page, "Saved");
   await page.reload();
   await expect(library.getByRole("listitem")).toHaveCount(2);
-  const savedOriginal = library.getByRole("button", {
+  const originalItem = library.getByRole("button", {
     name: renamedTitle,
+    exact: true,
   });
-  await savedOriginal.click();
-  await expect(savedOriginal).toHaveAttribute("aria-pressed", "true");
+  await originalItem.click();
+  await expect(originalItem).toHaveAttribute("aria-pressed", "true");
   await expect(original.locator('div[role="img"] svg')).toBeVisible();
   await expect(
     original.getByText("Two morning readings. Taken before sunrise."),
   ).toBeVisible();
-  sourceAvailable = false;
-  await page.reload();
-  await savedOriginal.click();
-  await expect(library.getByText(/^Worker data is unavailable/)).toBeVisible();
-  await original
-    .getByRole("button", { name: "Edit visualization details" })
-    .click();
-  await input.fill("Archived temperature");
-  await description.fill("");
-  await dialog.getByRole("button", { name: "Save changes" }).click();
-  await expect(dialog).toHaveCount(0);
-  const archived = library.getByRole("button", {
-    name: "Archived temperature",
+  const sidebarDelete = library.getByRole("button", {
+    name: `Delete visualization: ${renamedTitle}`,
   });
-  await expect(archived).toBeVisible();
-  await library.getByRole("button", { name: "Remove from saved" }).click();
-  await expect(archived).toHaveCount(0);
+  const confirmation = page.getByRole("dialog", {
+    name: "Delete visualization",
+  });
+  await sidebarDelete.click();
+  await expect(confirmation.getByText("Morning temperature")).toBeVisible();
+  await confirmation.getByRole("button", { name: "Cancel" }).click();
+  await expect(originalItem).toBeVisible();
+  await sidebarDelete.click();
+  await confirmation
+    .getByRole("button", { name: "Delete visualization" })
+    .click();
+  await expect(confirmation).toHaveCount(0);
+  await expect(originalItem).toHaveCount(0);
+  expect([...registered]).toEqual(["chart_followup"]);
+  await page.reload();
+  await expect(originalItem).toHaveCount(0);
   await expect(followup.locator('div[role="img"] svg')).toBeVisible();
   expect(f.errors).toEqual([]);
 });
 
-test("selects agent reports, exports the captured Markdown, and opens an agent edit", async ({
+test("groups captured revisions under a single task report", async ({
   page,
 }) => {
   const f = await conversationFixture(page);
@@ -3133,6 +3146,7 @@ test("selects agent reports, exports the captured Markdown, and opens an agent e
   f.finish();
   f.addRun("attempt_1");
   f.finish();
+  for (const attempt of f.attempts) attempt.artifacts = [];
   const previous = "# First field report\n\nFirst captured observations.\n";
   const completed =
     "# Completed field report\n\n## Findings\n\nMorning readings were higher.\n\n" +
@@ -3145,6 +3159,12 @@ test("selects agent reports, exports the captured Markdown, and opens an agent e
   let releaseRefresh!: () => void;
   const refreshReady = new Promise<void>((resolve) => {
     releaseRefresh = resolve;
+  });
+  await page.route("**/work-items/work_one/files?project_id=A", (route) => {
+    expect(route.request().method()).toBe("GET");
+    return route.fulfill({
+      json: { paths: ["reports/report-from-another-task.md"] },
+    });
   });
   await page.route(
     "**/work-items/work_one/attempts/*/changes?project_id=A",
@@ -3234,6 +3254,19 @@ test("selects agent reports, exports the captured Markdown, and opens an agent e
   await expect(
     article.getByRole("heading", { name: "Completed field report" }),
   ).toBeVisible();
+  const reportList = page.getByRole("complementary", { name: "Reports" });
+  await expect(reportList.getByRole("listitem")).toHaveCount(2);
+  const version = page.getByRole("combobox", { name: "Report version" });
+  await expect(version.locator("option:checked")).toHaveText(
+    "Version 2 (latest)",
+  );
+  await version.selectOption({ label: "Version 1" });
+  await expect(article.getByText("First captured observations.")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Edit", exact: true }),
+  ).toHaveCount(0);
+  await expect(reportList.getByRole("listitem")).toHaveCount(2);
+  await version.selectOption("latest");
   await expect(
     article.getByText("Morning readings were higher."),
   ).toBeVisible();
@@ -3278,6 +3311,7 @@ test("selects agent reports, exports the captured Markdown, and opens an agent e
     );
     f.addRun("attempt_2");
     f.finish();
+    f.attempts.at(-1)!.artifacts = [];
     await refreshing;
     await expect(
       article.getByText("Field note 45.", { exact: true }),
@@ -3291,6 +3325,9 @@ test("selects agent reports, exports the captured Markdown, and opens an agent e
   await expect(
     article.getByText("Updated field note.", { exact: true }),
   ).toBeAttached();
+  await expect(version.locator("option:checked")).toHaveText(
+    "Version 3 (latest)",
+  );
   expect(await scroller.evaluate((element) => element.scrollTop)).toBe(
     position,
   );
@@ -3310,19 +3347,10 @@ test("selects agent reports, exports the captured Markdown, and opens an agent e
   await expect(
     page.getByRole("textbox", { name: "Findings (Markdown)" }),
   ).toContainText("Morning readings were higher.");
-  await page.getByRole("button", { name: "Ask agent to edit" }).click();
-  await expect(page.getByText("Editing Completed field report")).toBeVisible();
-  await page
-    .getByRole("textbox", { name: "Message to your agent" })
-    .fill("Expand on the sampling caveat.");
-  await page.getByRole("button", { name: "Send", exact: true }).click();
-  await expect
-    .poll(
-      () =>
-        f.posts.find(({ path }) => path.endsWith("/continue"))?.body
-          .instruction,
-    )
-    .toContain('Revise the Markdown report at "reports/field-report.md".');
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(
+    article.getByRole("heading", { name: "Completed field report" }),
+  ).toBeVisible();
 
   await page.goto(
     "/app/projects/A/work?work=work_one&attempt=attempt_1&view=report",
@@ -3331,6 +3359,171 @@ test("selects agent reports, exports the captured Markdown, and opens an agent e
     article.getByRole("heading", { name: "First field report" }),
   ).toBeVisible();
   await expect(article.getByText("First captured observations.")).toBeVisible();
+  expect(f.errors).toEqual([]);
+});
+
+test("opens and revises a report visualization from the unified Analysis workspace", async ({
+  page,
+}) => {
+  const f = await conversationFixture(page);
+  f.item.kind = "data-science";
+  f.state.exists = true;
+  const path = "reports/squirrel-report.md";
+  f.state.reply = `Created the report in [Squirrel report](${path}).`;
+  f.addRun();
+  f.finish();
+  const fence = (ref: string) =>
+    "```harbormaster-visualization\n" + ref + "\n```";
+  const markdown = [
+    "# Squirrel report",
+    fence("density"),
+    fence("ws_one/fur"),
+    fence("ws_one/density"),
+  ].join("\n\n");
+  await page.route(
+    "**/work-items/work_one/attempts/*/changes?project_id=A",
+    (route) =>
+      route.fulfill({
+        json: {
+          files: [
+            {
+              path,
+              status: "A",
+              source: Buffer.from(markdown).toString("base64"),
+            },
+          ],
+        },
+      }),
+  );
+  const titles: Record<string, string> = {
+    density: "Squirrel density",
+    fur: "Fur colors",
+  };
+  await page.route("**/projects/A/analysis/visualization-details", (route) =>
+    route.fulfill({ json: { titles: [] } }),
+  );
+  await page.route(
+    "**/workspaces/ws_one/analysis/artifacts?project_id=A",
+    (route) =>
+      route.fulfill({
+        json: {
+          items: Object.entries(titles).map(([artifact_id, title]) => ({
+            artifact_id,
+            title,
+            type: "table",
+          })),
+        },
+      }),
+  );
+  await page.route("**/workspaces/ws_one/analysis/artifacts/**", (route) => {
+    const artifactID = new URL(route.request().url()).pathname
+      .split("/")
+      .at(-1)!;
+    return route.fulfill({
+      json:
+        route.request().method() === "GET"
+          ? {
+              schema_version: "1.0",
+              artifact_id: artifactID,
+              type: "table",
+              title: titles[artifactID],
+              data: {
+                source_type: "query_result",
+                reference: "result_squirrels",
+              },
+              visualization: { page_size: 25 },
+            }
+          : {
+              columns: [{ name: "Count", type: "BIGINT" }],
+              rows: [[3]],
+              next_cursor: null,
+              has_more: false,
+              truncated: false,
+              sampled: false,
+            },
+    });
+  });
+  const reportWrites: { markdown: string }[] = [];
+  await page.route("**/work-items/work_one/reports", (route) => {
+    reportWrites.push(route.request().postDataJSON());
+    return route.fulfill({ json: { path } });
+  });
+  await page.goto("/app/projects/A/work?work=work_one&view=workspace");
+  const library = page.getByRole("region", {
+    name: "Task workspace",
+    exact: true,
+  });
+  const results = library.getByRole("list", { name: "Visualization list" });
+  await expect(results.getByRole("listitem")).toHaveCount(2);
+  await expect(
+    results.getByRole("button", { name: /^Squirrel density/ }),
+  ).toContainText("Used in report");
+  await expect(
+    results.getByRole("button", { name: /^Fur colors/ }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole("group", { name: "Workspace tools" })
+      .getByRole("button", { name: "Visualizations", exact: true }),
+  ).toHaveCount(0);
+  await conversationTool(page, "Report");
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  const picker = page.getByRole("list", {
+    name: "Visualizations",
+    exact: true,
+  });
+  await expect(picker.getByRole("listitem")).toHaveCount(2);
+  await expect(
+    picker.getByRole("button", { name: "Copy Markdown for Squirrel density" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Embedded results" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: /Ask agent to edit/ }),
+  ).toHaveCount(0);
+  expect(reportWrites).toHaveLength(0);
+  const findings = page.getByRole("textbox", { name: "Findings (Markdown)" });
+  await findings.fill(
+    (await findings.inputValue()) + "\n\nCensus observations.",
+  );
+  await page.getByRole("button", { name: "Save and preview" }).click();
+  const report = page.getByRole("article", { name: "Report content" });
+  await expect(report.getByText("Census observations.")).toBeVisible();
+  expect(reportWrites).toHaveLength(1);
+  expect(reportWrites[0]).toMatchObject({
+    path,
+    previous: markdown,
+    worker_id: "ws_one",
+  });
+  expect(reportWrites[0].markdown).toContain("Census observations.");
+  expect(reportWrites[0].markdown).toContain(fence("ws_one/fur"));
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await picker.getByRole("link", { name: "Fur colors" }).click();
+  await expect(
+    results.getByRole("button", { name: /^Fur colors/ }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await library.getByRole("button", { name: "Actions", exact: true }).click();
+  await page
+    .getByRole("menuitem", { name: "Ask agent to edit in report" })
+    .click();
+  const composer = page.getByRole("textbox", { name: "Message to your agent" });
+  await expect(composer).toBeFocused();
+  await expect(page.getByText("Editing Fur colors")).toBeVisible();
+  await composer.fill("Combine the rare color categories.");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect
+    .poll(
+      () =>
+        f.posts.find(({ path }) => path.endsWith("/continue"))?.body
+          .instruction,
+    )
+    .toContain("Combine the rare color categories.");
+  const instruction = f.posts.find(({ path }) => path.endsWith("/continue"))
+    ?.body.instruction;
+  expect(instruction).toContain('["reports/squirrel-report.md"]');
+  expect(instruction).toContain("embedded references to ws_one/fur");
+  expect(instruction).not.toContain("density");
   expect(f.errors).toEqual([]);
 });
 
@@ -3402,10 +3595,9 @@ test("exports a report with findings, a bounded table, a chart, and a map", asyn
         type: "table",
       },
     ];
-    await page.route("**/projects/A/analysis/saved-visualizations", (route) =>
+    await page.route("**/projects/A/analysis/visualization-details", (route) =>
       route.fulfill({
         json: {
-          items,
           titles: [
             {
               worker_id: "ws_one",
@@ -3415,6 +3607,15 @@ test("exports a report with findings, a bounded table, a chart, and a map", asyn
           ],
         },
       }),
+    );
+    await page.route(
+      "**/workspaces/ws_one/analysis/artifacts?project_id=A",
+      (route) =>
+        route.fulfill({
+          json: {
+            items: items.filter(({ worker_id }) => worker_id === "ws_one"),
+          },
+        }),
     );
     await page.route("https://tiles.openfreemap.org/**", (route) =>
       route.abort(),
@@ -3535,30 +3736,37 @@ test("exports a report with findings, a bounded table, a chart, and a map", asyn
       .toBe("bold text");
     await page.keyboard.insertText("Early readings were higher.");
     for (const { title, worker_id, artifact_id } of [...items, items[1]]) {
-      const copy = page.getByRole("button", {
-        name: `Copy Markdown for ${title}`,
-        exact: true,
-      });
-      await copy.click();
-      await expect(
-        page
-          .getByRole("status")
-          .filter({ hasText: `Copied Markdown for ${title}.` }),
-      ).toBeVisible();
-      const snippet = await page.evaluate(() => navigator.clipboard.readText());
-      expect(snippet).toBe(
-        [
-          "```harbormaster-visualization",
-          `${worker_id}/${artifact_id}`,
-          "```",
-        ].join("\n"),
-      );
+      const snippet = [
+        "```harbormaster-visualization",
+        `${worker_id}/${artifact_id}`,
+        "```",
+      ].join("\n");
+      if (worker_id === "ws_one") {
+        await page
+          .getByRole("button", {
+            name: `Copy Markdown for ${title}`,
+            exact: true,
+          })
+          .click();
+        await expect(
+          page
+            .getByRole("status")
+            .filter({ hasText: `Copied Markdown for ${title}.` }),
+        ).toBeVisible();
+        expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+          snippet,
+        );
+      } else {
+        await page.evaluate(
+          (value) => navigator.clipboard.writeText(value),
+          snippet,
+        );
+      }
       const before = await findings.inputValue();
       await findings.fill(before + "\n\n");
       await findings.press("Control+End");
       await findings.press("Control+v");
       await expect(findings).toHaveValue(before + "\n\n" + snippet);
-      await expect(copy).toBeVisible();
     }
     await page.getByRole("button", { name: "Save and preview" }).click();
     const report = page.getByRole("article", { name: "Report content" });
@@ -3682,6 +3890,22 @@ test("selecting data science starts in the analysis workspace without web previe
       },
     }),
   );
+  await page.route("**/workspaces/ws_one/analysis/artifacts?**", (route) =>
+    route.fulfill({ json: { items: [] } }),
+  );
+  await page.route("**/analysis/datasets/dataset_sensor/schema?**", (route) =>
+    route.fulfill({
+      json: {
+        name: "sensors.csv",
+        columns: [{ name: "reading", type: "DOUBLE" }],
+      },
+    }),
+  );
+  await page.route("**/analysis/datasets/dataset_sensor/preview?**", (route) =>
+    route.fulfill({
+      json: { columns: [{ name: "reading", type: "DOUBLE" }], rows: [[42]] },
+    }),
+  );
   await page.goto("/app/projects/A/work");
   await page
     .getByLabel("Message to your agent")
@@ -3695,7 +3919,9 @@ test("selecting data science starts in the analysis workspace without web previe
   const analysis = tools.getByRole("button", { name: "Analysis", exact: true });
   await expect(analysis).toHaveAttribute("aria-pressed", "true");
   const workspace = page.getByRole("region", { name: "Task workspace" });
-  await expect(workspace.getByRole("status")).toContainText("Agent is working");
+  await expect(
+    workspace.getByText("Agent is working", { exact: true }),
+  ).toBeVisible();
   await expect(datasetList).toHaveCount(0);
   await tools.getByRole("button", { name: "Datasets", exact: true }).click();
   await expect(page).toHaveURL(/view=datasets/);
@@ -3709,15 +3935,44 @@ test("selecting data science starts in the analysis workspace without web previe
   await analysis.click();
   await expect(datasetList).toHaveCount(0);
   f.finish();
-  await expect(workspace.getByRole("status")).toContainText(
-    "No visualizations yet",
-  );
+  await expect(
+    workspace.getByRole("heading", { name: "No visualizations yet" }),
+  ).toBeVisible();
   await expect(
     tools.getByRole("button", { name: "Preview", exact: true }),
   ).toHaveCount(0);
   expect(f.posts.find((p) => p.path === "/ui-api/work-items")?.body.kind).toBe(
     "data-science",
   );
+  const explorer = workspace.getByRole("region", { name: "Explore data" });
+  await expect(
+    explorer.getByRole("combobox", { name: "Dataset to explore" }),
+  ).toHaveValue("dataset_sensor");
+  await explorer.getByRole("button", { name: "Profile dataset" }).click();
+  const composer = page.getByRole("textbox", { name: "Message to your agent" });
+  await expect(composer).toHaveValue(/Profile dataset dataset_sensor/);
+  expect(f.posts.some(({ path }) => path.endsWith("/continue"))).toBe(false);
+  await composer.fill("What is the distribution of readings?");
+  const analysisURL = page.url();
+  await explorer.getByRole("button", { name: "Preview rows" }).click();
+  const rowPreview = explorer.getByRole("region", {
+    name: "Dataset schema and preview",
+  });
+  await expect(rowPreview.getByRole("cell", { name: "42" })).toBeVisible();
+  await expect(page).toHaveURL(analysisURL);
+  await expect(analysis).toHaveAttribute("aria-pressed", "true");
+  await expect(datasetList).toHaveCount(0);
+  await explorer.getByRole("button", { name: "Hide rows" }).click();
+  await expect(rowPreview).toHaveCount(0);
+  await expect(composer).toHaveValue("What is the distribution of readings?");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect
+    .poll(
+      () =>
+        f.posts.find(({ path }) => path.endsWith("/continue"))?.body
+          .instruction,
+    )
+    .toContain("Selected dataset for this request: dataset_sensor.");
 });
 
 test("renders the geographic aggregation and shape layers", async ({

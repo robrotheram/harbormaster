@@ -66,7 +66,9 @@ func (s *Store) Register(register func(string, http.HandlerFunc)) {
 	register("GET /v1/analysis/datasets/{dataset}/schema", s.schema)
 	register("POST /v1/analysis/datasets/{dataset}/preview", s.previewDataset)
 	register("GET /v1/analysis/artifacts/{artifact}", s.getArtifact)
+	register("GET /v1/analysis/artifacts", s.listArtifacts)
 	register("POST /v1/analysis/artifacts/{artifact}/data", s.artifactData)
+	register("POST /v1/analysis/artifacts/{artifact}/delete", s.deleteArtifact)
 	// The controller allowlist excludes local registration and result inspection.
 	register("POST /v1/analysis/results/upload", func(w http.ResponseWriter, r *http.Request) {
 		s.upload(w, r, "result")

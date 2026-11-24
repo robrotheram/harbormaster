@@ -654,8 +654,11 @@ test("screenshot markup and notes survive a failed send and retry", async ({
   await page
     .getByLabel("Message to your agent", { exact: true })
     .fill("Fix the highlighted layout.");
-  await page.getByText("Attach screenshots", { exact: true }).click();
-  await page.getByLabel("Attach screenshot").setInputFiles({
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Attach screenshot" }).click();
+  await (
+    await chooser
+  ).setFiles({
     name: "capture.png",
     mimeType: "image/png",
     buffer: Buffer.from(
@@ -674,13 +677,13 @@ test("screenshot markup and notes survive a failed send and retry", async ({
   const thumbnail = page.getByAltText("Review screenshot 1");
   await expect(thumbnail).toBeVisible();
   const original = await thumbnail.getAttribute("src");
-  await page
-    .getByLabel("Screenshot 1 notes")
-    .fill("The button overlaps the title.");
   const openEditor = page.getByRole("button", { name: "Mark up screenshot 1" });
   await openEditor.click();
   const editor = page.getByRole("dialog", { name: "Mark up screenshot" });
   await expect(editor).toBeVisible();
+  await editor
+    .getByLabel("Screenshot notes")
+    .fill("The button overlaps the title.");
   const canvas = editor.getByLabel("Screenshot drawing layer");
   await expect(canvas).toBeVisible();
   await editor.evaluate((node) =>

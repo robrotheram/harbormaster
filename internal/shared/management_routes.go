@@ -33,9 +33,13 @@ var managementRoutes = []managementRoute{
 	{http.MethodGet, "/v1/workspaces/{id}/analysis/datasets/{dataset}/schema", AnalysisRequestLimit, 0, noSharedHuman},
 	{http.MethodPost, "/v1/workspaces/{id}/analysis/datasets/{dataset}/preview", AnalysisRequestLimit, AnalysisRequestLimit, noSharedHuman},
 	{http.MethodGet, "/v1/workspaces/{id}/analysis/artifacts/{artifact}", AnalysisRequestLimit, 0, noSharedHuman},
+	{http.MethodGet, "/v1/workspaces/{id}/analysis/artifacts", AnalysisRequestLimit, 0, noSharedHuman},
 	{http.MethodPost, "/v1/workspaces/{id}/analysis/artifacts/{artifact}/data", AnalysisRequestLimit, AnalysisRequestLimit, noSharedHuman},
+	{http.MethodPost, "/v1/workspaces/{id}/analysis/artifacts/{artifact}/delete", AnalysisRequestLimit, AnalysisRequestLimit, noSharedHuman},
 	{http.MethodGet, "/v1/projects/{id}/analysis/saved-visualizations", 1024, 0, noSharedHuman},
 	{http.MethodPost, "/v1/projects/{id}/analysis/saved-visualizations", 16384, 16384, noSharedHuman},
+	{http.MethodGet, "/v1/projects/{id}/analysis/visualization-details", 1024, 0, noSharedHuman},
+	{http.MethodPost, "/v1/projects/{id}/analysis/visualization-details", 16384, 16384, noSharedHuman},
 	// Subscriptions are owner-scoped. Loading them on a worker still requires isolation.
 	{http.MethodGet, "/v1/subscriptions", 70 << 10, 0, sharedHumanExact},
 	{http.MethodPost, "/v1/subscriptions", 70 << 10, 70 << 10, sharedHumanExact},

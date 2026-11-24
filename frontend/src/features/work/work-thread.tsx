@@ -1,4 +1,15 @@
-import { SavedVisualizations } from "@/features/analysis/saved-visualizations";
+import type { VisualizationRevision } from "@/features/analysis/api";
+import {
+  reportReference,
+  reportReferences,
+} from "@/features/analysis/report-model";
+import {
+  AnalysisVisualizations,
+  type AnalysisReference,
+} from "@/features/analysis/analysis-visualizations";
+import { catalogKey } from "@/features/analysis/use-worker-visualizations";
+import { useWorkerDatasets } from "@/features/analysis/use-worker-datasets";
+import { AnalysisExplorer } from "@/features/analysis/analysis-explorer";
 import { WorkerDatasets } from "@/features/analysis/worker-datasets";
 import "@/features/delivery/review-feedback.css";
 import {
@@ -20,13 +31,10 @@ import { boardKey } from "@/features/delivery/board-api";
 import { useUserSession } from "@/features/auth/session";
 import { WorkspaceSettings } from "@/features/workspaces/settings";
 import { Responsibility, memberOptions } from "./responsibility";
-import {
-  usePersonalWork,
-  useLayoutPreference,
-  type WorkEdit,
-} from "./personal-work";
+import { usePersonalWork, useLayoutPreference } from "./personal-work";
 import { AgentSelection, type AgentModel } from "./agent-selection";
 import { Link, useSearch, useNavigate } from "@tanstack/react-router";
+import { useCompletedReports } from "./completed-report";
 import { replyOutputs } from "./reply-outputs";
 import { instructionOptions } from "./conversation-title";
 import { composerKeyDown } from "./composer-keydown";
@@ -48,7 +56,6 @@ import {
   ArrowUp,
   RotateCcw,
   CircleAlert,
-  Bookmark,
   Server,
   Play,
   Database,
@@ -59,6 +66,7 @@ import {
   PanelRightOpen,
   MessageSquare,
   X,
+  Paperclip,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -221,7 +229,7 @@ export function WorkConversation({
     });
   };
   const showWorkspace = (
-    view: "workspace" | "datasets" | "saved" | "files" | "report",
+    view: "workspace" | "datasets" | "files" | "report",
     latestRevision = false,
   ) =>
     navigate({
@@ -255,18 +263,18 @@ export function WorkConversation({
   const dataScience = item?.kind === "data-science";
   const datasetsOpen =
     dataScience && route.view === "datasets" && route.work === id;
-  const savedOpen = dataScience && route.view === "saved" && route.work === id;
   const reportOpen =
     dataScience && route.view === "report" && route.work === id;
+  const analysisOpen =
+    dataScience && workspaceOpen && !filesOpen && !datasetsOpen && !reportOpen;
   const projectWork = useQuery({
     ...workOptions(project.id),
-    enabled: savedOpen,
+    enabled: !!analysisOpen,
     refetchInterval: false,
   });
   useEffect(() => {
     if (
       item?.id === id &&
-      !savedOpen &&
       !datasetsOpen &&
       !reportOpen &&
       focusComposer.current === id
@@ -274,7 +282,7 @@ export function WorkConversation({
       focusComposer.current = "";
       composer.current?.focus();
     }
-  }, [datasetsOpen, focusComposer, id, item?.id, reportOpen, savedOpen]);
+  }, [datasetsOpen, focusComposer, id, item?.id, reportOpen]);
   const attempts = attemptQuery.isError
     ? []
     : [...(attemptQuery.data || [])].sort((a, b) =>
@@ -289,11 +297,73 @@ export function WorkConversation({
   const visualFiles = fileAttempt
     ? retainedVisuals(fileAttempt, outputSources)
     : [];
+  const { library: analysisReports } = useCompletedReports({
+    project: project.id,
+    work: item,
+    attempts,
+    pinnedAttempt: route.attempt,
+    reply: output,
+    replyAttempt: fileAttempt?.id,
+    enabled: !!analysisOpen && !!fileAttempt && !attemptQuery.isError,
+  });
+  const references = new Map<string, AnalysisReference>();
+  if (fileAttempt) {
+    for (const { artifact } of outputSources) {
+      if (!artifact) continue;
+      const ref = {
+        worker_id: fileAttempt.workspace_id,
+        artifact_id: artifact,
+      };
+      references.set(reportReference(ref), ref);
+    }
+  }
+  if (!analysisReports.isPlaceholderData) {
+    for (const { markdown, worker, path } of analysisReports.data ?? []) {
+      for (const ref of reportReferences(markdown, worker)) {
+        const key = reportReference(ref);
+        const previous = references.get(key)?.reportPaths ?? [];
+        references.set(key, {
+          ...ref,
+          usedInReport: true,
+          reportPaths:
+            ref.worker_id === worker ? [...previous, path] : previous,
+        });
+      }
+    }
+  }
+  const analysisWorker = fileAttempt?.workspace_id || item?.workspace_id;
+  const finishedAttempt =
+    latest && !activeAttempt(latest.state) ? latest.id : undefined;
+  useEffect(() => {
+    if (dataScience && analysisWorker && finishedAttempt)
+      void client.invalidateQueries({
+        queryKey: catalogKey(project.id, analysisWorker),
+      });
+  }, [client, dataScience, project.id, analysisWorker, finishedAttempt]);
+  const otherOutput = outputSources.filter(({ artifact }) => !artifact);
   const hasOutput = outputSources.length > 0 || visualFiles.length > 0;
   const actions = item && workActions(item.state);
   const running =
     !!item && (actions?.cancel || (!!latest && activeAttempt(latest.state)));
   const worker = workers.data?.find((w) => w.id === item?.workspace_id);
+  const [datasetSelection, setDatasetSelection] = useState<{
+    worker: string;
+    id: string;
+  }>();
+  const analysisDatasets = useWorkerDatasets(
+    project.id,
+    item?.workspace_id ?? "",
+    !!analysisOpen && !route.attempt && !!worker?.ready,
+  );
+  const datasetChoices = analysisDatasets.data?.items ?? [];
+  const analysisDataset =
+    datasetSelection && datasetSelection.worker === item?.workspace_id
+      ? datasetChoices.find(
+          (dataset) => dataset.dataset_id === datasetSelection.id,
+        )
+      : datasetChoices.length === 1
+        ? datasetChoices[0]
+        : undefined;
   const [subscriptionSettings, setSubscriptionSettings] = useState(false);
   const [selection, setSelection] = useState<AgentModel>();
   const [move, setMove] = useState<{ work: string; worker: string }>();
@@ -349,6 +419,7 @@ export function WorkConversation({
   const shots = screenshotDraft?.shots || [];
   const screenshotLimit = maxReviewScreenshots - (areas.length ? 1 : 0);
   const [capturingArea, setCapturingArea] = useState(false);
+  const attachmentInput = useRef<HTMLInputElement>(null);
   const [readingImage, setReadingImage] = useState(false);
   const [imageError, setImageError] = useState("");
   const [screenshotEditor, setScreenshotEditor] = useState<{
@@ -357,12 +428,27 @@ export function WorkConversation({
   }>();
   const compiledImage = useRef<{ key: string; content: string }>(null);
   const revisionInstruction = revision
-    ? "path" in revision
-      ? `Revise the Markdown report at ${JSON.stringify(revision.path)}. Apply the requested changes to that same file, preserve its visualization references unless asked to change them, and mention the report path in your reply.`
-      : `Revise saved visualization ${revision.artifact_id}. Read its specification with workbench-analysis artifact ${revision.artifact_id}. Apply the requested changes, register a new artifact ID on this worker, and embed the revised artifact in your reply.`
+    ? [
+        `Revise visualization ${revision.artifact_id}. Read its specification with workbench-analysis artifact ${revision.artifact_id}. Apply the requested changes, register a new artifact ID on this worker, and embed the revised artifact in your reply.`,
+        revision.report_paths?.length &&
+          `Update the existing Markdown reports at ${JSON.stringify(revision.report_paths)} in place. Replace only the embedded references to ${revision.worker_id}/${revision.artifact_id}, including references that omit the worker ID, with references to the new artifact. Keep unrelated visualizations and report text. Link the updated report files in your reply.`,
+      ]
+        .filter(Boolean)
+        .join(" ")
     : "";
+  const datasetContext =
+    analysisOpen &&
+    !route.attempt &&
+    !revision &&
+    !destination &&
+    message.trim() &&
+    analysisDataset &&
+    !message.includes(analysisDataset.dataset_id)
+      ? `Selected dataset for this request: ${analysisDataset.dataset_id}.`
+      : "";
   const instructionText = [
     revisionInstruction,
+    datasetContext,
     message,
     areas.length
       ? "Apply the numbered changes in the attached annotated preview image.\n" +
@@ -385,6 +471,16 @@ export function WorkConversation({
       delete next[id];
       return next;
     });
+  }
+  function draftAnalysis(prompt?: string) {
+    clearEditRevision();
+    setMove(undefined);
+    if (prompt) {
+      setMessage((current) =>
+        current.trim() ? `${current}\n\n${prompt}` : prompt,
+      );
+    }
+    composer.current?.focus();
   }
   function updateAreas(next: ReviewArea[]) {
     personal.setReviewAreas((old) => ({
@@ -425,9 +521,9 @@ export function WorkConversation({
         actionSequence,
         id,
         message,
-        revision:
-          revision &&
-          ("path" in revision ? revision.path : revision.artifact_id),
+        revision: revision?.artifact_id,
+        reportPaths: revision?.report_paths,
+        datasetContext,
         selection,
         destination,
         areas: areaDraft?.key,
@@ -553,6 +649,9 @@ export function WorkConversation({
     );
   const canContinue = canContinueWork(item);
   const analysisLoading =
+    (!!analysisOpen &&
+      analysisReports.isPending &&
+      analysisReports.isFetching) ||
     (attemptQuery.isPending && !!(route.attempt || item.latest_attempt_id)) ||
     (!!fileAttempt?.task_id &&
       (reply.attempt !== fileAttempt.id || reply.loading));
@@ -573,7 +672,9 @@ export function WorkConversation({
     analysisTitle = "Loading analysis results…";
     analysisMessage = "Checking the run for charts, maps, and images.";
   }
-  if (running && (!route.attempt || route.attempt === latest?.id)) {
+  const analysisRunning =
+    running && (!route.attempt || route.attempt === latest?.id);
+  if (analysisRunning) {
     analysisTitle =
       latest?.state === "cancel_requested"
         ? "Stopping the run…"
@@ -585,7 +686,7 @@ export function WorkConversation({
   }
   const revisionOnWorker =
     !revision || item.workspace_id === revision.worker_id;
-  function startEditRevision(edit: WorkEdit) {
+  function startEditRevision(edit: VisualizationRevision) {
     const sourceWorker = workers.data?.find(
       (candidate) =>
         candidate.id === edit.worker_id &&
@@ -600,7 +701,8 @@ export function WorkConversation({
       !attemptQuery.isError &&
       item?.workspace_id === sourceWorker.id
         ? item
-        : projectWork.data?.find(
+        : !edit.report_paths?.length &&
+          projectWork.data?.find(
             (candidate) =>
               candidate.id !== id &&
               candidate.workspace_id === sourceWorker.id &&
@@ -616,7 +718,9 @@ export function WorkConversation({
     focusComposer.current = target.id;
     if (target.id === id) {
       setMove(undefined);
-      void showWorkspace("workspace", true);
+      focusComposer.current = "";
+      composer.current?.focus();
+      if (route.attempt) void showWorkspace("workspace", true);
     } else {
       void navigate({
         to: "/projects/$projectId/$section",
@@ -739,20 +843,9 @@ export function WorkConversation({
             </div>
           </div>
           {workspaceOpen &&
-            (fileAttempt?.review_state === "accepted" ||
-              fileAttempt?.review_state === "changes_requested") && (
+            fileAttempt?.review_state === "changes_requested" && (
               <span className="text-xs text-muted-foreground">
-                {fileAttempt.review_state === "accepted"
-                  ? "This revision was approved."
-                  : "Changes requested. The controller can prepare the next revision."}
-              </span>
-            )}
-          {latest &&
-            attempts.some(
-              (a) => a.id !== latest.id && a.review_state === "accepted",
-            ) && (
-              <span className="text-xs text-muted-foreground">
-                Previous output approved
+                Changes requested. The controller can prepare the next revision.
               </span>
             )}
           <div className="conversation-heading-actions">
@@ -828,11 +921,9 @@ export function WorkConversation({
               <Button
                 variant="ghost"
                 size="sm"
-                aria-pressed={
-                  !filesOpen && !datasetsOpen && !savedOpen && !reportOpen
-                }
+                aria-pressed={!filesOpen && !datasetsOpen && !reportOpen}
                 onClick={() => {
-                  if (filesOpen || datasetsOpen || savedOpen || reportOpen) {
+                  if (filesOpen || datasetsOpen || reportOpen) {
                     void showWorkspace("workspace");
                   } else if (!dataScience) setPreviewView("web");
                 }}
@@ -842,14 +933,6 @@ export function WorkConversation({
               </Button>
               {dataScience && (
                 <>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    aria-pressed={savedOpen}
-                    onClick={() => void showWorkspace("saved")}
-                  >
-                    <Bookmark size={15} /> Saved
-                  </Button>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -1021,7 +1104,7 @@ export function WorkConversation({
                 action={a.id === latest?.id ? runAction : null}
                 onReply={a.id === fileAttempt?.id ? recordReply : undefined}
                 onAsk={selectElement}
-                saveVisualizations={dataScience}
+                editVisualizations={dataScience}
                 onActivity={announceActivity}
                 onOlder={() => {
                   follow.current = false;
@@ -1065,60 +1148,89 @@ export function WorkConversation({
         <section
           className="thread-workspace"
           aria-label="Task workspace"
-          hidden={
-            !workspaceOpen ||
-            filesOpen ||
-            datasetsOpen ||
-            savedOpen ||
-            reportOpen
-          }
+          hidden={!workspaceOpen || filesOpen || datasetsOpen || reportOpen}
         >
           {dataScience ? (
-            workspaceOpen &&
-            !filesOpen &&
-            !datasetsOpen &&
-            !savedOpen &&
-            !reportOpen && (
-              <div className="analysis-results min-w-0 space-y-4 px-4 py-5 sm:px-6">
-                {hasOutput && fileAttempt && (
-                  <WorkOutput
-                    key={fileAttempt.id}
+            analysisOpen && (
+              <>
+                {!route.attempt && (
+                  <AnalysisExplorer
+                    key={item.workspace_id}
                     project={project.id}
-                    attempt={fileAttempt}
-                    sources={outputSources}
-                    files={visualFiles}
-                    onAsk={selectElement}
-                    saveVisualizations
+                    worker={item.workspace_id}
+                    datasets={analysisDatasets}
+                    dataset={analysisDataset}
+                    onSelect={(id) =>
+                      setDatasetSelection({ worker: item.workspace_id, id })
+                    }
+                    onBrowse={() =>
+                      void navigate({
+                        to: "/projects/$projectId/$section",
+                        params: { projectId: project.id, section: "work" },
+                        search: { work: id, view: "datasets" },
+                      })
+                    }
+                    onDraft={
+                      controlsAgent && canContinue && !mutation.isPending
+                        ? draftAnalysis
+                        : undefined
+                    }
                   />
                 )}
-                {!hasOutput && (
-                  <div className="analysis-awaiting">
-                    <div className="analysis-awaiting-plot" aria-hidden="true">
-                      <span />
-                      <span />
-                      <span />
-                      <span />
-                      <span />
-                    </div>
-                    {attemptQuery.isError ? (
-                      <>
-                        <h3>Analysis results unavailable</h3>
-                        <ErrorNotice
-                          error={attemptQuery.error}
-                          message="Workbench could not load the run history for this analysis."
-                          onRetry={() => void attemptQuery.refetch()}
-                          retrying={attemptQuery.isFetching}
-                        />
-                      </>
-                    ) : (
-                      <div role="status" className="space-y-2">
-                        <h3>{analysisTitle}</h3>
-                        <p>{analysisMessage}</p>
-                      </div>
-                    )}
+                <AnalysisVisualizations
+                  key={`${analysisWorker ?? ""}/${route.attempt ?? ""}/${route.artifact ?? ""}`}
+                  project={project.id}
+                  worker={analysisWorker ?? ""}
+                  references={[...references.values()]}
+                  initialArtifact={route.artifact}
+                  pinned={!!route.attempt}
+                  status={
+                    analysisLoading ||
+                    analysisRunning ||
+                    (route.attempt && !fileAttempt)
+                      ? analysisTitle
+                      : undefined
+                  }
+                  emptyMessage={analysisMessage}
+                  canDelete={controlsAgent && !route.attempt}
+                  onRevise={startEditRevision}
+                  onAsk={
+                    controlsAgent &&
+                    canContinue &&
+                    !mutation.isPending &&
+                    !route.attempt &&
+                    analysisWorker === item.workspace_id
+                      ? ({ artifact_id }) =>
+                          draftAnalysis(
+                            `Explain visualization ${artifact_id}. Read its specification with workbench-analysis artifact ${artifact_id}. Summarize what the result shows, how the data was aggregated, and what caveats matter before drawing a conclusion.`,
+                          )
+                      : undefined
+                  }
+                />
+                {attemptQuery.isError && (
+                  <div className="px-4 pb-4 sm:px-6">
+                    <ErrorNotice
+                      error={attemptQuery.error}
+                      message="Workbench could not load the run history for this analysis."
+                      onRetry={() => void attemptQuery.refetch()}
+                      retrying={attemptQuery.isFetching}
+                    />
                   </div>
                 )}
-              </div>
+                {fileAttempt &&
+                  (otherOutput.length > 0 || visualFiles.length > 0) && (
+                    <div className="analysis-results min-w-0 px-4 pb-5 sm:px-6">
+                      <WorkOutput
+                        key={fileAttempt.id}
+                        project={project.id}
+                        attempt={fileAttempt}
+                        sources={otherOutput}
+                        files={visualFiles}
+                        onAsk={selectElement}
+                      />
+                    </div>
+                  )}
+              </>
             )
           ) : (
             <WorkPreview
@@ -1167,35 +1279,30 @@ export function WorkConversation({
             />
           )}
         </section>
-        {savedOpen && (
-          <section
-            className="thread-workspace"
-            aria-label="Saved visualizations"
-          >
-            <SavedVisualizations
-              project={project.id}
-              onRevise={startEditRevision}
-              onCreate={
-                controlsAgent && canContinue && !mutation.isPending
-                  ? () => {
-                      clearEditRevision();
-                      focusComposer.current = id;
-                      void showWorkspace("workspace", true);
-                    }
-                  : undefined
-              }
-            />
-          </section>
-        )}
         {datasetsOpen && dataScience && (
           <section className="thread-workspace" aria-label="Datasets page">
             <div className="min-w-0 space-y-4 px-4 py-5 sm:px-6">
               <h2 className="text-lg font-semibold">Datasets</h2>
               {worker ? (
                 <WorkerDatasets
-                  key={worker.id}
+                  key={`${worker.id}/${route.dataset ?? ""}`}
                   worker={worker}
                   project={project.id}
+                  initialDataset={route.dataset}
+                  onExplore={
+                    controlsAgent && canContinue && !route.attempt
+                      ? (dataset) => {
+                          setDatasetSelection({
+                            worker: worker.id,
+                            id: dataset,
+                          });
+                          clearEditRevision();
+                          setMove(undefined);
+                          focusComposer.current = id;
+                          void showWorkspace("workspace");
+                        }
+                      : undefined
+                  }
                 />
               ) : (
                 <p role="status">The task worker is unavailable.</p>
@@ -1224,11 +1331,6 @@ export function WorkConversation({
                 replyAttempt={fileAttempt?.id}
                 key={`${id}:${item.workspace_id}:${route.attempt ?? ""}`}
                 canEdit={controlsAgent && !running}
-                onAskAgent={
-                  canContinue && !mutation.isPending
-                    ? startEditRevision
-                    : undefined
-                }
               />
             </Suspense>
           </section>
@@ -1272,7 +1374,7 @@ export function WorkConversation({
         )}
         <div
           className="conversation-composer"
-          hidden={datasetsOpen || savedOpen || reportOpen}
+          hidden={datasetsOpen || reportOpen}
         >
           {mutation.isError && mutation.variables !== "run" && (
             <>
@@ -1280,45 +1382,13 @@ export function WorkConversation({
               {subscriptionAction(mutation.error)}
             </>
           )}
-          {(areas.length > 0 ||
-            (controlsAgent &&
-              !!latest &&
-              (workspaceOpen || shots.length > 0))) && (
+          {areas.length > 0 && (
             <div className="workspace-feedback-draft">
-              {areas.length > 0 && (
-                <AreaComments
-                  areas={areas}
-                  disabled={running || capturingArea || mutation.isPending}
-                  onChange={updateAreas}
-                />
-              )}
-              {controlsAgent && (
-                <details>
-                  <summary>
-                    Attach screenshots{shots.length ? ` (${shots.length})` : ""}
-                  </summary>
-                  <ReviewScreenshots
-                    shots={shots}
-                    limit={screenshotLimit}
-                    disabled={running || mutation.isPending || readingImage}
-                    onChange={updateShots}
-                    onAttach={(file) => void attachImage(file)}
-                    onEdit={(index, trigger) =>
-                      setScreenshotEditor({ index, trigger })
-                    }
-                  />
-                </details>
-              )}
-              {imageError && (
-                <p role="alert" className="text-destructive">
-                  {imageError}
-                </p>
-              )}
-              {shots.length > screenshotLimit && (
-                <p role="alert">
-                  Remove a screenshot to make room for the annotated preview.
-                </p>
-              )}
+              <AreaComments
+                areas={areas}
+                disabled={running || capturingArea || mutation.isPending}
+                onChange={updateAreas}
+              />
             </div>
           )}
           <Form
@@ -1330,6 +1400,33 @@ export function WorkConversation({
               Message to your agent
             </label>
             <div className="conversation-compose-input">
+              {controlsAgent && shots.length > 0 && (
+                <ReviewScreenshots
+                  shots={shots}
+                  disabled={running || mutation.isPending || readingImage}
+                  onRemove={(index) =>
+                    updateShots(shots.filter((_, i) => i !== index))
+                  }
+                  onEdit={(index, trigger) =>
+                    setScreenshotEditor({ index, trigger })
+                  }
+                />
+              )}
+              {(imageError || shots.length > screenshotLimit) && (
+                <p role="alert" className="px-3 pt-2 text-xs text-destructive">
+                  {imageError ||
+                    "Remove a screenshot to make room for the annotated preview."}
+                </p>
+              )}
+              {analysisOpen &&
+                !route.attempt &&
+                !revision &&
+                !destination &&
+                analysisDataset && (
+                  <p className="truncate px-3 pt-2 text-xs text-muted-foreground">
+                    Dataset: {analysisDataset.name}
+                  </p>
+                )}
               {revision && (
                 <div className="px-3 pt-2">
                   <div className="flex w-fit max-w-full items-center gap-1 rounded-md border px-2 text-xs">
@@ -1340,11 +1437,7 @@ export function WorkConversation({
                       type="button"
                       variant="ghost"
                       size="icon-xs"
-                      aria-label={
-                        "path" in revision
-                          ? "Clear report edit"
-                          : "Clear visualization edit"
-                      }
+                      aria-label="Clear visualization edit"
                       onClick={clearEditRevision}
                       disabled={mutation.isPending}
                     >
@@ -1378,7 +1471,7 @@ export function WorkConversation({
                     : revision
                       ? "Describe what to change…"
                       : dataScience
-                        ? "Describe the visualization or analysis you want…"
+                        ? "Ask a question about your data or describe a chart…"
                         : "Tell the agent what to do next…"
                 }
                 disabled={!item.latest_attempt_id || mutation.isPending}
@@ -1414,21 +1507,62 @@ export function WorkConversation({
                 </div>
               )}
               <div className="thread-composer-footer">
-                <AgentSelection
-                  compact
-                  workspace={destination || item.workspace_id}
-                  provider={selection?.provider ?? item.provider ?? ""}
-                  model={selection?.model ?? item.model ?? ""}
-                  reasoning={
-                    selection
-                      ? selection.reasoning_effort || ""
-                      : item.reasoning_effort || ""
-                  }
-                  onReasoning={(effort, provider, model) =>
-                    setSelection({ provider, model, reasoning_effort: effort })
-                  }
-                  disabled={running || mutation.isPending}
-                />
+                <div className="flex min-w-0 flex-wrap items-center gap-1">
+                  {controlsAgent && latest && (
+                    <>
+                      <input
+                        ref={attachmentInput}
+                        hidden
+                        type="file"
+                        accept="image/png,image/jpeg"
+                        onChange={(event) => {
+                          const file = event.currentTarget.files?.[0];
+                          event.currentTarget.value = "";
+                          if (file) void attachImage(file);
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        aria-label="Attach screenshot"
+                        title={
+                          shots.length >= screenshotLimit
+                            ? "Screenshot limit reached"
+                            : "Attach screenshot"
+                        }
+                        disabled={
+                          running ||
+                          mutation.isPending ||
+                          readingImage ||
+                          shots.length >= screenshotLimit
+                        }
+                        onClick={() => attachmentInput.current?.click()}
+                      >
+                        <Paperclip />
+                      </Button>
+                    </>
+                  )}
+                  <AgentSelection
+                    compact
+                    workspace={destination || item.workspace_id}
+                    provider={selection?.provider ?? item.provider ?? ""}
+                    model={selection?.model ?? item.model ?? ""}
+                    reasoning={
+                      selection
+                        ? selection.reasoning_effort || ""
+                        : item.reasoning_effort || ""
+                    }
+                    onReasoning={(effort, provider, model) =>
+                      setSelection({
+                        provider,
+                        model,
+                        reasoning_effort: effort,
+                      })
+                    }
+                    disabled={running || mutation.isPending}
+                  />
+                </div>
                 <div className="conversation-compose-actions">
                   {running ? (
                     <Button
@@ -1561,7 +1695,7 @@ function RunConversation({
   action,
   onLoad,
   onReply,
-  saveVisualizations,
+  editVisualizations,
 }: {
   project: string;
   attempt: Attempt;
@@ -1571,7 +1705,7 @@ function RunConversation({
   onOlder: () => void;
   onAsk: (message: string) => void;
   onActivity: () => void;
-  saveVisualizations: boolean;
+  editVisualizations: boolean;
 }) {
   const [older, setOlder] = useState<HistoryRecord[]>([]);
   const [cursor, setCursor] = useState<number>();
@@ -1782,7 +1916,7 @@ function RunConversation({
                       project={project}
                       attempt={attempt}
                       onAsk={onAsk}
-                      saveVisualizations={saveVisualizations}
+                      editVisualizations={editVisualizations}
                     />
                   )}
                 </div>
@@ -1851,7 +1985,7 @@ function RunConversation({
               project={project}
               attempt={attempt}
               onAsk={onAsk}
-              saveVisualizations={saveVisualizations}
+              editVisualizations={editVisualizations}
             />
           </div>
           {!attempt.error_code && action}

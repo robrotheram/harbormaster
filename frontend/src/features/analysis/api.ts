@@ -101,29 +101,27 @@ export type VisualizationReference = {
   artifact_id: string;
 };
 
-export type SavedVisualization = VisualizationReference & {
+export type VisualizationSummary = {
+  artifact_id: string;
   title: string;
   type: ArtifactSpec["type"];
 };
 
-export type VisualizationRevision = VisualizationReference & { title: string };
-type VisualizationDetails = VisualizationReference & {
+export type VisualizationRevision = VisualizationReference & {
+  title: string;
+  report_paths?: string[];
+};
+export type VisualizationDetails = VisualizationReference & {
   title?: string;
   description?: string;
 };
-export type PersonalVisualizationUpdate =
-  (VisualizationReference & { saved: boolean }) | VisualizationDetails;
-
-export function savedVisualizationsAPI(project: string) {
-  const path = `/projects/${encodeURIComponent(project)}/analysis/saved-visualizations`;
+export function visualizationDetailsAPI(project: string) {
+  const path = `/projects/${encodeURIComponent(project)}/analysis/visualization-details`;
   return {
     list: (signal?: AbortSignal) =>
-      request<{
-        items: SavedVisualization[];
-        titles?: VisualizationDetails[];
-      }>(path, undefined, signal),
-    update: (input: PersonalVisualizationUpdate) =>
-      request<{ saved: boolean } | VisualizationDetails>(path, input),
+      request<{ titles: VisualizationDetails[] }>(path, undefined, signal),
+    update: (input: VisualizationDetails) =>
+      request<VisualizationDetails>(path, input),
   };
 }
 
@@ -167,6 +165,17 @@ export function analysisAPI(project: string, worker: string) {
         path(`/datasets/${encodeURIComponent(id)}/preview`),
         query,
         signal,
+      ),
+    artifacts: (signal?: AbortSignal) =>
+      request<{ items: VisualizationSummary[] }>(
+        path("/artifacts"),
+        undefined,
+        signal,
+      ),
+    deleteArtifact: (id: string) =>
+      request<{ deleted: boolean }>(
+        path(`/artifacts/${encodeURIComponent(id)}/delete`),
+        {},
       ),
     spec: (id: string, signal?: AbortSignal) =>
       request<ArtifactSpec>(

@@ -59,6 +59,39 @@ func decoded[T any](t *testing.T, b []byte) T {
 	return data
 }
 
+func TestArtifactCatalogAndDeletion(t *testing.T) {
+	s, h := handler(t, "")
+	root, err := s.open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	const source = "result_squirrels"
+	if err := root.Mkdir(source, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := root.WriteFile(source+"/metadata.json", []byte(`{"dataset_id":"result_squirrels","format":"parquet","columns":[{"name":"count","type":"BIGINT"}]}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	const spec = `{"schema_version":"1.0","artifact_id":"squirrel_counts","type":"table","title":"Counts","data":{"source_type":"query_result","reference":"result_squirrels"},"visualization":{"columns":[{"field":"count"}]}}`
+	call(t, h, "POST", "/artifacts", strings.NewReader(spec), 201)
+	call(t, h, "POST", "/artifacts", strings.NewReader(strings.Replace(spec, "squirrel_counts", "other_counts", 1)), 201)
+	list := func() []byte { return call(t, h, "GET", "/artifacts", nil, 200) }
+	if b := list(); !bytes.Contains(b, []byte("squirrel_counts")) || bytes.Contains(b, []byte(source)) {
+		t.Fatalf("unexpected catalog: %s", b)
+	}
+	for range 2 {
+		call(t, h, "POST", "/artifacts/squirrel_counts/delete", strings.NewReader("{}"), 200)
+	}
+	call(t, h, "GET", "/artifacts/squirrel_counts", nil, 404)
+	call(t, h, "POST", "/artifacts/squirrel_counts/data", strings.NewReader("{}"), 404)
+	call(t, h, "GET", "/artifacts/other_counts", nil, 200)
+	call(t, h, "GET", "/results/"+source+"/schema", nil, 200)
+	if b := list(); bytes.Contains(b, []byte("squirrel_counts")) || !bytes.Contains(b, []byte("other_counts")) {
+		t.Fatalf("unexpected catalog after deletion: %s", b)
+	}
+}
+
 func TestCSVPreviewAndArtifactIsolation(t *testing.T) {
 	python := duckPython(t)
 	s, h := handler(t, python)

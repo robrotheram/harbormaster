@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ErrorNotice, Form, Modal } from "@/shared/components";
-import { useUpdatePersonalVisualization } from "./use-saved-visualizations";
+import { useUpdatePersonalVisualization } from "./use-visualization-details";
 
 const fieldClassName =
   "bg-background px-3.5 py-2.5 leading-6 shadow-none focus-visible:ring-2 dark:bg-background";

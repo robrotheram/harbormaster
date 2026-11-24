@@ -1,3 +1,4 @@
+import { Textarea } from "@/components/ui/textarea";
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/shared/components";
@@ -30,6 +31,7 @@ export function ReviewScreenshotEditor({
 }) {
   const source = shot.markup?.source || shot.url;
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+  const [note, setNote] = useState(shot.note);
   const [error, setError] = useState("");
   const image = useRef<HTMLImageElement>(null);
   const { marks, drawing, toolbar, layer, onKeyDown } = useReviewDrawing(
@@ -53,7 +55,7 @@ export function ReviewScreenshotEditor({
           markup: { source, marks },
         };
       }
-      onSave(next);
+      onSave({ ...next, note });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unable to save the markup.");
     }
@@ -97,6 +99,16 @@ export function ReviewScreenshotEditor({
             {error}
           </p>
         )}
+        <label className="grid gap-1 text-sm">
+          Screenshot notes
+          <Textarea
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            maxLength={500}
+            rows={2}
+            disabled={disabled}
+          />
+        </label>
         <div className="review-markup-actions">
           <Button type="button" variant="ghost" onClick={onClose}>
             Cancel

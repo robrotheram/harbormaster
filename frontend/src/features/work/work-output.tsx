@@ -22,14 +22,14 @@ export function WorkOutput({
   sources,
   files,
   onAsk,
-  saveVisualizations = false,
+  editVisualizations = false,
 }: {
   project: string;
   attempt: Attempt;
   sources: ReplyOutput[];
   files: Artifact[];
   onAsk: (message: string) => void;
-  saveVisualizations?: boolean;
+  editVisualizations?: boolean;
 }) {
   return (
     <section className="workspace-output" aria-label="Agent output">
@@ -40,7 +40,7 @@ export function WorkOutput({
             project={project}
             worker={attempt.workspace_id}
             id={artifact}
-            canSave={saveVisualizations}
+            canEditDetails={editVisualizations}
           />
         ) : path ? (
           imagePath(path) ? (

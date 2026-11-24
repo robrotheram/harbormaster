@@ -524,7 +524,10 @@ export default function GeoPoints({
   if (rowExclusions > 0)
     details.push(`${rowExclusions} rows excluded by geometry or weight limits`);
   return (
-    <div className="space-y-2 text-sm">
+    <div
+      className="space-y-2 text-sm"
+      data-analysis-plot-group={onSnapshot ? undefined : true}
+    >
       {isMap && tilesUnavailable && (
         <p role="status">
           Detailed tiles are unavailable. Showing the offline map.
@@ -558,6 +561,7 @@ export default function GeoPoints({
       )}
       <div
         ref={host}
+        data-analysis-plot={onSnapshot ? undefined : true}
         className={
           onSnapshot
             ? "relative h-[420px] w-full overflow-hidden"

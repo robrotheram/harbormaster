@@ -9,29 +9,25 @@
 
 Datasets and derived results live alongside the worker's Git checkout. The browser reads bounded previews through the workspace gateway. An agent can use native DuckDB and Python inside the worker to process the source data. Worker deletion can remove datasets, result files, and registered artifacts.
 
-## Save a visualization for later
+## Explore and delete visualizations
 
-1. Select **Save** on a table, chart, or map in a data science task.
-2. Open the workspace and select **Saved**. Choose a visualization from the list.
-3. Select **New visualization** to return to **Analysis** and describe the next result to the agent.
+Open **Analysis** in a data science task to browse the charts, maps, and tables the agent has registered on its worker. Results appear automatically, including visualizations the agent created for a report.
 
-Your saved list is available across data science tasks in the same project. Each visualization uses its original worker and data. If either becomes unavailable, the entry stays in the list and you can remove it.
+Select **New visualization** to describe a new result to the agent. To experiment with an existing result, select it and choose **Ask agent to edit**. The agent registers the revision as a separate visualization. Select the pencil beside the title to edit the title or description for your account.
 
-Select the pencil beside a visualization to edit its title or description for your account.
-
-In **Saved**, select **Ask agent to edit** and describe the changes. The agent uses the original worker and registers a revised artifact. Select **Save** on the new result to keep it in **Saved**.
+To remove a result, select **Delete visualization** and confirm. The dataset and derived data stay on the worker. Reports and replies that reference the deleted visualization show it as unavailable.
 
 ## Build and export a report
 
-Open **Report** in a data science task. The report list includes Markdown reports in the worker's `reports/` directory and reports captured from completed runs.
+Open **Report** in a data science task. When the agent updates the same report file, Workbench keeps one entry. Use the **Report version** menu to preview or export an earlier captured version.
 
 1. Select **New report** or open an existing report and select **Edit**.
 2. Set the title and write your findings. Use the formatting toolbar for headings, lists, links, and other Markdown formatting.
-3. Find a table, chart, or map under **Saved results**, select **Copy Markdown**, and paste the snippet on a blank line where the result should appear. You can paste a result more than once.
+3. Find a table, chart, or map under **Visualizations**, select **Copy Markdown**, and paste the snippet on a blank line where the result should appear. You can paste a result more than once.
 4. Select **Save and preview** to save the Markdown to the worker and review the report.
 5. Open **Export** and choose **Download PDF**, **Download HTML**, or **Download Markdown**.
 
-From the editor, select **Ask agent to edit** to save any changes and open a message tied to the report file. Describe your changes and send the message. Reopen **Report** when the agent finishes to see the revised document.
+Select a visualization name in the editor to open that result in **Analysis**. Results labeled **Used in report** have an **Ask agent to edit in report** action. The agent registers the revision and updates the existing report.
 
 HTML and PDF include up to 25 rows per referenced table and static views of the charts and maps. PDF uses an A4 layout with selectable text and numbered pages. The Markdown keeps figure references in `worker_id/artifact_id` form. Open the Markdown in the project's file viewer to render those references while the originating worker and its data are available.
 
@@ -164,12 +160,14 @@ The authenticated control-plane prefix is `/v1/workspaces/{id}/analysis`. The da
 | POST | `/datasets/upload?name=sensors.parquet` | File bytes as `application/octet-stream` |
 | GET | `/datasets/{dataset}/schema` | |
 | POST | `/datasets/{dataset}/preview` | Preview request |
+| GET | `/artifacts` | |
 | GET | `/artifacts/{artifact}` | |
 | POST | `/artifacts/{artifact}/data` | Table page controls or an empty object for a chart or geo artifact |
+| POST | `/artifacts/{artifact}/delete` | Empty object |
 
 Browser POSTs require the existing `X-Workbench-Request: 1` header. Include the current `project_id` when calling the dashboard API. Artifact and dataset IDs are resolved only in the authorized worker.
 
-Use `GET /v1/projects/{id}/analysis/saved-visualizations` to list the current user's saved references and edits. Send a POST to the same path with `worker_id`, `artifact_id`, and a boolean `saved` to save or remove a reference. To edit the details, send `title`, `description`, or both in place of `saved`. Send an empty description to clear it. The dashboard uses the same path under `/ui-api` in place of `/v1`.
+Use `GET /v1/projects/{id}/analysis/visualization-details` to list the current user's title and description edits. Send a POST to the same path with `worker_id`, `artifact_id`, and the fields to change. Send an empty description to clear it.
 
 A preview request accepts `limit`, `cursor`, `columns`, `sort`, and `filters`. Sort entries contain `field` and `direction`. Filter entries contain `field`, `op`, and, when required, a scalar `value`. Operators are `eq`, `ne`, `lt`, `lte`, `gt`, `gte`, `contains`, `is_null`, and `is_not_null`. Multiple filters use AND. Use strings for exact integers beyond JavaScript's safe integer range.
 

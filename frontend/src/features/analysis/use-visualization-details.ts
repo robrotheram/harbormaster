@@ -1,35 +1,32 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useUserSession } from "@/features/auth/session";
 import { privateContentOptions } from "@/shared/private-content";
-import {
-  savedVisualizationsAPI,
-  type PersonalVisualizationUpdate,
-} from "./api";
+import { visualizationDetailsAPI, type VisualizationDetails } from "./api";
 
-function useSavedVisualizationsKey(project: string) {
+function useVisualizationDetailsKey(project: string) {
   const session = useUserSession();
   const owner =
     session.status === "authenticated" ? session.user.id : session.status;
-  return ["project", project, "saved-visualizations", session.status, owner];
+  return ["project", project, "visualization-details", session.status, owner];
 }
 
-export function useSavedVisualizations(project: string) {
-  const queryKey = useSavedVisualizationsKey(project);
+export function useVisualizationDetails(project: string) {
+  const queryKey = useVisualizationDetailsKey(project);
   return useQuery({
     ...privateContentOptions,
     queryKey,
     staleTime: 10000,
     retry: false,
-    queryFn: ({ signal }) => savedVisualizationsAPI(project).list(signal),
+    queryFn: ({ signal }) => visualizationDetailsAPI(project).list(signal),
   });
 }
 
 export function useUpdatePersonalVisualization(project: string) {
   const client = useQueryClient();
-  const queryKey = useSavedVisualizationsKey(project);
+  const queryKey = useVisualizationDetailsKey(project);
   return useMutation({
-    mutationFn: (input: PersonalVisualizationUpdate) =>
-      savedVisualizationsAPI(project).update(input),
+    mutationFn: (input: VisualizationDetails) =>
+      visualizationDetailsAPI(project).update(input),
     onSuccess: () => client.invalidateQueries({ queryKey }),
   });
 }

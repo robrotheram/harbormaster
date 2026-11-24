@@ -1,10 +1,10 @@
 import { useId, useRef, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import {
   ChartNoAxesCombined,
   Check,
   Copy,
   Map as MapIcon,
-  MessageSquare,
   Table2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -20,29 +20,33 @@ import {
   reportSnippet,
   type ReportDraft,
 } from "./report-model";
-import { useSavedVisualizations } from "./use-saved-visualizations";
+import { useVisualizationDetails } from "./use-visualization-details";
+import { useWorkerVisualizations } from "./use-worker-visualizations";
 
 const icons = { table: Table2, chart: ChartNoAxesCombined, geo: MapIcon };
 
 export function ReportBuilder({
   project,
+  work,
+  worker,
   source,
   draft,
   onChange,
   onSave,
-  onAskAgent,
   onCancel,
 }: {
   project: string;
-  source?: { path: string; markdown: string; worker: string };
+  work: string;
+  worker: string;
+  source?: { path: string; markdown: string };
   draft: ReportDraft;
   onChange: (draft: ReportDraft) => void;
-  onSave: (title: string, markdown: string, askAgent: boolean) => Promise<void>;
-  onAskAgent: boolean;
+  onSave: (title: string, markdown: string) => Promise<void>;
   onCancel?: () => void;
 }) {
   const formId = useId();
-  const saved = useSavedVisualizations(project);
+  const details = useVisualizationDetails(project);
+  const catalog = useWorkerVisualizations(project, worker);
   const saving = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>();
@@ -51,12 +55,22 @@ export function ReportBuilder({
     message: string;
     snippet?: string;
   }>();
-  const items = saved.data?.items ?? [];
+
+  const items = (catalog.data?.items ?? []).map((item) => ({
+    ...item,
+    worker_id: worker,
+    title:
+      details.data?.titles?.find(
+        (edit) =>
+          edit.worker_id === worker && edit.artifact_id === item.artifact_id,
+      )?.title ?? item.title,
+  }));
   const findings = draft.findings ?? "";
+
   const canSave =
     !busy && !!draft.title.trim() && (!!findings.trim() || !!source);
 
-  async function save(askAgent: boolean) {
+  async function save() {
     if (!canSave || saving.current) return;
     saving.current = true;
     setBusy(true);
@@ -70,7 +84,7 @@ export function ReportBuilder({
           : reportMarkdown(title, findings);
       if (new TextEncoder().encode(markdown).length > 256 * 1024)
         throw new Error("Reports can contain up to 256 KiB of Markdown.");
-      await onSave(title, markdown, askAgent);
+      await onSave(title, markdown);
     } catch (cause) {
       setError(cause);
     } finally {
@@ -97,17 +111,6 @@ export function ReportBuilder({
               Cancel
             </Button>
           )}
-          {onAskAgent && (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={!canSave}
-              onClick={() => void save(true)}
-            >
-              <MessageSquare /> Ask agent to edit
-            </Button>
-          )}
           <Button type="submit" size="sm" form={formId} disabled={!canSave}>
             Save and preview
           </Button>
@@ -123,7 +126,7 @@ export function ReportBuilder({
         id={formId}
         onSubmit={(event) => {
           event.preventDefault();
-          void save(false);
+          void save();
         }}
       >
         <fieldset
@@ -148,27 +151,30 @@ export function ReportBuilder({
             />
           </div>
           <div className="min-w-0 space-y-3 text-sm">
-            <h3 className="font-medium">Saved results</h3>
-            {saved.isError && (
+            <h3 className="font-medium">Visualizations</h3>
+            {catalog.isError && (
               <DataError
-                error={saved.error}
-                retry={() => void saved.refetch()}
+                error={catalog.error}
+                retry={() => void catalog.refetch()}
               />
             )}
-            {saved.isPending && (
+            {worker && catalog.isPending && (
               <p role="status" className="text-muted-foreground">
-                Loading saved results…
+                Loading visualizations…
               </p>
             )}
-            {saved.isSuccess && !items.length && (
-              <p className="text-muted-foreground">No saved results.</p>
+            {(!worker || (catalog.isSuccess && !items.length)) && (
+              <p className="text-muted-foreground">No visualizations.</p>
             )}
             {!!items.length && (
               <>
                 <p className="text-xs text-muted-foreground">
                   Paste the copied snippet on a blank line in your report.
                 </p>
-                <ul className="divide-y rounded-md border">
+                <ul
+                  aria-label="Visualizations"
+                  className="divide-y rounded-md border"
+                >
                   {items.map((item) => {
                     const Icon = icons[item.type];
                     const ref = reportReference(item);
@@ -183,9 +189,18 @@ export function ReportBuilder({
                           aria-hidden="true"
                           className="size-4 shrink-0 text-muted-foreground"
                         />
-                        <span className="min-w-0 flex-1 break-words">
+                        <Link
+                          className="min-w-0 flex-1 break-words underline-offset-2 hover:underline focus-visible:underline"
+                          to="/projects/$projectId/$section"
+                          params={{ projectId: project, section: "work" }}
+                          search={{
+                            work,
+                            view: "workspace",
+                            artifact: item.artifact_id,
+                          }}
+                        >
                           {item.title}
-                        </span>
+                        </Link>
                         <Button
                           type="button"
                           variant="ghost"

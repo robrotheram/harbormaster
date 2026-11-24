@@ -1,3 +1,7 @@
+import { useMemo } from "react";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { privateContentOptions } from "@/shared/private-content";
+import { activeAttempt } from "./conversation-api";
 import {
   evidenceURL,
   workApi,
@@ -13,7 +17,12 @@ export type CompletedReport = {
   path: string;
   worker: string;
   markdown: string;
+  captures?: string[];
 };
+
+export function reportPathPrefix(work: string) {
+  return `reports/${work}-`;
+}
 
 function markdownPath(value: string) {
   const path = workspacePath(value);
@@ -62,7 +71,8 @@ export async function loadCompletedReports({
   live: boolean;
   signal: AbortSignal;
 }): Promise<CompletedReport[]> {
-  const newerPaths = new Set<string>();
+  const knownPaths = new Set<string>();
+  const deletedPaths = new Set<string>();
   const reports = new Map<string, CompletedReport>();
   const liveFiles = live
     ? workApi.files(project, work.id, signal).catch(() => undefined)
@@ -84,10 +94,6 @@ export async function loadCompletedReports({
       (changes?.files ?? []).map((file) => [file.path, file]),
     );
     const retained = new Map<string, string>();
-    for (const file of files.values()) {
-      if (file.status === "D")
-        newerPaths.add(`${attempt.workspace_id}/${file.path}`);
-    }
     for (const artifact of attempt.artifacts ?? []) {
       const path = markdownPath(artifact.source_path || artifact.name || "");
       const url = evidenceURL(artifact.content_url);
@@ -109,7 +115,13 @@ export async function loadCompletedReports({
         : undefined;
     for (const path of paths) {
       const key = `${attempt.workspace_id}/${path}`;
-      if (newerPaths.has(key)) continue;
+      if (files.get(path)?.status === "D") {
+        if (!knownPaths.has(key)) deletedPaths.add(key);
+        knownPaths.add(key);
+        continue;
+      }
+      knownPaths.add(key);
+      if (deletedPaths.has(key)) continue;
       try {
         let markdown: string | undefined;
         const source = files.get(path)?.source;
@@ -125,7 +137,17 @@ export async function loadCompletedReports({
             markdown = decodeReport(file.content);
         }
         if (markdown !== undefined) {
-          reports.set(key, { path, worker: attempt.workspace_id, markdown });
+          const report = reports.get(key);
+          if (!report) {
+            reports.set(key, {
+              path,
+              worker: attempt.workspace_id,
+              markdown,
+              captures: [markdown],
+            });
+          } else if (report.captures?.[0] !== markdown) {
+            report.captures?.unshift(markdown);
+          }
         } else {
           failed ??= new Error("The captured report could not be read.");
         }
@@ -134,7 +156,6 @@ export async function loadCompletedReports({
         failed ??= error;
       }
     }
-    for (const path of paths) newerPaths.add(`${attempt.workspace_id}/${path}`);
   }
   const files = await liveFiles;
   signal.throwIfAborted();
@@ -142,7 +163,10 @@ export async function loadCompletedReports({
   const paths = (files?.paths ?? []).filter(
     (path) =>
       markdownPath(path) === path &&
-      (path.startsWith("reports/") || reports.has(`${worker}/${path}`)),
+      (knownPaths.has(`${worker}/${path}`) ||
+        path.startsWith(reportPathPrefix(work.id)) ||
+        // Reports created in older editors have a random suffix and no task ID.
+        /^reports\/(?!work_)[^/]+-[0-9a-f]{12}\.md$/.test(path)),
   );
   for (let offset = 0; offset < paths.length; offset += 6) {
     const results = await Promise.allSettled(
@@ -155,12 +179,69 @@ export async function loadCompletedReports({
       }),
     );
     for (const result of results) {
-      if (result.status === "fulfilled")
-        reports.set(`${worker}/${result.value.path}`, result.value);
-      else failed ??= result.reason;
+      if (result.status === "fulfilled") {
+        const key = `${worker}/${result.value.path}`;
+        reports.set(key, { ...reports.get(key), ...result.value });
+      } else failed ??= result.reason;
     }
     signal.throwIfAborted();
   }
   if (!reports.size && failed) throw failed;
   return [...reports.values()];
+}
+
+export function useCompletedReports({
+  project,
+  work,
+  attempts,
+  pinnedAttempt,
+  reply,
+  replyAttempt,
+  enabled,
+}: {
+  project: string;
+  work?: WorkItem;
+  attempts: Attempt[];
+  pinnedAttempt?: string;
+  reply: string;
+  replyAttempt?: string;
+  enabled: boolean;
+}) {
+  const mentionedPaths = useMemo(() => reportPathsInReply(reply), [reply]);
+  const candidates = attempts
+    .filter(
+      (attempt) =>
+        !activeAttempt(attempt.state) &&
+        (!pinnedAttempt || attempt.id === pinnedAttempt),
+    )
+    .reverse();
+  const queryKey = [
+    "project",
+    project,
+    "work-reports",
+    work?.id,
+    work?.workspace_id,
+    pinnedAttempt,
+    candidates.map((attempt) => attempt.id),
+    replyAttempt,
+    mentionedPaths,
+  ] as const;
+  const library = useQuery({
+    ...privateContentOptions,
+    queryKey,
+    enabled: enabled && !!work,
+    placeholderData: keepPreviousData,
+    retry: false,
+    queryFn: ({ signal }) =>
+      loadCompletedReports({
+        project,
+        work: work!,
+        attempts: candidates,
+        replyAttempt,
+        mentionedPaths,
+        live: !pinnedAttempt,
+        signal,
+      }),
+  });
+  return { library, queryKey };
 }

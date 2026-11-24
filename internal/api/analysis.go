@@ -22,10 +22,15 @@ func (s *Server) registerAnalysis(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+base+"datasets/{dataset}/schema", s.analysis)
 	mux.HandleFunc("POST "+base+"datasets/{dataset}/preview", s.analysis)
 	mux.HandleFunc("GET "+base+"artifacts/{artifact}", s.analysis)
+	mux.HandleFunc("GET "+base+"artifacts", s.analysis)
 	mux.HandleFunc("POST "+base+"artifacts/{artifact}/data", s.analysis)
+	mux.HandleFunc("POST "+base+"artifacts/{artifact}/delete", s.analysis)
 	const saved = "/v1/projects/{id}/analysis/saved-visualizations"
 	mux.HandleFunc("GET "+saved, s.savedVisualizations)
 	mux.HandleFunc("POST "+saved, s.savedVisualizations)
+	const details = "/v1/projects/{id}/analysis/visualization-details"
+	mux.HandleFunc("GET "+details, s.visualizationDetails)
+	mux.HandleFunc("POST "+details, s.visualizationDetails)
 }
 
 func (s *Server) analysis(w http.ResponseWriter, r *http.Request) {
@@ -34,6 +39,10 @@ func (s *Server) analysis(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p, _ := r.Context().Value(principalKey{}).(principal)
+	if strings.HasSuffix(r.URL.Path, "/delete") && !p.admin && p.human.ID == "" {
+		shared.Error(w, 403, "FORBIDDEN")
+		return
+	}
 	if ws.Shared && !p.admin {
 		shared.Error(w, 409, "PROJECT_ISOLATED_WORKERS_REQUIRED")
 		return

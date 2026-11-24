@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"net/http"
 	"os"
 	"strings"
@@ -320,6 +321,60 @@ func (s *Store) createArtifact(w http.ResponseWriter, r *http.Request) {
 
 func artifactName(id string) string {
 	return "artifact-" + id + ".json"
+}
+
+func (s *Store) listArtifacts(w http.ResponseWriter, r *http.Request) {
+	root, err := s.open()
+	if err != nil {
+		shared.Error(w, 503, "ANALYSIS_STORAGE_UNAVAILABLE")
+		return
+	}
+	defer root.Close()
+	entries, err := fs.ReadDir(root.FS(), ".")
+	if err != nil {
+		shared.Error(w, 503, "ANALYSIS_STORAGE_UNAVAILABLE")
+		return
+	}
+	type summary struct {
+		ID    string `json:"artifact_id"`
+		Title string `json:"title"`
+		Type  string `json:"type"`
+	}
+	items := []summary{}
+	for _, entry := range entries {
+		id := strings.TrimSuffix(strings.TrimPrefix(entry.Name(), "artifact-"), ".json")
+		if !shared.ValidID(id) || entry.Name() != artifactName(id) {
+			continue
+		}
+		var item summary
+		if readNamedJSON(root, entry.Name(), maxArtifact, &item) == nil &&
+			item.ID == id && item.Title != "" &&
+			(item.Type == "chart" || item.Type == "table" || item.Type == "geo") {
+			items = append(items, item)
+		}
+	}
+	shared.JSON(w, 200, map[string]any{"items": items})
+}
+
+func (s *Store) deleteArtifact(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("artifact")
+	if !shared.ValidID(id) {
+		shared.Error(w, 404, "ANALYSIS_ARTIFACT_UNAVAILABLE")
+		return
+	}
+	root, err := s.open()
+	if err != nil {
+		shared.Error(w, 503, "ANALYSIS_STORAGE_UNAVAILABLE")
+		return
+	}
+	defer root.Close()
+	s.artifacts.Lock()
+	defer s.artifacts.Unlock()
+	if err := root.Remove(artifactName(id)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		shared.Error(w, 503, "ANALYSIS_STORAGE_UNAVAILABLE")
+		return
+	}
+	shared.JSON(w, 200, map[string]bool{"deleted": true})
 }
 
 func (s *Store) loadArtifact(w http.ResponseWriter, r *http.Request) (artifact, []byte, bool) {

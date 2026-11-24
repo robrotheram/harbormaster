@@ -10,8 +10,6 @@ export type ReportDraft = {
   findings?: string;
 };
 
-export type ReportRevision = { path: string; title: string; worker_id: string };
-
 export type ReportFigure = {
   src: string;
   attribution?: string;

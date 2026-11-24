@@ -321,6 +321,12 @@ export function AnalysisChart({
   if (error)
     return <p role="status">The chart renderer could not draw this data.</p>;
   return (
-    <div ref={host} role="img" aria-label={title} className="h-80 min-w-0" />
+    <div
+      ref={host}
+      data-analysis-plot
+      role="img"
+      aria-label={title}
+      className="h-80 min-w-0"
+    />
   );
 }

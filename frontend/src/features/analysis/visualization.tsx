@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import { lazy, Suspense, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { privateContentOptions } from "@/shared/private-content";
@@ -5,8 +6,8 @@ import { analysisAPI, type ArtifactSpec } from "./api";
 import { DataTable } from "./data-table";
 import { DataError, DataNotice } from "./data-state";
 import { EditVisualizationDetails } from "./edit-visualization-details";
-import { SaveVisualizationButton } from "./save-visualization-button";
-import { useSavedVisualizations } from "./use-saved-visualizations";
+import { useVisualizationDetails } from "./use-visualization-details";
+import { useVisualizationSpec } from "./use-visualization-spec";
 
 const GeoPoints = lazy(() => import("./geo-points"));
 const AnalysisChart = lazy(() =>
@@ -19,35 +20,27 @@ export function Visualization({
   project,
   worker,
   id,
-  canSave = false,
-  savedTitle,
+  canEditDetails = false,
+  fallbackTitle,
+  actions,
+  className,
 }: {
   project: string;
   worker: string;
   id: string;
-  canSave?: boolean;
-  savedTitle?: string;
+  canEditDetails?: boolean;
+  fallbackTitle?: string;
+  actions?: ReactNode;
+  className?: string;
 }) {
   const api = analysisAPI(project, worker);
-  const query = useQuery({
-    ...privateContentOptions,
-    queryKey: ["project", project, "analysis-artifact", worker, id],
-    enabled: !!worker,
-    retry: false,
-    queryFn: ({ signal }) => api.spec(id, signal),
-  });
-  const personal = useSavedVisualizations(project);
+  const query = useVisualizationSpec(project, worker, id);
+  const personal = useVisualizationDetails(project);
   const custom = personal.data?.titles?.find(
     (item) => item.worker_id === worker && item.artifact_id === id,
   );
-  const returned = query.data;
-  const spec =
-    returned?.schema_version === "1.0" &&
-    returned.artifact_id === id &&
-    ["table", "chart", "geo"].includes(returned.type)
-      ? returned
-      : undefined;
-  const title = custom?.title ?? savedTitle ?? spec?.title;
+  const spec = query.data;
+  const title = custom?.title ?? fallbackTitle ?? spec?.title;
   const description = custom?.description ?? spec?.description ?? "";
   let content: ReactNode;
   if (!worker) {
@@ -56,7 +49,7 @@ export function Visualization({
     content = (
       <DataError error={query.error} retry={() => void query.refetch()} />
     );
-  } else if (!returned) {
+  } else if (query.isPending) {
     content = (
       <p role="status" className="text-sm">
         Loading visualization…
@@ -93,13 +86,16 @@ export function Visualization({
   return (
     <section
       aria-label={title}
-      className="my-3 min-w-0 space-y-3 rounded-md border bg-card p-3 sm:p-4"
+      className={cn(
+        "my-3 min-w-0 space-y-3 rounded-md border bg-card p-3 sm:p-4",
+        className,
+      )}
     >
       <header className="flex items-start justify-between gap-3">
         <div className="min-w-0 [overflow-wrap:anywhere]">
           <div className="flex items-start gap-1">
             <h3 className="min-w-0 self-center font-semibold">{title}</h3>
-            {((canSave && spec) || savedTitle) && (
+            {canEditDetails && spec && (
               <EditVisualizationDetails
                 project={project}
                 worker={worker}
@@ -116,9 +112,7 @@ export function Visualization({
             </p>
           )}
         </div>
-        {canSave && spec && (
-          <SaveVisualizationButton project={project} worker={worker} id={id} />
-        )}
+        {actions}
       </header>
       {content}
     </section>

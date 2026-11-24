@@ -5101,55 +5101,26 @@
   max-width: 60rem;
   margin-inline: auto;
 }
+.analysis-result [data-analysis-plot] {
+  height: clamp(19rem, 52dvh, 30rem);
+  max-height: none;
+  flex: 1 0 auto;
+}
+.analysis-result [data-analysis-plot-group] {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+}
+@media (min-width: 768px) {
+  .analysis-result [data-analysis-plot] {
+    height: clamp(25rem, 61dvh, 46rem);
+  }
+}
 .analysis-results .workspace-output {
   padding: 0;
 }
 .analysis-results .workspace-output > * {
   max-width: none;
-}
-.analysis-awaiting {
-  display: grid;
-  gap: 16px;
-  max-width: 36rem;
-  margin: clamp(0px, 2vh, 24px) auto;
-  padding: clamp(16px, 3vw, 24px);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--card);
-}
-.analysis-awaiting h3 {
-  font-size: 16px;
-  font-weight: 600;
-}
-.analysis-awaiting [role="status"] p {
-  color: var(--muted-foreground);
-  line-height: 1.55;
-}
-.analysis-awaiting-plot {
-  display: flex;
-  align-items: end;
-  gap: clamp(8px, 2vw, 16px);
-  height: clamp(64px, 12vh, 132px);
-  padding-inline: 10%;
-  border-bottom: 1px solid var(--border);
-  border-left: 1px solid var(--border);
-  background: repeating-linear-gradient(
-    to top,
-    transparent 0 calc(25% - 1px),
-    var(--border) calc(25% - 1px) 25%
-  );
-}
-.analysis-awaiting-plot span {
-  flex: 1;
-  height: 25%;
-  border-radius: 3px 3px 0 0;
-  background: color-mix(in srgb, var(--primary) 22%, var(--muted));
-}
-.analysis-awaiting-plot span:nth-child(2n) {
-  height: 45%;
-}
-.analysis-awaiting-plot span:last-child {
-  height: 65%;
 }
 .workspace-output-file {
   padding-block: 16px;
