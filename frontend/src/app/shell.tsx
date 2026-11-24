@@ -262,86 +262,90 @@ export function ProjectShell({
         <FolderGit2 />
         <span className="rail-label">Projects</span>
       </Link>
-      <Link
-        to="/workers"
-        aria-label="Workers"
-        title="Workers"
-        aria-current={infrastructure ? "page" : undefined}
-        className={cn("factory-nav", infrastructure && "is-active")}
-        onClick={() => setMobile(false)}
-      >
-        <Boxes />
-        <span className="rail-label">Workers</span>
-      </Link>
-      <DropdownMenu open={systemOpen} onOpenChange={setSystemOpen}>
-        <DropdownMenuTrigger asChild>
-          <button
-            type="button"
-            className={cn(
-              "factory-nav system-menu-trigger",
-              (globalSettings || services || repositories) && "is-active",
-            )}
-            aria-label="Platform"
-            title="Platform"
+      {(navigationProject || projects.isError) && (
+        <>
+          <Link
+            to="/workers"
+            aria-label="Workers"
+            title="Workers"
+            aria-current={infrastructure ? "page" : undefined}
+            className={cn("factory-nav", infrastructure && "is-active")}
+            onClick={() => setMobile(false)}
           >
-            <Server />
-            <span className="rail-label">Platform</span>
-            <ChevronDown className="rail-label ml-auto" />
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          side="top"
-          align="start"
-          className="system-menu w-60"
-        >
-          <DropdownMenuLabel>Platform</DropdownMenuLabel>
-          {(
-            [
-              {
-                to: "/connections",
-                label: "Connections",
-                icon: FolderGit2,
-                active: repositories,
-              },
-              {
-                to: "/connection-profiles",
-                label: "Network profiles",
-                icon: Settings2,
-                active: globalSettings,
-              },
-              {
-                to: "/platform-services",
-                label: "Health",
-                icon: HeartPulse,
-                active: services,
-              },
-            ] as const
-          ).map((item) => (
-            <DropdownMenuItem key={item.to} asChild>
-              <Link
-                to={item.to}
-                aria-label={item.label}
-                aria-description={
-                  item.to === "/platform-services"
-                    ? `Service health: ${healthStatus}`
-                    : undefined
-                }
-                aria-current={item.active ? "page" : undefined}
-                onClick={() => setMobile(false)}
-              >
-                <item.icon size={16} />
-                <span className="flex-1">{item.label}</span>
-                {item.to === "/platform-services" && (
-                  <span className="system-health-badge">
-                    <State value={healthStatus} />
-                  </span>
+            <Boxes />
+            <span className="rail-label">Workers</span>
+          </Link>
+          <DropdownMenu open={systemOpen} onOpenChange={setSystemOpen}>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className={cn(
+                  "factory-nav system-menu-trigger",
+                  (globalSettings || services || repositories) && "is-active",
                 )}
-                {item.active && <Check size={14} />}
-              </Link>
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
+                aria-label="Platform"
+                title="Platform"
+              >
+                <Server />
+                <span className="rail-label">Platform</span>
+                <ChevronDown className="rail-label ml-auto" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              side="top"
+              align="start"
+              className="system-menu w-60"
+            >
+              <DropdownMenuLabel>Platform</DropdownMenuLabel>
+              {(
+                [
+                  {
+                    to: "/connections",
+                    label: "Connections",
+                    icon: FolderGit2,
+                    active: repositories,
+                  },
+                  {
+                    to: "/connection-profiles",
+                    label: "Network profiles",
+                    icon: Settings2,
+                    active: globalSettings,
+                  },
+                  {
+                    to: "/platform-services",
+                    label: "Health",
+                    icon: HeartPulse,
+                    active: services,
+                  },
+                ] as const
+              ).map((item) => (
+                <DropdownMenuItem key={item.to} asChild>
+                  <Link
+                    to={item.to}
+                    aria-label={item.label}
+                    aria-description={
+                      item.to === "/platform-services"
+                        ? `Service health: ${healthStatus}`
+                        : undefined
+                    }
+                    aria-current={item.active ? "page" : undefined}
+                    onClick={() => setMobile(false)}
+                  >
+                    <item.icon size={16} />
+                    <span className="flex-1">{item.label}</span>
+                    {item.to === "/platform-services" && (
+                      <span className="system-health-badge">
+                        <State value={healthStatus} />
+                      </span>
+                    )}
+                    {item.active && <Check size={14} />}
+                  </Link>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </>
+      )}
     </nav>
   );
   const navigation = (
