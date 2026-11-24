@@ -162,7 +162,9 @@ func (m *Manager) getService(w http.ResponseWriter, r *http.Request) {
 	}
 	var config string
 	if m.db.QueryRow(`SELECT configuration FROM workspace_applications WHERE service_id=?`, s.ID).Scan(&config) == nil {
-		shared.JSON(w, 200, map[string]any{"id": s.ID, "state": s.State, "expires_at": s.ExpiresAt, "kind": "application"})
+		var app shared.ApplicationConfig
+		_ = json.Unmarshal([]byte(config), &app)
+		shared.JSON(w, 200, map[string]any{"id": s.ID, "state": s.State, "expires_at": s.ExpiresAt, "kind": "application", "application_kind": app.Kind})
 		return
 	}
 	shared.JSON(w, 200, s)

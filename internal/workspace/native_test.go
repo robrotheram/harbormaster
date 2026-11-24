@@ -22,8 +22,8 @@ test -z "$OPENAI_API_KEY$ANTHROPIC_API_KEY$VAULT_TOKEN$WORKSPACE_TOKEN" || exit 
 input=$(cat)
 case "$input" in
   *'If this task delivers or changes a runnable web app'*'workbench-preview start'*'check that workbench-preview status'*'workbench-analysis register-artifact'*'harbormaster-visualization'*'implement sample') ;;
-  *'Desktop app development'*'workbench-preview desktop'*'implement a GUI')
-    test "$DISPLAY" = :99 || exit 17
+  *'Desktop app development'*'workbench-preview desktop'*'workbench-desktop run'*'implement a GUI')
+    test "$XDG_SESSION_TYPE" = wayland && test "$WAYLAND_DISPLAY" = wayland-0 && test -n "$XDG_RUNTIME_DIR" || exit 17
     case "$input" in *'workbench-preview start'*) exit 18;; esac ;;
   *) exit 12;;
 esac

@@ -714,8 +714,9 @@ export function WorkPreview({
           )}
           {mode === "desktop" && (
             <p className="visual-hint">
-              The agent can launch GUI apps on DISPLAY=:99 while this session is
-              active. The desktop runs inside this workspace.
+              Launch Wayland or X11 apps with{" "}
+              <code>workbench-desktop run &lt;app&gt;</code> while the session
+              is active.
             </p>
           )}
           <Button

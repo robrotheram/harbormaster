@@ -38,13 +38,17 @@ func previewParents(r *http.Request) string {
 	}
 	return "http://127.0.0.1" + suffix + " http://localhost" + suffix
 }
-func previewPolicy(r *http.Request) string {
+func previewPolicy(r *http.Request, desktop bool) string {
 	host := r.Host
 	websocketScheme := "ws://"
 	if workerSecure(r) {
 		websocketScheme = "wss://"
 	}
-	return "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self' " + websocketScheme + host + "; font-src 'self' data:; media-src 'self' blob:; base-uri 'self'; form-action 'self'; frame-ancestors " + previewParents(r) + "; worker-src 'self' blob:"
+	scripts := "script-src 'self' 'unsafe-inline'"
+	if desktop {
+		scripts += " 'wasm-unsafe-eval'"
+	}
+	return "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; " + scripts + "; connect-src 'self' " + websocketScheme + host + "; font-src 'self' data:; media-src 'self' blob:; base-uri 'self'; form-action 'self'; frame-ancestors " + previewParents(r) + "; worker-src 'self' blob:"
 }
 func (p *previewIngress) live(w http.ResponseWriter, r *http.Request, binding previewBinding) {
 	if binding.Embedded && r.Method == http.MethodGet && r.URL.Path == "/.workbench/preview-review.js" {
@@ -79,7 +83,7 @@ func (p *previewIngress) live(w http.ResponseWriter, r *http.Request, binding pr
 			failureStatus = res.StatusCode
 			return errors.New("workspace application proxy unavailable")
 		}
-		res.Header.Set("Content-Security-Policy", previewPolicy(r))
+		res.Header.Set("Content-Security-Policy", previewPolicy(r, binding.Desktop))
 		res.Header.Del("X-Frame-Options")
 		res.Header.Set("Cache-Control", "no-store")
 		res.Header.Set("Referrer-Policy", "no-referrer")

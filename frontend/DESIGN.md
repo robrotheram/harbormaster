@@ -177,8 +177,8 @@ older attempts and individual tool details are available on demand.
 
 The pane toolbar owns app selection, refresh, viewport size, selection-to-feedback,
 and configuration. Setup and logs live in dialogs. Acceptance is a small action
-near the latest reply. Visualizations render real retained data; desktop mode is
-an actual workspace X11/VNC session, never a simulated desktop or the host's screen.
+near the latest reply. Visualizations render retained data. Desktop mode opens
+the worker's Wayland session, which supports X11 apps through XWayland.
 
 Saved files have one quiet entry at the right of the preview pane header. Remove
 per-run output links and the conversation-header Files button; run selection stays

@@ -134,7 +134,7 @@ func Preview(ctx context.Context, args []string, out, errOut io.Writer) error {
 		}
 		message := "Application is supervised inside this workspace. Open Web preview in the work conversation."
 		if action == "desktop" {
-			message = "Desktop is ready on DISPLAY=:99. Open Desktop in the work conversation."
+			message = "Wayland desktop is ready. Open Desktop in the work conversation. Launch GUI apps with workbench-desktop run <app> [args...]."
 		}
 		_, err := fmt.Fprintln(out, message)
 		return err

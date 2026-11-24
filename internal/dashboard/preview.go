@@ -25,6 +25,7 @@ type previewBinding struct {
 	Embedded                          bool
 	ParentOrigin                      string
 	Application                       bool
+	Desktop                           bool
 	ServiceExpiry                     time.Time
 	Workspace, Service, Host, Project string
 	Expiry                            time.Time
@@ -91,9 +92,10 @@ func (p *previewIngress) issue(w http.ResponseWriter, r *http.Request, workspace
 	}
 	status, b := p.call(r, "GET", "/workspaces/"+workspace+"/services/"+service, nil)
 	var state struct {
-		Kind   string `json:"kind"`
-		State  string `json:"state"`
-		Expiry int64  `json:"expires_at"`
+		Kind            string `json:"kind"`
+		ApplicationKind string `json:"application_kind"`
+		State           string `json:"state"`
+		Expiry          int64  `json:"expires_at"`
 	}
 	if status != 200 || json.Unmarshal(b, &state) != nil || state.State != "active" || state.Expiry <= time.Now().Unix() {
 		writeError(w, 410, "PREVIEW_UNAVAILABLE")
@@ -123,7 +125,7 @@ func (p *previewIngress) issue(w http.ResponseWriter, r *http.Request, workspace
 		return
 	}
 	key := shared.NewID("ticket_")
-	p.tickets[key] = previewBinding{Human: human, Embedded: input.Embedded, ParentOrigin: parentOrigin, Application: state.Kind == "application", Workspace: workspace, Service: service, Host: host, Project: owner.Project, Expiry: time.Now().Add(time.Minute), ServiceExpiry: time.Unix(state.Expiry, 0)}
+	p.tickets[key] = previewBinding{Human: human, Embedded: input.Embedded, ParentOrigin: parentOrigin, Application: state.Kind == "application", Desktop: state.ApplicationKind == "desktop", Workspace: workspace, Service: service, Host: host, Project: owner.Project, Expiry: time.Now().Add(time.Minute), ServiceExpiry: time.Unix(state.Expiry, 0)}
 	shared.JSON(w, 200, map[string]string{"preview_url": scheme + "://" + host + "/connect#ticket=" + url.QueryEscape(key)})
 }
 func (p *previewIngress) serve(w http.ResponseWriter, r *http.Request) {

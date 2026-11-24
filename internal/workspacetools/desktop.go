@@ -9,138 +9,152 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 )
 
+const desktopSocket = "wayland-0"
+
+func desktopRuntimeDir() string {
+	return fmt.Sprintf("/tmp/workbench-desktop-%d", os.Getuid())
+}
+
+func desktopListening(network, address string) bool {
+	conn, err := net.DialTimeout(network, address, 200*time.Millisecond)
+	if err != nil {
+		return false
+	}
+	conn.Close()
+	return true
+}
+
+// DesktopEnvironment also works before a desktop starts. The X11 display is
+// allocated by wland at startup, so launchers resolve it again when needed.
+func DesktopEnvironment() []string {
+	runtimeDir := desktopRuntimeDir()
+	socket := filepath.Join(runtimeDir, desktopSocket)
+	display := ""
+	if desktopListening("unix", socket) {
+		if data, err := os.ReadFile(socket + ".x11"); err == nil {
+			n, ok := strings.CutPrefix(strings.TrimSpace(string(data)), ":")
+			if number, err := strconv.ParseUint(n, 10, 32); ok && err == nil {
+				display = ":" + strconv.FormatUint(number, 10)
+			}
+		}
+	}
+	return []string{
+		"XDG_RUNTIME_DIR=" + runtimeDir,
+		"WAYLAND_DISPLAY=" + desktopSocket,
+		"XDG_SESSION_TYPE=wayland",
+		"GSK_RENDERER=cairo",
+		"DISPLAY=" + display,
+	}
+}
+
+func desktopApplication(ctx context.Context, args []string) *exec.Cmd {
+	if os.Getenv("DBUS_SESSION_BUS_ADDRESS") == "" {
+		args = append([]string{"dbus-run-session", "--"}, args...)
+	}
+	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+	env := slices.DeleteFunc(os.Environ(), func(entry string) bool {
+		return strings.HasPrefix(entry, "WAYLAND_SOCKET=")
+	})
+	cmd.Env = append(env, DesktopEnvironment()...)
+	return cmd
+}
+
 func Desktop(ctx context.Context, args []string, errOut io.Writer) error {
 	if len(args) != 0 {
-		return errors.New("desktop takes no arguments")
+		if len(args) < 2 || args[0] != "run" {
+			return errors.New("usage: workbench-desktop run <app> [args...]")
+		}
+		if !desktopListening("unix", filepath.Join(desktopRuntimeDir(), desktopSocket)) {
+			return errors.New("desktop is unavailable. Start it with workbench-preview desktop")
+		}
+		cmd := desktopApplication(ctx, args[1:])
+		if cmd.Err != nil {
+			return cmd.Err
+		}
+		return syscall.Exec(cmd.Path, cmd.Args, cmd.Environ())
 	}
+
 	port, err := strconv.Atoi(os.Getenv("PORT"))
 	if err != nil || port < 1 || port > 65535 {
 		return errors.New("PORT must be a valid TCP port")
 	}
-	env := []string{}
-	for _, entry := range os.Environ() {
-		if !strings.HasPrefix(entry, "DISPLAY=") {
-			env = append(env, entry)
-		}
+	runtimeDir := desktopRuntimeDir()
+	if err := os.Mkdir(runtimeDir, 0700); err != nil && !errors.Is(err, os.ErrExist) {
+		return fmt.Errorf("create desktop runtime directory: %w", err)
 	}
-	env = append(env, "DISPLAY=:99")
-	var processes []*exec.Cmd
-	var wait sync.WaitGroup
-	exited := make(chan error, 5)
-	defer func() {
-		for _, p := range processes {
-			_ = p.Process.Signal(syscall.SIGTERM)
-		}
-		done := make(chan struct{})
-		go func() { wait.Wait(); close(done) }()
-		select {
-		case <-done:
-		case <-time.After(2 * time.Second):
-			for _, p := range processes {
-				_ = p.Process.Kill()
-			}
-			<-done
-		}
+	info, err := os.Lstat(runtimeDir)
+	if err != nil {
+		return fmt.Errorf("inspect desktop runtime directory: %w", err)
+	}
+	if !info.IsDir() || info.Mode().Perm() != 0700 || info.Sys().(*syscall.Stat_t).Uid != uint32(os.Getuid()) {
+		return errors.New("desktop runtime directory must be private and owned by the workspace user")
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	relay := exec.CommandContext(ctx, "/usr/local/bin/wlandr",
+		"--profile", "session", "--host", "127.0.0.1", "--port", strconv.Itoa(port),
+		"--display", desktopSocket, "--web-root", "/opt/wland/web",
+		"--xwayland", "/usr/local/bin/xwayland-satellite")
+	relay.Env = append(os.Environ(), "XDG_RUNTIME_DIR="+runtimeDir)
+	relay.Stdout, relay.Stderr = errOut, errOut
+	relay.Cancel = func() error { return relay.Process.Signal(syscall.SIGTERM) }
+	relay.WaitDelay = 2 * time.Second
+	if err := relay.Start(); err != nil {
+		return fmt.Errorf("start desktop compositor: %w", err)
+	}
+	exited := make(chan struct{})
+	var relayErr error
+	go func() {
+		relayErr = relay.Wait()
+		close(exited)
 	}()
-	start := func(essential bool, name string, argv ...string) error {
-		cmd := exec.Command(name, argv...)
-		cmd.Env = env
-		cmd.Stderr = errOut
-		cmd.Stdout = errOut
-		if err := cmd.Start(); err != nil {
-			return fmt.Errorf("start %s: %w", name, err)
-		}
-		processes = append(processes, cmd)
-		wait.Add(1)
-		go func() {
-			defer wait.Done()
-			err := cmd.Wait()
-			if essential {
-				exited <- fmt.Errorf("desktop process %s exited: %v", name, err)
-			}
-		}()
-		return nil
-	}
-	ready := func(probe func() bool) error {
-		for attempt := 0; attempt < 50; attempt++ {
-			if probe() {
-				return nil
-			}
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case err := <-exited:
-				return err
-			case <-time.After(100 * time.Millisecond):
-			}
-		}
-		return errors.New("desktop display server did not become ready")
-	}
-	if err = start(true, "Xvfb", ":99", "-screen", "0", "1440x900x24", "-nolisten", "tcp", "-ac"); err != nil {
-		return err
-	}
-	if err = ready(func() bool {
-		probeCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
-		defer cancel()
-		cmd := exec.CommandContext(probeCtx, "xdpyinfo")
-		cmd.Env = env
-		return cmd.Run() == nil
-	}); err != nil {
-		return err
-	}
-	if err = start(true, "fluxbox"); err != nil {
-		return err
-	}
-	if err = start(true, "x11vnc", "-display", ":99", "-localhost", "-rfbport", "5901", "-nopw", "-forever", "-shared", "-quiet"); err != nil {
-		return err
-	}
-	if err = ready(func() bool {
-		conn, e := net.DialTimeout("tcp", "127.0.0.1:5901", 200*time.Millisecond)
-		if e != nil {
-			return false
-		}
-		conn.Close()
-		return true
-	}); err != nil {
-		return err
-	}
-	if err = start(false, "xterm", "-title", "Workspace terminal", "-geometry", "100x30+35+35"); err != nil {
-		return err
-	}
-	root, err := os.MkdirTemp("/tmp", "workbench-novnc.")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(root)
-	assets, err := os.ReadDir("/usr/share/novnc")
-	if err != nil {
-		return err
-	}
-	for _, asset := range assets {
-		if asset.Name() == "index.html" {
-			continue
-		}
-		if err = os.Symlink(filepath.Join("/usr/share/novnc", asset.Name()), filepath.Join(root, asset.Name())); err != nil {
-			return err
+	defer func() {
+		cancel()
+		<-exited
+	}()
+
+	deadline := time.NewTimer(5 * time.Second)
+	defer deadline.Stop()
+	tick := time.NewTicker(100 * time.Millisecond)
+	defer tick.Stop()
+	address := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
+	socket := filepath.Join(runtimeDir, desktopSocket)
+	for !desktopListening("tcp", address) || !desktopListening("unix", socket) {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-exited:
+			return fmt.Errorf("desktop compositor exited during startup: %v", relayErr)
+		case <-deadline.C:
+			return errors.New("desktop compositor did not become ready")
+		case <-tick.C:
 		}
 	}
-	if err = os.WriteFile(filepath.Join(root, "index.html"), []byte(`<!doctype html><meta http-equiv="refresh" content="0;url=vnc.html?autoconnect=1&amp;resize=scale&amp;path=websockify"><title>Workspace desktop</title>`), 0600); err != nil {
-		return err
+
+	terminal := desktopApplication(ctx, []string{"foot", "--title", "Workspace terminal"})
+	terminal.Stdout, terminal.Stderr = errOut, errOut
+	terminal.WaitDelay = time.Second
+	if err := terminal.Start(); err != nil {
+		return fmt.Errorf("start workspace terminal: %w", err)
 	}
-	if err = start(true, "websockify", "--web="+root, "127.0.0.1:"+strconv.Itoa(port), "127.0.0.1:5901"); err != nil {
-		return err
-	}
+	terminalExited := make(chan struct{})
+	go func() {
+		_ = terminal.Wait()
+		close(terminalExited)
+	}()
+	defer func() { cancel(); <-terminalExited }()
 	select {
 	case <-ctx.Done():
 		return nil
-	case err := <-exited:
-		return err
+	case <-exited:
+		return fmt.Errorf("desktop compositor exited: %v", relayErr)
 	}
 }
