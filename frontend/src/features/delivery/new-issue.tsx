@@ -8,6 +8,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Modal, Form, ErrorNotice, useRequestKey } from "@/shared/components";
 import { request } from "@/shared/http";
 import { workKeys } from "@/features/work/api";
+import { workProfiles, type WorkProfile } from "@/features/work/profiles";
 import { boardKey, type BoardCard } from "./board-api";
 
 export function NewIssue({
@@ -24,7 +25,7 @@ export function NewIssue({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [preview, setPreview] = useState(false);
-  const [kind, setKind] = useState("software");
+  const [kind, setKind] = useState<WorkProfile>("software");
   const create = useMutation({
     mutationFn: () => {
       const payload = {
@@ -110,16 +111,17 @@ export function NewIssue({
           </label>
         )}
         <label>
-          Type
+          Work profile
           <NativeSelect
             value={kind}
-            onChange={(e) => setKind(e.target.value)}
+            onChange={(e) => setKind(e.target.value as WorkProfile)}
             disabled={create.isPending}
           >
-            <option value="software">Software</option>
-            <option value="data-science">Data science</option>
-            <option value="research">Research</option>
-            <option value="digest">Digest</option>
+            {workProfiles.map(({ kind, label }) => (
+              <option key={kind} value={kind}>
+                {label}
+              </option>
+            ))}
           </NativeSelect>
         </label>
         <p className="text-xs text-muted-foreground">

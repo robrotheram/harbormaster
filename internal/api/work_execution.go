@@ -67,6 +67,10 @@ func (s *Server) registerWorkExecution(mux *http.ServeMux, repo orchestration.Re
 			workError(w, err)
 			return
 		}
+		if item.SpecificationPath == "" {
+			workError(w, orchestration.ErrConflict)
+			return
+		}
 		card, err := s.Store.BoardItem(r.Context(), in.ProjectID, item.ID)
 		if err != nil {
 			workError(w, err)

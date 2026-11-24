@@ -41,7 +41,7 @@ type WorkRevision struct {
 }
 
 func (r Repository) ContinueWork(ctx context.Context, project, id, key string, revision WorkRevision, now time.Time) (shared.WorkAttempt, error) {
-	if !shared.ValidID(revision.ExpectedAttemptID) || !shared.ValidProjectFile(revision.Path) || len(revision.Digest) != 64 || (revision.WorkspaceID != "" && !shared.ValidID(revision.WorkspaceID)) {
+	if (revision.ExpectedAttemptID != "" && !shared.ValidID(revision.ExpectedAttemptID)) || !shared.ValidProjectFile(revision.Path) || len(revision.Digest) != 64 || (revision.WorkspaceID != "" && !shared.ValidID(revision.WorkspaceID)) {
 		return shared.WorkAttempt{}, ErrInvalidWork
 	}
 	return r.runWork(ctx, project, id, key, &revision, revision.Selection, now)
@@ -77,14 +77,15 @@ func (r Repository) runWork(ctx context.Context, project, id, key string, revisi
 	if err = json.Unmarshal([]byte(old), &item); err != nil {
 		return a, err
 	}
-	// Planning-only items have no executable specification or worker yet.
-	if item.WorkspaceID == "" || item.SpecificationPath == "" || item.SpecificationDigest == "" {
+	firstMessage := revision != nil && revision.ExpectedAttemptID == "" && item.State == "draft" &&
+		item.LatestAttemptID == "" && item.SpecificationPath == "" && item.SpecificationDigest == ""
+	if item.WorkspaceID == "" || (!firstMessage && (item.SpecificationPath == "" || item.SpecificationDigest == "")) {
 		return a, ErrConflict
 	}
 	if !workActorAllowed(ctx, item) {
 		return a, ErrConflict
 	}
-	if revision != nil && item.LatestAttemptID != revision.ExpectedAttemptID {
+	if revision != nil && (item.LatestAttemptID != revision.ExpectedAttemptID || (!firstMessage && revision.ExpectedAttemptID == "")) {
 		return a, ErrConflict
 	}
 	switch item.State {
@@ -96,7 +97,7 @@ func (r Repository) runWork(ctx context.Context, project, id, key string, revisi
 	default:
 		return a, ErrConflict
 	}
-	if revision != nil {
+	if revision != nil && !firstMessage {
 		// Older attempts predate specification snapshots. Retain their original
 		// references before advancing the parent to its next instruction.
 		prior, err := jsonmetadata.Get[shared.WorkAttempt](ctx, tx, `SELECT metadata FROM work_attempts WHERE id=$1 AND work_item_id=$2 AND project_id=$3`, item.LatestAttemptID, id, project)
@@ -118,6 +119,8 @@ func (r Repository) runWork(ctx context.Context, project, id, key string, revisi
 		if _, err = tx.ExecContext(ctx, `UPDATE work_attempts SET metadata=$1 WHERE id=$2 AND project_id=$3`, string(pb), prior.ID, project); err != nil {
 			return a, err
 		}
+	}
+	if revision != nil {
 		item.SpecificationPath, item.SpecificationDigest = revision.Path, revision.Digest
 		if revision.WorkspaceID != "" {
 			item.WorkspaceID = revision.WorkspaceID

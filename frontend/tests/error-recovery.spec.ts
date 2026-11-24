@@ -195,6 +195,17 @@ test("a project-list outage preserves an open work draft and recovers without su
   await page.clock.install();
   let unavailable = false;
   let projectReads = 0;
+  const thread = {
+    id: "work_draft",
+    project_id: "recovery",
+    workspace_id: "ws_recovery",
+    specification_path: "",
+    specification_digest: "",
+    kind: "software",
+    state: "draft",
+    created_at: "2026-11-24T12:00:00Z",
+    updated_at: "2026-11-24T12:00:00Z",
+  };
   await page.route("**/ui-api/**", (route) => {
     expect(route.request().method()).toBe("GET");
     const path = new URL(route.request().url()).pathname;
@@ -210,9 +221,13 @@ test("a project-list outage preserves an open work draft and recovers without su
             },
       );
     }
+    if (path === "/ui-api/work-items/work_draft")
+      return route.fulfill({ json: thread });
+    if (path === "/ui-api/work-items")
+      return route.fulfill({ json: { items: [thread] } });
     return route.fulfill({ json: { items: [] } });
   });
-  await page.goto("/app/projects/recovery/work");
+  await page.goto("/app/projects/recovery/work?work=work_draft");
   const draft = page.getByRole("textbox", { name: "Message to your agent" });
   await draft.fill("Keep this draft while project navigation recovers.");
   unavailable = true;

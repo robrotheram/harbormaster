@@ -1,7 +1,10 @@
 package workspace
 
 import (
+	"agent-workbench/internal/shared"
 	"context"
+	"encoding/json"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,7 +20,13 @@ func TestNativeRunnerUsesOnlyWorkspaceGrant(t *testing.T) {
 		script := `#!/bin/sh
 test -z "$OPENAI_API_KEY$ANTHROPIC_API_KEY$VAULT_TOKEN$WORKSPACE_TOKEN" || exit 11
 input=$(cat)
-case "$input" in *'If this task delivers or changes a runnable web app'*'workbench-preview start'*'check that workbench-preview status'*'workbench-analysis register-artifact'*'harbormaster-visualization'*'implement sample') ;; *) exit 12;; esac
+case "$input" in
+  *'If this task delivers or changes a runnable web app'*'workbench-preview start'*'check that workbench-preview status'*'workbench-analysis register-artifact'*'harbormaster-visualization'*'implement sample') ;;
+  *'Desktop app development'*'workbench-preview desktop'*'implement a GUI')
+    test "$DISPLAY" = :99 || exit 17
+    case "$input" in *'workbench-preview start'*) exit 18;; esac ;;
+  *) exit 12;;
+esac
 test "$WORKBENCH_WORKSPACE_GRANT" = workspace-only-grant || exit 15
 case "$*" in *selected-model*) ;; *) exit 16;; esac
 printf 'native file\n' > native.txt
@@ -42,7 +51,7 @@ fi
 	}
 	defer m.Close()
 	for _, provider := range []string{"codex", "claude"} {
-		result, code := m.runNativeTask(context.Background(), provider, "implement sample", "", "selected-model", "high", false)
+		result, code := m.runNativeTask(context.Background(), provider, "implement sample", "", "selected-model", "high", "")
 		if code != "" || result != provider+" result" {
 			t.Fatalf("%s runner: %s %q", provider, code, result)
 		}
@@ -65,6 +74,23 @@ fi
 	if _, status, err := m.submit(submit{Instruction: "implement sample", Key: "native-task", Model: "selected-model", Provider: "claude"}); err == nil || status != 409 {
 		t.Fatal("provider change did not conflict")
 	}
+	if err := os.WriteFile(filepath.Join(m.cfg.DataDir, "files/gui.md"), []byte("implement a GUI"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest("POST", "/v1/tasks/from-file", strings.NewReader(`{"instruction_path":"gui.md","idempotency_key":"gui","provider":"codex","model":"selected-model","work_kind":"`+shared.WorkKindDesktop+`"}`))
+	request.Header.Set("Authorization", "Bearer "+m.cfg.Token)
+	response := httptest.NewRecorder()
+	m.Handler().ServeHTTP(response, request)
+	if response.Code != 202 {
+		t.Fatalf("desktop task rejected: %d %s", response.Code, response.Body)
+	}
+	var task shared.Task
+	if err := json.Unmarshal(response.Body.Bytes(), &task); err != nil {
+		t.Fatal(err)
+	}
+	if done := waitTask(t, m, task.ID); done.State != "succeeded" {
+		t.Fatalf("desktop task %+v", done)
+	}
 }
 
 func TestNativeCancellationKillsProcess(t *testing.T) {
@@ -78,7 +104,7 @@ func TestNativeCancellationKillsProcess(t *testing.T) {
 	defer m.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
-	if _, code := m.runNativeTask(ctx, "claude", "wait", "", "", "", false); code != "EXECUTION_INTERRUPTED" {
+	if _, code := m.runNativeTask(ctx, "claude", "wait", "", "", "", ""); code != "EXECUTION_INTERRUPTED" {
 		t.Fatal("native cancellation failed")
 	}
 }

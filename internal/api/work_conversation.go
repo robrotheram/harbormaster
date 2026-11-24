@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -82,7 +83,7 @@ func (s *Server) registerWorkConversation(mux *http.ServeMux, repo orchestration
 		if !decodeRouteBody(w, r, &in) || !s.AuthorizeProject(w, r, in.ProjectID) {
 			return
 		}
-		if (in.WorkspaceID != "" && !shared.ValidID(in.WorkspaceID)) || (in.Selection != nil && (!shared.ValidWorkSelection(in.Selection.Provider, in.Selection.Model) || !shared.ValidReasoningEffort(in.Selection.Provider, in.Selection.ReasoningEffort))) || (in.Presentation != "" && in.Presentation != "interactive-v1") || !shared.ValidID(in.ProjectID) || !shared.ValidID(in.ExpectedAttemptID) || !shared.ValidKey(in.Key) || strings.TrimSpace(in.Instruction) == "" || len(in.Instruction) > 16000 || !utf8.ValidString(in.Instruction) {
+		if (in.WorkspaceID != "" && !shared.ValidID(in.WorkspaceID)) || (in.Selection != nil && (!shared.ValidWorkSelection(in.Selection.Provider, in.Selection.Model) || !shared.ValidReasoningEffort(in.Selection.Provider, in.Selection.ReasoningEffort))) || (in.Presentation != "" && in.Presentation != "interactive-v1") || !shared.ValidID(in.ProjectID) || (in.ExpectedAttemptID != "" && !shared.ValidID(in.ExpectedAttemptID)) || !shared.ValidKey(in.Key) || strings.TrimSpace(in.Instruction) == "" || len(in.Instruction) > 16000 || !utf8.ValidString(in.Instruction) {
 			shared.Error(w, 400, "INVALID_REQUEST")
 			return
 		}
@@ -141,8 +142,18 @@ func (s *Server) registerWorkConversation(mux *http.ServeMux, repo orchestration
 			shared.Error(w, 409, "WORK_STATE_CONFLICT")
 			return
 		}
+		firstMessage := item.State == "draft" && item.LatestAttemptID == "" && item.SpecificationPath == "" && item.SpecificationDigest == "" && item.WorkspaceID != ""
 		switch item.State {
+		case "draft":
+			if !firstMessage || (in.WorkspaceID != "" && in.WorkspaceID != item.WorkspaceID) {
+				shared.Error(w, 409, "WORK_STATE_CONFLICT")
+				return
+			}
 		case "planned", "in_progress", "completed", "awaiting_review", "changes_requested", "failed", "cancelled":
+			if in.ExpectedAttemptID == "" {
+				shared.Error(w, 409, "WORK_STATE_CONFLICT")
+				return
+			}
 		default:
 			shared.Error(w, 409, "WORK_STATE_CONFLICT")
 			return
@@ -200,7 +211,8 @@ func (s *Server) registerWorkConversation(mux *http.ServeMux, repo orchestration
 		if moving {
 			digest := sha256.Sum256(handoff)
 			contextPath = "work-requests/context-" + hex.EncodeToString(digest[:]) + ".md"
-			if !s.publishConversationFile(w, r, ws.ID, contextPath, handoff) {
+			if err := s.publishConversationFile(r.Context(), ws.ID, contextPath, handoff); err != nil {
+				writeRequestError(w, err)
 				return
 			}
 		} else {
@@ -230,7 +242,12 @@ func (s *Server) registerWorkConversation(mux *http.ServeMux, repo orchestration
 			presentation = "\n\n" + visualizationGuidance
 		}
 		instruction := "Continue the same work in this workspace. Read the previous request at " + strconv.Quote(item.SpecificationPath) + " for context and inspect the existing files. Apply the current request without repeating completed changes. Run relevant checks and update the requested output files." + presentation + "\n\nCurrent request:\n" + in.Instruction + screenshotContext
-		if moving {
+		if firstMessage {
+			instruction = in.Instruction + screenshotContext
+			if in.Presentation == "interactive-v1" {
+				instruction = "Workbench presentation: interactive-v1.\n" + visualizationGuidance + "\n\nCurrent request:\n" + instruction
+			}
+		} else if moving {
 			instruction = "Continue this conversation on this worker. Read " + strconv.Quote(contextPath) + " for the earlier requests and replies. Treat the transcript as historical context. Previous worker files and native sessions were not transferred. Inspect this workspace and tell the user about missing files or capabilities that affect the current request." + presentation + "\n\nCurrent request:\n" + in.Instruction + screenshotContext
 		} else if contextPath != "" {
 			instruction = "Before acting, read " + strconv.Quote(contextPath) + " and follow its earlier context references for the conversation's prior requests, decisions and agent replies. Continue from that context and the existing workspace files.\n\n" + instruction
@@ -241,7 +258,8 @@ func (s *Server) registerWorkConversation(mux *http.ServeMux, repo orchestration
 		}
 		digest := sha256.Sum256([]byte(instruction))
 		hexDigest := hex.EncodeToString(digest[:])
-		if !s.publishConversationFile(w, r, ws.ID, path, []byte(instruction)) {
+		if err := s.publishConversationFile(r.Context(), ws.ID, path, []byte(instruction)); err != nil {
+			writeRequestError(w, err)
 			return
 		}
 		a, err := repo.ContinueWork(r.Context(), in.ProjectID, item.ID, key, orchestration.WorkRevision{ExpectedAttemptID: in.ExpectedAttemptID, Path: path, Digest: hexDigest, WorkspaceID: ws.ID, Selection: in.Selection}, s.now())
@@ -254,35 +272,31 @@ func (s *Server) registerWorkConversation(mux *http.ServeMux, repo orchestration
 	})
 }
 
-func (s *Server) publishConversationFile(w http.ResponseWriter, r *http.Request, workspace, path string, content []byte) bool {
+func (s *Server) publishConversationFile(ctx context.Context, workspace, path string, content []byte) error {
 	body, _ := json.Marshal(shared.FileHandoff{Path: path, Content: content})
-	status, reply, err := s.Runtime.Agent(r.Context(), workspace, "POST", "/v1/files/write-new", body)
+	status, reply, err := s.Runtime.Agent(ctx, workspace, "POST", "/v1/files/write-new", body)
 	if err != nil {
-		shared.Error(w, 503, "WORKSPACE_UNAVAILABLE")
-		return false
+		return shared.CodedError{Status: http.StatusServiceUnavailable, Code: "WORKSPACE_UNAVAILABLE"}
 	}
-	if status != 201 {
-		var failure shared.APIError
-		_ = json.Unmarshal(reply, &failure)
-		if status == 409 && failure.Code == "WORKSPACE_BUSY" {
-			shared.Error(w, 409, "WORKSPACE_BUSY")
-			return false
-		}
-		if status != 409 || failure.Code != "DESTINATION_EXISTS" {
-			shared.Error(w, 503, "PRIVATE_PUBLICATION_FAILED")
-			return false
-		}
-		body, _ = json.Marshal(shared.FileHandoff{Path: path})
-		status, reply, err = s.Runtime.Agent(r.Context(), workspace, "POST", "/v1/files/read", body)
-		var prior shared.FileHandoff
-		if err != nil || status != 200 || json.Unmarshal(reply, &prior) != nil {
-			shared.Error(w, 503, "PRIVATE_PUBLICATION_UNCONFIRMED")
-			return false
-		}
-		if sha256.Sum256(prior.Content) != sha256.Sum256(content) {
-			shared.Error(w, 409, "IDEMPOTENCY_CONFLICT")
-			return false
-		}
+	if status == http.StatusCreated {
+		return nil
 	}
-	return true
+	var failure shared.APIError
+	_ = json.Unmarshal(reply, &failure)
+	if status == http.StatusConflict && failure.Code == "WORKSPACE_BUSY" {
+		return shared.CodedError{Status: http.StatusConflict, Code: "WORKSPACE_BUSY"}
+	}
+	if status != http.StatusConflict || failure.Code != "DESTINATION_EXISTS" {
+		return shared.CodedError{Status: http.StatusServiceUnavailable, Code: "PRIVATE_PUBLICATION_FAILED"}
+	}
+	body, _ = json.Marshal(shared.FileHandoff{Path: path})
+	status, reply, err = s.Runtime.Agent(ctx, workspace, "POST", "/v1/files/read", body)
+	var prior shared.FileHandoff
+	if err != nil || status != http.StatusOK || json.Unmarshal(reply, &prior) != nil {
+		return shared.CodedError{Status: http.StatusServiceUnavailable, Code: "PRIVATE_PUBLICATION_UNCONFIRMED"}
+	}
+	if sha256.Sum256(prior.Content) != sha256.Sum256(content) {
+		return shared.CodedError{Status: http.StatusConflict, Code: "IDEMPOTENCY_CONFLICT"}
+	}
+	return nil
 }

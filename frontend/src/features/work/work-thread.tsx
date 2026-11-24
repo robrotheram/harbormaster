@@ -124,7 +124,6 @@ const WorkReport = lazy(() =>
 export function WorkConversation({
   project,
   id,
-  startError,
   title,
   navigation,
   message,
@@ -133,7 +132,6 @@ export function WorkConversation({
 }: {
   project: Project;
   id: string;
-  startError?: unknown;
   title?: string;
   owner?: string;
   navigation?: ReactNode;
@@ -261,6 +259,7 @@ export function WorkConversation({
   const workers = useQuery(workspaceOptions(project.id));
   const item = itemQuery.isError ? undefined : itemQuery.data;
   const dataScience = item?.kind === "data-science";
+  const desktop = item?.kind === "desktop";
   const datasetsOpen =
     dataScience && route.view === "datasets" && route.work === id;
   const reportOpen =
@@ -566,7 +565,7 @@ export function WorkConversation({
         project.id,
         id,
         instructionText,
-        item!.latest_attempt_id!,
+        item!.latest_attempt_id ?? "",
         delivery,
         selection,
         screenshots,
@@ -647,7 +646,12 @@ export function WorkConversation({
         Loading conversation…
       </section>
     );
-  const canContinue = canContinueWork(item);
+  const emptyThread =
+    item.state === "draft" &&
+    !item.latest_attempt_id &&
+    !item.specification_path &&
+    !!item.workspace_id;
+  const canContinue = (emptyThread && controlsAgent) || canContinueWork(item);
   const analysisLoading =
     (!!analysisOpen &&
       analysisReports.isPending &&
@@ -744,37 +748,32 @@ export function WorkConversation({
     !!instructionText.trim() &&
     !messageTooLong;
   const retry = latest && !["planned", "in_progress"].includes(item.state);
-  const runAction = actions?.run ? (
-    <div className="conversation-message-actions">
-      <Button
-        variant="outline"
-        size="default"
-        disabled={mutation.isPending}
-        onClick={() => mutation.mutate("run")}
-      >
-        {mutation.isPending && mutation.variables === "run" ? (
-          <Loader2 size={14} className="loading-spinner" />
-        ) : retry ? (
-          <RotateCcw size={14} />
-        ) : (
-          <Play size={14} />
+  const runAction =
+    actions?.run && !emptyThread ? (
+      <div className="conversation-message-actions">
+        <Button
+          variant="outline"
+          size="default"
+          disabled={mutation.isPending}
+          onClick={() => mutation.mutate("run")}
+        >
+          {mutation.isPending && mutation.variables === "run" ? (
+            <Loader2 size={14} className="loading-spinner" />
+          ) : retry ? (
+            <RotateCcw size={14} />
+          ) : (
+            <Play size={14} />
+          )}
+          {retry ? "Retry task" : "Start task"}
+        </Button>
+        {mutation.isError && mutation.variables === "run" && (
+          <>
+            <ErrorNotice error={mutation.error} />
+            {subscriptionAction(mutation.error)}
+          </>
         )}
-        {retry ? "Retry task" : "Start task"}
-      </Button>
-      {mutation.isError && mutation.variables === "run" && (
-        <>
-          <ErrorNotice error={mutation.error} />
-          {subscriptionAction(mutation.error)}
-        </>
-      )}
-      {!!startError && item.state === "draft" && (
-        <>
-          <ErrorNotice error={startError} />
-          {subscriptionAction(startError)}
-        </>
-      )}
-    </div>
-  ) : null;
+      </div>
+    ) : null;
   return (
     <section
       className={`conversation-session visual-session unified-thread ${workspaceOpen ? "is-workspace-open" : ""}`}
@@ -925,7 +924,7 @@ export function WorkConversation({
                 onClick={() => {
                   if (filesOpen || datasetsOpen || reportOpen) {
                     void showWorkspace("workspace");
-                  } else if (!dataScience) setPreviewView("web");
+                  } else if (!dataScience && !desktop) setPreviewView("web");
                 }}
               >
                 <PanelRightOpen size={15} />{" "}
@@ -1052,7 +1051,8 @@ export function WorkConversation({
                 </Link>
               </p>
             )}
-            {!attempts.length &&
+            {!emptyThread &&
+              !attempts.length &&
               !attemptQuery.isPending &&
               !attemptQuery.isError && (
                 <DraftMessage
@@ -1239,11 +1239,12 @@ export function WorkConversation({
               revision={
                 latest && !activeAttempt(latest.state) ? latest.id : undefined
               }
+              mode={desktop ? "desktop" : "web"}
               view={previewView}
               onViewChange={setPreviewView}
               onSelection={selectElement}
               output={
-                workspaceOpen && hasOutput && fileAttempt ? (
+                !desktop && workspaceOpen && hasOutput && fileAttempt ? (
                   <WorkOutput
                     key={fileAttempt.id}
                     project={project.id}
@@ -1474,38 +1475,46 @@ export function WorkConversation({
                         ? "Ask a question about your data or describe a chart…"
                         : "Tell the agent what to do next…"
                 }
-                disabled={!item.latest_attempt_id || mutation.isPending}
+                disabled={
+                  (!emptyThread && !item.latest_attempt_id) ||
+                  mutation.isPending
+                }
               />
-              {canContinue && !revision && alternateWorkers.length > 0 && (
-                <div className="flex flex-wrap items-center gap-2 px-2 pb-2">
-                  <NativeSelect
-                    aria-label="Worker for next message"
-                    value={destination || ""}
-                    disabled={running || mutation.isPending}
-                    onChange={(event) => {
-                      setMove(
-                        event.target.value
-                          ? { work: id, worker: event.target.value }
-                          : undefined,
-                      );
-                      setSelection(undefined);
-                    }}
-                  >
-                    <option value="">{worker?.name || "Current worker"}</option>
-                    {alternateWorkers.map((candidate) => (
-                      <option value={candidate.id} key={candidate.id}>
-                        {candidate.name || candidate.id}
+              {canContinue &&
+                !emptyThread &&
+                !revision &&
+                alternateWorkers.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2 px-2 pb-2">
+                    <NativeSelect
+                      aria-label="Worker for next message"
+                      value={destination || ""}
+                      disabled={running || mutation.isPending}
+                      onChange={(event) => {
+                        setMove(
+                          event.target.value
+                            ? { work: id, worker: event.target.value }
+                            : undefined,
+                        );
+                        setSelection(undefined);
+                      }}
+                    >
+                      <option value="">
+                        {worker?.name || "Current worker"}
                       </option>
-                    ))}
-                  </NativeSelect>
-                  {destination && (
-                    <span className="text-xs text-muted-foreground">
-                      The next worker gets the recorded conversation. Files and
-                      running services stay on their worker.
-                    </span>
-                  )}
-                </div>
-              )}
+                      {alternateWorkers.map((candidate) => (
+                        <option value={candidate.id} key={candidate.id}>
+                          {candidate.name || candidate.id}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                    {destination && (
+                      <span className="text-xs text-muted-foreground">
+                        The next worker gets the recorded conversation. Files
+                        and running services stay on their worker.
+                      </span>
+                    )}
+                  </div>
+                )}
               <div className="thread-composer-footer">
                 <div className="flex min-w-0 flex-wrap items-center gap-1">
                   {controlsAgent && latest && (

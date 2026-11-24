@@ -113,8 +113,9 @@ async function conversationFixture(page: Page) {
       return route.fulfill({ json: { items: apps } });
     }
     if (path.endsWith("/services/service_live/revoke")) {
-      apps[0].state = "revoked";
-      return route.fulfill({ json: apps[0] });
+      const app = apps.find(({ id }) => id === "service_live")!;
+      app.state = "revoked";
+      return route.fulfill({ json: app });
     }
     if (path.endsWith("/services/service_live/connect")) {
       state.connects++;
@@ -129,6 +130,10 @@ async function conversationFixture(page: Page) {
       posts.push({ path, body });
       if (path === "/ui-api/work-items") {
         state.exists = true;
+        if (body.empty_thread) {
+          item.specification_path = "";
+          item.specification_digest = "";
+        }
         return route.fulfill({ status: 201, json: item });
       }
       if (path.endsWith("/run"))
@@ -147,6 +152,11 @@ async function conversationFixture(page: Page) {
           });
         }
         if (body.workspace_id) item.workspace_id = body.workspace_id;
+        if (!body.expected_attempt_id) {
+          item.specification_path = "work-requests/first.md";
+          item.specification_digest = "b".repeat(64);
+          state.request = body.instruction;
+        }
         const a = addRun(body.expected_attempt_id);
         a.message = body.instruction;
         return route.fulfill({ status: 202, json: a });
@@ -241,7 +251,7 @@ async function conversationFixture(page: Page) {
             record(
               1,
               "user.message",
-              a.message
+              a.message && a.parent_attempt_id
                 ? `Continue the same work in this workspace. Read the old request.\n\nCurrent request:\n${a.message}`
                 : state.request,
             ),
@@ -287,21 +297,24 @@ test("starts work, shows live tools, inspects files, accepts, and sends changes 
 }) => {
   const f = await conversationFixture(page);
   await page.goto("/app/projects/A/work");
-  await page
-    .getByLabel("Message to your agent")
-    .fill("Investigate the experiment.");
   await page.getByLabel("Worker", { exact: true }).selectOption("ws_one");
   await page
     .getByLabel("Model", { exact: true })
     .selectOption(JSON.stringify(["claude", "chosen-model"]));
   await page.getByText("Keep specific output files", { exact: true }).click();
   await page.getByLabel("Retained output paths").fill("outputs/report.md");
-  await page.getByLabel("Work type").selectOption("software");
-  await page.getByRole("button", { name: "Start work", exact: true }).click();
+  await page.getByLabel("Work profile").selectOption("software");
+  await page
+    .getByRole("button", { name: "Create thread", exact: true })
+    .click();
   await expect(page).toHaveURL(/work=work_one/);
   expect(
     f.posts.find((p) => p.path === "/ui-api/work-items")?.body,
   ).toMatchObject({ provider: "claude", model: "chosen-model" });
+  await page
+    .getByLabel("Message to your agent")
+    .fill("Investigate the experiment.");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(
     page
       .locator(".conversation-message")
@@ -395,7 +408,9 @@ test("starts work, shows live tools, inspects files, accepts, and sends changes 
   await expect(
     page.getByRole("button", { name: "Retry task", exact: true }),
   ).toHaveCount(0);
-  const revisions = f.posts.filter((p) => p.path.endsWith("/continue"));
+  const revisions = f.posts.filter(
+    (p) => p.path.endsWith("/continue") && p.body.expected_attempt_id,
+  );
   expect(revisions).toHaveLength(2);
   expect(revisions[0].body.idempotency_key).toBe(
     revisions[1].body.idempotency_key,
@@ -497,6 +512,14 @@ test("starts and stops a workspace application from the conversation", async ({
 }) => {
   const f = await conversationFixture(page);
   f.state.exists = true;
+  f.item.kind = "software";
+  f.apps.push({
+    id: "service_desktop",
+    state: "active",
+    ready: true,
+    application: { kind: "desktop", port: 6080 },
+  });
+  f.ports.push({ port: 6080, listener: "listener_desktop" });
   await context.route(
     "http://preview-0123456789abcdef0123456789abcdef.localhost:4173/**",
     (route) =>
@@ -515,6 +538,12 @@ test("starts and stops a workspace application from the conversation", async ({
       .isVisible())
   )
     await conversationTool(page, "Preview");
+  await expect(
+    page.getByRole("tab", { name: "Desktop", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Ask agent to run app" }),
+  ).toBeVisible();
   await previewTool(page, "Preview settings and logs");
   await page.getByLabel("Application directory").fill("my-app");
   await page.getByRole("button", { name: "Start preview" }).click();
@@ -530,7 +559,6 @@ test("starts and stops a workspace application from the conversation", async ({
   await expect(
     popup.getByRole("heading", { name: "Preview application" }),
   ).toBeVisible();
-  await popup.close();
   await previewTool(page, "Application logs");
   await expect(
     page.getByText("Listening on port 4173", { exact: true }),
@@ -562,25 +590,18 @@ test("starts and stops a workspace application from the conversation", async ({
     command: 'python3 -m http.server "$PORT" --bind 127.0.0.1',
     port: 4173,
   });
+  await popup.close();
   expect(f.errors).toEqual([]);
 });
 
-test("workspace supports charts, desktop launch and mobile switching with a shared composer", async ({
+test("web development shows interactive output alongside its web preview", async ({
   page,
-  context,
 }) => {
   const f = await conversationFixture(page);
   f.state.exists = true;
+  f.item.kind = "software";
   f.state.reply =
     "```workbench-chart\nexperiment,score\nbaseline,72\nrevision,86\n```";
-  await context.route(
-    "http://preview-0123456789abcdef0123456789abcdef.localhost:4173/**",
-    (route) =>
-      route.fulfill({
-        contentType: "text/html",
-        body: "<h1>Desktop connected</h1>",
-      }),
-  );
   await page.goto("/app/projects/A/work?work=work_one");
   await page.getByRole("button", { name: "Start task", exact: true }).click();
   f.finish();
@@ -600,7 +621,59 @@ test("workspace supports charts, desktop launch and mobile switching with a shar
       .getByRole("region", { name: "Agent output" })
       .locator(".browser-chart svg"),
   ).toHaveCount(1);
-  await page.getByRole("tab", { name: "Desktop", exact: true }).click();
+  await expect(
+    page.getByRole("tab", { name: "Web", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("tab", { name: "Desktop", exact: true }),
+  ).toHaveCount(0);
+  expect(f.errors).toEqual([]);
+});
+
+test("desktop development opens directly to the worker desktop and keeps it on mobile", async ({
+  page,
+  context,
+}) => {
+  const f = await conversationFixture(page);
+  f.item.kind = "desktop";
+  f.apps.push({
+    id: "service_web",
+    state: "active",
+    ready: true,
+    application: { kind: "web", port: 4173 },
+  });
+  const portRequests: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.endsWith("/ports"))
+      portRequests.push(request.url());
+  });
+  await context.route(
+    "http://preview-0123456789abcdef0123456789abcdef.localhost:4173/**",
+    (route) =>
+      route.fulfill({
+        contentType: "text/html",
+        body: "<h1>Desktop connected</h1>",
+      }),
+  );
+  await page.goto("/app/projects/A/work");
+  await page.getByLabel("Work profile").selectOption({
+    label: "Desktop App Development",
+  });
+  await page
+    .getByLabel("Model", { exact: true })
+    .selectOption({ label: "worker-model · Codex" });
+  await page
+    .getByRole("button", { name: "Create thread", exact: true })
+    .click();
+  await expect(
+    page.getByRole("tab", { name: "Desktop", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tab", { name: "Web", exact: true })).toHaveCount(
+    0,
+  );
+  expect(f.posts.find((p) => p.path === "/ui-api/work-items")?.body.kind).toBe(
+    "desktop",
+  );
   await page.getByRole("button", { name: "Start worker desktop" }).click();
   await expect(
     page.frameLocator('iframe[title="Workspace desktop"]').getByRole("heading"),
@@ -613,11 +686,6 @@ test("workspace supports charts, desktop launch and mobile switching with a shar
     command: "workbench-desktop",
     port: 6080,
   });
-  await page.getByRole("tab", { name: "Output", exact: true }).click();
-  await expect(
-    page.getByRole("img", { name: "score by experiment" }),
-  ).toBeVisible();
-  await page.getByRole("tab", { name: "Desktop", exact: true }).click();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "Conversation", exact: true }).click();
   await expect(
@@ -632,10 +700,11 @@ test("workspace supports charts, desktop launch and mobile switching with a shar
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+  expect(portRequests).toEqual([]);
   expect(f.errors).toEqual([]);
 });
 
-test("preview selection adds a draft only from the selected frame and returns after switching tabs", async ({
+test("preview selection adds a draft only from the selected frame and reload renews the connection", async ({
   page,
   context,
 }) => {
@@ -688,11 +757,12 @@ test("preview selection adds a draft only from the selected frame and returns af
   );
   await expect(page.getByLabel("Message to your agent")).toBeFocused();
   expect(f.posts.filter((p) => p.path.endsWith("/continue"))).toHaveLength(0);
-  await page.getByRole("tab", { name: "Desktop", exact: true }).click();
   const renewed = page.waitForRequest(
     (r) => r.url().endsWith("/connect") && r.method() === "POST",
   );
-  await page.getByRole("tab", { name: "Web", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Reload preview", exact: true })
+    .click();
   expect((await renewed).postDataJSON()).toEqual({ embedded: true });
   await expect(frame.getByRole("button")).toBeVisible();
   expect(f.errors).toEqual([]);
@@ -1742,21 +1812,18 @@ test("work navigation keeps controls local and presents a readable conversation"
   expect(f.errors).toEqual([]);
 });
 
-test("new work explains byte and output-file limits without submitting or losing the draft", async ({
+test("new thread explains output-file limits before creation", async ({
   page,
 }) => {
   const fixture = await conversationFixture(page);
   await page.goto("/app/projects/A/work");
-  const message = page.getByRole("textbox", {
-    name: "Message to your agent",
+  const start = page.getByRole("button", {
+    name: "Create thread",
     exact: true,
   });
-  const start = page.getByRole("button", { name: "Start work", exact: true });
-  await message.fill("😀".repeat(16385));
-  await expect(message).toHaveAttribute("aria-invalid", "true");
-  await expect(page.getByRole("alert")).toContainText("exceeds 64 KiB");
-  await expect(start).toBeDisabled();
-  await message.fill("Review the source and save a report.");
+  await page
+    .getByLabel("Model", { exact: true })
+    .selectOption({ label: "worker-model · Codex" });
   await page.getByText("Keep specific output files", { exact: true }).click();
   const outputs = page.getByRole("textbox", {
     name: "Retained output paths",
@@ -1770,29 +1837,67 @@ test("new work explains byte and output-file limits without submitting or losing
   await expect(outputs).toHaveAttribute("aria-invalid", "true");
   await expect(page.getByRole("alert")).toContainText("at most 32");
   await expect(start).toBeDisabled();
-  await expect(message).toHaveValue("Review the source and save a report.");
   await outputs.fill("outputs/report.md");
   await expect(page.getByRole("alert")).toHaveCount(0);
-  await page.getByLabel("Work type").selectOption("research");
+  await page.getByLabel("Work profile").selectOption("data-science");
+  await page
+    .getByLabel("Model", { exact: true })
+    .selectOption({ label: "worker-model · Codex" });
   await expect(start).toBeEnabled();
   expect(fixture.posts).toEqual([]);
 });
 
-test("thread creation has one composer and no separate work-item form", async ({
+test("creates an empty thread after model selection and waits for the first message", async ({
   page,
 }) => {
-  await conversationFixture(page);
+  const f = await conversationFixture(page);
+  f.item.kind = "software";
   await page.goto("/app/projects/A/work");
-  await expect(page.getByLabel("Message to your agent")).toBeVisible();
+  await expect(page.getByLabel("Message to your agent")).toHaveCount(0);
+  await expect(page.getByLabel("Work profile").locator("option")).toHaveText([
+    "Web Development",
+    "Desktop App Development",
+    "Research / Data Science",
+  ]);
   await expect(
     page.getByRole("button", { name: "Create work item", exact: true }),
   ).toHaveCount(0);
   await expect(page.getByLabel("Model ID", { exact: true })).toHaveCount(0);
+  const start = page.getByRole("button", {
+    name: "Create thread",
+    exact: true,
+  });
+  await expect(start).toBeDisabled();
+  await page
+    .getByLabel("Model", { exact: true })
+    .selectOption({ label: "chosen-model · Claude" });
+  await start.click();
+  await expect(page).toHaveURL(/work=work_one/);
+  expect(
+    f.posts.find((p) => p.path === "/ui-api/work-items")?.body,
+  ).toMatchObject({
+    empty_thread: true,
+    kind: "software",
+    provider: "claude",
+    model: "chosen-model",
+  });
+  expect(f.posts).toHaveLength(1);
+  expect(f.posts[0].body).not.toHaveProperty("instruction");
+  await page.reload();
+  await page.getByLabel("Message to your agent").fill("Build a landing page.");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Stop task", exact: true }),
+  ).toBeVisible();
+  expect(f.posts.find((p) => p.path.endsWith("/continue"))?.body).toMatchObject(
+    {
+      instruction: "Build a landing page.",
+      expected_attempt_id: "",
+    },
+  );
 });
 
-test("retrying the worker list never submits the work form or clears its draft", async ({
-  page,
-}) => {
+test("retrying the worker list does not create a thread", async ({ page }) => {
   const fixture = await conversationFixture(page);
   let offline = true;
   await page.route("**/ui-api/workspaces?**", (route) =>
@@ -1801,11 +1906,6 @@ test("retrying the worker list never submits the work form or clears its draft",
       : route.fulfill({ json: { items: [] } }),
   );
   await page.goto("/app/projects/A/work");
-  const message = page.getByRole("textbox", {
-    name: "Message to your agent",
-    exact: true,
-  });
-  await message.fill("Keep this draft while refreshing workers.");
   await expect(page.getByRole("alert")).toBeVisible();
   offline = false;
   await page
@@ -1813,10 +1913,20 @@ test("retrying the worker list never submits the work form or clears its draft",
     .getByRole("button", { name: "Try again", exact: true })
     .click();
   await expect(page.getByRole("alert")).toHaveCount(0);
-  await expect(message).toHaveValue(
-    "Keep this draft while refreshing workers.",
-  );
   expect(fixture.posts).toEqual([]);
+  const start = page.getByRole("button", {
+    name: "Create thread",
+    exact: true,
+  });
+  await expect(start).toBeDisabled();
+  await page
+    .getByLabel("Model", { exact: true })
+    .selectOption("worker-default");
+  await start.click();
+  await expect(page).toHaveURL(/work=work_one/);
+  const body = fixture.posts.find((p) => p.path === "/ui-api/work-items")?.body;
+  expect(body).toMatchObject({ workspace_id: "", kind: "software" });
+  expect(body).not.toHaveProperty("model");
 });
 
 test("worker catalog supplies models and restores the worker default", async ({
@@ -1827,18 +1937,17 @@ test("worker catalog supplies models and restores the worker default", async ({
   const model = page.getByLabel("Model", { exact: true });
   await expect(model).toBeEnabled();
   await expect(model.locator("option")).toHaveText([
-    "worker-model (worker default)",
+    "Choose a model",
     "worker-model · Codex",
     "chosen-model · Claude",
   ]);
   await model.selectOption(JSON.stringify(["claude", "chosen-model"]));
-  await model.selectOption("");
+  await model.selectOption({ label: "worker-model · Codex" });
   await page.getByLabel("Reasoning effort").selectOption("high");
+  await page.getByLabel("Work profile").selectOption("software");
   await page
-    .getByLabel("Message to your agent")
-    .fill("Use the worker configuration.");
-  await page.getByLabel("Work type").selectOption("software");
-  await page.getByRole("button", { name: "Start work", exact: true }).click();
+    .getByRole("button", { name: "Create thread", exact: true })
+    .click();
   await expect(page).toHaveURL(/work=work_one/);
   expect(
     f.posts.find((p) => p.path === "/ui-api/work-items")?.body,
@@ -1887,7 +1996,7 @@ test("a follow-up switches model on the same thread and worker", async ({
   expect(f.errors).toEqual([]);
 });
 
-test("catalog failure keeps the message draft and offers a catalog retry", async ({
+test("catalog failure offers a retry without creating a thread", async ({
   page,
 }) => {
   const f = await conversationFixture(page);
@@ -1905,14 +2014,10 @@ test("catalog failure keeps the message draft and offers a catalog retry", async
     ),
   );
   await page.goto("/app/projects/A/work");
-  await page.getByLabel("Message to your agent").fill("Keep my draft.");
   await expect(page.getByLabel("Model", { exact: true })).toBeDisabled();
   unavailable = false;
   await page.getByRole("button", { name: "Retry loading models" }).click();
   await expect(page.getByLabel("Model", { exact: true })).toBeEnabled();
-  await expect(page.getByLabel("Message to your agent")).toHaveValue(
-    "Keep my draft.",
-  );
   expect(f.posts).toEqual([]);
 });
 
@@ -3870,7 +3975,7 @@ test("exports a report with findings, a bounded table, a chart, and a map", asyn
   }
 });
 
-test("selecting data science starts in the analysis workspace without web preview", async ({
+test("selecting Research / Data Science starts in the analysis workspace", async ({
   page,
 }) => {
   const f = await conversationFixture(page);
@@ -3907,17 +4012,29 @@ test("selecting data science starts in the analysis workspace without web previe
     }),
   );
   await page.goto("/app/projects/A/work");
+  const start = page.getByRole("button", {
+    name: "Create thread",
+    exact: true,
+  });
+  await expect(start).toBeDisabled();
+  await page.getByLabel("Work profile").selectOption({
+    label: "Research / Data Science",
+  });
+  await page
+    .getByLabel("Model", { exact: true })
+    .selectOption({ label: "worker-model · Codex" });
+  await start.click();
   await page
     .getByLabel("Message to your agent")
     .fill("Find anomalies in the sensor readings.");
-  const start = page.getByRole("button", { name: "Start work", exact: true });
-  await expect(start).toBeDisabled();
-  await page.getByLabel("Work type").selectOption("data-science");
-  await start.click();
+  await page.getByRole("button", { name: "Send", exact: true }).click();
   const datasetList = page.getByRole("region", { name: "Worker datasets" });
   const tools = page.getByRole("group", { name: "Workspace tools" });
   const analysis = tools.getByRole("button", { name: "Analysis", exact: true });
   await expect(analysis).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    tools.getByRole("button", { name: "Report", exact: true }),
+  ).toBeVisible();
   const workspace = page.getByRole("region", { name: "Task workspace" });
   await expect(
     workspace.getByText("Agent is working", { exact: true }),
@@ -3951,7 +4068,9 @@ test("selecting data science starts in the analysis workspace without web previe
   await explorer.getByRole("button", { name: "Profile dataset" }).click();
   const composer = page.getByRole("textbox", { name: "Message to your agent" });
   await expect(composer).toHaveValue(/Profile dataset dataset_sensor/);
-  expect(f.posts.some(({ path }) => path.endsWith("/continue"))).toBe(false);
+  expect(f.posts.filter(({ path }) => path.endsWith("/continue"))).toHaveLength(
+    1,
+  );
   await composer.fill("What is the distribution of readings?");
   const analysisURL = page.url();
   await explorer.getByRole("button", { name: "Preview rows" }).click();
@@ -3969,7 +4088,7 @@ test("selecting data science starts in the analysis workspace without web previe
   await expect
     .poll(
       () =>
-        f.posts.find(({ path }) => path.endsWith("/continue"))?.body
+        f.posts.filter(({ path }) => path.endsWith("/continue"))[1]?.body
           .instruction,
     )
     .toContain("Selected dataset for this request: dataset_sensor.");

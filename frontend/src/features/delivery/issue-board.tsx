@@ -39,6 +39,7 @@ import { request } from "@/shared/http";
 import { label } from "@/shared/format";
 import type { Project } from "@/shared/types";
 import { workKeys } from "@/features/work/api";
+import { startsInWorkspace } from "@/features/work/profiles";
 import { boardApi, boardKey, boardOptions, type BoardCard } from "./board-api";
 import {
   activityTone,
@@ -185,7 +186,10 @@ function Board({ project }: { project: Project }) {
       await navigate({
         to: "/projects/$projectId/$section",
         params: { projectId: project.id, section: "work" },
-        search: { work: card.id },
+        search: {
+          work: card.id,
+          view: startsInWorkspace(card.work.kind) ? "workspace" : undefined,
+        },
       });
     },
     onError: refresh,

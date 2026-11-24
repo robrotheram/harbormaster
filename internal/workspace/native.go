@@ -19,6 +19,10 @@ Before handing off, check that workbench-preview status reports the service read
 
 Say where to review the app in Workspace → Preview → Web. If the preview could not be verified, report the blocker. Use previews for runnable web deliverables and explicit preview requests. For other work, deliver the requested files, results, or explanation in the thread.`
 
+const workspaceDesktopGuidance = `Desktop app development
+
+Review runnable GUI apps in Workspace → Preview → Desktop. Use the worker's X11 desktop on DISPLAY=:99. For GUI testing, run workbench-preview status to check for an active desktop. If needed, run workbench-preview desktop to start a supervised session. Verify the GUI on that display and give the launch command so the app can be reopened from the desktop terminal. If the worker cannot start a desktop, report the blocker and provide the available verification results. Use the desktop for GUI review and deliver other results in the thread.`
+
 const workspaceAnalysisGuidance = `For uploaded or large data, use the worker-local analysis tools. Run workbench-analysis list, schema ID, or preview ID REQUEST.json to inspect CSV or Parquet. Preview requests accept limit, cursor, columns, sort, and filters. Run workbench-analysis path ID to resolve a dataset in the agent shell. Use /opt/workbench-analysis/bin/python with the duckdb package for SQL and Python processing. Materialize bounded chart aggregations or other derived results as Parquet outside the Git checkout, then run workbench-analysis register-result FILE. Use ingest FILE for a derived dataset. Keep raw data and intermediate results outside Git. Never copy bulk data into messages or render it using the inline chart format.
 To publish a visualization, write a version 1.0 JSON file and run workbench-analysis register-artifact SPEC.json. The envelope has schema_version, artifact_id, type, title, data (source_type and reference), and visualization. Use source_type dataset or query_result and the ID returned by the tool. A table uses optional page_size, columns as [{"field":"name"}], sortable, and filterable.
 For a chart, set chart_type to line, bar, scatter, histogram, or pie. Line, bar, scatter, and histogram use encoding.x and encoding.y objects with field, type, and optional label. Use temporal, quantitative, or nominal for x and quantitative for y. Scatter and histogram need a numeric x. Histogram rows contain bin positions and counts. Set encoding.series to a grouping column for separate series. For pie, use encoding {"category":"category_column","value":"total_column"} and materialize complete, nonnegative totals with one row per category. Colors are optional. Use visualization.style.category_colors with six-digit hex colors keyed by exact category for a pie or a single-series nominal bar, e.g. {"Black":"#768498","Cinnamon":"#d98d59"}. For a series-based chart, use style.series_colors keyed by the series value, or the y label or field for one series. Configure gridlines on axis charts with style.gridlines, e.g. {"x":false,"y":false}. Use a new artifact ID for a changed spec.
@@ -30,7 +34,21 @@ func dataScienceInstruction(instruction string) string {
 	return "Data science work. Investigate the data and deliver findings, reproducible analysis, visualizations, or a Markdown report as requested. Use Harbormaster artifacts for visualization. Do not build a website, dashboard, or web preview for this task. If source data is missing, explain what input is needed.\n\n" + workspaceAnalysisGuidance + "\n\n" + instruction
 }
 
-func (m *Manager) runNativeTask(ctx context.Context, provider, instruction, taskID, model, effort string, dataScience bool) (result string, code string) {
+func workInstruction(instruction, kind string, native bool) string {
+	switch kind {
+	case shared.WorkKindDataScience:
+		return dataScienceInstruction(instruction)
+	case shared.WorkKindDesktop:
+		return workspaceDesktopGuidance + "\n\n" + instruction
+	default:
+		if native {
+			return workspacePreviewGuidance + "\n\n" + workspaceAnalysisGuidance + "\n\n" + instruction
+		}
+		return instruction
+	}
+}
+
+func (m *Manager) runNativeTask(ctx context.Context, provider, instruction, taskID, model, effort, workKind string) (result string, code string) {
 	m.event(provider, "agent.started", taskID, "", "")
 	defer func() {
 		kind := "agent.completed"
@@ -50,13 +68,8 @@ func (m *Manager) runNativeTask(ctx context.Context, provider, instruction, task
 	}
 	var desktops int
 	m.db.QueryRow(`SELECT count(*) FROM workspace_applications a JOIN retained_services s ON s.id=a.service_id WHERE s.state='active' AND s.expires_at>? AND json_extract(a.configuration,'$.kind')='desktop'`, time.Now().Unix()).Scan(&desktops)
-	if desktops > 0 {
+	if desktops > 0 || workKind == shared.WorkKindDesktop {
 		cfg.Display = ":99"
 	}
-	if dataScience {
-		instruction = dataScienceInstruction(instruction)
-	} else {
-		instruction = workspacePreviewGuidance + "\n\n" + workspaceAnalysisGuidance + "\n\n" + instruction
-	}
-	return nativeagent.Run(ctx, cfg, provider, instruction, &nativeEvents{m: m, source: provider, task: taskID}, &nativeEvents{m: m, source: provider, task: taskID})
+	return nativeagent.Run(ctx, cfg, provider, workInstruction(instruction, workKind, true), &nativeEvents{m: m, source: provider, task: taskID}, &nativeEvents{m: m, source: provider, task: taskID})
 }

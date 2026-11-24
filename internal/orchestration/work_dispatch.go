@@ -180,7 +180,7 @@ func (r Repository) TickWork(ctx context.Context, s *Scheduler) error {
 				provider, model, effort = a.Provider, a.Model, a.ReasoningEffort
 			}
 			payload := map[string]string{"instruction_path": path, "specification_digest": digest, "provider": provider, "idempotency_key": "work:" + a.ID}
-			if item.Kind == shared.WorkKindDataScience {
+			if item.Kind == shared.WorkKindDataScience || item.Kind == shared.WorkKindDesktop {
 				payload["work_kind"] = item.Kind
 			}
 			// Older workers reject unknown fields. Omit an unset model so the

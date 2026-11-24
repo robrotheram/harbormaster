@@ -216,7 +216,7 @@ const messages: Record<string, string> = {
     "The worker couldn’t save the setup change. Check available disk space and try again.",
   SETUP_INTERRUPTED: "Setup preparation was interrupted. Try the change again.",
   WORKSPACE_BUSY:
-    "This worker has active work or terminal processes. Finish them in T3 before retrying.",
+    "This worker has active work or terminal processes. Wait for them to finish before retrying, or choose another worker if available.",
   WORKER_SELECTION_REQUIRED:
     "Choose an existing worker or create one before starting this task.",
   WORKSPACE_UNSCHEDULABLE:

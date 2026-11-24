@@ -240,6 +240,9 @@ test("create a standalone issue without a repository", async ({ page }) => {
   await page
     .getByLabel("Description", { exact: true })
     .fill("Support partial matches");
+  const profile = page.getByLabel("Work profile");
+  await expect(profile).toHaveValue("software");
+  await profile.selectOption({ label: "Desktop App Development" });
   await page
     .getByRole("dialog")
     .getByRole("button", { name: "Create task", exact: true })
@@ -251,7 +254,7 @@ test("create a standalone issue without a repository", async ({ page }) => {
     project_id: project.id,
     title: "Improve search",
     description: "Support partial matches",
-    kind: "software",
+    kind: "desktop",
   });
   expect(typeof payload!.idempotency_key).toBe("string");
   expect(payload).not.toHaveProperty("connection_id");

@@ -5,7 +5,7 @@
 1. Open a running worker and select **Datasets**.
 2. Upload a CSV or Parquet file. The worker records its schema, logical ID, and SHA-256.
 3. Select the dataset to explore its rows. Use the column headers to sort. Use **Filter column** to filter.
-4. Start a work conversation on that worker and select **Data science** as the work type. Include the dataset ID in your request. The task opens in **Analysis**. Use the **Datasets** tab to upload, inspect, and preview data for that worker.
+4. Start a work conversation on that worker and select **Research / Data Science** as the work profile. Include the dataset ID in your request. The task opens in **Analysis**. Use **Datasets** to upload, inspect, and preview data for that worker.
 
 Datasets and derived results live alongside the worker's Git checkout. The browser reads bounded previews through the workspace gateway. An agent can use native DuckDB and Python inside the worker to process the source data. Worker deletion can remove datasets, result files, and registered artifacts.
 

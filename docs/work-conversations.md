@@ -5,8 +5,16 @@ synthetic fixture cannot create the files in this exercise. Allow a few minutes
 for each run. The conversation shows recorded messages and tool activity as they
 become available; it does not stream every generated token.
 
-1. Open the dashboard and choose a project. Select **Workspace**, then **New thread**. Select **Software** and an idle worker with native inference configured. Use **Automatic worker** if the deployment supports provisioning a worker for your configured agent.
-2. Enter this instruction:
+1. Open the dashboard and choose a project. Select **Workspace**, then **New thread**. Select **Web Development** and an idle worker with native inference configured. Use **Automatic worker** if the deployment supports provisioning a worker for your configured agent.
+2. Choose a model. Expand **Keep specific output files** and enter one path per line.
+
+   ```text
+   conversation-demo/add.py
+   conversation-demo/test_add.py
+   conversation-demo/report.md
+   ```
+
+3. Select **Create thread**. Bookmark the conversation URL, which includes `?work=...`. Enter the following message in the thread and select **Send**.
 
    ```text
    Create conversation-demo/add.py with an add(a, b) function. Add four unit
@@ -15,16 +23,6 @@ become available; it does not stream every generated token.
    command and observed results. Use only Python's standard library.
    ```
 
-3. Expand **Keep specific output files** and enter one path per line:
-
-   ```text
-   conversation-demo/add.py
-   conversation-demo/test_add.py
-   conversation-demo/report.md
-   ```
-
-   Click **Start work**. The saved conversation opens and its URL includes
-   `?work=...`. Bookmark the URL for the final step.
 4. Stay in the conversation. Expand a tool call or result to inspect the agent's
    commands and output. The status changes from preparing/running to awaiting
    review. If the run fails, its error appears inline and **Technical details** contains
@@ -78,8 +76,8 @@ Switch between **Conversation** and **Workspace** at the top of the thread. **Co
 
 In **Workspace**, **Preview** shows the live app when available. The **Output** view appears when charts or images are available. Use **Files** to inspect or download files and **Settings** to manage the task.
 
-- In **Web**, select **Markup** to annotate the running app. Open **Preview options** to change the viewport, open a separate tab, or select an element. Element selection adds text to your message draft. Describe the change before sending.
-- In **Desktop**, select **Start worker desktop** when the image supports it. The view forwards mouse and keyboard input to a private X11 desktop. Agent runs started during the session receive `DISPLAY=:99`.
+- With **Web Development**, select **Markup** in **Web** to annotate the running app. Open **Preview options** to change the viewport, open a separate tab, or select an element. Element selection adds text to your message draft. Describe the change before sending.
+- With **Desktop App Development**, open **Desktop** to send mouse and keyboard input to the worker's private X11 desktop. If no session is running, select **Start worker desktop** on a worker image that supports it. Agents can start the same session with `workbench-preview desktop` and test GUI apps on `DISPLAY=:99`.
 - While you use **Workspace**, new replies continue to arrive. Select **View message** to return to **Conversation** without clearing the message draft.
 
 Managed application services count as background activity for idle shutdown. You can continue the conversation while a managed app runs.

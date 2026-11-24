@@ -8,7 +8,8 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { ErrorNotice, Form, Modal, useRequestKey } from "@/shared/components";
 import { keys } from "@/shared/query-keys";
 import { workspaceOptions } from "@/features/workspaces/api";
-import { workApi, workKeys, type WorkCreate } from "./api";
+import { workApi, workKeys } from "./api";
+import { workProfiles, type WorkProfile } from "./profiles";
 export function CreateWork({
   project,
   close,
@@ -28,7 +29,7 @@ export function CreateWork({
   const [path, setPath] = useState("");
   const [digest, setDigest] = useState("");
   const [artifacts, setArtifacts] = useState("");
-  const [kind, setKind] = useState<WorkCreate["kind"]>("software");
+  const [kind, setKind] = useState<WorkProfile>("software");
   const instructionTooLong =
     new TextEncoder().encode(instruction).length > 65536;
   const outputPaths = artifacts
@@ -160,15 +161,16 @@ export function CreateWork({
             </NativeSelect>
           </label>
           <label>
-            Kind
+            Work profile
             <NativeSelect
               value={kind}
-              onChange={(e) => setKind(e.target.value as WorkCreate["kind"])}
+              onChange={(e) => setKind(e.target.value as WorkProfile)}
             >
-              <option value="software">Software</option>
-              <option value="data-science">Data science</option>
-              <option value="research">Research</option>
-              <option value="digest">Digest</option>
+              {workProfiles.map(({ kind, label }) => (
+                <option key={kind} value={kind}>
+                  {label}
+                </option>
+              ))}
             </NativeSelect>
           </label>
           {mode === "file" && (

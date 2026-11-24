@@ -18,11 +18,16 @@ var ErrInvalidWork = &shared.CodedError{Status: shared.StatusBadRequest, Code: "
 // CreateWork durably creates a draft. Acceptance/execution is deliberately a
 // separate operation: saving a reference does not prove its bytes were verified.
 func (r Repository) CreateWork(ctx context.Context, item shared.WorkItem, key string) (shared.WorkItem, bool, error) {
-	if !shared.ValidWorkSelection(item.Provider, item.Model) || !shared.ValidReasoningEffort(item.Provider, item.ReasoningEffort) || !shared.ValidID(item.ProjectID) || !shared.ValidID(item.WorkspaceID) || !shared.ValidKey(key) || !shared.ValidProjectFile(item.SpecificationPath) || len(item.SpecificationDigest) != 64 || item.SpecificationDigest != strings.ToLower(item.SpecificationDigest) {
+	if !shared.ValidWorkSelection(item.Provider, item.Model) || !shared.ValidReasoningEffort(item.Provider, item.ReasoningEffort) || !shared.ValidID(item.ProjectID) || !shared.ValidID(item.WorkspaceID) || !shared.ValidKey(key) {
 		return shared.WorkItem{}, false, ErrInvalidWork
 	}
-	if _, err := hex.DecodeString(item.SpecificationDigest); err != nil {
-		return shared.WorkItem{}, false, ErrInvalidWork
+	if item.SpecificationPath != "" || item.SpecificationDigest != "" {
+		if !shared.ValidProjectFile(item.SpecificationPath) || len(item.SpecificationDigest) != 64 || item.SpecificationDigest != strings.ToLower(item.SpecificationDigest) {
+			return shared.WorkItem{}, false, ErrInvalidWork
+		}
+		if _, err := hex.DecodeString(item.SpecificationDigest); err != nil {
+			return shared.WorkItem{}, false, ErrInvalidWork
+		}
 	}
 	for _, path := range item.ArtifactPaths {
 		if !shared.ValidProjectFile(path) {
@@ -32,9 +37,7 @@ func (r Repository) CreateWork(ctx context.Context, item shared.WorkItem, key st
 	if len(item.ArtifactPaths) > 32 {
 		return shared.WorkItem{}, false, ErrInvalidWork
 	}
-	switch item.Kind {
-	case "software", "research", "digest", shared.WorkKindDataScience:
-	default:
+	if !shared.ValidWorkKind(item.Kind) {
 		return shared.WorkItem{}, false, ErrInvalidWork
 	}
 	hash := sha256.Sum256([]byte(item.ProjectID + "\x00" + key))
@@ -63,6 +66,10 @@ func (r Repository) CreateWork(ctx context.Context, item shared.WorkItem, key st
 
 func (r Repository) Work(ctx context.Context, project, id string) (shared.WorkItem, error) {
 	return jsonmetadata.Get[shared.WorkItem](ctx, r.DB, `SELECT metadata FROM work_items WHERE project_id=$1 AND id=$2`, project, id)
+}
+
+func (r Repository) WorkByCreateKey(ctx context.Context, project, key string) (shared.WorkItem, error) {
+	return jsonmetadata.Get[shared.WorkItem](ctx, r.DB, `SELECT metadata FROM work_items WHERE project_id=$1 AND create_key=$2`, project, key)
 }
 
 func (r Repository) WorkItems(ctx context.Context, project string) ([]shared.WorkItem, error) {

@@ -21,7 +21,7 @@ export type WorkItem = {
   workspace_id: string;
   specification_path: string;
   specification_digest: string;
-  kind: "software" | "research" | "digest" | "data-science";
+  kind: "software" | "desktop" | "research" | "digest" | "data-science";
   state: string;
   artifact_paths?: string[];
   latest_attempt_id?: string;
@@ -57,6 +57,7 @@ export type WorkCreate = {
   project_id: string;
   workspace_id?: string;
   instruction?: string;
+  empty_thread?: true;
   specification_path?: string;
   specification_digest?: string;
   kind: WorkItem["kind"];

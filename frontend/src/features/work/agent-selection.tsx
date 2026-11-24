@@ -26,6 +26,7 @@ export function AgentSelection({
   onReasoning,
   disabled = false,
   compact = false,
+  requireModel = false,
 }: {
   workspace?: string;
   provider: string;
@@ -34,6 +35,7 @@ export function AgentSelection({
   onReasoning: (effort: string, provider: string, model: string) => void;
   disabled?: boolean;
   compact?: boolean;
+  requireModel?: boolean;
 }) {
   const query = useQuery({
     queryKey: ["worker-models", workspace],
@@ -83,9 +85,11 @@ export function AgentSelection({
           options.length === 0
         }
         title={
-          query.isError
-            ? "Model list unavailable. The worker default is still available; retry to choose a model."
-            : "Model for this message"
+          query.isError && requireModel
+            ? "Model list unavailable. Retry to choose a model."
+            : query.isError
+              ? "Model list unavailable. The worker default is still available; retry to choose a model."
+              : "Model for this message"
         }
         onChange={(e) => {
           const [nextProvider, nextModel] = e.target.value
@@ -97,14 +101,19 @@ export function AgentSelection({
           onReasoning("", nextProvider, nextModel);
         }}
       >
-        <option value="" disabled={!!query.data && !defaultAvailable}>
+        <option
+          value=""
+          disabled={requireModel || (!!query.data && !defaultAvailable)}
+        >
           {query.isError
-            ? "Worker default"
+            ? requireModel
+              ? "Models unavailable"
+              : "Worker default"
             : query.isPending && workspace
               ? "Loading models…"
               : query.data && options.length === 0
                 ? "No models available"
-                : defaultAvailable
+                : defaultAvailable && !requireModel
                   ? `${query.data?.default_model} (worker default)`
                   : options.length > 0
                     ? "Choose a model"
@@ -124,28 +133,30 @@ export function AgentSelection({
           </option>
         ))}
       </NativeSelect>
-      {activeModel && reasoningLevels.length > 0 && (
-        <NativeSelect
-          aria-label="Reasoning effort"
-          value={reasoning}
-          disabled={disabled || (!defaultAvailable && !known)}
-          onChange={(event) =>
-            onReasoning(event.target.value, activeProvider, activeModel)
-          }
-        >
-          <option value="">Default reasoning</option>
-          {reasoning && !reasoningLevels.includes(reasoning) && (
-            <option value={reasoning} disabled>
-              {label(reasoning)}
-            </option>
-          )}
-          {reasoningLevels.map((level) => (
-            <option key={level} value={level}>
-              {label(level)} reasoning
-            </option>
-          ))}
-        </NativeSelect>
-      )}
+      {activeModel &&
+        (!requireModel || value) &&
+        reasoningLevels.length > 0 && (
+          <NativeSelect
+            aria-label="Reasoning effort"
+            value={reasoning}
+            disabled={disabled || (!defaultAvailable && !known)}
+            onChange={(event) =>
+              onReasoning(event.target.value, activeProvider, activeModel)
+            }
+          >
+            <option value="">Default reasoning</option>
+            {reasoning && !reasoningLevels.includes(reasoning) && (
+              <option value={reasoning} disabled>
+                {label(reasoning)}
+              </option>
+            )}
+            {reasoningLevels.map((level) => (
+              <option key={level} value={level}>
+                {label(level)} reasoning
+              </option>
+            ))}
+          </NativeSelect>
+        )}
       {query.isError && (
         <Button
           type="button"

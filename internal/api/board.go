@@ -63,7 +63,7 @@ func (s *Server) registerBoard(mux *http.ServeMux) {
 			return
 		}
 
-		if (in.Kind != "software" && in.Kind != "research" && in.Kind != "digest" && in.Kind != shared.WorkKindDataScience) || strings.ContainsRune(in.Description, 0) {
+		if !shared.ValidWorkKind(in.Kind) || strings.ContainsRune(in.Description, 0) {
 			shared.Error(w, 400, "INVALID_REQUEST")
 			return
 		}

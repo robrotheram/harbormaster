@@ -11,7 +11,19 @@ type ControlHandoff struct {
 	At    time.Time `json:"at"`
 }
 
-const WorkKindDataScience = "data-science"
+const (
+	WorkKindDataScience = "data-science"
+	WorkKindDesktop     = "desktop"
+)
+
+func ValidWorkKind(kind string) bool {
+	switch kind {
+	case "software", "research", "digest", WorkKindDataScience, WorkKindDesktop:
+		return true
+	default:
+		return false
+	}
+}
 
 type WorkItem struct {
 	ControllerID        string           `json:"controller_id,omitempty"`

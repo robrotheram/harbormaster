@@ -17,8 +17,9 @@ import (
 )
 
 func Preview(ctx context.Context, args []string, out, errOut io.Writer) error {
+	const usage = "usage: workbench-preview start|desktop|status|stop"
 	if len(args) == 0 {
-		return errors.New("usage: workbench-preview start|status|stop")
+		return errors.New(usage)
 	}
 	action := args[0]
 	flags := flag.NewFlagSet("workbench-preview "+action, flag.ContinueOnError)
@@ -88,15 +89,18 @@ func Preview(ctx context.Context, args []string, out, errOut io.Writer) error {
 			delete(item, "logs")
 		}
 		return printJSON(result)
-	case "start":
-		if *port < 1 || *port > 65535 || *command == "" {
+	case "start", "desktop":
+		application := shared.ApplicationConfig{Directory: *directory, Command: *command, Port: *port}
+		if action == "desktop" {
+			application = shared.ApplicationConfig{Kind: "desktop", Directory: ".", Command: "workbench-desktop", Port: 6080}
+		} else if *port < 1 || *port > 65535 || *command == "" {
 			return errors.New("start requires --port and --command")
 		}
 		if *key == "" {
 			*key = shared.NewID("agent-preview-")
 		}
 		var app map[string]any
-		if err := call("services", map[string]any{"application": map[string]any{"directory": *directory, "command": *command, "port": *port}, "ttl_seconds": 3600, "idempotency_key": *key}, &app); err != nil {
+		if err := call("services", map[string]any{"application": application, "ttl_seconds": 3600, "idempotency_key": *key}, &app); err != nil {
 			return err
 		}
 		for attempt := 0; attempt < 30; attempt++ {
@@ -128,9 +132,13 @@ func Preview(ctx context.Context, args []string, out, errOut io.Writer) error {
 		if app["ready"] != true {
 			return errors.New("application is not ready; inspect its logs in the workbench")
 		}
-		_, err := fmt.Fprintln(out, "Application is supervised inside this workspace. Open Web preview in the work conversation.")
+		message := "Application is supervised inside this workspace. Open Web preview in the work conversation."
+		if action == "desktop" {
+			message = "Desktop is ready on DISPLAY=:99. Open Desktop in the work conversation."
+		}
+		_, err := fmt.Fprintln(out, message)
 		return err
 	default:
-		return errors.New("usage: workbench-preview start|status|stop")
+		return errors.New(usage)
 	}
 }

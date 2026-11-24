@@ -36,12 +36,13 @@ import { privateContentOptions } from "@/shared/private-content";
 
 import { ApplicationLogs, type Application } from "./application-logs";
 
-export type PreviewView = "web" | "desktop" | "output";
+export type PreviewView = "web" | "output";
 
 export function WorkPreview({
   project,
   workspace,
   revision,
+  mode,
   view,
   onViewChange,
   onSelection,
@@ -51,6 +52,7 @@ export function WorkPreview({
   project: string;
   workspace: string;
   revision?: string;
+  mode: "web" | "desktop";
   view?: PreviewView;
   onViewChange: (view: PreviewView) => void;
   onSelection: (text: string) => void;
@@ -67,7 +69,6 @@ export function WorkPreview({
   const nonce = useRef("");
   const selectionMenuClosing = useRef(false);
   const popup = useRef<Window | null>(null);
-  const mode = view === "desktop" ? "desktop" : "web";
   const [settings, setSettings] = useState(false);
   const [logs, setLogs] = useState(false);
   const [selectedID, setSelectedID] = useState("");
@@ -108,6 +109,7 @@ export function WorkPreview({
   );
   const detected = useQuery({
     ...privateContentOptions,
+    enabled: mode === "web",
     queryKey: ["project", project, "ports", workspace],
     queryFn: ({ signal }) =>
       request<{ items: { port: number; listener: string }[] }>(
@@ -118,6 +120,15 @@ export function WorkPreview({
     refetchInterval: 3000,
     retry: false,
   });
+  const detectedPort = detected.data?.items.find(
+    (port) =>
+      !query.data?.items.some(
+        (app) =>
+          app.state === "active" &&
+          app.application.kind === "desktop" &&
+          app.application.port === port.port,
+      ),
+  );
   const tried = useRef(new Set<string>());
   const forward = useMutation({
     mutationFn: (port: { port: number; listener: string; manual?: boolean }) =>
@@ -269,16 +280,21 @@ export function WorkPreview({
       (!view &&
         !selected &&
         !restartable &&
-        !detected.data?.items.length &&
+        !detectedPort &&
         !query.isPending &&
         !detected.isPending));
   const tabs = [
-    { id: "web", text: "Web", icon: Globe },
-    { id: "desktop", text: "Desktop", icon: Monitor },
+    mode === "desktop"
+      ? { id: "desktop", text: "Desktop", icon: Monitor }
+      : { id: "web", text: "Web", icon: Globe },
     ...(output
       ? [{ id: "output", text: "Output", icon: FileText } as const]
       : []),
-  ] as const;
+  ] as const satisfies readonly {
+    id: PreviewView | "desktop";
+    text: string;
+    icon: typeof Globe;
+  }[];
   return (
     <aside className="work-visual-pane" aria-label="Preview workspace">
       <div className="visual-toolbar preview-toolbar">
@@ -289,7 +305,9 @@ export function WorkPreview({
               type="button"
               role="tab"
               aria-selected={(showOutput ? "output" : mode) === tab.id}
-              onClick={() => onViewChange(tab.id)}
+              onClick={() => {
+                if (tab.id !== "desktop") onViewChange(tab.id);
+              }}
             >
               <tab.icon size={14} />
               {tab.text}
@@ -582,9 +600,9 @@ export function WorkPreview({
               onClick={() =>
                 mode === "desktop"
                   ? mutation.mutate("desktop")
-                  : detected.data?.items[0]
+                  : detectedPort
                     ? forward.mutate({
-                        ...detected.data.items[0],
+                        ...detectedPort,
                         manual: true,
                       })
                     : restartable
@@ -597,7 +615,7 @@ export function WorkPreview({
               <Play size={14} />
               {mode === "desktop"
                 ? "Start worker desktop"
-                : detected.data?.items.length
+                : detectedPort
                   ? "Open detected app"
                   : restartable
                     ? "Restart preview"

@@ -23,7 +23,7 @@ To remove access, use the revoke action on the member's row. Hosted sign-in must
 
 ## Plan a task
 
-1. In **Overview**, select **Create task**. Enter the title, description, and work type.
+1. In **Overview**, select **Create task**. Enter the title and description, then choose a work profile.
 2. Open the saved task to set its status, assignee, priority, or dependencies as needed.
 3. To dispatch a planned task, select **Start work** when the task has an eligible agent and worker. To give an agent an instruction directly, start a thread in **Workspace**.
 
@@ -34,12 +34,18 @@ Changing a task's status or archiving it does not start or cancel an agent. For 
 Before running real work, make sure the deployment has an approved agent and model. If personal subscriptions are enabled, add your account under **Connections**, then open **Settings** and **Subscriptions** on the worker to load it. Loading the subscription authorizes work on that worker to use your account. See [subscription setup](subscription-agents.md).
 
 1. Open **Workspace** and select **New thread**.
-2. Enter an instruction that describes the outcome and how to check it. Choose the work type and a worker. Select **Automatic worker** to let Harbormaster choose how to provision the worker. Choose an existing worker if the work needs its files or its loaded subscription.
+2. Choose a model. The work profile defaults to **Web Development**. Select **Automatic worker** and confirm its default model to let Harbormaster provision a worker. Choose an existing worker if the work needs its files or its loaded subscription.
 3. To keep specific output files, expand **Keep specific output files**. Enter one worker-relative path per line, up to 32. Ask the agent to write those files.
-4. Select **Start work**. Open the recorded tool activity to check what ran. Switch the thread to **Workspace**, then select **Files** to inspect or download retained outputs.
+4. Select **Create thread**. When you’re ready to start work, enter a message in the thread and select **Send**. Switch to **Workspace** and select **Files** to inspect or download retained outputs.
 5. Send another message for a follow-up, or select **Stop task** to request cancellation of an active run. Follow-up messages start new runs in the same thread and use the worker's existing files.
 
 Closing the browser leaves accepted work running. A stopped worker's private conversation can require **Load conversation** before you can read it. The default local fixture returns a synthetic result in the task API. Use [the CLI fixture tutorial](getting-started.md) to verify that path, or [the agent conversation tutorial](work-conversations.md) to produce real files with a configured model.
+
+| Work profile | Workspace |
+| --- | --- |
+| **Web Development** | Live web preview, markup, and agent output |
+| **Desktop App Development** | Interactive Linux desktop for reviewing GUI apps |
+| **Research / Data Science** | Datasets, interactive visualizations, and reports |
 
 ## Review a result
 
@@ -55,7 +61,7 @@ See [reviewing tasks in Workspace](reviews.md) for annotated images and agent re
 2. To have the agent start the app, select **Ask agent to run app** and send the prepared message. To start the app yourself, open **Preview options**, then **Preview settings**. Set the worker-relative directory, start command, and port. Select **Start preview**.
 3. If startup fails, open **Application logs** from **Preview options**. Check the directory, command, port, and first error. In preview settings, select **Stop app** to end a managed application. Use **Disconnect preview** to remove the forwarding for an app started independently.
 
-For a GUI application, use **Desktop** if your worker image supports it. See [application previews, desktop, and charts](work-conversations.md#run-and-preview-a-web-application).
+For a GUI application, choose **Desktop App Development** when you start the thread. Select **Start worker desktop** if a desktop session is not already running. The worker image must support desktop sessions. See [application previews, desktop, and charts](work-conversations.md#run-and-preview-a-web-application).
 
 ## Manage a worker
 

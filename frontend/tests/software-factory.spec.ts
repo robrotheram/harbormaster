@@ -220,9 +220,7 @@ test("project factory filters work and clears project-specific UI when switching
   await page
     .getByRole("menuitem", { name: "Developer SDK", exact: true })
     .click();
-  await expect(
-    page.getByRole("heading", { name: "What are we working on?" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "New thread" })).toBeVisible();
   await expect(page.getByLabel("Search threads", { exact: true })).toHaveValue(
     "",
   );

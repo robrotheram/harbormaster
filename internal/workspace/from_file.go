@@ -28,7 +28,7 @@ func (m *Manager) submitFile(w http.ResponseWriter, r *http.Request) {
 	if !shared.Decode(w, r, &input, 2048) {
 		return
 	}
-	if input.WorkKind != "" && input.WorkKind != shared.WorkKindDataScience || !shared.ValidReasoningEffort(input.Provider, input.ReasoningEffort) || (input.Model != "" && !shared.ValidWorkSelection(input.Provider, input.Model)) || !shared.ValidProjectFile(input.Path) || !shared.ValidKey(input.Key) || (input.Provider != "" && input.Provider != "codex" && input.Provider != "claude" && !(input.Provider == "hermes" && m.cfg.AgentKind == "hermes")) {
+	if input.WorkKind != "" && !shared.ValidWorkKind(input.WorkKind) || !shared.ValidReasoningEffort(input.Provider, input.ReasoningEffort) || (input.Model != "" && !shared.ValidWorkSelection(input.Provider, input.Model)) || !shared.ValidProjectFile(input.Path) || !shared.ValidKey(input.Key) || (input.Provider != "" && input.Provider != "codex" && input.Provider != "claude" && !(input.Provider == "hermes" && m.cfg.AgentKind == "hermes")) {
 		shared.Error(w, 400, "INVALID_REQUEST")
 		return
 	}
@@ -85,7 +85,7 @@ func (m *Manager) submitFile(w http.ResponseWriter, r *http.Request) {
 		shared.Error(w, 409, "SPECIFICATION_DIGEST_MISMATCH")
 		return
 	}
-	task, status, err := m.submitLocked(submit{DataScience: input.WorkKind == shared.WorkKindDataScience, Instruction: string(b), Key: input.Key, Provider: input.Provider, Model: input.Model, ReasoningEffort: input.ReasoningEffort, SourcePath: input.Path, SpecificationDigest: input.Digest})
+	task, status, err := m.submitLocked(submit{WorkKind: input.WorkKind, Instruction: string(b), Key: input.Key, Provider: input.Provider, Model: input.Model, ReasoningEffort: input.ReasoningEffort, SourcePath: input.Path, SpecificationDigest: input.Digest})
 	if err != nil {
 		shared.WriteHTTPError(w, err, shared.CodedError{Status: status, Code: err.Error()})
 		return

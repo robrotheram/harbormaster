@@ -179,14 +179,14 @@ func TestBoardSyncRoundTripAndConflictProtection(t *testing.T) {
 func TestStandaloneBoardIssueCreateAndRetry(t *testing.T) {
 	s, _ := setup(t)
 	project := domainProject(t, s, "local-board")
-	body := `{"project_id":"` + project.ID + `","title":"Improve search","description":"Support partial matches","kind":"software","idempotency_key":"local-issue"}`
+	body := `{"project_id":"` + project.ID + `","title":"Improve search","description":"Support partial matches","kind":"desktop","idempotency_key":"local-issue"}`
 	var card boardCard
 	for i := 0; i < 2; i++ {
 		got := request(t, s, "POST", "/v1/board", body)
 		if got.Code != 201 && got.Code != 200 {
 			t.Fatal(got.Code, got.Body.String())
 		}
-		if json.Unmarshal(got.Body.Bytes(), &card) != nil || card.Title != "Improve search" || card.Stage != "planned" || card.Source != nil || card.Work.State != "planned" || card.Work.LatestAttemptID != "" || card.Description == nil || *card.Description != "Support partial matches" {
+		if json.Unmarshal(got.Body.Bytes(), &card) != nil || card.Title != "Improve search" || card.Stage != "planned" || card.Source != nil || card.Work.Kind != shared.WorkKindDesktop || card.Work.State != "planned" || card.Work.LatestAttemptID != "" || card.Description == nil || *card.Description != "Support partial matches" {
 			t.Fatal(got.Body.String())
 		}
 	}

@@ -3,7 +3,6 @@ import { AgentSelection } from "./agent-selection";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { conversationTitle } from "./conversation-title";
 import { useThreadTitles } from "./thread-titles";
-import { composerKeyDown } from "./composer-keydown";
 import {
   useState,
   useEffect,
@@ -11,7 +10,6 @@ import {
   useCallback,
   useRef,
   type SetStateAction,
-  type Dispatch,
 } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
@@ -20,7 +18,6 @@ import {
   Search,
   MessageSquare,
   Bot,
-  ArrowUp,
   PanelLeftOpen,
   ChevronDown,
 } from "lucide-react";
@@ -41,13 +38,8 @@ import type { Project } from "@/shared/types";
 import { workspaceOptions } from "@/features/workspaces/api";
 import { ProjectCompanion } from "@/features/project-assistant/companion";
 import { WorkConversation } from "./work-thread";
-import {
-  workApi,
-  workKeys,
-  workOptions,
-  type WorkCreate,
-  type WorkItem,
-} from "./api";
+import { workApi, workKeys, workOptions, type WorkItem } from "./api";
+import { startsInWorkspace, workProfiles, type WorkProfile } from "./profiles";
 import { stages, workStage, workStatus, type WorkStage } from "./stages";
 
 export function Work({ project }: { project: Project }) {
@@ -84,9 +76,7 @@ function ProjectConversations({ project }: { project: Project }) {
     [selected],
   );
   const [assistant, setAssistant] = useState(false);
-  const [startError, setStartError] = useState<unknown>();
   const select = (id: string, openWorkspace = false) => {
-    setStartError(undefined);
     setWorklist(false);
     navigate({
       to: "/projects/$projectId/$section",
@@ -127,6 +117,7 @@ function ProjectConversations({ project }: { project: Project }) {
       i.specification_path,
       i.id,
       i.kind,
+      workProfiles.find((profile) => profile.kind === i.kind)?.label || "",
       titleState.owners.get(i.id) || "",
     ].some((v) => v.toLowerCase().includes(term)),
   );
@@ -421,7 +412,6 @@ function ProjectConversations({ project }: { project: Project }) {
             key={selected}
             project={project}
             id={selected}
-            startError={startError}
             title={titles.get(selected)}
             owner={titleState.owners.get(selected)}
             navigation={mobileNavigation}
@@ -436,12 +426,9 @@ function ProjectConversations({ project }: { project: Project }) {
             </div>
             <NewConversation
               project={project}
-              instruction={drafts[""] || ""}
-              setInstruction={setThreadDraft}
-              onStarted={(item, error) => {
-                setThreadDraft("");
-                select(item.id, item.kind === "data-science");
-                setStartError(error);
+              onCreated={(item) => {
+                personal.focusComposer.current = item.id;
+                select(item.id, startsInWorkspace(item.kind));
               }}
             />
           </div>
@@ -461,20 +448,17 @@ function ProjectConversations({ project }: { project: Project }) {
 
 function NewConversation({
   project,
-  onStarted,
-  instruction,
-  setInstruction,
+  onCreated,
 }: {
-  instruction: string;
-  setInstruction: Dispatch<SetStateAction<string>>;
   project: Project;
-  onStarted: (item: WorkItem, error?: unknown) => void;
+  onCreated: (item: WorkItem) => void;
 }) {
   const [provider, setProvider] = useState("");
   const [model, setModel] = useState("");
   const [reasoning, setReasoning] = useState("");
-  const [workspace, setWorkspace] = useState("");
-  const [kind, setKind] = useState<WorkCreate["kind"] | "">("");
+  const [workspace, setWorkspace] = useState<string>();
+  const [defaultModelConfirmed, setDefaultModelConfirmed] = useState(false);
+  const [kind, setKind] = useState<WorkProfile>("software");
   const [outputs, setOutputs] = useState("");
   const workers = useQuery(workspaceOptions(project.id));
   const availableWorkers =
@@ -482,14 +466,14 @@ function NewConversation({
       (w) => w.agent_kind !== "hermes" && !w.retained_preview,
     ) || [];
   const selectedWorkspace =
-    workspace ||
-    availableWorkers.find((w) => w.ready)?.id ||
-    availableWorkers[0]?.id ||
-    "";
+    workspace ??
+    (availableWorkers.find((w) => w.ready)?.id ||
+      availableWorkers[0]?.id ||
+      "");
+  const automaticWorker =
+    !selectedWorkspace && (workspace === "" || workers.isSuccess);
   const key = useRequestKey();
   const client = useQueryClient();
-  const instructionTooLong =
-    new TextEncoder().encode(instruction).length > 65536;
   const outputPaths = outputs
     .split(/\r?\n/)
     .map((path) => path.trim())
@@ -497,39 +481,38 @@ function NewConversation({
   const tooManyOutputs = outputPaths.length > 32;
   const mutation = useMutation({
     mutationFn: () => {
-      if (!kind) throw new Error("Choose a work type.");
       const payload = {
         project_id: project.id,
         workspace_id: selectedWorkspace,
         ...(provider ? { provider } : {}),
         ...(provider && model ? { model } : {}),
         ...(reasoning ? { reasoning_effort: reasoning } : {}),
-        instruction,
+        empty_thread: true as const,
         kind,
         artifact_paths: outputPaths,
       };
-      return workApi.begin(payload, key(payload));
+      return workApi.create(payload, key(payload));
     },
-    onSuccess: async ({ item, error }) => {
+    onSuccess: async (item) => {
       await client.invalidateQueries({ queryKey: workKeys.list(project.id) });
       await client.invalidateQueries({
         queryKey: ["project", project.id, "workspaces"],
       });
-      onStarted(item, error);
+      onCreated(item);
     },
   });
   const canSend =
     !mutation.isPending &&
-    !!kind &&
-    !!instruction.trim() &&
-    !instructionTooLong &&
+    (automaticWorker
+      ? defaultModelConfirmed
+      : !!(selectedWorkspace && provider && model)) &&
     !tooManyOutputs;
   return (
     <section className="conversation-new" aria-label="New work conversation">
       <div className="conversation-intro">
         <div className="conversation-intro-heading">
           <MessageSquare size={26} aria-hidden="true" />
-          <h2>What are we working on?</h2>
+          <h2>New thread</h2>
         </div>
       </div>
       <Form
@@ -537,46 +520,39 @@ function NewConversation({
           if (canSend) mutation.mutate();
         }}
       >
-        <label htmlFor="new-work-message" className="sr-only">
-          Message to your agent
-        </label>
-        <Textarea
-          id="new-work-message"
-          aria-invalid={instructionTooLong || undefined}
-          aria-describedby={
-            instructionTooLong ? "new-work-message-error" : undefined
-          }
-          rows={7}
-          autoFocus
-          placeholder="What would you like the agent to do? Include how you'll know it's done."
-          value={instruction}
-          onChange={(e) => setInstruction(e.target.value)}
-          onKeyDown={(e) => composerKeyDown(e, canSend)}
-          required
-          disabled={mutation.isPending}
-        />
-        {instructionTooLong && (
-          <p
-            id="new-work-message-error"
-            className="text-sm text-destructive"
-            role="alert"
+        {automaticWorker ? (
+          <NativeSelect
+            aria-label="Model"
+            value={defaultModelConfirmed ? "worker-default" : ""}
+            onChange={(e) => {
+              setWorkspace("");
+              setDefaultModelConfirmed(e.target.value === "worker-default");
+            }}
+            disabled={mutation.isPending}
           >
-            This message exceeds 64 KiB. Shorten it or save supporting material
-            in a worker file, then refer to that file in your instructions.
-          </p>
+            <option value="" disabled>
+              Choose a model
+            </option>
+            <option value="worker-default">
+              Use the new worker’s default model
+            </option>
+          </NativeSelect>
+        ) : (
+          <AgentSelection
+            workspace={selectedWorkspace}
+            provider={provider}
+            model={model}
+            reasoning={reasoning}
+            onReasoning={(effort, nextProvider, nextModel) => {
+              setWorkspace(selectedWorkspace);
+              setReasoning(effort);
+              setProvider(nextProvider);
+              setModel(nextModel);
+            }}
+            disabled={mutation.isPending}
+            requireModel
+          />
         )}
-        <AgentSelection
-          workspace={selectedWorkspace}
-          provider={provider}
-          model={model}
-          reasoning={reasoning}
-          onReasoning={(effort, nextProvider, nextModel) => {
-            setReasoning(effort);
-            setProvider(nextProvider);
-            setModel(nextModel);
-          }}
-          disabled={mutation.isPending}
-        />
         <div className="conversation-new-options">
           <label>
             Worker
@@ -585,6 +561,7 @@ function NewConversation({
               value={selectedWorkspace}
               onChange={(e) => {
                 setWorkspace(e.target.value);
+                setDefaultModelConfirmed(false);
                 setProvider("");
                 setModel("");
                 setReasoning("");
@@ -592,34 +569,26 @@ function NewConversation({
               disabled={mutation.isPending}
             >
               <option value="">Automatic worker</option>
-              {workers.data
-                ?.filter(
-                  (w) => w.agent_kind !== "hermes" && !w.retained_preview,
-                )
-                .map((w) => (
-                  <option key={w.id} value={w.id}>
-                    {w.name || w.id}
-                  </option>
-                ))}
+              {availableWorkers.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name || w.id}
+                </option>
+              ))}
             </NativeSelect>
           </label>
           <label>
-            Work type
+            Work profile
             <NativeSelect
-              aria-label="Work type"
+              aria-label="Work profile"
               value={kind}
-              onChange={(e) =>
-                setKind(e.target.value as WorkCreate["kind"] | "")
-              }
+              onChange={(e) => setKind(e.target.value as WorkProfile)}
               disabled={mutation.isPending}
             >
-              <option value="" disabled>
-                Choose a work type
-              </option>
-              <option value="software">Software</option>
-              <option value="data-science">Data science</option>
-              <option value="research">Research</option>
-              <option value="digest">Digest</option>
+              {workProfiles.map(({ kind, label }) => (
+                <option key={kind} value={kind}>
+                  {label}
+                </option>
+              ))}
             </NativeSelect>
           </label>
         </div>
@@ -644,7 +613,7 @@ function NewConversation({
           {tooManyOutputs && (
             <p className="text-sm text-destructive" role="alert">
               You selected {outputPaths.length} output files. Keep at most 32
-              paths before starting work.
+              paths before creating the thread.
             </p>
           )}
         </details>
@@ -658,8 +627,7 @@ function NewConversation({
         {mutation.isError && <ErrorNotice error={mutation.error} />}
         <div className="conversation-compose-actions">
           <Button disabled={!canSend}>
-            <ArrowUp size={15} />
-            {mutation.isPending ? "Starting…" : "Start work"}
+            {mutation.isPending ? "Creating…" : "Create thread"}
           </Button>
         </div>
       </Form>

@@ -80,7 +80,7 @@ type Manager struct {
 	console          *console
 }
 type submit struct {
-	DataScience         bool   `json:"-"`
+	WorkKind            string `json:"-"`
 	Model               string `json:"model,omitempty"`
 	ReasoningEffort     string `json:"reasoning_effort,omitempty"`
 	SpecificationDigest string `json:"-"`
@@ -277,10 +277,10 @@ func (m *Manager) submitLocked(s submit) (shared.Task, int, error) {
 	}
 	m.history(shared.HistoryRecord{ID: stableHistoryID(id, "user.message", "prompt"), EpisodeID: id, Source: source, Kind: "user.message", Role: "user", Content: s.Instruction})
 	m.event("workspace", "task.queued", id, "", "")
-	go m.execute(ctx, id, s.Instruction, s.Provider, s.Model, s.ReasoningEffort, s.DataScience)
+	go m.execute(ctx, id, s.Instruction, s.Provider, s.Model, s.ReasoningEffort, s.WorkKind)
 	return accepted.Task, 202, nil
 }
-func (m *Manager) execute(ctx context.Context, id, instruction, provider, model, effort string, dataScience bool) {
+func (m *Manager) execute(ctx context.Context, id, instruction, provider, model, effort, workKind string) {
 	defer m.wg.Done()
 	m.serial.Lock()
 	defer m.serial.Unlock()
@@ -310,12 +310,10 @@ func (m *Manager) execute(ctx context.Context, id, instruction, provider, model,
 	}
 	var result, code string
 	if provider == "" {
-		if dataScience {
-			instruction = dataScienceInstruction(instruction)
-		}
+		instruction = workInstruction(instruction, workKind, false)
 		result, code = m.run(ctx, id, instruction)
 	} else {
-		result, code = m.runNativeTask(ctx, provider, instruction, id, model, effort, dataScience)
+		result, code = m.runNativeTask(ctx, provider, instruction, id, model, effort, workKind)
 	}
 	var changes *shared.TaskChanges
 	if before != "" {

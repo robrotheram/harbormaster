@@ -4,7 +4,7 @@ Use **Overview** to manage the project's task list. Filter by work scope or assi
 
 ## Create and dispatch a task
 
-1. Select **Create task**. Enter a title, a description, and a work type. Save the task.
+1. Select **Create task**. Enter a title and description, then choose a work profile. Save the task.
 2. Open the task to set its priority, assignee, or dependencies.
 3. Select **Start work** when the task is ready and your account can control the agent. Open the conversation to follow execution.
 
