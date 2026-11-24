@@ -942,6 +942,12 @@ test("refreshes web preview when a run completes, preserves it during work, and 
   await expect(page.locator('iframe[title="Application preview"]')).toHaveCount(
     0,
   );
+  await expect(
+    page.getByRole("heading", { name: "Preview unavailable" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Restart preview", exact: true }),
+  ).toBeVisible();
   await expect(page.getByRole("button", { name: "Workspace" })).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Reconnect preview" }),
@@ -3688,6 +3694,8 @@ test("selecting data science starts in the analysis workspace without web previe
   const tools = page.getByRole("group", { name: "Workspace tools" });
   const analysis = tools.getByRole("button", { name: "Analysis", exact: true });
   await expect(analysis).toHaveAttribute("aria-pressed", "true");
+  const workspace = page.getByRole("region", { name: "Task workspace" });
+  await expect(workspace.getByRole("status")).toContainText("Agent is working");
   await expect(datasetList).toHaveCount(0);
   await tools.getByRole("button", { name: "Datasets", exact: true }).click();
   await expect(page).toHaveURL(/view=datasets/);
@@ -3700,6 +3708,10 @@ test("selecting data science starts in the analysis workspace without web previe
   ).toBeHidden();
   await analysis.click();
   await expect(datasetList).toHaveCount(0);
+  f.finish();
+  await expect(workspace.getByRole("status")).toContainText(
+    "No visualizations yet",
+  );
   await expect(
     tools.getByRole("button", { name: "Preview", exact: true }),
   ).toHaveCount(0);

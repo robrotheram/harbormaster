@@ -7,7 +7,49 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"agent-workbench/internal/shared"
 )
+
+func TestLivePreviewRecoveryPreservesApplicationResponses(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/stopped") {
+			w.Header().Set(shared.ApplicationProxyFailureHeader, "1")
+			shared.Error(w, 503, "APPLICATION_NOT_READY")
+			return
+		}
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(503)
+		w.Write([]byte("<h1>Application maintenance</h1>"))
+	}))
+	defer upstream.Close()
+	p := newPreviewIngress(upstream.Client(), upstream.URL, "operator")
+	host := "preview-one.localhost"
+	p.sessions["session"] = previewBinding{
+		Application: true, Workspace: "ws_one", Service: "service_one",
+		Host: host, Expiry: time.Now().Add(time.Hour),
+	}
+	for _, tc := range []struct {
+		path, destination, contentType, body string
+	}{
+		{"/stopped", "iframe", "text/html", "Use Reload preview above this panel"},
+		{"/stopped", "document", "text/html", "Open Workbench"},
+		{"/stopped", "empty", "application/json", "APPLICATION_NOT_READY"},
+		{"/maintenance", "iframe", "text/html", "<h1>Application maintenance</h1>"},
+	} {
+		req := httptest.NewRequest("GET", "http://"+host+tc.path, nil)
+		req.Header.Set("Accept", "text/html")
+		req.Header.Set("Sec-Fetch-Dest", tc.destination)
+		req.AddCookie(&http.Cookie{Name: "awb_preview", Value: "session"})
+		out := httptest.NewRecorder()
+		p.serve(out, req)
+		if out.Code != 503 || !strings.HasPrefix(out.Header().Get("Content-Type"), tc.contentType) ||
+			!strings.Contains(out.Body.String(), tc.body) ||
+			out.Header().Get(shared.ApplicationProxyFailureHeader) != "" {
+			t.Errorf("%s %s: unexpected response %d %v %s", tc.path, tc.destination, out.Code, out.Header(), out.Body.String())
+		}
+	}
+}
 
 func TestPreviewIngressBudgetsMethodsAndSessionExpiry(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(strings.Repeat("x", (3<<20)+1))) }))

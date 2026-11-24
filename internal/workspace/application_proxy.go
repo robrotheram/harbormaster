@@ -16,9 +16,13 @@ import (
 // identity and request path, never a host or port. HTTP and WebSockets share this
 // path, including revocation when the process group is stopped or expires.
 func (m *Manager) proxyApplication(w http.ResponseWriter, r *http.Request) {
+	fail := func(w http.ResponseWriter, status int, code string) {
+		w.Header().Set(shared.ApplicationProxyFailureHeader, "1")
+		shared.Error(w, status, code)
+	}
 	id := r.PathValue("service")
 	if !shared.ValidID(id) {
-		shared.Error(w, 404, "SERVICE_NOT_FOUND")
+		fail(w, 404, "SERVICE_NOT_FOUND")
 		return
 	}
 	m.mu.Lock()
@@ -29,23 +33,23 @@ func (m *Manager) proxyApplication(w http.ResponseWriter, r *http.Request) {
 	}
 	m.mu.Unlock()
 	if err != nil {
-		shared.Error(w, 404, "SERVICE_NOT_FOUND")
+		fail(w, 404, "SERVICE_NOT_FOUND")
 		return
 	}
 	if s.State != "active" {
-		shared.Error(w, 410, "SERVICE_REVOKED")
+		fail(w, 410, "SERVICE_REVOKED")
 		return
 	}
 	var app shared.ApplicationConfig
 	if json.Unmarshal([]byte(raw), &app) != nil || !app.Valid() {
-		shared.Error(w, 503, "INVALID_APPLICATION")
+		fail(w, 503, "INVALID_APPLICATION")
 		return
 	}
 	target := net.JoinHostPort("127.0.0.1", strconv.Itoa(app.Port))
 	if app.Kind == "forward" {
 		port, ok := forwardTarget(app)
 		if !ok {
-			shared.Error(w, 410, "APPLICATION_PORT_CLOSED")
+			fail(w, 410, "APPLICATION_PORT_CLOSED")
 			return
 		}
 		target = port.Address
@@ -75,6 +79,7 @@ func (m *Manager) proxyApplication(w http.ResponseWriter, r *http.Request) {
 			p.Out.Header.Set("Origin", "http://"+target)
 		}
 	}, ModifyResponse: func(res *http.Response) error {
+		res.Header.Del(shared.ApplicationProxyFailureHeader)
 		// Framework canonical redirects must stay on the isolated preview origin.
 		if location, err := url.Parse(res.Header.Get("Location")); err == nil && location.Scheme == "http" && location.Port() == strconv.Itoa(app.Port) {
 			host := location.Hostname()
@@ -94,6 +99,6 @@ func (m *Manager) proxyApplication(w http.ResponseWriter, r *http.Request) {
 			res.Header.Add("Set-Cookie", cookie.String())
 		}
 		return nil
-	}, ErrorHandler: func(w http.ResponseWriter, r *http.Request, _ error) { shared.Error(w, 503, "APPLICATION_NOT_READY") }}
+	}, ErrorHandler: func(w http.ResponseWriter, r *http.Request, _ error) { fail(w, 503, "APPLICATION_NOT_READY") }}
 	proxy.ServeHTTP(w, r)
 }

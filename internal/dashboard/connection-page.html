@@ -9,12 +9,12 @@
   </head>
   <body>
     <main id="connection" data-code="{{.Code}}" data-embedded="{{.Embedded}}" data-messages="{{.Messages}}">
-      <div class="brand"><span aria-hidden="true" class="brand-mark">W</span>Workbench</div>
+      {{if not .Embedded}}<div class="brand"><span aria-hidden="true" class="brand-mark">W</span>Workbench</div>{{end}}
       <section aria-labelledby="heading">
         <h1 id="heading" tabindex="-1">{{.Title}}</h1>
         <p id="status" role="status">{{.Body}}</p>
         {{if .Embedded}}
-        <p class="hint">Use Reload preview above this panel to request a fresh connection. Preview options also lets you open a new tab.</p>
+        <p class="hint" id="embedded-recovery" {{if not .Code}}hidden{{end}}>Use Reload preview above this panel to reconnect.</p>
         {{else}}
         <a class="action" href="{{.Workbench}}" target="_blank" rel="noopener noreferrer">Open Workbench <span aria-hidden="true">↗</span></a>
         <p class="hint">Opens in a new tab. You can also return to your existing Workbench tab.</p>

@@ -162,14 +162,28 @@
   .hermes-setup label {
     @apply text-xs;
   }
-  .hermes-tabs [role="tab"] {
-    @apply inline-flex min-h-10 min-w-0 items-center gap-2 border-b-2 border-transparent py-3 text-xs text-muted-foreground hover:text-foreground;
+  .settings-panel {
+    @apply min-w-0 space-y-4 rounded-md border bg-card p-4 sm:p-5;
   }
-  .hermes-tabs [role="tab"] svg {
-    @apply hidden size-3.5 sm:block;
+  .settings-panel-title {
+    @apply text-sm font-semibold;
   }
-  .hermes-tabs [role="tab"][data-state="active"] {
-    @apply border-foreground text-foreground;
+  .settings-tabs {
+    @apply flex min-w-0 flex-wrap gap-x-2 border-b;
+  }
+  .settings-tabs > :is(a, button, [role="tab"]) {
+    @apply inline-flex min-h-11 min-w-0 items-center gap-2 border-b-2 border-transparent px-2 py-2 text-sm font-medium text-muted-foreground hover:text-foreground sm:px-3;
+  }
+  .settings-tabs
+    > :is(
+      [aria-selected="true"],
+      [aria-pressed="true"],
+      [aria-current="page"]
+    ) {
+    @apply border-primary text-foreground;
+  }
+  .settings-tabs svg {
+    @apply size-4 shrink-0 max-sm:hidden;
   }
   .skip {
     @apply fixed top-3 left-3 z-[100] -translate-y-24 rounded-lg bg-primary px-4 py-3 text-primary-foreground focus:translate-y-0;
@@ -541,24 +555,6 @@
   }
   .project-setting-facts dd {
     @apply min-w-0 break-words;
-  }
-  .factory-intro {
-    @apply mb-5 flex flex-wrap items-center justify-between gap-5 border bg-muted/20 px-4 py-5;
-  }
-  .factory-intro > div {
-    @apply flex items-center gap-3;
-  }
-  .intro-symbol {
-    @apply flex size-10 shrink-0 items-center justify-center border bg-background text-muted-foreground;
-  }
-  .factory-intro h2 {
-    @apply text-sm font-medium;
-  }
-  .factory-intro p {
-    @apply mt-1 max-w-prose text-xs leading-5 text-muted-foreground;
-  }
-  .factory-intro > a {
-    @apply flex items-center gap-2 text-[11px] text-muted-foreground hover:text-foreground;
   }
   .inventory-toolbar {
     @apply mb-3 flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground;
@@ -1020,9 +1016,6 @@
   }
   .queue-footer {
     align-items: flex-start;
-  }
-  .factory-intro {
-    padding: 16px;
   }
   /* Keep each work name and state visible together. */
   .project-work-layout {
@@ -2055,6 +2048,11 @@
   padding: 32px;
   text-align: center;
 }
+.visual-browser .visual-empty {
+  min-height: 0;
+  overflow: auto;
+  justify-content: safe center;
+}
 .visual-empty > svg {
   color: var(--muted-foreground);
   stroke-width: 1.25;
@@ -2068,6 +2066,38 @@
   color: var(--muted-foreground);
   line-height: 1.7;
   font-size: 12px;
+}
+.preview-recovery {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+  width: min(100%, 28rem);
+  padding: clamp(12px, 3vw, 24px);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--background);
+  text-align: start;
+}
+.preview-recovery h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.preview-recovery [role="alert"] {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.preview-recovery [role="alert"] > svg {
+  display: none;
+}
+.preview-recovery [role="alert"] p {
+  max-width: none;
+  font-size: inherit;
+}
+.preview-recovery [role="alert"] [data-slot="button"] {
+  color: var(--foreground);
 }
 .visual-empty small,
 .visual-hint {
@@ -5076,6 +5106,50 @@
 }
 .analysis-results .workspace-output > * {
   max-width: none;
+}
+.analysis-awaiting {
+  display: grid;
+  gap: 16px;
+  max-width: 36rem;
+  margin: clamp(0px, 2vh, 24px) auto;
+  padding: clamp(16px, 3vw, 24px);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+}
+.analysis-awaiting h3 {
+  font-size: 16px;
+  font-weight: 600;
+}
+.analysis-awaiting [role="status"] p {
+  color: var(--muted-foreground);
+  line-height: 1.55;
+}
+.analysis-awaiting-plot {
+  display: flex;
+  align-items: end;
+  gap: clamp(8px, 2vw, 16px);
+  height: clamp(64px, 12vh, 132px);
+  padding-inline: 10%;
+  border-bottom: 1px solid var(--border);
+  border-left: 1px solid var(--border);
+  background: repeating-linear-gradient(
+    to top,
+    transparent 0 calc(25% - 1px),
+    var(--border) calc(25% - 1px) 25%
+  );
+}
+.analysis-awaiting-plot span {
+  flex: 1;
+  height: 25%;
+  border-radius: 3px 3px 0 0;
+  background: color-mix(in srgb, var(--primary) 22%, var(--muted));
+}
+.analysis-awaiting-plot span:nth-child(2n) {
+  height: 45%;
+}
+.analysis-awaiting-plot span:last-child {
+  height: 65%;
 }
 .workspace-output-file {
   padding-block: 16px;

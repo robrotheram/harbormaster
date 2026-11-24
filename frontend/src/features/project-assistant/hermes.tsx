@@ -332,12 +332,9 @@ function HermesForm({
       <Tabs.Root
         value={tab}
         onValueChange={setTab}
-        className="min-w-0 border bg-background"
+        className="min-w-0 space-y-4"
       >
-        <Tabs.List
-          aria-label="Hermes settings"
-          className="hermes-tabs grid grid-cols-2 gap-2 border-b px-4 sm:flex sm:gap-6 sm:px-5"
-        >
+        <Tabs.List aria-label="Hermes settings" className="settings-tabs">
           <Tabs.Trigger value="agent">
             <Bot />
             Agent
@@ -347,7 +344,7 @@ function HermesForm({
             Matrix
           </Tabs.Trigger>
         </Tabs.List>
-        <Tabs.Content value="agent" className="min-w-0 p-4 sm:p-5">
+        <Tabs.Content value="agent" className="min-w-0 space-y-4">
           <Form
             onSubmit={() => {
               if (canSave) mutation.mutate();
@@ -357,55 +354,67 @@ function HermesForm({
               disabled={busy}
               className="min-w-0 space-y-4 disabled:opacity-70"
             >
-              <div>
-                <h2 className="text-sm font-semibold">Agent connection</h2>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Choose how this project's Hermes agent works.
-                </p>
-              </div>
-              <label>
-                Use Hermes as
-                <NativeSelect
-                  size="sm"
-                  className="text-xs"
-                  value={config.mode}
-                  onChange={(e) =>
-                    change({ mode: e.target.value as HermesConfig["mode"] })
-                  }
-                >
-                  <option value="workspace">Workspace agent</option>
-                  <option value="matrix">Matrix bot</option>
-                  <option value="both">Workspace agent and Matrix bot</option>
-                </NativeSelect>
-              </label>
-              <label>
-                Model
-                <Input
-                  className="h-8 text-xs md:text-xs"
-                  value={config.model}
-                  required
-                  maxLength={128}
-                  placeholder="gpt-6.1-sol"
-                  onChange={(e) => change({ model: e.target.value })}
-                />
-              </label>
-              <div className="space-y-2 text-xs text-muted-foreground">
-                <p>
-                  Uses your ChatGPT subscription through the Workbench Codex
-                  gateway.
-                </p>
-                <details className="leading-5">
-                  <summary className="cursor-pointer hover:text-foreground">
-                    Provider sign-in
-                  </summary>
-                  <p className="mt-2 max-w-prose">
-                    Sign-in is managed separately. API-key and paid-overage
-                    fallback remain disabled.
+              <section
+                className="settings-panel"
+                aria-labelledby="hermes-agent-title"
+              >
+                <div>
+                  <h2 id="hermes-agent-title" className="settings-panel-title">
+                    Agent connection
+                  </h2>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Choose how this project's Hermes agent works.
                   </p>
-                </details>
-              </div>
-              <div className="space-y-3 border-t pt-4">
-                <h2 className="text-sm font-semibold">Network access</h2>
+                </div>
+                <label>
+                  Use Hermes as
+                  <NativeSelect
+                    size="sm"
+                    className="text-xs"
+                    value={config.mode}
+                    onChange={(e) =>
+                      change({ mode: e.target.value as HermesConfig["mode"] })
+                    }
+                  >
+                    <option value="workspace">Workspace agent</option>
+                    <option value="matrix">Matrix bot</option>
+                    <option value="both">Workspace agent and Matrix bot</option>
+                  </NativeSelect>
+                </label>
+                <label>
+                  Model
+                  <Input
+                    className="h-8 text-xs md:text-xs"
+                    value={config.model}
+                    required
+                    maxLength={128}
+                    placeholder="gpt-6.1-sol"
+                    onChange={(e) => change({ model: e.target.value })}
+                  />
+                </label>
+                <div className="space-y-2 text-xs text-muted-foreground">
+                  <p>
+                    Uses your ChatGPT subscription through the Workbench Codex
+                    gateway.
+                  </p>
+                  <details className="leading-5">
+                    <summary className="cursor-pointer hover:text-foreground">
+                      Provider sign-in
+                    </summary>
+                    <p className="mt-2 max-w-prose">
+                      Sign-in is managed separately. API-key and paid-overage
+                      fallback remain disabled.
+                    </p>
+                  </details>
+                </div>
+              </section>
+              <section
+                className="settings-panel"
+                aria-labelledby="hermes-network-title"
+              >
+                <h2 id="hermes-network-title" className="settings-panel-title">
+                  Network access
+                </h2>
                 <label>
                   Connection profile
                   <NativeSelect
@@ -455,125 +464,152 @@ function HermesForm({
                     Manage network profiles
                   </Link>
                 </p>
-              </div>
+              </section>
             </fieldset>
             {mutation.isError && <ErrorNotice error={mutation.error} />}
             {saveConfiguration}
           </Form>
-          <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t pt-4">
-            <div>
-              <h2 className="text-xs font-medium">Workspace agent</h2>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {statusUnavailable
-                  ? "Refresh runtime status to check whether Hermes is running. Your edits are preserved."
-                  : initial.workspace_ready
-                    ? "Hermes is running in this project."
-                    : "Save your configuration, then start Hermes."}
-              </p>
+          <section
+            className="settings-panel"
+            aria-labelledby="hermes-workspace-title"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2
+                  id="hermes-workspace-title"
+                  className="settings-panel-title"
+                >
+                  Workspace agent
+                </h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {statusUnavailable
+                    ? "Refresh runtime status to check whether Hermes is running. Your edits are preserved."
+                    : initial.workspace_ready
+                      ? "Hermes is running in this project."
+                      : "Save your configuration, then start Hermes."}
+                </p>
+              </div>
+              {workspaceAction}
             </div>
-            {workspaceAction}
-          </div>
-          {launch.isError && <ErrorNotice error={launch.error} />}
+            {launch.isError && <ErrorNotice error={launch.error} />}
+          </section>
         </Tabs.Content>
-        <Tabs.Content value="matrix" className="min-w-0 p-4 sm:p-5 space-y-5">
+        <Tabs.Content value="matrix" className="min-w-0 space-y-4">
           {matrixEnabled ? (
-            <Form
-              onSubmit={() => {
-                if (canSave) mutation.mutate();
-              }}
+            <section
+              className="settings-panel"
+              aria-labelledby="hermes-matrix-title"
             >
-              <fieldset
-                disabled={busy}
-                className="min-w-0 space-y-4 disabled:opacity-70"
+              <Form
+                onSubmit={() => {
+                  if (canSave) mutation.mutate();
+                }}
               >
-                <div>
-                  <h2 className="text-sm font-semibold">Matrix connection</h2>
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                    Connect a dedicated bot to this project's encrypted rooms.
-                  </p>
-                </div>
-                <label>
-                  Homeserver URL
-                  <Input
-                    className="h-8 text-xs md:text-xs"
-                    type="url"
-                    required={needsMatrix}
-                    value={matrix.homeserver}
-                    placeholder="https://matrix.example.org"
-                    onChange={(e) =>
-                      matrixChange({ homeserver: e.target.value })
-                    }
-                  />
-                </label>
-                <label>
-                  Bot user ID
-                  <Input
-                    className="h-8 text-xs md:text-xs"
-                    required={needsMatrix}
-                    value={matrix.bot_user_id}
-                    placeholder="@project-bot:example.org"
-                    onChange={(e) =>
-                      matrixChange({ bot_user_id: e.target.value })
-                    }
-                  />
-                </label>
-                <div className="space-y-2">
-                  <label htmlFor="hermes-room-ids">Allowed room IDs</label>
-                  <Textarea
-                    id="hermes-room-ids"
-                    required={needsMatrix}
-                    rows={2}
-                    className="min-h-14 text-xs md:text-xs"
-                    value={rooms}
-                    placeholder="!room-id:example.org"
-                    onChange={(e) => {
-                      setRooms(e.target.value);
-                      setNotice("");
-                      mutation.reset();
-                    }}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label htmlFor="hermes-sender-ids">Allowed sender IDs</label>
-                  <Textarea
-                    id="hermes-sender-ids"
-                    required={needsMatrix}
-                    rows={2}
-                    className="min-h-14 text-xs md:text-xs"
-                    value={senders}
-                    placeholder="@your-user:example.org"
-                    onChange={(e) => {
-                      setSenders(e.target.value);
-                      setNotice("");
-                      mutation.reset();
-                    }}
-                  />
-                </div>
-                <details className="text-xs leading-5 text-muted-foreground">
-                  <summary className="cursor-pointer hover:text-foreground">
-                    Finding IDs and inviting your bot
-                  </summary>
-                  <p className="mt-2 max-w-prose">
-                    Enter one ID per line. Find user IDs in account details and
-                    each room's internal ID in room information. Room aliases
-                    and invitation links cannot be used. Invite the bot to each
-                    encrypted room; accepting invitations below only joins the
-                    configured rooms.
-                  </p>
-                  {config.mode === "both" && (
-                    <p className="mt-2">
-                      Matrix is optional. Leave all fields empty to use only the
-                      workspace agent for now.
+                <fieldset
+                  disabled={busy}
+                  className="min-w-0 space-y-4 disabled:opacity-70"
+                >
+                  <div>
+                    <h2
+                      id="hermes-matrix-title"
+                      className="settings-panel-title"
+                    >
+                      Matrix connection
+                    </h2>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                      Connect a dedicated bot to this project's encrypted rooms.
                     </p>
-                  )}
-                </details>
-              </fieldset>
-              {mutation.isError && <ErrorNotice error={mutation.error} />}
-              {saveConfiguration}
-            </Form>
+                  </div>
+                  <label>
+                    Homeserver URL
+                    <Input
+                      className="h-8 text-xs md:text-xs"
+                      type="url"
+                      required={needsMatrix}
+                      value={matrix.homeserver}
+                      placeholder="https://matrix.example.org"
+                      onChange={(e) =>
+                        matrixChange({ homeserver: e.target.value })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Bot user ID
+                    <Input
+                      className="h-8 text-xs md:text-xs"
+                      required={needsMatrix}
+                      value={matrix.bot_user_id}
+                      placeholder="@project-bot:example.org"
+                      onChange={(e) =>
+                        matrixChange({ bot_user_id: e.target.value })
+                      }
+                    />
+                  </label>
+                  <div className="space-y-2">
+                    <label htmlFor="hermes-room-ids">Allowed room IDs</label>
+                    <Textarea
+                      id="hermes-room-ids"
+                      required={needsMatrix}
+                      rows={2}
+                      className="min-h-14 text-xs md:text-xs"
+                      value={rooms}
+                      placeholder="!room-id:example.org"
+                      onChange={(e) => {
+                        setRooms(e.target.value);
+                        setNotice("");
+                        mutation.reset();
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label htmlFor="hermes-sender-ids">
+                      Allowed sender IDs
+                    </label>
+                    <Textarea
+                      id="hermes-sender-ids"
+                      required={needsMatrix}
+                      rows={2}
+                      className="min-h-14 text-xs md:text-xs"
+                      value={senders}
+                      placeholder="@your-user:example.org"
+                      onChange={(e) => {
+                        setSenders(e.target.value);
+                        setNotice("");
+                        mutation.reset();
+                      }}
+                    />
+                  </div>
+                  <details className="text-xs leading-5 text-muted-foreground">
+                    <summary className="cursor-pointer hover:text-foreground">
+                      Finding IDs and inviting your bot
+                    </summary>
+                    <p className="mt-2 max-w-prose">
+                      Enter one ID per line. Find user IDs in account details
+                      and each room's internal ID in room information. Room
+                      aliases and invitation links cannot be used. Invite the
+                      bot to each encrypted room; accepting invitations below
+                      only joins the configured rooms.
+                    </p>
+                    {config.mode === "both" && (
+                      <p className="mt-2">
+                        Matrix is optional. Leave all fields empty to use only
+                        the workspace agent for now.
+                      </p>
+                    )}
+                  </details>
+                </fieldset>
+                {mutation.isError && <ErrorNotice error={mutation.error} />}
+                {saveConfiguration}
+              </Form>
+            </section>
           ) : (
-            <div className="space-y-3">
-              <h2 className="text-sm font-semibold">Matrix is not enabled</h2>
+            <section
+              className="settings-panel"
+              aria-labelledby="hermes-matrix-disabled"
+            >
+              <h2 id="hermes-matrix-disabled" className="settings-panel-title">
+                Matrix is not enabled
+              </h2>
               <p className="text-xs leading-5 text-muted-foreground">
                 Choose Matrix bot or Workspace agent and Matrix bot in Agent
                 settings to configure this connection.
@@ -581,10 +617,16 @@ function HermesForm({
               <Button variant="outline" onClick={() => setTab("agent")}>
                 Agent settings
               </Button>
-            </div>
+            </section>
           )}
           {available && matrixEnabled && (
-            <section aria-label="Bot credential" className="border-t pt-4">
+            <section
+              aria-labelledby="hermes-credential-title"
+              className="settings-panel"
+            >
+              <h2 id="hermes-credential-title" className="settings-panel-title">
+                Bot credential
+              </h2>
               <details
                 open={!initial.matrix_credential_configured || undefined}
                 className="hermes-credential"
@@ -659,16 +701,19 @@ function HermesForm({
           )}
           {available && (matrixEnabled || liveMatrix) && (
             <section
-              aria-label="Matrix controls"
-              className="border-t pt-4 space-y-3"
+              aria-labelledby="hermes-matrix-controls"
+              className="settings-panel"
             >
+              <h2 id="hermes-matrix-controls" className="settings-panel-title">
+                Matrix controls
+              </h2>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-xs font-medium">
+                  <p className="text-xs font-medium">
                     {statusUnavailable
                       ? "Connection status unavailable"
                       : matrixState}
-                  </h2>
+                  </p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     {statusUnavailable
                       ? "Refresh runtime status before changing the Matrix connection."

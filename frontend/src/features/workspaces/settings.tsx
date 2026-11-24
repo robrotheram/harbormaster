@@ -88,25 +88,24 @@ export function WorkspaceSettings({
   const content = (
     <>
       <div
-        className="flex flex-wrap gap-2 pb-4"
+        className="settings-tabs mb-4"
+        role="group"
         aria-label="Worker settings sections"
       >
-        <Button
+        <button
           type="button"
-          variant={section === "worker" ? "default" : "outline"}
           aria-pressed={section === "worker"}
           onClick={() => setSection("worker")}
         >
-          {onClose ? "Worker" : "General"}
-        </Button>
-        <Button
+          General
+        </button>
+        <button
           type="button"
-          variant={section === "subscriptions" ? "default" : "outline"}
           aria-pressed={section === "subscriptions"}
           onClick={() => setSection("subscriptions")}
         >
           Subscriptions
-        </Button>
+        </button>
       </div>
       {section === "subscriptions" ? (
         <WorkerSubscriptions workspace={workspace} />
@@ -118,161 +117,175 @@ export function WorkspaceSettings({
         >
           <fieldset disabled={mutation.isPending} className="min-w-0 space-y-5">
             {onClose && <p>{workspace.name || workspace.id}</p>}
-            <label>
-              Automatic idle shutdown
-              <NativeSelect
-                aria-label="Automatic idle shutdown"
-                value={idle}
-                onChange={(e) => setIdle(Number(e.target.value))}
-              >
-                {[
-                  0,
-                  15,
-                  30,
-                  60,
-                  120,
-                  480,
-                  1440,
-                  ...(![0, 15, 30, 60, 120, 480, 1440].includes(idle)
-                    ? [idle]
-                    : []),
-                ].map((v) => (
-                  <option key={v} value={v}>
-                    {v === 0 ? "Never automatically stop" : v + " minutes"}
-                  </option>
-                ))}
-              </NativeSelect>
-            </label>
-            <p className="form-note">
-              The timer resets when you open the worker. Active work keeps it
-              running.
-            </p>
-            <div className="border-t pt-4">
-              <h2 className="text-sm font-semibold">Network access</h2>
-            </div>
-            <label>
-              Global connection profile
-              <NativeSelect
-                aria-label="Global connection profile"
-                value={globalID}
-                disabled={globals.isPending || globals.isError}
-                onChange={(e) => setGlobalID(e.target.value)}
-              >
-                <option value="">Worker-specific settings</option>
-                {globalID && !globalProfile && (
-                  <option value={globalID} disabled>
-                    {globals.isPending
-                      ? "Loading selected profile…"
-                      : globals.isError
-                        ? "Selected profile could not be checked"
-                        : "Selected profile is unavailable"}
-                  </option>
-                )}
-                {globals.data?.map((p) => (
-                  <option
-                    key={p.id}
-                    value={p.id}
-                    disabled={
-                      workspace.runtime_type === "firecracker" &&
-                      p.policy.mode === "open"
-                    }
-                  >
-                    {p.name} · version {p.revision}
-                  </option>
-                ))}
-              </NativeSelect>
-            </label>
-            {globals.isError && (
-              <ErrorNotice
-                error={globals.error}
-                onRetry={() => void globals.refetch()}
-                retrying={globals.isFetching}
-              />
-            )}
-            {globalID && globals.isSuccess && !globalProfile && (
-              <p role="status" className="form-note">
-                Choose an available connection profile before saving.
-              </p>
-            )}
-            {globalID && (
-              <p className="form-note">
-                Save to apply the latest version of the shared profile.
-              </p>
-            )}
-            {globalID && globalProfile && (
-              <p>
-                {globalProfile.description} Selected mode:{" "}
-                {globalProfile.policy.mode}.{" "}
-                {globalProfile.policy.destinations.join(", ")}
-              </p>
-            )}
-            {!globalID && (
-              <>
-                <label>
-                  Connection profile
-                  <NativeSelect
-                    aria-label="Connection profile"
-                    value={preset}
-                    onChange={(e) => setPreset(e.target.value)}
-                  >
-                    <option value="blocked">
-                      Blocked — platform integrations only
+            <section
+              className="settings-panel"
+              aria-labelledby="worker-idle-title"
+            >
+              <h2 id="worker-idle-title" className="settings-panel-title">
+                Idle shutdown
+              </h2>
+              <label>
+                Automatic idle shutdown
+                <NativeSelect
+                  aria-label="Automatic idle shutdown"
+                  value={idle}
+                  onChange={(e) => setIdle(Number(e.target.value))}
+                >
+                  {[
+                    0,
+                    15,
+                    30,
+                    60,
+                    120,
+                    480,
+                    1440,
+                    ...(![0, 15, 30, 60, 120, 480, 1440].includes(idle)
+                      ? [idle]
+                      : []),
+                  ].map((v) => (
+                    <option key={v} value={v}>
+                      {v === 0 ? "Never automatically stop" : v + " minutes"}
                     </option>
-                    <option value="github">GitHub only</option>
-                    <option value="custom">Custom allowlist</option>
+                  ))}
+                </NativeSelect>
+              </label>
+              <p className="form-note">
+                The timer resets when you open the worker. Active work keeps it
+                running.
+              </p>
+            </section>
+            <section
+              className="settings-panel"
+              aria-labelledby="worker-network-title"
+            >
+              <h2 id="worker-network-title" className="settings-panel-title">
+                Network access
+              </h2>
+              <label>
+                Global connection profile
+                <NativeSelect
+                  aria-label="Global connection profile"
+                  value={globalID}
+                  disabled={globals.isPending || globals.isError}
+                  onChange={(e) => setGlobalID(e.target.value)}
+                >
+                  <option value="">Worker-specific settings</option>
+                  {globalID && !globalProfile && (
+                    <option value={globalID} disabled>
+                      {globals.isPending
+                        ? "Loading selected profile…"
+                        : globals.isError
+                          ? "Selected profile could not be checked"
+                          : "Selected profile is unavailable"}
+                    </option>
+                  )}
+                  {globals.data?.map((p) => (
                     <option
-                      value="open"
-                      disabled={workspace.runtime_type === "firecracker"}
+                      key={p.id}
+                      value={p.id}
+                      disabled={
+                        workspace.runtime_type === "firecracker" &&
+                        p.policy.mode === "open"
+                      }
                     >
-                      Fully open —{" "}
-                      {workspace.runtime_type === "firecracker"
-                        ? "unavailable in Firecracker"
-                        : "unrestricted network"}
+                      {p.name} · version {p.revision}
                     </option>
-                  </NativeSelect>
-                </label>
-                {preset === "custom" && (
-                  <>
-                    <label>
-                      Allowed destinations
-                      <Textarea
-                        rows={6}
-                        value={destinations}
-                        onChange={(e) => setDestinations(e.target.value)}
-                        placeholder={"github.com:443\nregistry.npmjs.org:443"}
-                      />
-                    </label>
-                    <p className="form-note">
-                      One exact public hostname or IP and TCP port per line,
-                      maximum 64. No URLs or wildcards. HTTP and HTTPS use the
-                      proxy; public guest DNS and direct connections stay
-                      blocked. Private/LAN targets are excluded in this profile.
-                    </p>
-                  </>
-                )}
-              </>
-            )}
-            {connections.mode === "open" ? (
-              <p className="notice">
-                Fully open allows direct TCP/UDP connections and external DNS,
-                including Internet, LAN and reachable host services. Destination
-                restrictions are disabled for this worker. Project storage and
-                private worker data stay separate.
-              </p>
-            ) : (
-              <p className="form-note">
-                Platform integrations stay available. External HTTP and HTTPS
-                traffic uses the worker proxy.
-              </p>
-            )}
-            {needsStop && (
-              <p role="status" className="notice">
-                Stop this worker before applying this profile. Finish active
-                work, close terminals, then select Stop worker. Changing direct
-                networking or upgrading an older proxy requires a stop/start;
-                files and history are preserved.
-              </p>
-            )}
+                  ))}
+                </NativeSelect>
+              </label>
+              {globals.isError && (
+                <ErrorNotice
+                  error={globals.error}
+                  onRetry={() => void globals.refetch()}
+                  retrying={globals.isFetching}
+                />
+              )}
+              {globalID && globals.isSuccess && !globalProfile && (
+                <p role="status" className="form-note">
+                  Choose an available connection profile before saving.
+                </p>
+              )}
+              {globalID && (
+                <p className="form-note">
+                  Save to apply the latest version of the shared profile.
+                </p>
+              )}
+              {globalID && globalProfile && (
+                <p>
+                  {globalProfile.description} Selected mode:{" "}
+                  {globalProfile.policy.mode}.{" "}
+                  {globalProfile.policy.destinations.join(", ")}
+                </p>
+              )}
+              {!globalID && (
+                <>
+                  <label>
+                    Connection profile
+                    <NativeSelect
+                      aria-label="Connection profile"
+                      value={preset}
+                      onChange={(e) => setPreset(e.target.value)}
+                    >
+                      <option value="blocked">
+                        Blocked — platform integrations only
+                      </option>
+                      <option value="github">GitHub only</option>
+                      <option value="custom">Custom allowlist</option>
+                      <option
+                        value="open"
+                        disabled={workspace.runtime_type === "firecracker"}
+                      >
+                        Fully open —{" "}
+                        {workspace.runtime_type === "firecracker"
+                          ? "unavailable in Firecracker"
+                          : "unrestricted network"}
+                      </option>
+                    </NativeSelect>
+                  </label>
+                  {preset === "custom" && (
+                    <>
+                      <label>
+                        Allowed destinations
+                        <Textarea
+                          rows={6}
+                          value={destinations}
+                          onChange={(e) => setDestinations(e.target.value)}
+                          placeholder={"github.com:443\nregistry.npmjs.org:443"}
+                        />
+                      </label>
+                      <p className="form-note">
+                        One exact public hostname or IP and TCP port per line,
+                        maximum 64. No URLs or wildcards. HTTP and HTTPS use the
+                        proxy; public guest DNS and direct connections stay
+                        blocked. Private/LAN targets are excluded in this
+                        profile.
+                      </p>
+                    </>
+                  )}
+                </>
+              )}
+              {connections.mode === "open" ? (
+                <p className="notice">
+                  Fully open allows direct TCP/UDP connections and external DNS,
+                  including Internet, LAN and reachable host services.
+                  Destination restrictions are disabled for this worker. Project
+                  storage and private worker data stay separate.
+                </p>
+              ) : (
+                <p className="form-note">
+                  Platform integrations stay available. External HTTP and HTTPS
+                  traffic uses the worker proxy.
+                </p>
+              )}
+              {needsStop && (
+                <p role="status" className="notice">
+                  Stop this worker before applying this profile. Finish active
+                  work, close terminals, then select Stop worker. Changing
+                  direct networking or upgrading an older proxy requires a
+                  stop/start; files and history are preserved.
+                </p>
+              )}
+            </section>
             {mutation.isError && <ErrorNotice error={mutation.error} />}
             <div className="form-actions flex-wrap">
               {!onClose && (hasEdits || profileUpdate) && (

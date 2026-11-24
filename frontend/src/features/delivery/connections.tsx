@@ -138,10 +138,18 @@ export function RepositoryConnections({
           }}
         />
       ) : (
-        <section className="space-y-3 rounded-md border p-4">
+        <section
+          className="settings-panel"
+          aria-labelledby="repository-accounts-title"
+        >
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="font-semibold">Provider accounts</h2>
+              <h2
+                id="repository-accounts-title"
+                className="settings-panel-title"
+              >
+                Provider accounts
+              </h2>
               <p className="text-sm text-muted-foreground">
                 Configure GitHub, GitLab.com or your private GitLab server.
               </p>
@@ -195,52 +203,57 @@ export function RepositoryConnections({
           ))}
         </section>
       )}
-      {!!hosts.data?.items.length && (
-        <form
-          className="flex flex-wrap items-end gap-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (canConnect) save.mutate();
-          }}
-        >
-          <fieldset
-            disabled={save.isPending}
-            className="flex min-w-0 w-full flex-wrap items-end gap-3"
+      <section
+        className="settings-panel"
+        aria-labelledby="connected-repositories-title"
+      >
+        <h2 id="connected-repositories-title" className="settings-panel-title">
+          Connected repositories
+        </h2>
+        {!!hosts.data?.items.length && (
+          <form
+            className="flex flex-wrap items-end gap-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (canConnect) save.mutate();
+            }}
           >
-            <label className="max-w-full min-w-0 space-y-1 text-sm">
-              Account
-              <NativeSelect
-                aria-label="Account"
-                value={host}
-                onChange={(e) => setHost(e.target.value)}
-                required
-              >
-                <option value="">Select an account</option>
-                {hosts.data?.items.map((h) => (
-                  <option key={h.name} value={h.name}>
-                    {h.name} ({h.provider})
-                  </option>
-                ))}
-              </NativeSelect>
-            </label>
-            <label className="min-w-64 flex-1 space-y-1 text-sm">
-              Repository
-              <Input
-                value={repo}
-                onChange={(e) => setRepo(e.target.value)}
-                placeholder="owner/repository or group/subgroup/project"
-                required
-                maxLength={500}
-              />
-            </label>
-            <Button disabled={!canConnect}>
-              {save.isPending ? "Checking access…" : "Connect repository"}
-            </Button>
-          </fieldset>
-        </form>
-      )}
-      <div className="space-y-2">
-        <h2 className="font-semibold">Connected repositories</h2>
+            <fieldset
+              disabled={save.isPending}
+              className="flex min-w-0 w-full flex-wrap items-end gap-3"
+            >
+              <label className="max-w-full min-w-0 space-y-1 text-sm">
+                Account
+                <NativeSelect
+                  aria-label="Account"
+                  value={host}
+                  onChange={(e) => setHost(e.target.value)}
+                  required
+                >
+                  <option value="">Select an account</option>
+                  {hosts.data?.items.map((h) => (
+                    <option key={h.name} value={h.name}>
+                      {h.name} ({h.provider})
+                    </option>
+                  ))}
+                </NativeSelect>
+              </label>
+              <label className="min-w-0 flex-[1_1_16rem] space-y-1 text-sm">
+                Repository
+                <Input
+                  value={repo}
+                  onChange={(e) => setRepo(e.target.value)}
+                  placeholder="owner/repository or group/subgroup/project"
+                  required
+                  maxLength={500}
+                />
+              </label>
+              <Button disabled={!canConnect}>
+                {save.isPending ? "Checking access…" : "Connect repository"}
+              </Button>
+            </fieldset>
+          </form>
+        )}
         {connections.isError && (
           <ErrorNotice
             error={connections.error}
@@ -275,7 +288,21 @@ export function RepositoryConnections({
             </Button>
           </div>
         ))}
-      </div>
+        {connections.isPending && (
+          <p role="status" className="text-sm text-muted-foreground">
+            Loading repository connections…
+          </p>
+        )}
+        {connections.isSuccess && !connection && (
+          <p className="text-sm text-muted-foreground">
+            {connections.data.items.length
+              ? "Select a connected repository to browse its tickets."
+              : hosts.data?.items.length
+                ? "Choose an account and enter a repository to connect it."
+                : "Add a provider account to connect your first repository."}
+          </p>
+        )}
+      </section>
       {disconnecting && (
         <Modal
           title="Disconnect repository?"
@@ -312,24 +339,12 @@ export function RepositoryConnections({
           </div>
         </Modal>
       )}
-      {connection ? (
+      {connection && (
         <Tickets
           key={connection.id}
           connection={connection}
           projects={projects}
         />
-      ) : (
-        <p className="text-sm text-muted-foreground">
-          {connections.isPending
-            ? "Loading repository connections…"
-            : connections.isError
-              ? "Repository connections could not load. Use Try again above to reload them."
-              : connections.data?.items.length
-                ? "Select a connected repository to browse its tickets."
-                : hosts.data?.items.length
-                  ? "Choose an account and enter a repository above to connect your first repository."
-                  : "After adding an account, you can connect a repository and import its issues into a project."}
-        </p>
       )}
     </div>
   );
@@ -382,9 +397,17 @@ function Tickets({
     onSuccess: () => client.invalidateQueries({ queryKey: key }),
   });
   return (
-    <section className="space-y-4 border-t pt-5">
+    <section
+      className="settings-panel"
+      aria-labelledby="repository-tickets-title"
+    >
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="font-semibold">Tickets / {c.repository}</h2>
+        <h2
+          id="repository-tickets-title"
+          className="settings-panel-title break-all"
+        >
+          Tickets / {c.repository}
+        </h2>
         <Button
           variant="outline"
           disabled={issues.isFetching}

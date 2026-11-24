@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"html"
 	"io"
 	"net"
@@ -12,6 +13,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"agent-workbench/internal/shared"
 )
 
 const previewAppCookiePrefix = "awbapp_"
@@ -53,6 +56,7 @@ func (p *previewIngress) live(w http.ResponseWriter, r *http.Request, binding pr
 	// than applying two CSPs and accidentally disabling the application's scripts.
 	w.Header().Del("Content-Security-Policy")
 	target, _ := url.Parse(p.origin)
+	failureStatus := http.StatusServiceUnavailable
 	proxy := httputil.ReverseProxy{Transport: p.client.Transport, FlushInterval: -1, Rewrite: func(pr *httputil.ProxyRequest) {
 		pr.Out.URL.Scheme = target.Scheme
 		pr.Out.URL.Host = target.Host
@@ -69,6 +73,12 @@ func (p *previewIngress) live(w http.ResponseWriter, r *http.Request, binding pr
 			pr.Out.AddCookie(&http.Cookie{Name: name, Value: cookie.Value, Quoted: cookie.Quoted})
 		}
 	}, ModifyResponse: func(res *http.Response) error {
+		failed := res.Header.Get(shared.ApplicationProxyFailureHeader) == "1"
+		res.Header.Del(shared.ApplicationProxyFailureHeader)
+		if failed && res.StatusCode >= 400 && connectionNavigation(r) {
+			failureStatus = res.StatusCode
+			return errors.New("workspace application proxy unavailable")
+		}
 		res.Header.Set("Content-Security-Policy", previewPolicy(r))
 		res.Header.Del("X-Frame-Options")
 		res.Header.Set("Cache-Control", "no-store")
@@ -110,7 +120,7 @@ func (p *previewIngress) live(w http.ResponseWriter, r *http.Request, binding pr
 		}
 		return nil
 	}, ErrorHandler: func(w http.ResponseWriter, r *http.Request, _ error) {
-		writeConnectionError(w, r, 503, "PREVIEW_UNAVAILABLE", "preview")
+		writeConnectionError(w, r, failureStatus, "PREVIEW_UNAVAILABLE", "preview")
 	}}
 	// Expiry closes long-running upgraded connections as well as ordinary requests.
 	ctx, cancel := context.WithDeadline(r.Context(), binding.Expiry)

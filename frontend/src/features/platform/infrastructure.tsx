@@ -71,6 +71,7 @@ export function Infrastructure({ projects }: { projects: Project[] }) {
       <div className="page-title">
         <div>
           <h1>Workers</h1>
+          <p>Monitor workers across your projects.</p>
         </div>
         <Button
           variant="outline"

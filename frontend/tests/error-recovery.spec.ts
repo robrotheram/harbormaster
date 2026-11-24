@@ -267,6 +267,9 @@ test("help remains available and can retry failed project navigation", async ({
   const status = page.getByRole("region", { name: "Project list status" });
   await expect(status).toContainText("You can continue using this page");
   await expect(page).toHaveTitle("Getting started · Workbench");
+  await page.getByRole("button", { name: "Platform", exact: true }).click();
+  await expect(page.getByRole("menuitem", { name: "Health" })).toBeVisible();
+  await page.keyboard.press("Escape");
   await expect(
     page.getByRole("button", { name: "New project", exact: true }),
   ).toHaveCount(0);

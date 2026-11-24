@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import {
   Globe,
   Monitor,
@@ -18,6 +19,7 @@ import {
   Play,
   Terminal,
   MoreHorizontal,
+  CircleAlert,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -87,7 +89,7 @@ export function WorkPreview({
     ...privateContentOptions,
     queryKey,
     queryFn: ({ signal }) =>
-      request<{ items: Application[] }>(
+      request<{ items: Application[]; workspace_stopped?: boolean }>(
         `/workspaces/${workspace}/applications`,
         undefined,
         signal,
@@ -453,14 +455,7 @@ export function WorkPreview({
       </div>
       {showOutput && output}
       <div className="preview-surface" hidden={showOutput}>
-        {query.isError && <ErrorNotice error={query.error} />}
-        {mode === "web" && detected.isError && (
-          <p className="visual-hint">
-            Port detection is unavailable. The workspace runtime may need
-            updating.
-          </p>
-        )}
-        {forward.isError && (
+        {!selected && !query.isError && mode === "web" && forward.isError && (
           <div className="visual-hint">
             <ErrorNotice error={forward.error} />
             <Button
@@ -484,7 +479,42 @@ export function WorkPreview({
             Click an element to describe a change in the conversation.
           </p>
         )}
-        {selected ? (
+        {query.isError ? (
+          <PreviewUnavailable>
+            <ErrorNotice
+              error={query.error}
+              message="Workbench could not check which apps are running on the worker."
+              onRetry={() => void query.refetch()}
+              retrying={query.isFetching}
+            />
+          </PreviewUnavailable>
+        ) : query.data?.workspace_stopped ? (
+          <PreviewUnavailable>
+            <p>Start the worker to open its preview.</p>
+            <Button asChild variant="outline">
+              <Link
+                to="/projects/$projectId/workspaces/$workerId"
+                params={{ projectId: project, workerId: workspace }}
+              >
+                Open worker
+              </Link>
+            </Button>
+          </PreviewUnavailable>
+        ) : query.isPending ||
+          (!selected && mode === "web" && forward.isPending) ? (
+          <div className="visual-empty" role="status">
+            <RefreshCw
+              aria-hidden="true"
+              size={22}
+              className="motion-safe:animate-spin"
+            />
+            <p>
+              {forward.isPending
+                ? "Connecting to the detected app…"
+                : "Checking for running applications…"}
+            </p>
+          </div>
+        ) : selected ? (
           <div
             className={`visual-browser ${phone && mode === "web" ? "is-phone" : ""}`}
           >
@@ -505,27 +535,45 @@ export function WorkPreview({
               />
             ) : (
               <div className="visual-empty" role="status">
-                <RefreshCw size={22} className="animate-spin" />
-                <p>Starting application…</p>
+                <RefreshCw
+                  aria-hidden="true"
+                  size={22}
+                  className="motion-safe:animate-spin"
+                />
+                <p>
+                  {mode === "desktop"
+                    ? "Starting desktop…"
+                    : "Waiting for the app to respond…"}
+                </p>
               </div>
             )}
           </div>
         ) : (
           <div className="visual-empty">
-            {mode === "desktop" ? <Monitor size={32} /> : <Globe size={32} />}
+            {apps.length ? (
+              <CircleAlert aria-hidden="true" size={24} />
+            ) : mode === "desktop" ? (
+              <Monitor aria-hidden="true" size={24} />
+            ) : (
+              <Globe aria-hidden="true" size={24} />
+            )}
             <h3>
-              {mode === "desktop"
-                ? "A desktop for this workspace"
-                : restartable
-                  ? "Preview is stopped"
-                  : "See what you’re building"}
+              {apps.length
+                ? "Preview unavailable"
+                : mode === "desktop"
+                  ? "Workspace desktop"
+                  : "No running app yet"}
             </h3>
             <p>
               {mode === "desktop"
                 ? "Run and interact with Linux desktop apps alongside your agent."
                 : restartable
-                  ? `${restartable.application.directory} · Port ${restartable.application.port}`
-                  : "Ask the agent to start your app in the workspace. Its running HTTP port will appear here automatically."}
+                  ? `The app on port ${restartable.application.port} is no longer connected. Restart it with its saved settings or check the logs.`
+                  : apps.length
+                    ? "The app is no longer connected. Ask the agent to start it again."
+                    : detected.isError
+                      ? "Ask the agent to start the app with preview enabled, or set it up in Preview settings."
+                      : "Ask the agent to start your app in the workspace. Its running HTTP port will appear here automatically."}
             </p>
             <Button
               disabled={
@@ -555,8 +603,13 @@ export function WorkPreview({
                     ? "Restart preview"
                     : "Ask agent to run app"}
             </Button>
-            {apps[0] && !restartable && (
-              <small>Previous session: {apps[0].state}</small>
+            {apps.length > 0 && (
+              <Button size="sm" variant="ghost" onClick={() => setLogs(true)}>
+                <Terminal aria-hidden="true" size={14} /> View application logs
+              </Button>
+            )}
+            {mode === "web" && detected.isError && (
+              <small>Automatic port detection is unavailable.</small>
             )}
           </div>
         )}
@@ -665,6 +718,20 @@ export function WorkPreview({
   );
 }
 
+function PreviewUnavailable({ children }: { children: ReactNode }) {
+  return (
+    <div className="visual-empty">
+      <div className="preview-recovery">
+        <h3>
+          <CircleAlert aria-hidden="true" size={18} />
+          Preview unavailable
+        </h3>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 // Connection tickets are single-use. Each iframe mount needs its own ticket,
 // including when application readiness changes or the user reopens this view.
 function ConnectedPreview({
@@ -712,17 +779,28 @@ function ConnectedPreview({
   }, [url, onConnection]);
   if (connection.isError)
     return (
-      <div className="visual-empty">
-        <ErrorNotice error={connection.error} />
-        <Button variant="outline" onClick={() => connection.refetch()}>
-          Reconnect preview
+      <PreviewUnavailable>
+        <ErrorNotice
+          error={connection.error}
+          message="Workbench could not reach the app. Check that it is running, then reconnect the preview."
+        />
+        <Button
+          variant="outline"
+          disabled={connection.isFetching}
+          onClick={() => void connection.refetch()}
+        >
+          {connection.isFetching ? "Reconnecting…" : "Reconnect preview"}
         </Button>
-      </div>
+      </PreviewUnavailable>
     );
   if (!url)
     return (
       <div className="visual-empty" role="status">
-        <RefreshCw size={22} className="animate-spin" />
+        <RefreshCw
+          aria-hidden="true"
+          size={22}
+          className="motion-safe:animate-spin"
+        />
         <p>Connecting preview…</p>
       </div>
     );

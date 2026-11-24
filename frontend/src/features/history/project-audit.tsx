@@ -60,8 +60,8 @@ export function ProjectAudit({ project }: { project: Project }) {
   });
   const next = query.data?.next_before;
   return (
-    <section aria-labelledby="project-audit-history" className="space-y-4">
-      <h2 id="project-audit-history" className="text-sm font-medium">
+    <section aria-labelledby="project-audit-history" className="settings-panel">
+      <h2 id="project-audit-history" className="settings-panel-title">
         Audit history
       </h2>
       <div className="flex flex-wrap items-center gap-2">

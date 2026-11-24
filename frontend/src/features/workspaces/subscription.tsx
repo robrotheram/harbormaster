@@ -25,26 +25,34 @@ export function WorkerSubscriptions({ workspace }: { workspace: Workspace }) {
   );
   return (
     <div className="space-y-4">
-      <p className="form-note">
-        Choose an account for {workspace.name || workspace.id}. Your default is
-        loaded when you run work for a provider with an empty slot.
-      </p>
-      <label className="grid gap-2 text-sm">
-        Provider
-        <NativeSelect
-          aria-label="Subscription provider"
-          value={provider}
-          onChange={(event) =>
-            setProvider(event.target.value as keyof typeof providerNames)
-          }
-        >
-          {providers.map((value) => (
-            <option key={value} value={value}>
-              {providerNames[value]}
-            </option>
-          ))}
-        </NativeSelect>
-      </label>
+      <section
+        className="settings-panel"
+        aria-labelledby="worker-subscription-title"
+      >
+        <h2 id="worker-subscription-title" className="settings-panel-title">
+          Subscription account
+        </h2>
+        <p className="form-note">
+          Choose an account for {workspace.name || workspace.id}. Your default
+          is loaded when you run work for a provider with an empty slot.
+        </p>
+        <label className="grid gap-2 text-sm">
+          Provider
+          <NativeSelect
+            aria-label="Subscription provider"
+            value={provider}
+            onChange={(event) =>
+              setProvider(event.target.value as keyof typeof providerNames)
+            }
+          >
+            {providers.map((value) => (
+              <option key={value} value={value}>
+                {providerNames[value]}
+              </option>
+            ))}
+          </NativeSelect>
+        </label>
+      </section>
       {query.isPending && <p role="status">Loading subscriptions…</p>}
       {query.error && (
         <ErrorNotice error={query.error} onRetry={() => void query.refetch()} />
@@ -105,11 +113,8 @@ function ProviderSelection({
     }
   }
   return (
-    <section
-      aria-label={providerNames[provider]}
-      className="rounded-md border p-4 space-y-3"
-    >
-      <h3 className="font-medium">{providerNames[provider]}</h3>
+    <section aria-label={providerNames[provider]} className="settings-panel">
+      <h2 className="settings-panel-title">{providerNames[provider]}</h2>
       <p className="text-sm text-muted-foreground">
         {loaded
           ? `Loaded: ${loaded.name}${loaded.expired ? " (login expired)" : ""}`
