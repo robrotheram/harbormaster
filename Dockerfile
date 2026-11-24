@@ -81,11 +81,11 @@ FROM workspace-tools AS workspace-base
 RUN apt-get update && apt-get install -y --no-install-recommends dbus-daemon foot fonts-dejavu-core libegl1 libxcb-cursor0 python3-venv xwayland && rm -rf /var/lib/apt/lists/*
 COPY --from=xwayland-satellite-build /out/xwayland-satellite /usr/local/bin/xwayland-satellite
 RUN --mount=type=bind,source=tools/wland-viewer.patch,target=/tmp/wland-viewer.patch \
-    cd /opt/workspace-tools/node_modules/wland/dist && \
-    git apply /tmp/wland-viewer.patch && \
-    relay=$(XDG_CACHE_HOME=/tmp/wland-build node --input-type=module -e 'import { serverBinary } from "./index.mjs"; console.log(serverBinary())') && \
+    wland_dist=/opt/workspace-tools/node_modules/wland/dist && \
+    git -C "$wland_dist" apply /tmp/wland-viewer.patch && \
+    relay=$(XDG_CACHE_HOME=/tmp/wland-build node --input-type=module -e 'const { serverBinary } = await import(process.argv[1]); console.log(serverBinary())' "$wland_dist/index.mjs") && \
     install -m 755 "$relay" /usr/local/bin/wlandr && rm -rf /tmp/wland-build && \
-    mkdir -p /opt/wland/web && cp index.html wland.wasm *.mjs /opt/wland/web/ && \
+    mkdir -p /opt/wland/web && cp "$wland_dist/index.html" "$wland_dist/wland.wasm" "$wland_dist"/*.mjs /opt/wland/web/ && \
     rm /opt/wland/web/cli.mjs /opt/wland/web/headless.mjs /opt/wland/web/index.mjs
 RUN --mount=type=cache,target=/root/.cache/pip python3 -m venv /opt/workbench-analysis && \
     /opt/workbench-analysis/bin/python -m pip install --only-binary=:all: duckdb==1.5.4
