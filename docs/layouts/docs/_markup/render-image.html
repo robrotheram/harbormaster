@@ -1,0 +1,25 @@
+{{- if hasPrefix .Destination "diagrams/" -}}
+  {{- $image := . -}}
+  {{- with .Page.CurrentSection.Resources.Get .Destination -}}
+    <span class="diagram-scroll" tabindex="0" role="group" aria-label="Architecture diagram">
+      <img src="{{ .RelPermalink }}" alt="{{ $image.PlainText }}">
+    </span>
+    <span class="diagram-links">
+      <a href="{{ .RelPermalink }}">Open full-size diagram</a>
+      {{- with $image.Page.CurrentSection.Resources.Get (printf "%s.drawio" (strings.TrimSuffix ".svg" $image.Destination)) }}
+        <a href="{{ .RelPermalink }}" download>Download diagrams.net source</a>
+      {{- end }}
+    </span>
+  {{- else -}}
+    {{- errorf "Missing diagram %q on %s" .Destination .Page.Path -}}
+  {{- end -}}
+{{- else if hasPrefix .Destination "../../static/screenshots/" -}}
+  {{- $path := strings.TrimPrefix "../../static/" .Destination -}}
+  {{- $size := imageConfig (printf "static/%s" $path) -}}
+  <a class="screenshot-link" href="{{ $path | relURL }}">
+    <img class="screenshot" src="{{ $path | relURL }}" width="{{ $size.Width }}" height="{{ $size.Height }}" alt="{{ .PlainText }}" loading="lazy" decoding="async">
+    <span>Open full-size screenshot</span>
+  </a>
+{{- else -}}
+  <img src="{{ .Destination }}" alt="{{ .PlainText }}"{{ with .Title }} title="{{ . }}"{{ end }}>
+{{- end -}}

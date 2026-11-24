@@ -1,0 +1,41 @@
+{{ define "main" }}
+<main id="main-content" class="home" tabindex="-1">
+  <section class="hero" aria-labelledby="home-title">
+    <div class="hero-inner">
+      <div class="hero-copy">
+        <h1 id="home-title">Harbormaster docs</h1>
+        <p>Give an agent a task, follow its progress, and review what it builds in your project’s workspace.</p>
+        <div class="hero-actions">
+          <a class="primary" href="{{ (site.GetPage "/docs/work-conversations").RelPermalink }}">Run your first agent task</a>
+          <a href="{{ (site.GetPage "/docs/user-guide").RelPermalink }}">Explore the dashboard</a>
+        </div>
+      </div>
+      <figure class="hero-screen">
+        <img src="{{ "screenshots/overview.png" | relURL }}" alt="The sample project’s Overview with project navigation and three planned tasks">
+        <figcaption>Project Overview in Harbormaster</figcaption>
+      </figure>
+    </div>
+  </section>
+  <section class="guide-section" aria-labelledby="guides-title">
+    <h2 id="guides-title">Find your guide</h2>
+    <div class="guide-grid">
+      <article>
+        <h3><a href="{{ (site.GetPage "/docs/user-guide").RelPermalink }}">Use Harbormaster</a></h3>
+        <p>Open a project, send work to an agent, and review the result.</p>
+      </article>
+      <article>
+        <h3><a href="{{ (site.GetPage "/docs/architecture").RelPermalink }}">Design a deployment</a></h3>
+        <p>Trace service boundaries, data ownership, and runtime choices.</p>
+      </article>
+      <article>
+        <h3><a href="{{ (site.GetPage "/docs/development").RelPermalink }}">Develop Harbormaster</a></h3>
+        <p>Find the code to change and choose checks that prove it works.</p>
+      </article>
+      <article>
+        <h3><a href="{{ (site.GetPage "/docs/deployment").RelPermalink }}">Install and operate</a></h3>
+        <p>Set up a local or Kubernetes deployment and keep it running.</p>
+      </article>
+    </div>
+  </section>
+</main>
+{{ end }}

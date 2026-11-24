@@ -1,0 +1,14 @@
+sequenceDiagram
+    participant S as Source assistant
+    participant C as Control plane
+    participant D as Destination
+    Note over S,D: An approved work-request grant links the projects
+    S->>C: Publish selected<br/>work request
+    Note over S,C: Store body in source<br/>project blob storage
+    D->>C: exchange_inbox
+    C-->>D: List granted exports and receipts
+    D->>C: exchange_submit with export ID
+    Note over C,D: Verify grant and body, create<br/>or find work, save receipt
+    C-->>D: Work ID
+    D->>C: work_run with<br/>exchange delivery key
+    C-->>D: New or existing attempt

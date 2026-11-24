@@ -1,0 +1,26 @@
+baseURL = 'http://localhost:1313/'
+title = 'Harbormaster Docs'
+languageCode = 'en'
+disableKinds = ['taxonomy', 'term', 'RSS']
+
+[params]
+  repository = 'https://github.com/robrotheram/harbormaster'
+
+[markup.tableOfContents]
+  startLevel = 2
+  endLevel = 3
+
+[markup.highlight]
+  style = 'github-dark'
+
+[mediaTypes.'application/json']
+  suffixes = ['json']
+
+[outputFormats.searchIndex]
+  mediaType = 'application/json'
+  baseName = 'search-index'
+  isPlainText = true
+  notAlternative = true
+
+[outputs]
+  home = ['HTML', 'searchIndex']

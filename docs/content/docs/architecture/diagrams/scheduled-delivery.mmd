@@ -1,0 +1,13 @@
+sequenceDiagram
+    participant P as PostgreSQL
+    participant S as Scheduler
+    participant W as Worker
+    S->>P: Record due run and advance<br/>trigger in one transaction
+    Note over S,W: Check availability and start<br/>the worker if needed
+    S->>P: Mark run dispatching
+    S->>W: Submit file task<br/>with schedule key
+    Note over S,W: Worker commits task and receipt<br/>to private SQLite
+    W-->>S: Task ID (response lost)
+    S->>W: Retry with the same key
+    W-->>S: Return original task ID
+    S->>P: Record task ID and state

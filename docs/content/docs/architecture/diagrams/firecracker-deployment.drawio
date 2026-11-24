@@ -1,0 +1,110 @@
+<mxfile host="app.diagrams.net">
+  <diagram id="firecracker-deployment" name="Firecracker on a dedicated KVM host">
+    <mxGraphModel page="1" pageScale="1" pageWidth="910" pageHeight="628" background="#14171d" grid="1" gridSize="10" guides="1" connect="1" arrows="1" fold="1" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="item-1" value="C4 · Deployment view" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#a2c4ff;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="28" y="19" width="854" height="19" as="geometry" />
+        </mxCell>
+        <mxCell id="item-2" value="Firecracker on a dedicated KVM host" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=25;fontColor=#f0f3f9;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="28" y="42" width="854" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="item-3" value="" style="fillColor=#38445a;strokeColor=none;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="28" y="89" width="854" height="1" as="geometry" />
+        </mxCell>
+        <mxCell id="item-4" value="" style="rounded=1;arcSize=3;fillColor=#181e29;strokeColor=#66748b;strokeWidth=1.25;dashed=1;dashPattern=5 4;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="28" y="187" width="854" height="412" as="geometry" />
+        </mxCell>
+        <mxCell id="item-5" value="Dedicated KVM host" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#c9d8ef;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="42" y="192" width="826" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="item-6" value="" style="rounded=1;arcSize=3;fillColor=#211d2b;strokeColor=#997cb3;strokeWidth=1.25;dashed=1;dashPattern=5 4;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="46" y="382" width="818" height="197" as="geometry" />
+        </mxCell>
+        <mxCell id="item-7" value="Jailed microVM" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#c9d8ef;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="60" y="387" width="790" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="control" value="" style="rounded=1;arcSize=10;fillColor=#202e45;strokeColor=#617ea8;strokeWidth=1.2;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="323" y="111" width="264" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="item-8" value="Harbormaster control plane" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=16;fontColor=#f0f3f9;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="control">
+          <mxGeometry x="12" y="8" width="240" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="item-9" value="Authenticated runtime operations" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#b4c2d8;fontStyle=0;html=0;fontFamily=Arial;" vertex="1" parent="control">
+          <mxGeometry x="12" y="34" width="240" height="23" as="geometry" />
+        </mxCell>
+        <mxCell id="gateway" value="" style="rounded=1;arcSize=10;fillColor=#202e45;strokeColor=#617ea8;strokeWidth=1.2;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="47" y="239" width="242" height="81" as="geometry" />
+        </mxCell>
+        <mxCell id="item-10" value="Host policy services" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=16;fontColor=#f0f3f9;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="gateway">
+          <mxGeometry x="12" y="8" width="218" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="item-11" value="Inference, credential and egress" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#b4c2d8;fontStyle=0;html=0;fontFamily=Arial;" vertex="1" parent="gateway">
+          <mxGeometry x="12" y="34" width="218" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="controller" value="" style="rounded=1;arcSize=10;fillColor=#202e45;strokeColor=#617ea8;strokeWidth=1.2;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="323" y="239" width="264" height="81" as="geometry" />
+        </mxCell>
+        <mxCell id="item-12" value="Firecracker controller" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=16;fontColor=#f0f3f9;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="controller">
+          <mxGeometry x="12" y="8" width="240" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="item-13" value="Host-installed lifecycle and forwarding" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#b4c2d8;fontStyle=0;html=0;fontFamily=Arial;" vertex="1" parent="controller">
+          <mxGeometry x="12" y="34" width="240" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="hermes" value="" style="rounded=1;arcSize=10;fillColor=#202e45;strokeColor=#617ea8;strokeWidth=1.2;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="622" y="239" width="241" height="81" as="geometry" />
+        </mxCell>
+        <mxCell id="item-14" value="Optional Hermes brokers" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=16;fontColor=#f0f3f9;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="hermes">
+          <mxGeometry x="12" y="8" width="217" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="item-15" value="Project MCP and Matrix on host" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#b4c2d8;fontStyle=0;html=0;fontFamily=Arial;" vertex="1" parent="hermes">
+          <mxGeometry x="12" y="34" width="217" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="worker" value="" style="rounded=1;arcSize=10;fillColor=#312740;strokeColor=#997cb3;strokeWidth=1.2;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="323" y="432" width="264" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="item-16" value="Guest supervisor and agent" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=16;fontColor=#f0f3f9;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="worker">
+          <mxGeometry x="12" y="8" width="240" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="item-17" value="No virtual network interface" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#b4c2d8;fontStyle=0;html=0;fontFamily=Arial;" vertex="1" parent="worker">
+          <mxGeometry x="12" y="34" width="240" height="33" as="geometry" />
+        </mxCell>
+        <mxCell id="disk" value="" style="rounded=1;arcSize=10;fillColor=#183432;strokeColor=#5c9a90;strokeWidth=1.2;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="323" y="519" width="264" height="52" as="geometry" />
+        </mxCell>
+        <mxCell id="item-18" value="Private data disk" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=16;fontColor=#f0f3f9;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="disk">
+          <mxGeometry x="12" y="8" width="240" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="item-19" value="Retained across VM generations" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#b4c2d8;fontStyle=0;html=0;fontFamily=Arial;" vertex="1" parent="disk">
+          <mxGeometry x="12" y="34" width="240" height="13" as="geometry" />
+        </mxCell>
+        <mxCell id="item-20" value="Runtime protocol" style="edgeStyle=segmentEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=0;endArrow=block;endFill=1;endSize=7;strokeWidth=1.5;strokeColor=#8497b6;fontSize=12;fontFamily=Arial;fontColor=#b4c2d8;labelBackgroundColor=#14171d;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="control" target="controller">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="item-21" value="Launch and worker API over vsock" style="edgeStyle=segmentEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=0;endArrow=block;endFill=1;endSize=7;strokeWidth=1.5;strokeColor=#8497b6;fontSize=12;fontFamily=Arial;fontColor=#b4c2d8;labelBackgroundColor=#14171d;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="controller" target="worker">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="item-22" value="Fixed vsock channels" style="edgeStyle=segmentEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=0;endArrow=block;endFill=1;endSize=7;strokeWidth=1.5;strokeColor=#8497b6;fontSize=12;fontFamily=Arial;fontColor=#b4c2d8;labelBackgroundColor=#14171d;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0.59;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="worker" target="gateway">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="190" y="468" />
+            </Array>
+            <mxPoint x="0" y="-8" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="item-23" value="Fixed channels when enabled" style="edgeStyle=segmentEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=0;endArrow=block;endFill=1;endSize=7;strokeWidth=1.5;strokeColor=#8497b6;fontSize=12;fontFamily=Arial;fontColor=#b4c2d8;labelBackgroundColor=#14171d;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="worker" target="hermes">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="742" y="468" />
+            </Array>
+            <mxPoint x="0" y="-8" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="item-24" value="" style="edgeStyle=segmentEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=0;endArrow=block;endFill=1;endSize=7;strokeWidth=1.5;strokeColor=#8497b6;fontSize=12;fontFamily=Arial;fontColor=#b4c2d8;labelBackgroundColor=#14171d;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="worker" target="disk">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

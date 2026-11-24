@@ -1,0 +1,25 @@
+{{- $href := .Destination -}}
+{{- $url := urls.Parse $href -}}
+{{- if and (not $url.IsAbs) (not $url.Host) $url.Path (not (hasPrefix $url.Path "/")) -}}
+  {{- $source := printf "docs/content/%s" .Page.File.Path -}}
+  {{- $target := path.Join (path.Dir $source) $url.Path -}}
+  {{- $contentRoot := "docs/content/" -}}
+  {{- if and (hasPrefix $target $contentRoot) (eq (path.Ext $target) ".md") -}}
+    {{- $pagePath := strings.TrimSuffix ".md" (strings.TrimPrefix $contentRoot $target) -}}
+    {{- $pagePath = strings.TrimSuffix "/_index" $pagePath -}}
+    {{- with site.GetPage (printf "/%s" $pagePath) -}}
+      {{- $href = .RelPermalink -}}
+    {{- else -}}
+      {{- errorf "Missing documentation page for %q in %s" $url.Path $source -}}
+    {{- end -}}
+  {{- else -}}
+    {{- $kind := "blob" -}}
+    {{- if and (not (path.Ext $target)) (ne $target "LICENSE") -}}
+      {{- $kind = "tree" -}}
+    {{- end -}}
+    {{- $href = printf "%s/%s/main/%s" site.Params.repository $kind $target -}}
+  {{- end -}}
+  {{- with $url.RawQuery -}}{{- $href = printf "%s?%s" $href . -}}{{- end -}}
+  {{- with $url.Fragment -}}{{- $href = printf "%s#%s" $href . -}}{{- end -}}
+{{- end -}}
+<a href="{{ $href }}"{{ with .Title }} title="{{ . }}"{{ end }}>{{ .Text | safeHTML }}</a>

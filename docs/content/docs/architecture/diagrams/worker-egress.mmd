@@ -1,0 +1,8 @@
+flowchart TB
+    worker["Running worker<br/>Generation-bound grant"]
+    worker --> inference["Inference gateway<br/>Model and provider<br/>allowlists"]
+    worker --> broker["Credential broker<br/>Named data<br/>operations"]
+    worker --> egress["Egress gateway<br/>Host and port<br/>allowlist"]
+    inference -.-> verifier["Runtime controller<br/>Verifies grant and audience"]
+    broker -.-> verifier
+    egress -.-> verifier

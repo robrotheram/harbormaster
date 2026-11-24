@@ -1,0 +1,144 @@
+<mxfile host="app.diagrams.net">
+  <diagram id="system-context" name="Who uses Harbormaster and what it connects to">
+    <mxGraphModel page="1" pageScale="1" pageWidth="940" pageHeight="550" background="#14171d" grid="1" gridSize="10" guides="1" connect="1" arrows="1" fold="1" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="item-1" value="C4 · System context" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#a2c4ff;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="28" y="19" width="884" height="19" as="geometry" />
+        </mxCell>
+        <mxCell id="item-2" value="Who uses Harbormaster and what it connects to" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=25;fontColor=#f0f3f9;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="28" y="42" width="884" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="item-3" value="" style="fillColor=#38445a;strokeColor=none;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="28" y="89" width="884" height="1" as="geometry" />
+        </mxCell>
+        <mxCell id="member" value="" style="rounded=1;arcSize=10;fillColor=#1c3251;strokeColor=#81a4d8;strokeWidth=1.2;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="52" y="115" width="224" height="73" as="geometry" />
+        </mxCell>
+        <mxCell id="item-4" value="Project member" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=16;fontColor=#f0f3f9;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="member">
+          <mxGeometry x="12" y="8" width="200" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="item-5" value="Plans work and reviews results" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#b4c2d8;fontStyle=0;html=0;fontFamily=Arial;" vertex="1" parent="member">
+          <mxGeometry x="12" y="34" width="200" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="operator" value="" style="rounded=1;arcSize=10;fillColor=#1c3251;strokeColor=#81a4d8;strokeWidth=1.2;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="358" y="115" width="224" height="73" as="geometry" />
+        </mxCell>
+        <mxCell id="item-6" value="Platform operator" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=16;fontColor=#f0f3f9;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="operator">
+          <mxGeometry x="12" y="8" width="200" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="item-7" value="Configures and runs the service" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#b4c2d8;fontStyle=0;html=0;fontFamily=Arial;" vertex="1" parent="operator">
+          <mxGeometry x="12" y="34" width="200" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="mcp" value="" style="rounded=1;arcSize=10;fillColor=#1c3251;strokeColor=#81a4d8;strokeWidth=1.2;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="664" y="115" width="224" height="73" as="geometry" />
+        </mxCell>
+        <mxCell id="item-8" value="External MCP client" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=16;fontColor=#f0f3f9;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="mcp">
+          <mxGeometry x="12" y="8" width="200" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="item-9" value="Uses approved project tools" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#b4c2d8;fontStyle=0;html=0;fontFamily=Arial;" vertex="1" parent="mcp">
+          <mxGeometry x="12" y="34" width="200" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="harbor" value="" style="rounded=1;arcSize=10;fillColor=#202e45;strokeColor=#617ea8;strokeWidth=1.2;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="299" y="260" width="342" height="88" as="geometry" />
+        </mxCell>
+        <mxCell id="item-10" value="Harbormaster" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=16;fontColor=#f0f3f9;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="harbor">
+          <mxGeometry x="12" y="8" width="318" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="item-11" value="Runs agent work in project-owned workers&#10;and keeps its results available for review" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#b4c2d8;fontStyle=0;html=0;fontFamily=Arial;" vertex="1" parent="harbor">
+          <mxGeometry x="12" y="34" width="318" height="49" as="geometry" />
+        </mxCell>
+        <mxCell id="auth" value="" style="rounded=1;arcSize=10;fillColor=#242832;strokeColor=#606b7e;strokeWidth=1.2;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="28" y="445" width="208" height="77" as="geometry" />
+        </mxCell>
+        <mxCell id="item-12" value="Hosted identity" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=16;fontColor=#f0f3f9;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="auth">
+          <mxGeometry x="12" y="8" width="184" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="item-13" value="WorkOS AuthKit or&#10;OAuth2 Proxy" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#b4c2d8;fontStyle=0;html=0;fontFamily=Arial;" vertex="1" parent="auth">
+          <mxGeometry x="12" y="34" width="184" height="38" as="geometry" />
+        </mxCell>
+        <mxCell id="models" value="" style="rounded=1;arcSize=10;fillColor=#242832;strokeColor=#606b7e;strokeWidth=1.2;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="253" y="445" width="208" height="77" as="geometry" />
+        </mxCell>
+        <mxCell id="item-14" value="Model providers" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=16;fontColor=#f0f3f9;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="models">
+          <mxGeometry x="12" y="8" width="184" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="item-15" value="Inference and native agent&#10;subscriptions" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#b4c2d8;fontStyle=0;html=0;fontFamily=Arial;" vertex="1" parent="models">
+          <mxGeometry x="12" y="34" width="184" height="38" as="geometry" />
+        </mxCell>
+        <mxCell id="forge" value="" style="rounded=1;arcSize=10;fillColor=#242832;strokeColor=#606b7e;strokeWidth=1.2;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="478" y="445" width="208" height="77" as="geometry" />
+        </mxCell>
+        <mxCell id="item-16" value="GitHub and GitLab" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=16;fontColor=#f0f3f9;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="forge">
+          <mxGeometry x="12" y="8" width="184" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="item-17" value="Repository and issue APIs" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#b4c2d8;fontStyle=0;html=0;fontFamily=Arial;" vertex="1" parent="forge">
+          <mxGeometry x="12" y="34" width="184" height="38" as="geometry" />
+        </mxCell>
+        <mxCell id="services" value="" style="rounded=1;arcSize=10;fillColor=#242832;strokeColor=#606b7e;strokeWidth=1.2;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="703" y="445" width="208" height="77" as="geometry" />
+        </mxCell>
+        <mxCell id="item-18" value="Data and messaging" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=16;fontColor=#f0f3f9;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="services">
+          <mxGeometry x="12" y="8" width="184" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="item-19" value="Approved data endpoints&#10;and optional Matrix" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#b4c2d8;fontStyle=0;html=0;fontFamily=Arial;" vertex="1" parent="services">
+          <mxGeometry x="12" y="34" width="184" height="38" as="geometry" />
+        </mxCell>
+        <mxCell id="item-20" value="Browser" style="edgeStyle=segmentEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=0;endArrow=block;endFill=1;endSize=7;strokeWidth=1.5;strokeColor=#8497b6;fontSize=12;fontFamily=Arial;fontColor=#b4c2d8;labelBackgroundColor=#14171d;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="member" target="harbor">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="164" y="304" />
+            </Array>
+            <mxPoint x="0" y="-8" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="item-21" value="Dashboard or CLI" style="edgeStyle=segmentEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=0;endArrow=block;endFill=1;endSize=7;strokeWidth=1.5;strokeColor=#8497b6;fontSize=12;fontFamily=Arial;fontColor=#b4c2d8;labelBackgroundColor=#14171d;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="operator" target="harbor">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="0" y="-5" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="item-22" value="MCP over HTTP" style="edgeStyle=segmentEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=0;endArrow=block;endFill=1;endSize=7;strokeWidth=1.5;strokeColor=#8497b6;fontSize=12;fontFamily=Arial;fontColor=#b4c2d8;labelBackgroundColor=#14171d;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="mcp" target="harbor">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="776" y="304" />
+            </Array>
+            <mxPoint x="0" y="-8" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="item-23" value="Sign-in" style="edgeStyle=segmentEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=0;endArrow=block;endFill=1;endSize=7;strokeWidth=1.5;strokeColor=#8497b6;fontSize=12;fontFamily=Arial;fontColor=#b4c2d8;labelBackgroundColor=#14171d;exitX=0.12;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="harbor" target="auth">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="132" y="394" />
+            </Array>
+            <mxPoint x="0" y="-7" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="item-24" value="Model requests" style="edgeStyle=segmentEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=0;endArrow=block;endFill=1;endSize=7;strokeWidth=1.5;strokeColor=#8497b6;fontSize=12;fontFamily=Arial;fontColor=#b4c2d8;labelBackgroundColor=#14171d;exitX=0.36;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="harbor" target="models">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="357" y="394" />
+            </Array>
+            <mxPoint x="0" y="-7" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="item-25" value="Provider calls" style="edgeStyle=segmentEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=0;endArrow=block;endFill=1;endSize=7;strokeWidth=1.5;strokeColor=#8497b6;fontSize=12;fontFamily=Arial;fontColor=#b4c2d8;labelBackgroundColor=#14171d;exitX=0.64;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="harbor" target="forge">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="582" y="394" />
+            </Array>
+            <mxPoint x="0" y="-7" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="item-26" value="Integrations" style="edgeStyle=segmentEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=0;endArrow=block;endFill=1;endSize=7;strokeWidth=1.5;strokeColor=#8497b6;fontSize=12;fontFamily=Arial;fontColor=#b4c2d8;labelBackgroundColor=#14171d;exitX=0.88;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="harbor" target="services">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="807" y="394" />
+            </Array>
+            <mxPoint x="0" y="-7" as="offset" />
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

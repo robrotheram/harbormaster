@@ -1,0 +1,71 @@
+[[groups]]
+title = 'User guides'
+pages = [
+  ['/docs', 'Documentation index'],
+  ['/docs/user-guide', 'Get started in the dashboard'],
+  ['/docs/work-conversations', 'Run your first agent task'],
+  ['/docs/issue-board', 'Plan and track work'],
+  ['/docs/reviews', 'Review a result'],
+  ['/docs/application-previews', 'Preview an application'],
+  ['/docs/data-science-workbench', 'Analyze data'],
+  ['/docs/interactive-workspaces', 'Use interactive workers'],
+]
+
+[[groups]]
+title = 'Architecture'
+pages = [
+  ['/docs/architecture', 'System context and services'],
+  ['/docs/architecture/components', 'Control plane and worker'],
+  ['/docs/architecture/deployment-model', 'Deployment topology'],
+  ['/docs/architecture/request-flows', 'Request flows and recovery'],
+  ['/docs/architecture/security', 'Security and isolation'],
+]
+
+[[groups]]
+title = 'Development'
+pages = [
+  ['/docs/development', 'Start developing'],
+  ['/docs/development/code-map', 'Code map and dependencies'],
+  ['/docs/development/frontend', 'Dashboard development'],
+  ['/docs/development/preview', 'Preview and output behaviour'],
+  ['/docs/development/analysis', 'Extend data analysis'],
+  ['/docs/development/hermes', 'Hermes package'],
+  ['/docs/development/contributing', 'Contributing'],
+]
+
+[[groups]]
+title = 'Deployment and operations'
+pages = [
+  ['/docs/deployment', 'Deploy Harbormaster'],
+  ['/docs/getting-started', 'Verify a local installation'],
+  ['/docs/operations', 'Operations and recovery'],
+  ['/docs/operations/kubernetes', 'Kubernetes setup'],
+  ['/docs/operations/cluster-dependencies', 'Cluster dependencies'],
+  ['/docs/k3s', 'Kubernetes operations'],
+  ['/docs/k3s-hermes', 'Kubernetes Hermes'],
+  ['/docs/firecracker', 'Firecracker setup'],
+  ['/docs/authkit', 'Hosted sign-in'],
+  ['/docs/operations/gateway-configuration', 'Gateway configuration'],
+  ['/docs/operations/hermes', 'Hermes setup'],
+  ['/docs/container-publishing', 'Container publishing'],
+]
+
+[[groups]]
+title = 'Project administration'
+pages = [
+  ['/docs/repository-connections', 'Repository connections'],
+  ['/docs/subscription-agents', 'Subscription credentials'],
+  ['/docs/project-workbench', 'Project MCP and schedules'],
+  ['/docs/assistant-handoffs', 'Assistant handoffs'],
+  ['/docs/workspace-logging', 'Activity logs'],
+  ['/docs/workspace-history', 'Private history'],
+]
+
+[[groups]]
+title = 'API reference'
+pages = [
+  ['/docs/architecture/contracts', 'Service contracts'],
+  ['/docs/architecture/guest-execution', 'Guest execution and artifacts'],
+  ['/docs/architecture/analysis-api', 'Worker analysis API'],
+  ['/docs/architecture/assistant-exchanges', 'Assistant exchange transport'],
+]

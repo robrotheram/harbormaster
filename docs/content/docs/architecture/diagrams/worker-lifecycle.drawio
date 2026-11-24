@@ -1,0 +1,145 @@
+<mxfile host="app.diagrams.net">
+  <diagram id="worker-lifecycle" name="Start and stop a worker">
+    <mxGraphModel page="1" pageScale="1" pageWidth="910" pageHeight="701" background="#14171d" grid="1" gridSize="10" guides="1" connect="1" arrows="1" fold="1" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="item-1" value="Request flow" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#a2c4ff;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="28" y="19" width="854" height="19" as="geometry" />
+        </mxCell>
+        <mxCell id="item-2" value="Start and stop a worker" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=25;fontColor=#f0f3f9;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="28" y="42" width="854" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="item-3" value="" style="fillColor=#38445a;strokeColor=none;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="28" y="89" width="854" height="1" as="geometry" />
+        </mxCell>
+        <mxCell id="item-4" value="" style="rounded=1;arcSize=3;fillColor=#181e29;strokeColor=#66748b;strokeWidth=1.25;dashed=1;dashPattern=5 4;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="28" y="112" width="395" height="547" as="geometry" />
+        </mxCell>
+        <mxCell id="item-5" value="Start a stopped worker" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#c9d8ef;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="42" y="117" width="367" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="item-6" value="" style="rounded=1;arcSize=3;fillColor=#181e29;strokeColor=#66748b;strokeWidth=1.25;dashed=1;dashPattern=5 4;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="454" y="112" width="428" height="547" as="geometry" />
+        </mxCell>
+        <mxCell id="item-7" value="Stop an idle worker" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#c9d8ef;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="468" y="117" width="400" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="check" value="" style="rounded=1;arcSize=10;fillColor=#202e45;strokeColor=#617ea8;strokeWidth=1.2;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="52" y="151" width="347" height="66" as="geometry" />
+        </mxCell>
+        <mxCell id="item-8" value="Check placement" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=16;fontColor=#f0f3f9;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="check">
+          <mxGeometry x="12" y="8" width="323" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="item-9" value="Check runtime capabilities, resources, and policy" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#b4c2d8;fontStyle=0;html=0;fontFamily=Arial;" vertex="1" parent="check">
+          <mxGeometry x="12" y="34" width="323" height="27" as="geometry" />
+        </mxCell>
+        <mxCell id="reserve" value="" style="rounded=1;arcSize=10;fillColor=#202e45;strokeColor=#617ea8;strokeWidth=1.2;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="52" y="260" width="347" height="66" as="geometry" />
+        </mxCell>
+        <mxCell id="item-10" value="Reserve capacity" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=16;fontColor=#f0f3f9;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="reserve">
+          <mxGeometry x="12" y="8" width="323" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="item-11" value="Record STARTING before the runtime call" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#b4c2d8;fontStyle=0;html=0;fontFamily=Arial;" vertex="1" parent="reserve">
+          <mxGeometry x="12" y="34" width="323" height="27" as="geometry" />
+        </mxCell>
+        <mxCell id="launch" value="" style="rounded=1;arcSize=10;fillColor=#312740;strokeColor=#997cb3;strokeWidth=1.2;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="52" y="369" width="347" height="66" as="geometry" />
+        </mxCell>
+        <mxCell id="item-12" value="Launch compute" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=16;fontColor=#f0f3f9;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="launch">
+          <mxGeometry x="12" y="8" width="323" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="item-13" value="Attach the existing worker storage" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#b4c2d8;fontStyle=0;html=0;fontFamily=Arial;" vertex="1" parent="launch">
+          <mxGeometry x="12" y="34" width="323" height="27" as="geometry" />
+        </mxCell>
+        <mxCell id="ready" value="" style="rounded=1;arcSize=10;fillColor=#312740;strokeColor=#997cb3;strokeWidth=1.2;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="52" y="478" width="347" height="66" as="geometry" />
+        </mxCell>
+        <mxCell id="item-14" value="Ready for work" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=16;fontColor=#f0f3f9;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="ready">
+          <mxGeometry x="12" y="8" width="323" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="item-15" value="Apply connections and observe readiness" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#b4c2d8;fontStyle=0;html=0;fontFamily=Arial;" vertex="1" parent="ready">
+          <mxGeometry x="12" y="34" width="323" height="27" as="geometry" />
+        </mxCell>
+        <mxCell id="request" value="" style="rounded=1;arcSize=10;fillColor=#202e45;strokeColor=#617ea8;strokeWidth=1.2;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="478" y="151" width="379" height="66" as="geometry" />
+        </mxCell>
+        <mxCell id="item-16" value="Normal stop requested" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=16;fontColor=#f0f3f9;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="request">
+          <mxGeometry x="12" y="8" width="355" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="item-17" value="Is the worker confirmed idle?" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#b4c2d8;fontStyle=0;html=0;fontFamily=Arial;" vertex="1" parent="request">
+          <mxGeometry x="12" y="34" width="355" height="27" as="geometry" />
+        </mxCell>
+        <mxCell id="idle" value="" style="rounded=1;arcSize=10;fillColor=#202e45;strokeColor=#617ea8;strokeWidth=1.2;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="478" y="289" width="214" height="66" as="geometry" />
+        </mxCell>
+        <mxCell id="item-18" value="Known idle" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=16;fontColor=#f0f3f9;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="idle">
+          <mxGeometry x="12" y="8" width="190" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="item-19" value="Quiesce before stopping compute" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#b4c2d8;fontStyle=0;html=0;fontFamily=Arial;" vertex="1" parent="idle">
+          <mxGeometry x="12" y="34" width="190" height="27" as="geometry" />
+        </mxCell>
+        <mxCell id="busy" value="" style="rounded=1;arcSize=10;fillColor=#242832;strokeColor=#606b7e;strokeWidth=1.2;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="711" y="289" width="146" height="66" as="geometry" />
+        </mxCell>
+        <mxCell id="item-20" value="Reject stop" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=16;fontColor=#f0f3f9;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="busy">
+          <mxGeometry x="12" y="8" width="122" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="item-21" value="Busy or unknown" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#b4c2d8;fontStyle=0;html=0;fontFamily=Arial;" vertex="1" parent="busy">
+          <mxGeometry x="12" y="34" width="122" height="27" as="geometry" />
+        </mxCell>
+        <mxCell id="terminate" value="" style="rounded=1;arcSize=10;fillColor=#312740;strokeColor=#997cb3;strokeWidth=1.2;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="478" y="404" width="379" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="item-22" value="Confirm termination" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=16;fontColor=#f0f3f9;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="terminate">
+          <mxGeometry x="12" y="8" width="355" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="item-23" value="Confirm that the runtime stopped" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#b4c2d8;fontStyle=0;html=0;fontFamily=Arial;" vertex="1" parent="terminate">
+          <mxGeometry x="12" y="34" width="355" height="41" as="geometry" />
+        </mxCell>
+        <mxCell id="stop" value="" style="rounded=1;arcSize=10;fillColor=#183432;strokeColor=#5c9a90;strokeWidth=1.2;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="478" y="528" width="379" height="66" as="geometry" />
+        </mxCell>
+        <mxCell id="item-24" value="Record STOPPED" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=16;fontColor=#f0f3f9;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="stop">
+          <mxGeometry x="12" y="8" width="355" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="item-25" value="Keep the same worker identity, files and history" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#b4c2d8;fontStyle=0;html=0;fontFamily=Arial;" vertex="1" parent="stop">
+          <mxGeometry x="12" y="34" width="355" height="27" as="geometry" />
+        </mxCell>
+        <mxCell id="item-26" value="" style="edgeStyle=segmentEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=0;endArrow=block;endFill=1;endSize=7;strokeWidth=1.5;strokeColor=#8497b6;fontSize=12;fontFamily=Arial;fontColor=#b4c2d8;labelBackgroundColor=#14171d;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="check" target="reserve">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="item-27" value="" style="edgeStyle=segmentEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=0;endArrow=block;endFill=1;endSize=7;strokeWidth=1.5;strokeColor=#8497b6;fontSize=12;fontFamily=Arial;fontColor=#b4c2d8;labelBackgroundColor=#14171d;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="reserve" target="launch">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="item-28" value="" style="edgeStyle=segmentEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=0;endArrow=block;endFill=1;endSize=7;strokeWidth=1.5;strokeColor=#8497b6;fontSize=12;fontFamily=Arial;fontColor=#b4c2d8;labelBackgroundColor=#14171d;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="launch" target="ready">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="item-29" value="Yes" style="edgeStyle=segmentEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=0;endArrow=block;endFill=1;endSize=7;strokeWidth=1.5;strokeColor=#8497b6;fontSize=12;fontFamily=Arial;fontColor=#b4c2d8;labelBackgroundColor=#14171d;exitX=0.22;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="request" target="idle">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="562" y="250" />
+              <mxPoint x="585" y="250" />
+            </Array>
+            <mxPoint x="-20" y="-6" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="item-30" value="No" style="edgeStyle=segmentEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=0;endArrow=block;endFill=1;endSize=7;strokeWidth=1.5;strokeColor=#8497b6;fontSize=12;fontFamily=Arial;fontColor=#b4c2d8;labelBackgroundColor=#14171d;exitX=0.78;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="request" target="busy">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="774" y="250" />
+              <mxPoint x="784" y="250" />
+            </Array>
+            <mxPoint x="22" y="-6" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="item-31" value="" style="edgeStyle=segmentEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=0;endArrow=block;endFill=1;endSize=7;strokeWidth=1.5;strokeColor=#8497b6;fontSize=12;fontFamily=Arial;fontColor=#b4c2d8;labelBackgroundColor=#14171d;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.28;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="idle" target="terminate">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="item-32" value="" style="edgeStyle=segmentEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=0;endArrow=block;endFill=1;endSize=7;strokeWidth=1.5;strokeColor=#8497b6;fontSize=12;fontFamily=Arial;fontColor=#b4c2d8;labelBackgroundColor=#14171d;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="terminate" target="stop">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

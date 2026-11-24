@@ -1,0 +1,134 @@
+<mxfile host="app.diagrams.net">
+  <diagram id="worker-components" name="A project worker">
+    <mxGraphModel page="1" pageScale="1" pageWidth="940" pageHeight="650" background="#14171d" grid="1" gridSize="10" guides="1" connect="1" arrows="1" fold="1" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="item-1" value="C4 · Component view" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#a2c4ff;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="28" y="19" width="884" height="19" as="geometry" />
+        </mxCell>
+        <mxCell id="item-2" value="A project worker" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=25;fontColor=#f0f3f9;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="28" y="42" width="884" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="item-3" value="" style="fillColor=#38445a;strokeColor=none;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="28" y="89" width="884" height="1" as="geometry" />
+        </mxCell>
+        <mxCell id="item-4" value="" style="rounded=1;arcSize=3;fillColor=#211d2b;strokeColor=#997cb3;strokeWidth=1.25;dashed=1;dashPattern=5 4;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="28" y="191" width="884" height="429" as="geometry" />
+        </mxCell>
+        <mxCell id="item-5" value="Single project worker · compute can be replaced" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#c9d8ef;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="42" y="196" width="856" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="controller" value="" style="rounded=1;arcSize=10;fillColor=#202e45;strokeColor=#617ea8;strokeWidth=1.2;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="341" y="111" width="258" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="item-6" value="Runtime controller" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=16;fontColor=#f0f3f9;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="controller">
+          <mxGeometry x="12" y="8" width="234" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="item-7" value="Authenticated runtime requests" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#b4c2d8;fontStyle=0;html=0;fontFamily=Arial;" vertex="1" parent="controller">
+          <mxGeometry x="12" y="34" width="234" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="supervisor" value="" style="rounded=1;arcSize=10;fillColor=#312740;strokeColor=#997cb3;strokeWidth=1.2;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="341" y="227" width="258" height="68" as="geometry" />
+        </mxCell>
+        <mxCell id="item-8" value="Workspace supervisor" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=16;fontColor=#f0f3f9;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="supervisor">
+          <mxGeometry x="12" y="8" width="234" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="item-9" value="Task, file, history and preview API" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#b4c2d8;fontStyle=0;html=0;fontFamily=Arial;" vertex="1" parent="supervisor">
+          <mxGeometry x="12" y="34" width="234" height="29" as="geometry" />
+        </mxCell>
+        <mxCell id="task" value="" style="rounded=1;arcSize=10;fillColor=#312740;strokeColor=#997cb3;strokeWidth=1.2;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="47" y="350" width="228" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="item-10" value="Task store" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=16;fontColor=#f0f3f9;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="task">
+          <mxGeometry x="12" y="8" width="204" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="item-11" value="Durable acceptance and task state" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#b4c2d8;fontStyle=0;html=0;fontFamily=Arial;" vertex="1" parent="task">
+          <mxGeometry x="12" y="34" width="204" height="36" as="geometry" />
+        </mxCell>
+        <mxCell id="agent" value="" style="rounded=1;arcSize=10;fillColor=#312740;strokeColor=#997cb3;strokeWidth=1.2;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="355" y="350" width="230" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="item-12" value="Native agent adapters" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=16;fontColor=#f0f3f9;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="agent">
+          <mxGeometry x="12" y="8" width="206" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="item-13" value="Codex, Claude and Hermes" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#b4c2d8;fontStyle=0;html=0;fontFamily=Arial;" vertex="1" parent="agent">
+          <mxGeometry x="12" y="34" width="206" height="36" as="geometry" />
+        </mxCell>
+        <mxCell id="t3" value="" style="rounded=1;arcSize=10;fillColor=#312740;strokeColor=#997cb3;strokeWidth=1.2;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="663" y="350" width="228" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="item-14" value="Optional T3 process" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=16;fontColor=#f0f3f9;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="t3">
+          <mxGeometry x="12" y="8" width="204" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="item-15" value="Browser and desktop attachment" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#b4c2d8;fontStyle=0;html=0;fontFamily=Arial;" vertex="1" parent="t3">
+          <mxGeometry x="12" y="34" width="204" height="36" as="geometry" />
+        </mxCell>
+        <mxCell id="tools" value="" style="rounded=1;arcSize=10;fillColor=#312740;strokeColor=#997cb3;strokeWidth=1.2;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="355" y="448" width="230" height="67" as="geometry" />
+        </mxCell>
+        <mxCell id="item-16" value="Worker-local tools" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=16;fontColor=#f0f3f9;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="tools">
+          <mxGeometry x="12" y="8" width="206" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="item-17" value="File, Git, analysis and managed apps" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#b4c2d8;fontStyle=0;html=0;fontFamily=Arial;" vertex="1" parent="tools">
+          <mxGeometry x="12" y="34" width="206" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="storage" value="" style="rounded=1;arcSize=10;fillColor=#183432;strokeColor=#5c9a90;strokeWidth=1.2;html=0;fontFamily=Arial;" vertex="1" parent="1">
+          <mxGeometry x="315" y="541" width="310" height="67" as="geometry" />
+        </mxCell>
+        <mxCell id="item-18" value="Private persistent storage" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=16;fontColor=#f0f3f9;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="storage">
+          <mxGeometry x="12" y="8" width="286" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="item-19" value="Files, home, task SQLite and session state" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#b4c2d8;fontStyle=0;html=0;fontFamily=Arial;" vertex="1" parent="storage">
+          <mxGeometry x="12" y="34" width="286" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="item-20" value="Allowed worker routes" style="edgeStyle=segmentEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=0;endArrow=block;endFill=1;endSize=7;strokeWidth=1.5;strokeColor=#8497b6;fontSize=12;fontFamily=Arial;fontColor=#b4c2d8;labelBackgroundColor=#14171d;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="controller" target="supervisor">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="item-21" value="Accepts and observes" style="edgeStyle=segmentEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=0;endArrow=block;endFill=1;endSize=7;strokeWidth=1.5;strokeColor=#8497b6;fontSize=12;fontFamily=Arial;fontColor=#b4c2d8;labelBackgroundColor=#14171d;exitX=0.22;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="supervisor" target="task">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="398" y="321" />
+              <mxPoint x="161" y="321" />
+            </Array>
+            <mxPoint x="0" y="-7" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="item-22" value="Runs tasks" style="edgeStyle=segmentEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=0;endArrow=block;endFill=1;endSize=7;strokeWidth=1.5;strokeColor=#8497b6;fontSize=12;fontFamily=Arial;fontColor=#b4c2d8;labelBackgroundColor=#14171d;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="supervisor" target="agent">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="item-23" value="Manages sessions" style="edgeStyle=segmentEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=0;endArrow=block;endFill=1;endSize=7;strokeWidth=1.5;strokeColor=#8497b6;fontSize=12;fontFamily=Arial;fontColor=#b4c2d8;labelBackgroundColor=#14171d;exitX=0.78;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="supervisor" target="t3">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="543" y="321" />
+              <mxPoint x="777" y="321" />
+            </Array>
+            <mxPoint x="0" y="-7" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="item-24" value="" style="edgeStyle=segmentEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=0;endArrow=block;endFill=1;endSize=7;strokeWidth=1.5;strokeColor=#8497b6;fontSize=12;fontFamily=Arial;fontColor=#b4c2d8;labelBackgroundColor=#14171d;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="agent" target="tools">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="item-25" value="Task receipts and results" style="edgeStyle=segmentEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=0;endArrow=block;endFill=1;endSize=7;strokeWidth=1.5;strokeColor=#8497b6;fontSize=12;fontFamily=Arial;fontColor=#b4c2d8;labelBackgroundColor=#14171d;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="task" target="storage">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="161" y="574" />
+            </Array>
+            <mxPoint x="0" y="-8" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="item-26" value="" style="edgeStyle=segmentEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=0;endArrow=block;endFill=1;endSize=7;strokeWidth=1.5;strokeColor=#8497b6;fontSize=12;fontFamily=Arial;fontColor=#b4c2d8;labelBackgroundColor=#14171d;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="tools" target="storage">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="item-27" value="Console state" style="edgeStyle=segmentEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=0;endArrow=block;endFill=1;endSize=7;strokeWidth=1.5;strokeColor=#8497b6;fontSize=12;fontFamily=Arial;fontColor=#b4c2d8;labelBackgroundColor=#14171d;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="t3" target="storage">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="777" y="574" />
+            </Array>
+            <mxPoint x="0" y="-8" as="offset" />
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
