@@ -17,7 +17,7 @@ published ports bound to loopback. The local dashboard requires the operator pas
 ## Release gates
 
 [GitHub Actions](../../../../.github/workflows/check.yml) runs Go module verification,
-formatting, builds, vet and race tests, a PostgreSQL contract, Python contracts,
+formatting, builds, vet and race tests, a PostgreSQL 18 contract, Python contracts,
 frontend formatting and unit tests, Chromium workflows, Compose validation and
 Go, Dockerfile, Kubernetes and workflow linting. Tests use synthetic credentials
 and data. Never add production secrets to CI.
