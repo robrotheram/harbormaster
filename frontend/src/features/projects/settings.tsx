@@ -16,9 +16,6 @@ import { ErrorNotice, Modal, Form } from "@/shared/components";
 import { request } from "@/shared/http";
 import type { Project } from "@/shared/types";
 
-const tabClassName =
-  "inline-flex shrink-0 items-center justify-center gap-2 border-b-2 border-transparent px-3 py-3 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset data-[state=active]:border-primary data-[state=active]:text-foreground";
-
 const HermesSettings = lazy(() =>
   import("@/features/project-assistant/hermes").then((m) => ({
     default: m.HermesSettings,
@@ -45,19 +42,16 @@ export function ProjectSettings({ project }: { project: Project }) {
           })
         }
       >
-        <Tabs.List
-          aria-label="Project settings"
-          className="flex max-w-full overflow-x-auto border-b"
-        >
-          <Tabs.Trigger value="general" className={tabClassName}>
+        <Tabs.List aria-label="Project settings" className="settings-tabs">
+          <Tabs.Trigger value="general">
             <Settings2 aria-hidden="true" className="size-4 shrink-0" />
             General
           </Tabs.Trigger>
-          <Tabs.Trigger value="hermes" className={tabClassName}>
+          <Tabs.Trigger value="hermes">
             <Bot aria-hidden="true" className="size-4 shrink-0" />
             Hermes setup
           </Tabs.Trigger>
-          <Tabs.Trigger value="audit" className={tabClassName}>
+          <Tabs.Trigger value="audit">
             <ClipboardList aria-hidden="true" className="size-4 shrink-0" />
             Audit
           </Tabs.Trigger>
@@ -67,9 +61,6 @@ export function ProjectSettings({ project }: { project: Project }) {
           className="pt-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <GeneralSettings key={project.id} project={project} />
-          <div className="mt-8 border-t pt-6">
-            <ProjectMembers project={project.id} />
-          </div>
         </Tabs.Content>
         <Tabs.Content
           value="hermes"
@@ -141,15 +132,15 @@ function GeneralSettings({ project }: { project: Project }) {
     },
   });
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="space-y-4">
       {!canManage && !members.isPending && (
         <p className="text-sm text-muted-foreground">
           Project administrator access is required to rename or delete this
           project.
         </p>
       )}
-      <section aria-labelledby="project-details" className="space-y-4">
-        <h2 id="project-details" className="text-sm font-medium">
+      <section aria-labelledby="project-details" className="settings-panel">
+        <h2 id="project-details" className="settings-panel-title">
           Project details
         </h2>
         <Form
@@ -227,27 +218,32 @@ function GeneralSettings({ project }: { project: Project }) {
           )}
         </dl>
       </section>
-      <section aria-labelledby="delete-project" className="border-t pt-6">
-        <h2 id="delete-project" className="text-sm font-medium">
-          Delete project
-        </h2>
-        <p className="mt-2 max-w-prose text-sm leading-6 text-muted-foreground">
-          {project.deployment_namespace
-            ? "Remove this project from Workbench. The shared agent, deployment namespace and deployed applications are retained."
-            : "Remove this project and stop all its workers, including any active runs. Private disks and saved evidence remain on the host."}
-        </p>
-        <Button
-          className="mt-4"
-          variant="destructive"
-          disabled={!canManage || deletion.isPending}
-          onClick={() => {
-            setConfirmation("");
-            deletion.reset();
-            setConfirming(true);
-          }}
-        >
-          {deletion.isPending ? "Deleting project…" : "Delete project"}
-        </Button>
+      <ProjectMembers project={project.id} />
+      <section aria-labelledby="delete-project" className="settings-panel">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 id="delete-project" className="settings-panel-title">
+              Delete project
+            </h2>
+            <p className="mt-2 max-w-prose text-sm leading-6 text-muted-foreground">
+              {project.deployment_namespace
+                ? "Remove this project from Workbench. The shared agent, deployment namespace and deployed applications are retained."
+                : "Remove this project and stop all its workers, including any active runs. Private disks and saved evidence remain on the host."}
+            </p>
+          </div>
+          <Button
+            className="text-destructive"
+            variant="outline"
+            disabled={!canManage || deletion.isPending}
+            onClick={() => {
+              setConfirmation("");
+              deletion.reset();
+              setConfirming(true);
+            }}
+          >
+            {deletion.isPending ? "Deleting project…" : "Delete project"}
+          </Button>
+        </div>
       </section>
       {confirming && (
         <Modal

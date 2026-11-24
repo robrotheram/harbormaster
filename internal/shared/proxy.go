@@ -13,6 +13,10 @@ var proxyTransport = &http.Transport{Proxy: nil, ResponseHeaderTimeout: 30 * tim
 // Management hops use their own credentials; the workspace restores this one.
 const NativeAuthorizationHeader = "X-Workbench-Native-Authorization"
 
+// ApplicationProxyFailureHeader distinguishes a workspace proxy error from an
+// error page returned by the app itself. The workspace strips it from app responses.
+const ApplicationProxyFailureHeader = "X-Workbench-Application-Proxy-Failure"
+
 // Proxy targets are selected by trusted service configuration or a verified
 // managed-container address. Browsers never choose a target address or token.
 func Proxy(w http.ResponseWriter, r *http.Request, origin, path, token string) {

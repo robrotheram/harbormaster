@@ -42,7 +42,7 @@ func connectionMessages(kind string) map[string]connectionMessage {
 		"NETWORK_ERROR":                {"Connection interrupted", "Check your network connection. Then return to Workbench and " + action + " using a fresh link."},
 		"CONNECTION_TIMEOUT":           {"The connection is taking too long", "Return to Workbench and " + action + " using a fresh link. If this keeps happening, share the support details with your administrator."},
 		"ORIGIN_REJECTED":              {"The connection could not be verified", "Open a fresh connection directly from Workbench. If this keeps happening, share the support details with your administrator."},
-		"PREVIEW_UNAVAILABLE":          {"Preview unavailable", "The preview may have stopped or expired. Return to your project in Workbench to check its status and reopen it."},
+		"PREVIEW_UNAVAILABLE":          {"Preview unavailable", "Workbench could not reach the app. Check that it is running, then reconnect the preview."},
 		"INVALID_PREVIEW_RESPONSE":     {"The preview could not be loaded", "Return to Workbench and reopen the preview. If this keeps happening, share the support details with your administrator."},
 		"UNSUPPORTED_PREVIEW_CONTENT":  {"This content cannot be previewed", "Return to Workbench to inspect or download the saved output instead."},
 		"INVALID_PATH":                 {"This preview address is unavailable", "Return to Workbench and open the preview again from your project."},
@@ -113,10 +113,14 @@ func serveConnectionPage(w http.ResponseWriter, r *http.Request, kind, code stri
 // Browser navigation gets an actionable page. API/resource requests keep the
 // same status and JSON contract, including ticket exchange and origin checks.
 func writeConnectionError(w http.ResponseWriter, r *http.Request, status int, code, kind string) {
-	destination := r.Header.Get("Sec-Fetch-Dest")
-	if r.Method == http.MethodGet && (destination == "document" || destination == "iframe") && strings.Contains(r.Header.Get("Accept"), "text/html") {
+	if connectionNavigation(r) {
 		serveConnectionPage(w, r, kind, code, status)
 		return
 	}
 	writeError(w, status, code)
+}
+
+func connectionNavigation(r *http.Request) bool {
+	destination := r.Header.Get("Sec-Fetch-Dest")
+	return r.Method == http.MethodGet && (destination == "document" || destination == "iframe") && strings.Contains(r.Header.Get("Accept"), "text/html")
 }

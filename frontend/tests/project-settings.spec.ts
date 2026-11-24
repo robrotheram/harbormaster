@@ -28,6 +28,15 @@ test("renames a project, preserves a failed draft, and opens Hermes within setti
     return r.fulfill({ json: { items: [] } });
   });
   await page.goto("/app/projects/project_one/settings");
+  for (const title of [
+    "Project details",
+    "Project members",
+    "Delete project",
+  ]) {
+    await expect(page.getByRole("region", { name: title })).toHaveClass(
+      "settings-panel",
+    );
+  }
   await page.getByLabel("Project name", { exact: true }).fill(" ");
   await expect(page.getByRole("button", { name: "Save name" })).toBeDisabled();
   await page

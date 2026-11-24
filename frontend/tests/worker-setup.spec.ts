@@ -196,10 +196,21 @@ test("worker setup reviews pinned tools and skills before applying them", async 
   await expect(
     page.getByRole("region", { name: "Worker settings" }),
   ).toBeVisible();
+  for (const name of ["Idle shutdown", "Network access", "Worker controls"]) {
+    await expect(page.getByRole("region", { name, exact: true })).toHaveClass(
+      "settings-panel",
+    );
+  }
   expect(
     (await page.getByRole("region", { name: "Worker settings" }).boundingBox())!
       .width,
   ).toBeGreaterThan(tabsWidth - 50);
+  await page.setViewportSize({ width: 320, height: 840 });
+  await expect(tabs.getByRole("link", { name: "Activity" })).toBeInViewport();
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(320);
+  await page.setViewportSize({ width: 896, height: 900 });
   await openSetup();
   expect(
     await dialog.evaluate(

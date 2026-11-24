@@ -47,6 +47,25 @@ section {
   border: 1px solid var(--border);
   padding: 2rem;
 }
+[data-embedded="true"] {
+  width: min(100%, 28rem);
+  margin-block: clamp(1rem, 10vh, 4rem);
+}
+[data-embedded="true"] section {
+  border-radius: 8px;
+  padding: clamp(1rem, 5vw, 1.5rem);
+}
+[data-embedded="true"] h1 {
+  margin-bottom: 0.5rem;
+  font-size: 1rem;
+}
+[data-embedded="true"] p {
+  font-size: 0.875rem;
+  margin-bottom: 0;
+}
+[data-embedded="true"] details {
+  margin-top: 0.75rem;
+}
 h1 {
   margin: 0 0 1rem;
   font-size: clamp(1.5rem, 4vw, 1.875rem);

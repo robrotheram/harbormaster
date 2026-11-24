@@ -217,10 +217,7 @@ function WorkerDetail({
           )}
         </div>
       </header>
-      <nav
-        aria-label="Worker sections"
-        className="grid grid-cols-[1fr_1.25fr_1fr_1fr_1fr] border-b sm:flex sm:gap-x-3"
-      >
+      <nav aria-label="Worker sections" className="settings-tabs">
         {panels.map(([value, label]) => (
           <Link
             key={label}
@@ -233,7 +230,6 @@ function WorkerDetail({
               includeSearch: true,
               explicitUndefined: true,
             }}
-            className="border-b-2 border-transparent inline-flex min-h-11 items-center justify-center px-1 sm:px-3 text-sm text-muted-foreground hover:text-foreground focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-ring aria-[current=page]:border-primary aria-[current=page]:font-medium aria-[current=page]:text-foreground"
           >
             {label}
           </Link>
@@ -272,72 +268,71 @@ function WorkerDetail({
       )}
       {panel === "settings" && (
         <div className="min-w-0 space-y-4">
-          <div className="min-w-0 rounded-md border bg-card p-4 sm:p-5">
-            <WorkspaceSettings
-              key={tab}
-              initialSection={tab === "subscriptions" ? tab : "worker"}
-              workspace={worker}
-              onSaved={() => {
-                refresh();
-                setMessage("Worker settings saved.");
-              }}
-            />
-          </div>
-          <div className="min-w-0 divide-y rounded-md border bg-card">
-            <section
-              className="space-y-3 p-4 sm:p-5"
-              aria-label="Worker controls"
-            >
-              <h2 className="font-semibold">Worker controls</h2>
-              <p className="break-all font-mono text-xs text-muted-foreground">
-                {worker.id}
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {worker.ready && consoleEnabled && (
-                  <Button
-                    variant="outline"
-                    disabled={busy}
-                    onClick={() => void operate("pair")}
-                  >
-                    Connect T3 desktop
-                  </Button>
-                )}
-                {worker.ready &&
-                  !consoleEnabled &&
-                  worker.agent_kind === "codex" && (
-                    <Button
-                      variant="outline"
-                      disabled={busy}
-                      onClick={() => void operate("enable")}
-                    >
-                      Enable T3
-                    </Button>
-                  )}
-                {!worker.shared && (
-                  <Button
-                    variant="outline"
-                    disabled={busy}
-                    onClick={() => setDialog("branch")}
-                  >
-                    Branch worker
-                  </Button>
-                )}
+          <WorkspaceSettings
+            key={tab}
+            initialSection={tab === "subscriptions" ? tab : "worker"}
+            workspace={worker}
+            onSaved={() => {
+              refresh();
+              setMessage("Worker settings saved.");
+            }}
+          />
+          <section className="settings-panel" aria-labelledby="worker-controls">
+            <h2 id="worker-controls" className="settings-panel-title">
+              Worker controls
+            </h2>
+            <p className="break-all font-mono text-xs text-muted-foreground">
+              {worker.id}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {worker.ready && consoleEnabled && (
                 <Button
                   variant="outline"
-                  onClick={() => {
-                    void navigator.clipboard
-                      .writeText(worker.id)
-                      .then(() => setMessage("Worker ID copied."), setError);
-                  }}
+                  disabled={busy}
+                  onClick={() => void operate("pair")}
                 >
-                  Copy worker ID
+                  Connect T3 desktop
                 </Button>
-              </div>
-            </section>
-            {!worker.shared && (
-              <div className="flex flex-wrap items-start justify-between gap-3 p-4 sm:p-5">
+              )}
+              {worker.ready &&
+                !consoleEnabled &&
+                worker.agent_kind === "codex" && (
+                  <Button
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => void operate("enable")}
+                  >
+                    Enable T3
+                  </Button>
+                )}
+              {!worker.shared && (
+                <Button
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => setDialog("branch")}
+                >
+                  Branch worker
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                onClick={() => {
+                  void navigator.clipboard
+                    .writeText(worker.id)
+                    .then(() => setMessage("Worker ID copied."), setError);
+                }}
+              >
+                Copy worker ID
+              </Button>
+            </div>
+          </section>
+          {!worker.shared && (
+            <section className="settings-panel" aria-labelledby="remove-worker">
+              <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h2 className="font-semibold">Remove worker</h2>
+                  <h2 id="remove-worker" className="settings-panel-title">
+                    Remove worker
+                  </h2>
                   <p className="mt-1 text-sm text-muted-foreground">
                     Remove the worker from the project. Private disks are
                     retained.
@@ -352,8 +347,8 @@ function WorkerDetail({
                   Delete worker
                 </Button>
               </div>
-            )}
-          </div>
+            </section>
+          )}
         </div>
       )}
       {panel === "activity" && (

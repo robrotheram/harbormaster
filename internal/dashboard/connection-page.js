@@ -18,6 +18,8 @@
     document.getElementById("http-status").hidden = !status;
     document.getElementById("http-status").textContent = status || "";
     document.getElementById("support").hidden = false;
+    const recovery = document.getElementById("embedded-recovery");
+    if (recovery) recovery.hidden = false;
     if (page.dataset.embedded !== "true") heading.focus();
   }
   if (page.dataset.code) {
@@ -39,6 +41,8 @@
     document.title = initialTitle + " · Workbench";
     document.getElementById("status").textContent = initialBody;
     document.getElementById("support").hidden = true;
+    const recovery = document.getElementById("embedded-recovery");
+    if (recovery) recovery.hidden = true;
     const timeout = setTimeout(() => controller.abort(), 20000);
     try {
       const response = await fetch("/connect", {

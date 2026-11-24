@@ -85,19 +85,28 @@ async function expectWorkspaceWidth(page: Page) {
     const panel = document
       .querySelector('.hermes-setup [role="tabpanel"][data-state="active"]')!
       .getBoundingClientRect();
+    const group = document
+      .querySelector(
+        '.hermes-setup [role="tabpanel"][data-state="active"] .settings-panel',
+      )!
+      .getBoundingClientRect();
     return {
       expectedGutter: Math.max(0, (header.width - 1800) / 2) + 24,
       leftGutter: setup.left - header.left,
       rightGutter: header.right - setup.right,
       panelLeft: panel.left - setup.left,
       panelRight: setup.right - panel.right,
+      groupLeft: group.left - setup.left,
+      groupRight: setup.right - group.right,
       overflow: document.documentElement.scrollWidth > innerWidth,
     };
   });
   expect(bounds.leftGutter).toBe(bounds.expectedGutter);
   expect(bounds.rightGutter).toBe(bounds.expectedGutter);
-  expect(bounds.panelLeft).toBe(1);
-  expect(bounds.panelRight).toBe(1);
+  expect(bounds.panelLeft).toBe(0);
+  expect(bounds.panelRight).toBe(0);
+  expect(bounds.groupLeft).toBe(0);
+  expect(bounds.groupRight).toBe(0);
   expect(bounds.overflow).toBe(false);
 }
 
@@ -376,10 +385,9 @@ test("failed status refresh disables Matrix actions until recovery and preserves
   await expect(page.getByText("Unknown", { exact: true })).toHaveCount(2);
   await page.getByRole("tab", { name: "Matrix", exact: true }).click();
   await expect(
-    page.getByRole("heading", {
-      name: "Connection status unavailable",
-      exact: true,
-    }),
+    page
+      .getByRole("region", { name: "Matrix controls", exact: true })
+      .getByText("Connection status unavailable", { exact: true }),
   ).toBeVisible();
   await expect(
     page.getByText("The bot is listening in your configured rooms."),

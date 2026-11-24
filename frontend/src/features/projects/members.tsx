@@ -42,8 +42,10 @@ export function ProjectMembers({ project }: { project: string }) {
     },
   });
   return (
-    <section className="space-y-4" aria-labelledby="members-title">
-      <h2 id="members-title">Project members</h2>
+    <section className="settings-panel" aria-labelledby="members-title">
+      <h2 id="members-title" className="settings-panel-title">
+        Project members
+      </h2>
       <p className="text-sm text-muted-foreground">
         Only explicitly invited members can access this project. Invitations
         appear after signing in with the invited email address; no email is

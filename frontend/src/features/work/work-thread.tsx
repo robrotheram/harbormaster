@@ -151,24 +151,33 @@ export function WorkConversation({
   workspaceVisible.current = workspaceOpen;
   const [unreadReply, setUnreadReply] = useState(false);
   const observedReplies = useRef(new Map<string, string>());
-  const [reply, setReply] = useState({ attempt: "", content: "" });
-  const recordReply = useCallback((attempt: string, content: string) => {
-    const previous = observedReplies.current.get(attempt);
-    if (
-      previous !== undefined &&
-      content &&
-      content !== previous &&
-      workspaceVisible.current
-    )
-      setUnreadReply(true);
-    if (content || previous === undefined)
-      observedReplies.current.set(attempt, content);
-    setReply((old) =>
-      old.attempt === attempt && old.content === content
-        ? old
-        : { attempt, content },
-    );
-  }, []);
+  const [reply, setReply] = useState({
+    attempt: "",
+    content: "",
+    loading: true,
+  });
+  const recordReply = useCallback(
+    (attempt: string, content: string, loading: boolean) => {
+      const previous = observedReplies.current.get(attempt);
+      if (
+        previous !== undefined &&
+        content &&
+        content !== previous &&
+        workspaceVisible.current
+      )
+        setUnreadReply(true);
+      if (content || previous === undefined)
+        observedReplies.current.set(attempt, content);
+      setReply((old) =>
+        old.attempt === attempt &&
+        old.content === content &&
+        old.loading === loading
+          ? old
+          : { attempt, content, loading },
+      );
+    },
+    [],
+  );
   const selectElement = useCallback(
     (text: string) => {
       setMessage((old) => (old ? old + "\n" + text : text));
@@ -543,6 +552,37 @@ export function WorkConversation({
       </section>
     );
   const canContinue = canContinueWork(item);
+  const analysisLoading =
+    (attemptQuery.isPending && !!(route.attempt || item.latest_attempt_id)) ||
+    (!!fileAttempt?.task_id &&
+      (reply.attempt !== fileAttempt.id || reply.loading));
+  let analysisTitle = "No visualizations yet";
+  let analysisMessage =
+    canContinue && controlsAgent
+      ? "Ask your agent for a chart, map, or image in the message below."
+      : "Check Files or Report for other results from this run.";
+  if (route.attempt) {
+    analysisTitle = fileAttempt
+      ? "No visualizations in this revision"
+      : "Revision unavailable";
+    analysisMessage = fileAttempt
+      ? "Check Files or Report for other results from this revision."
+      : "Open the conversation to see the current run.";
+  }
+  if (analysisLoading) {
+    analysisTitle = "Loading analysis results…";
+    analysisMessage = "Checking the run for charts, maps, and images.";
+  }
+  if (running && (!route.attempt || route.attempt === latest?.id)) {
+    analysisTitle =
+      latest?.state === "cancel_requested"
+        ? "Stopping the run…"
+        : latest?.task_id
+          ? "Agent is working"
+          : "Preparing the worker";
+    analysisMessage =
+      "Any charts, maps, or images the agent shares will appear here as they become available.";
+  }
   const revisionOnWorker =
     !revision || item.workspace_id === revision.worker_id;
   function startEditRevision(edit: WorkEdit) {
@@ -1052,9 +1092,31 @@ export function WorkConversation({
                   />
                 )}
                 {!hasOutput && (
-                  <p className="text-sm text-muted-foreground">
-                    Visualizations appear here when the agent shares them.
-                  </p>
+                  <div className="analysis-awaiting">
+                    <div className="analysis-awaiting-plot" aria-hidden="true">
+                      <span />
+                      <span />
+                      <span />
+                      <span />
+                      <span />
+                    </div>
+                    {attemptQuery.isError ? (
+                      <>
+                        <h3>Analysis results unavailable</h3>
+                        <ErrorNotice
+                          error={attemptQuery.error}
+                          message="Workbench could not load the run history for this analysis."
+                          onRetry={() => void attemptQuery.refetch()}
+                          retrying={attemptQuery.isFetching}
+                        />
+                      </>
+                    ) : (
+                      <div role="status" className="space-y-2">
+                        <h3>{analysisTitle}</h3>
+                        <p>{analysisMessage}</p>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             )
@@ -1505,7 +1567,7 @@ function RunConversation({
   attempt: Attempt;
   action?: ReactNode;
   onLoad?: () => void;
-  onReply?: (attempt: string, content: string) => void;
+  onReply?: (attempt: string, content: string, loading: boolean) => void;
   onOlder: () => void;
   onAsk: (message: string) => void;
   onActivity: () => void;
@@ -1598,16 +1660,18 @@ function RunConversation({
       record.kind !== "assistant.progress" ||
       !replyTexts.has(record.content?.trim()),
   );
+  const loadResult =
+    !!attempt.task_id &&
+    !active &&
+    !records.some((r) => r.kind === "assistant.message") &&
+    history.isSuccess &&
+    !history.data?.cache;
   const result = useQuery(
     resultOptions(
       project,
       attempt.workspace_id,
       attempt.task_id,
-      !!attempt.task_id &&
-        !activeAttempt(attempt.state) &&
-        !records.some((r) => r.kind === "assistant.message") &&
-        history.isSuccess &&
-        !history.data?.cache,
+      loadResult,
       true,
     ),
   );
@@ -1618,9 +1682,11 @@ function RunConversation({
       .join("\n\n") ||
     result.data?.content ||
     "";
+  const replyLoading =
+    (!!task_id && history.isPending) || (loadResult && result.isPending);
   useEffect(() => {
-    onReply?.(attempt.id, replyContent);
-  }, [onReply, attempt.id, replyContent]);
+    onReply?.(attempt.id, replyContent, replyLoading);
+  }, [onReply, attempt.id, replyContent, replyLoading]);
   const lastMessage = records
     .filter((r) => r.kind === "user.message" || r.kind === "assistant.message")
     .at(-1);

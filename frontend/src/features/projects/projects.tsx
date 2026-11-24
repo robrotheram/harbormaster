@@ -4,7 +4,7 @@ import { ProjectInvitations } from "./members";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ArrowUpRight, FolderGit2, Plus, Search, Network } from "lucide-react";
+import { ArrowUpRight, Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Empty, ErrorNotice, useRequestKey } from "@/shared/components";
@@ -62,32 +62,13 @@ export function Projects({
       <div className="page-title">
         <div>
           <h1>Projects</h1>
+          <p>Open a project to continue work or review its results.</p>
         </div>
         <Button onClick={onCreate}>
           <Plus />
           New project
         </Button>
       </div>
-      {!!projects.length && (
-        <div className="factory-intro">
-          <div>
-            <span className="intro-symbol">
-              <FolderGit2 size={20} />
-            </span>
-            <div>
-              <h2>Your projects. One place for your work.</h2>
-              <p>
-                Follow the work, review the results, and coordinate with Hermes.
-              </p>
-            </div>
-          </div>
-          <Link to="/infrastructure">
-            <Network size={14} />
-            View infrastructure
-            <ArrowUpRight size={14} />
-          </Link>
-        </div>
-      )}
       {!!projects.length && (
         <div className="inventory-toolbar">
           <span aria-live="polite">

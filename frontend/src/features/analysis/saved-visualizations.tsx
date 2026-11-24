@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { BarChart3, Map, MessageSquare, Plus, Table2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Empty } from "@/shared/components";
 import type { VisualizationReference, VisualizationRevision } from "./api";
 import { DataError } from "./data-state";
 import {
@@ -131,9 +132,9 @@ export function SavedVisualizations({
           </div>
         </div>
       ) : (
-        <p className="text-sm text-muted-foreground">
-          Select Save on a visualization to keep it here.
-        </p>
+        <Empty title="No saved visualizations">
+          Select Save on a chart, map, or table to keep it here for later.
+        </Empty>
       )}
     </div>
   );

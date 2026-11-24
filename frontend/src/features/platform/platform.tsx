@@ -18,12 +18,12 @@ const guides = [
   {
     icon: ShieldCheck,
     title: "Review before accepting",
-    body: "Use Issue board to track progress and Reviews to inspect completed work. Check the preview, code and reports. Choose Approve when the result meets your requirements, or Request changes with specific feedback.",
+    body: "Track tasks in Overview. When a task is ready for review, choose Review to open its workspace and inspect the result. Choose Approve this revision if the work is ready, or Request changes and describe what needs to change.",
   },
   {
     icon: Boxes,
     title: "Choose a project and worker",
-    body: "Open a project, then use Workers to create an isolated workspace for T3 and Codex. Choose a connection profile to control network access.",
+    body: "Open a project, choose Workers, then select Create worker. In worker Settings, choose a network profile to control which services it can reach.",
   },
   {
     icon: Monitor,
@@ -80,14 +80,13 @@ export function GettingStarted() {
           <section className="rounded-xl border bg-background p-5">
             <h2 className="text-sm font-semibold">Operator troubleshooting</h2>
             <p className="mt-3 text-xs leading-6 text-muted-foreground">
-              Use Workers → Subscription to save your Codex ChatGPT login and
-              load it into a worker. If it expires, import a current login. For
-              legacy Vault-managed credentials, ask an administrator to follow
-              docs/subscription-agents.md.
+              Open Platform → Connections → Agent subscriptions to save your
+              provider login. To load it onto a worker, open that worker’s
+              Settings → Subscriptions.
             </p>
             <p className="mt-3 text-xs leading-6 text-muted-foreground">
-              Expired logins need refreshing through the native provider CLI.
-              There is no automatic API-billing fallback.
+              If a login expires, refresh it in the provider’s CLI and import
+              the updated login.
             </p>
           </section>
           <section className="rounded-xl border bg-background p-5">
