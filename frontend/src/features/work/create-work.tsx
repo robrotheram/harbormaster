@@ -166,6 +166,7 @@ export function CreateWork({
               onChange={(e) => setKind(e.target.value as WorkCreate["kind"])}
             >
               <option value="software">Software</option>
+              <option value="data-science">Data science</option>
               <option value="research">Research</option>
               <option value="digest">Digest</option>
             </NativeSelect>

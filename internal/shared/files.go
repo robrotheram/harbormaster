@@ -3,9 +3,36 @@ package shared
 import (
 	"path"
 	"strings"
+	"unicode/utf8"
 )
 
 const HandoffLimit = 1 << 20
+const ReportLimit = 256 << 10
+
+type ReportWrite struct {
+	Path     string `json:"path"`
+	Markdown string `json:"markdown"`
+	// A nil Previous creates a file. An edit must match the last read revision.
+	Previous *string `json:"previous,omitempty"`
+}
+
+func (r ReportWrite) Valid() bool {
+	if !ValidProjectFile(r.Path) || !utf8.ValidString(r.Path) || strings.HasPrefix(r.Path, "work-requests/") {
+		return false
+	}
+	ext := strings.ToLower(path.Ext(r.Path))
+	if ext != ".md" && ext != ".markdown" {
+		return false
+	}
+	if r.Previous == nil {
+		if path.Dir(r.Path) != "reports" {
+			return false
+		}
+	} else if len(*r.Previous) > ReportLimit {
+		return false
+	}
+	return strings.TrimSpace(r.Markdown) != "" && len(r.Markdown) <= ReportLimit && !strings.ContainsRune(r.Markdown, 0)
+}
 
 type FileHandoff struct {
 	Path    string `json:"path"`

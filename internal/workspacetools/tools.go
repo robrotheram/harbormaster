@@ -10,6 +10,8 @@ import (
 
 func Run(ctx context.Context, name string, args []string, out, errOut io.Writer) error {
 	switch name {
+	case "analysis", "workbench-analysis":
+		return Analysis(ctx, args, out)
 	case "hermes-runner", "hermes-matrix", "hermes-digest", "hermes-consume":
 		return Hermes(name, args)
 	case "preview", "workbench-preview":

@@ -45,6 +45,7 @@ type Config struct {
 type Server struct {
 	coordination    *coordination.Service
 	schedulerCursor orchestration.Cursor
+	workReady       chan struct{}
 	eventSeen       map[string]map[string]bool
 	eventState      map[string]string
 	matrixSetup     matrixOnboarding
@@ -90,7 +91,7 @@ func New(s *store.Store, rt protocol.Runtime, c Config) *Server {
 	tokens := map[string]string{}
 	maps.Copy(tokens, c.ProjectTokens)
 	c.ProjectTokens = tokens
-	server := &Server{Store: s, Runtime: rt, cfg: c, now: func() time.Time { return time.Now().UTC() }, health: map[string]map[string]any{}}
+	server := &Server{Store: s, Runtime: rt, cfg: c, now: func() time.Time { return time.Now().UTC() }, health: map[string]map[string]any{}, workReady: make(chan struct{}, 1)}
 	server.coordination = &coordination.Service{DB: s.DB, Blobs: server.projectBlobStore}
 	return server
 }
@@ -201,6 +202,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /internal/subscriptions/resolve", s.resolveSubscription)
 	s.registerBoard(secured)
 	s.registerCoordinationRuntime(secured)
+	s.registerAnalysis(secured)
 	s.registerFactoryEnvironments(secured)
 	s.registerDeletion(secured)
 	s.registerTerminals(secured)
@@ -556,9 +558,12 @@ func (s *Server) Reconcile(ctx context.Context) {
 	}
 }
 func (s *Server) Run(ctx context.Context) {
+	var scheduler sync.WaitGroup
+	scheduler.Go(func() { s.runOrchestration(ctx) })
+	defer scheduler.Wait()
+
 	s.probeServices(ctx)
 	s.Reconcile(ctx)
-	s.tickOrchestration(ctx)
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	for {
@@ -568,7 +573,6 @@ func (s *Server) Run(ctx context.Context) {
 		case <-ticker.C:
 			tick, c := context.WithTimeout(ctx, 30*time.Second)
 			s.Reconcile(tick)
-			s.tickOrchestration(tick)
 			s.probeServices(tick)
 			c()
 		}

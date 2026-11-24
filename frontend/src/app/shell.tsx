@@ -120,7 +120,7 @@ export function ProjectShell({
 }: {
   projectID?: string;
   workerID?: string;
-  workerPanel?: "environment" | "settings" | "activity";
+  workerPanel?: "environment" | "datasets" | "settings" | "activity";
   globalSettings?: boolean;
   section?: string;
   globalPage?:

@@ -10,6 +10,9 @@ type ControlHandoff struct {
 	Actor string    `json:"actor"`
 	At    time.Time `json:"at"`
 }
+
+const WorkKindDataScience = "data-science"
+
 type WorkItem struct {
 	ControllerID        string           `json:"controller_id,omitempty"`
 	ReviewerID          string           `json:"reviewer_id,omitempty"`

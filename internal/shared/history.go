@@ -2,6 +2,9 @@ package shared
 
 import "time"
 
+// HistoryWait bounds a worker history request that waits for new records.
+const HistoryWait = 5 * time.Second
+
 // HistoryRecord contains private transcript data from the worker recorder.
 type HistoryRecord struct {
 	// Purpose is assigned by the control plane from operator metadata only.

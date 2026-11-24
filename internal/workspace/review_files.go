@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"path"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -99,26 +100,32 @@ func (m *Manager) inspectReviewFile(w http.ResponseWriter, r *http.Request) {
 
 // Refuse links in every component, including links to private files inside the root.
 func openReviewFile(root *os.Root, name string) (*os.File, error) {
-	base, err := root.Open(".")
+	dir, err := openReviewDirectory(root, path.Dir(name))
 	if err != nil {
 		return nil, err
 	}
-	defer base.Close()
-	dir := int(base.Fd())
-	for prefix, rest, ok := strings.Cut(name, "/"); ok; prefix, rest, ok = strings.Cut(name, "/") {
-		next, err := unix.Openat(dir, prefix, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
-		if dir != int(base.Fd()) {
-			unix.Close(dir)
-		}
+	defer dir.Close()
+	return openReviewChild(dir, path.Base(name))
+}
+
+func openReviewDirectory(root *os.Root, name string) (*os.File, error) {
+	dir, err := root.Open(".")
+	if err != nil || name == "." {
+		return dir, err
+	}
+	for segment := range strings.SplitSeq(name, "/") {
+		next, err := unix.Openat(int(dir.Fd()), segment, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+		dir.Close()
 		if err != nil {
 			return nil, err
 		}
-		dir, name = next, rest
+		dir = os.NewFile(uintptr(next), segment)
 	}
-	if dir != int(base.Fd()) {
-		defer unix.Close(dir)
-	}
-	fd, err := unix.Openat(dir, name, unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_NONBLOCK|unix.O_CLOEXEC, 0)
+	return dir, nil
+}
+
+func openReviewChild(dir *os.File, name string) (*os.File, error) {
+	fd, err := unix.Openat(int(dir.Fd()), name, unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_NONBLOCK|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return nil, err
 	}

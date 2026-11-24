@@ -30,6 +30,9 @@ func Grant(secret, workspace, generation string) string {
 }
 
 func AllowedAgentPath(method, path string) bool {
+	if strings.HasPrefix(path, "/v1/analysis/") {
+		return shared.AnalysisAgentRoute(method, path)
+	}
 	partsFactory := strings.Split(strings.TrimPrefix(path, "/"), "/")
 	if len(partsFactory) >= 2 && partsFactory[0] == "v1" {
 		switch partsFactory[1] {
@@ -71,7 +74,7 @@ func AllowedAgentPath(method, path string) bool {
 	if path == "/v1/files" {
 		return method == "GET"
 	}
-	if path == "/v1/console/enable" || path == "/v1/files/read" || path == "/v1/files/inspect" || path == "/v1/files/write-new" || path == "/v1/tasks/from-file" {
+	if path == "/v1/console/enable" || path == "/v1/files/read" || path == "/v1/files/inspect" || path == "/v1/files/write-new" || path == "/v1/files/write-report" || path == "/v1/tasks/from-file" {
 		return method == "POST"
 	}
 	if path == "/v1/activity" {
@@ -98,6 +101,12 @@ func AgentQuery(method, path, raw string) (string, error) {
 	if err != nil || len(raw) > 8192 {
 		return "", fmt.Errorf("invalid workspace query")
 	}
+	if method == "POST" && path == shared.AnalysisUploadPath {
+		if len(q) != 1 || len(q["name"]) != 1 || !shared.AnalysisFilename(q.Get("name")) {
+			return "", fmt.Errorf("invalid dataset name")
+		}
+		return q.Encode(), nil
+	}
 	for key, values := range q {
 		if method != "GET" || len(values) != 1 {
 			return "", fmt.Errorf("invalid workspace query")
@@ -108,6 +117,9 @@ func AgentQuery(method, path, raw string) (string, error) {
 			switch key {
 			case "history":
 				allowed = value == "1"
+			case "wait":
+				allowed = value == "1" && q.Get("history") == "1" && shared.ValidID(q.Get("episode")) &&
+					!q.Has("before") && !q.Has("until") && q.Get("order") != "desc"
 			case "order":
 				allowed = value == "asc" || value == "desc"
 			case "episode":
@@ -128,6 +140,12 @@ func AgentQuery(method, path, raw string) (string, error) {
 }
 
 func AgentBodyLimit(path string) int64 {
+	if path == shared.AnalysisUploadPath {
+		return shared.AnalysisUploadLimit
+	}
+	if strings.HasPrefix(path, "/v1/analysis/") {
+		return shared.AnalysisRequestLimit
+	}
 	if strings.HasPrefix(path, "/v1/coordination/") {
 		return 100000
 	}
@@ -137,6 +155,9 @@ func AgentBodyLimit(path string) int64 {
 	if path == "/v1/files/write-new" {
 		return 1500 << 10
 	}
+	if path == "/v1/files/write-report" {
+		return 4 << 20
+	}
 	return 70 << 10
 }
 
@@ -145,6 +166,9 @@ func AgentBodyLimit(path string) int64 {
 func AgentResponseLimit(path string) int64 {
 	if _, tail, ok := strings.Cut(path, "/agent/"); ok {
 		path = "/" + tail
+	}
+	if strings.HasPrefix(path, "/v1/analysis/") {
+		return shared.AnalysisResponseLimit
 	}
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 	if len(parts) == 4 && parts[0] == "v1" && parts[1] == "services" && shared.ValidID(parts[2]) && parts[3] == "fetch" {

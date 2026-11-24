@@ -242,7 +242,7 @@ export function WorkFiles({
                       <p role="status">Loading workspace files…</p>
                     ) : workspace.data?.truncated ? (
                       <p>Showing the first 1,000 project files.</p>
-                    ) : !workspace.data?.paths.length ? (
+                    ) : !groups[i].files.length ? (
                       <p>No workspace files to show.</p>
                     ) : null)}
                   {!!group.files.length && (

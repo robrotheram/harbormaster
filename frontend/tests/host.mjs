@@ -48,7 +48,7 @@ const vite = await preview({
     strictPort: true,
     headers: {
       "Content-Security-Policy":
-        "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src 'self'; frame-src http://*.localhost:*; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+        "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https://tiles.openfreemap.org; connect-src 'self' https://tiles.openfreemap.org; worker-src 'self'; frame-src http://*.localhost:*; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
     },
   },
 });

@@ -5071,6 +5071,12 @@
   max-width: 60rem;
   margin-inline: auto;
 }
+.analysis-results .workspace-output {
+  padding: 0;
+}
+.analysis-results .workspace-output > * {
+  max-width: none;
+}
 .workspace-output-file {
   padding-block: 16px;
 }

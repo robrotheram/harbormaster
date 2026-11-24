@@ -22,6 +22,7 @@ import (
 
 	"agent-workbench/internal/egress"
 	"agent-workbench/internal/shared"
+	"agent-workbench/internal/workspace/analysis"
 	"agent-workbench/internal/workspace/taskstore"
 	_ "modernc.org/sqlite"
 	"net"
@@ -49,6 +50,8 @@ type Manager struct {
 	terminals        map[string]*terminalSession
 	applications     map[string]*applicationProcess
 	historyCollectMu sync.Mutex
+	historyNotifyMu  sync.Mutex
+	historyChanged   chan struct{}
 	historyStop      chan struct{}
 	historyT3Seen    map[string]string
 	historyT3Offset  int
@@ -63,6 +66,10 @@ type Manager struct {
 	db               *sql.DB
 	tasks            *taskstore.Repository
 	root             *os.Root
+	analysis         *analysis.Store
+	analysisJobs     int
+	analysisCtx      context.Context
+	analysisCancel   context.CancelFunc
 	mu               sync.Mutex
 	serial           sync.Mutex
 	cancels          map[string]context.CancelFunc
@@ -73,6 +80,7 @@ type Manager struct {
 	console          *console
 }
 type submit struct {
+	DataScience         bool   `json:"-"`
 	Model               string `json:"model,omitempty"`
 	ReasoningEffort     string `json:"reasoning_effort,omitempty"`
 	SpecificationDigest string `json:"-"`
@@ -175,6 +183,8 @@ func New(cfg Config) (*Manager, error) {
 			return nil, err
 		}
 	}
+	m.analysis = analysis.New(cfg.DataDir, cfg.Token, shared.Env("WORKBENCH_ANALYSIS_PYTHON", "/opt/workbench-analysis/bin/python"))
+	m.analysisCtx, m.analysisCancel = context.WithCancel(context.Background())
 	owned = true
 	m.wg.Add(1)
 	go m.collectHistory()
@@ -192,6 +202,7 @@ func (m *Manager) Close() error {
 		close(m.historyStop)
 	}
 	m.closed = true
+	m.analysisCancel()
 	if m.setupCancel != nil {
 		m.setupCancel()
 	}
@@ -266,10 +277,10 @@ func (m *Manager) submitLocked(s submit) (shared.Task, int, error) {
 	}
 	m.history(shared.HistoryRecord{ID: stableHistoryID(id, "user.message", "prompt"), EpisodeID: id, Source: source, Kind: "user.message", Role: "user", Content: s.Instruction})
 	m.event("workspace", "task.queued", id, "", "")
-	go m.execute(ctx, id, s.Instruction, s.Provider, s.Model, s.ReasoningEffort)
+	go m.execute(ctx, id, s.Instruction, s.Provider, s.Model, s.ReasoningEffort, s.DataScience)
 	return accepted.Task, 202, nil
 }
-func (m *Manager) execute(ctx context.Context, id, instruction, provider, model, effort string) {
+func (m *Manager) execute(ctx context.Context, id, instruction, provider, model, effort string, dataScience bool) {
 	defer m.wg.Done()
 	m.serial.Lock()
 	defer m.serial.Unlock()
@@ -299,9 +310,12 @@ func (m *Manager) execute(ctx context.Context, id, instruction, provider, model,
 	}
 	var result, code string
 	if provider == "" {
+		if dataScience {
+			instruction = dataScienceInstruction(instruction)
+		}
 		result, code = m.run(ctx, id, instruction)
 	} else {
-		result, code = m.runNativeTask(ctx, provider, instruction, id, model, effort)
+		result, code = m.runNativeTask(ctx, provider, instruction, id, model, effort, dataScience)
 	}
 	var changes *shared.TaskChanges
 	if before != "" {
@@ -417,7 +431,7 @@ func (m *Manager) activityLocked() shared.Activity { return m.activitySnapshotLo
 // Managed previews may run beside agent work, but still prevent idle shutdown.
 func (m *Manager) workActivityLocked() shared.Activity { return m.activitySnapshotLocked(true) }
 func (m *Manager) activitySnapshotLocked(allowApplications bool) shared.Activity {
-	a := shared.Activity{Known: true, LastActivity: m.lastActivity}
+	a := shared.Activity{Known: true, LastActivity: m.lastActivity, BackgroundJobs: m.analysisJobs}
 	if m.setupCancel != nil {
 		a.BackgroundJobs++
 	}
@@ -541,6 +555,9 @@ func (m *Manager) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { shared.JSON(w, 200, map[string]string{"status": "ok"}) })
 	api := http.NewServeMux()
+	m.analysis.Register(func(pattern string, handler http.HandlerFunc) {
+		api.HandleFunc(pattern, m.analysisActivity(handler))
+	})
 	api.HandleFunc("GET /v1/setup", m.setupRoute)
 	api.HandleFunc("POST /v1/setup", m.setupRoute)
 	api.HandleFunc("POST /v1/terminals", m.createTerminal)
@@ -557,6 +574,7 @@ func (m *Manager) Handler() http.Handler {
 	api.HandleFunc("POST /v1/tasks/{id}/context", m.conversationContext)
 	api.HandleFunc("POST /v1/files/read", m.handoff)
 	api.HandleFunc("POST /v1/files/write-new", m.handoff)
+	api.HandleFunc("POST /v1/files/write-report", m.writeReport)
 	api.HandleFunc("GET /v1/files", m.listReviewFiles)
 	api.HandleFunc("POST /v1/files/inspect", m.inspectReviewFile)
 	api.HandleFunc("/v1/t3/{path...}", m.consoleProxy)

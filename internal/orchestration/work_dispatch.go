@@ -49,16 +49,13 @@ func (r Repository) TickWork(ctx context.Context, s *Scheduler) error {
 			unlock := s.Lock("work:"+p.a.WorkItemID, p.a.WorkspaceID)
 			defer unlock()
 			// Reload after obtaining the same lock used by API transitions.
-			attempts, e := r.Attempts(ctx, p.project, p.a.WorkItemID)
+			a, e := r.Attempt(ctx, p.project, p.a.WorkItemID, p.a.ID)
+			if errors.Is(e, sql.ErrNoRows) {
+				return
+			}
 			if e != nil {
 				failures = errors.Join(failures, e)
 				return
-			}
-			a := p.a
-			for _, fresh := range attempts {
-				if fresh.ID == a.ID {
-					a = fresh
-				}
 			}
 			if a.State == "failed" || a.State == "cancelled" || a.State == "awaiting_review" {
 				return
@@ -183,6 +180,9 @@ func (r Repository) TickWork(ctx context.Context, s *Scheduler) error {
 				provider, model, effort = a.Provider, a.Model, a.ReasoningEffort
 			}
 			payload := map[string]string{"instruction_path": path, "specification_digest": digest, "provider": provider, "idempotency_key": "work:" + a.ID}
+			if item.Kind == shared.WorkKindDataScience {
+				payload["work_kind"] = item.Kind
+			}
 			// Older workers reject unknown fields. Omit an unset model so the
 			// existing worker-default execution contract remains compatible.
 			if model != "" {

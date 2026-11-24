@@ -33,7 +33,7 @@ func (r Repository) CreateWork(ctx context.Context, item shared.WorkItem, key st
 		return shared.WorkItem{}, false, ErrInvalidWork
 	}
 	switch item.Kind {
-	case "software", "research", "digest":
+	case "software", "research", "digest", shared.WorkKindDataScience:
 	default:
 		return shared.WorkItem{}, false, ErrInvalidWork
 	}

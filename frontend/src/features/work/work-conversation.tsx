@@ -41,7 +41,13 @@ import type { Project } from "@/shared/types";
 import { workspaceOptions } from "@/features/workspaces/api";
 import { ProjectCompanion } from "@/features/project-assistant/companion";
 import { WorkConversation } from "./work-thread";
-import { workApi, workKeys, workOptions, type WorkCreate } from "./api";
+import {
+  workApi,
+  workKeys,
+  workOptions,
+  type WorkCreate,
+  type WorkItem,
+} from "./api";
 import { stages, workStage, workStatus, type WorkStage } from "./stages";
 
 export function Work({ project }: { project: Project }) {
@@ -79,13 +85,13 @@ function ProjectConversations({ project }: { project: Project }) {
   );
   const [assistant, setAssistant] = useState(false);
   const [startError, setStartError] = useState<unknown>();
-  const select = (id: string) => {
+  const select = (id: string, openWorkspace = false) => {
     setStartError(undefined);
     setWorklist(false);
     navigate({
       to: "/projects/$projectId/$section",
       params: { projectId: project.id, section: "work" },
-      search: { work: id },
+      search: { work: id, view: openWorkspace ? "workspace" : undefined },
     });
   };
   const order = useRef<string[]>([]);
@@ -432,9 +438,9 @@ function ProjectConversations({ project }: { project: Project }) {
               project={project}
               instruction={drafts[""] || ""}
               setInstruction={setThreadDraft}
-              onStarted={(id, error) => {
+              onStarted={(item, error) => {
                 setThreadDraft("");
-                select(id);
+                select(item.id, item.kind === "data-science");
                 setStartError(error);
               }}
             />
@@ -462,13 +468,13 @@ function NewConversation({
   instruction: string;
   setInstruction: Dispatch<SetStateAction<string>>;
   project: Project;
-  onStarted: (id: string, error?: unknown) => void;
+  onStarted: (item: WorkItem, error?: unknown) => void;
 }) {
   const [provider, setProvider] = useState("");
   const [model, setModel] = useState("");
   const [reasoning, setReasoning] = useState("");
   const [workspace, setWorkspace] = useState("");
-  const [kind, setKind] = useState<WorkCreate["kind"]>("software");
+  const [kind, setKind] = useState<WorkCreate["kind"] | "">("");
   const [outputs, setOutputs] = useState("");
   const workers = useQuery(workspaceOptions(project.id));
   const availableWorkers =
@@ -491,6 +497,7 @@ function NewConversation({
   const tooManyOutputs = outputPaths.length > 32;
   const mutation = useMutation({
     mutationFn: () => {
+      if (!kind) throw new Error("Choose a work type.");
       const payload = {
         project_id: project.id,
         workspace_id: selectedWorkspace,
@@ -508,11 +515,12 @@ function NewConversation({
       await client.invalidateQueries({
         queryKey: ["project", project.id, "workspaces"],
       });
-      onStarted(item.id, error);
+      onStarted(item, error);
     },
   });
   const canSend =
     !mutation.isPending &&
+    !!kind &&
     !!instruction.trim() &&
     !instructionTooLong &&
     !tooManyOutputs;
@@ -600,10 +608,16 @@ function NewConversation({
             <NativeSelect
               aria-label="Work type"
               value={kind}
-              onChange={(e) => setKind(e.target.value as WorkCreate["kind"])}
+              onChange={(e) =>
+                setKind(e.target.value as WorkCreate["kind"] | "")
+              }
               disabled={mutation.isPending}
             >
+              <option value="" disabled>
+                Choose a work type
+              </option>
               <option value="software">Software</option>
+              <option value="data-science">Data science</option>
               <option value="research">Research</option>
               <option value="digest">Digest</option>
             </NativeSelect>

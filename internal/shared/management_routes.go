@@ -28,6 +28,14 @@ type managementRoute struct {
 // not proxy the route or the API does not enforce a body limit at decode time.
 // Patterns with API limits use the ServeMux parameter names.
 var managementRoutes = []managementRoute{
+	{http.MethodGet, "/v1/workspaces/{id}/analysis/datasets", AnalysisRequestLimit, 0, noSharedHuman},
+	{http.MethodPost, "/v1/workspaces/{id}/analysis/datasets/upload", AnalysisUploadLimit, AnalysisUploadLimit, noSharedHuman},
+	{http.MethodGet, "/v1/workspaces/{id}/analysis/datasets/{dataset}/schema", AnalysisRequestLimit, 0, noSharedHuman},
+	{http.MethodPost, "/v1/workspaces/{id}/analysis/datasets/{dataset}/preview", AnalysisRequestLimit, AnalysisRequestLimit, noSharedHuman},
+	{http.MethodGet, "/v1/workspaces/{id}/analysis/artifacts/{artifact}", AnalysisRequestLimit, 0, noSharedHuman},
+	{http.MethodPost, "/v1/workspaces/{id}/analysis/artifacts/{artifact}/data", AnalysisRequestLimit, AnalysisRequestLimit, noSharedHuman},
+	{http.MethodGet, "/v1/projects/{id}/analysis/saved-visualizations", 1024, 0, noSharedHuman},
+	{http.MethodPost, "/v1/projects/{id}/analysis/saved-visualizations", 16384, 16384, noSharedHuman},
 	// Subscriptions are owner-scoped. Loading them on a worker still requires isolation.
 	{http.MethodGet, "/v1/subscriptions", 70 << 10, 0, sharedHumanExact},
 	{http.MethodPost, "/v1/subscriptions", 70 << 10, 70 << 10, sharedHumanExact},
@@ -52,9 +60,11 @@ var managementRoutes = []managementRoute{
 	{http.MethodGet, "/v1/work-items/{id}", 4096, 0, sharedHumanWorkItem},
 	{http.MethodGet, "/v1/work-items/{id}/attempts", 4096, 0, sharedHumanAttempts},
 	{http.MethodGet, "/v1/work-items/{id}/attempts/{attempt}/history", 4096, 0, noSharedHuman},
+	{http.MethodGet, "/v1/work-items/{id}/attempts/{attempt}/history/events", 4096, 0, noSharedHuman},
 	{http.MethodGet, "/v1/work-items/{id}/attempts/{attempt}/changes", 4096, 0, noSharedHuman},
 	{http.MethodGet, "/v1/work-items/{id}/files", 4096, 0, noSharedHuman},
 	{http.MethodPost, "/v1/work-items/{id}/files", 4096, 2048, noSharedHuman},
+	{http.MethodPost, "/v1/work-items/{id}/reports", 4 << 20, 4 << 20, noSharedHuman},
 	{http.MethodGet, "/v1/work-items/{id}/instruction", 4096, 0, noSharedHuman},
 	{http.MethodGet, "/v1/work-items/{id}/artifacts/{artifact}/content", 4096, 0, noSharedHuman},
 	{http.MethodPost, "/v1/work-items/{id}/responsibility", 4096, 4096, noSharedHuman},

@@ -685,6 +685,9 @@ func (f *Firecracker) agent(ctx context.Context, v *fcVM, method, path string, b
 	t := f.transport(v)
 	defer t.CloseIdleConnections()
 	c := &http.Client{Transport: t, Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	if strings.HasPrefix(path, shared.AnalysisUploadPath+"?") {
+		c.Timeout = shared.AnalysisUploadTimeout
+	}
 	r, err := http.NewRequestWithContext(ctx, method, "http://guest"+path, body)
 	if err != nil {
 		return 0, nil, err
@@ -753,6 +756,9 @@ func (f *Firecracker) Handler() http.Handler {
 		Start:              f.start, Stop: f.stop, ForceStop: f.forceStop, Inspect: f.inspectWorkspace,
 		BindNetworkPolicy: f.bindNetworkPolicy, Reconcile: f.reconcileNetwork, Capabilities: f.capabilities,
 		Proxy: f.proxy, Agent: f.proxyAgent,
+		UploadDataset: func(ctx context.Context, id, path string, body io.Reader) (int, []byte, *protocol.ControllerError) {
+			return f.proxyAgent(ctx, id, http.MethodPost, path, body)
+		},
 		StartBodyLimit: 32768, AllowEmptyStart: true, WorkspaceActionFallback: true,
 	})
 }

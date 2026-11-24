@@ -117,6 +117,7 @@ export function NewIssue({
             disabled={create.isPending}
           >
             <option value="software">Software</option>
+            <option value="data-science">Data science</option>
             <option value="research">Research</option>
             <option value="digest">Digest</option>
           </NativeSelect>

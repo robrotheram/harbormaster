@@ -85,6 +85,7 @@ func (m *Manager) captureHistoryLine(source, task string, b []byte) {
 		Item struct {
 			ID        string          `json:"id"`
 			Type      string          `json:"type"`
+			Text      string          `json:"text"`
 			Command   string          `json:"command"`
 			Output    string          `json:"aggregated_output"`
 			Name      string          `json:"tool"`
@@ -114,6 +115,11 @@ func (m *Manager) captureHistoryLine(source, task string, b []byte) {
 	tool, server := "", ""
 	input, output := "", ""
 	switch v.Type {
+	case "agent_message":
+		if source == "codex" && frame.Type == "item.completed" && validT3HistoryID.MatchString(v.ID) && strings.TrimSpace(v.Text) != "" {
+			m.history(shared.HistoryRecord{ID: stableHistoryID(task, "assistant.progress", v.ID), EpisodeID: task, Source: source, Kind: "assistant.progress", Role: "assistant", Content: v.Text})
+		}
+		return
 	case "command_execution":
 		tool = "terminal"
 		input = v.Command

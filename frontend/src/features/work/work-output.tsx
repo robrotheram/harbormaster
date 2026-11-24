@@ -1,3 +1,4 @@
+import { Visualization } from "@/features/analysis/visualization";
 import { ArtifactViewer } from "@/features/delivery/review-viewer";
 import type { Artifact, Attempt } from "./api";
 import { ChartContent, WorkspaceChart } from "./chart-content";
@@ -21,17 +22,27 @@ export function WorkOutput({
   sources,
   files,
   onAsk,
+  saveVisualizations = false,
 }: {
   project: string;
   attempt: Attempt;
   sources: ReplyOutput[];
   files: Artifact[];
   onAsk: (message: string) => void;
+  saveVisualizations?: boolean;
 }) {
   return (
     <section className="workspace-output" aria-label="Agent output">
-      {sources.map(({ name, path, label, source }) =>
-        path ? (
+      {sources.map(({ name, path, label, source, artifact }) =>
+        artifact ? (
+          <Visualization
+            key={artifact}
+            project={project}
+            worker={attempt.workspace_id}
+            id={artifact}
+            canSave={saveVisualizations}
+          />
+        ) : path ? (
           imagePath(path) ? (
             <WorkspaceImage
               key={path}

@@ -17,6 +17,7 @@ Start with the guide for the work you need to do.
 
 | Task | Guide |
 | --- | --- |
+| Explore worker datasets and publish visual reports | [Data science workbench](data-science-workbench.md) |
 | Attach T3 Code, branch a worker, or copy a file | [Interactive workers](interactive-workspaces.md) |
 | Import or sync GitHub and GitLab issues | [Repository connections](repository-connections.md) and [project tasks](issue-board.md) |
 | Approve, close, or request changes | [Review tasks](reviews.md) |

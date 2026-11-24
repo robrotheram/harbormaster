@@ -248,13 +248,17 @@ func (k *Kubernetes) endpoint(resource kubeResource) string {
 	return "http://" + resource.Metadata.Name + "." + resource.Metadata.Namespace + ".svc:8080"
 }
 func (k *Kubernetes) agent(ctx context.Context, resource kubeResource, method, path string, body []byte) (int, []byte, error) {
-	r, err := http.NewRequestWithContext(ctx, method, k.endpoint(resource)+path, bytes.NewReader(body))
+	return k.agentReader(ctx, resource, method, path, bytes.NewReader(body), k.agentHTTP)
+}
+
+func (k *Kubernetes) agentReader(ctx context.Context, resource kubeResource, method, path string, body io.Reader, client *http.Client) (int, []byte, error) {
+	r, err := http.NewRequestWithContext(ctx, method, k.endpoint(resource)+path, body)
 	if err != nil {
 		return 0, nil, err
 	}
 	r.Header.Set("Authorization", "Bearer "+k.token(resource.Metadata.Labels["workbench.workspace"], resource.Metadata.Labels["workbench.generation"]))
 	r.Header.Set("Content-Type", "application/json")
-	res, err := k.agentHTTP.Do(r)
+	res, err := client.Do(r)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -518,7 +522,17 @@ func (k *Kubernetes) Reconcile(ctx context.Context, id string) error {
 	}
 	return k.networkEvidence(ctx, r.Metadata.Namespace, r.Metadata.Labels["workbench.project"])
 }
+func (k *Kubernetes) UploadDataset(ctx context.Context, id, path string, body io.Reader) (int, []byte, error) {
+	client := *k.agentHTTP
+	client.Timeout = shared.AnalysisUploadTimeout
+	return k.agentForWorkspace(ctx, id, http.MethodPost, path, body, &client)
+}
+
 func (k *Kubernetes) Agent(ctx context.Context, id, method, path string, b []byte) (int, []byte, error) {
+	return k.agentForWorkspace(ctx, id, method, path, bytes.NewReader(b), k.agentHTTP)
+}
+
+func (k *Kubernetes) agentForWorkspace(ctx context.Context, id, method, path string, body io.Reader, client *http.Client) (int, []byte, error) {
 	if k.cfg.RequireVerified {
 		return 0, nil, shared.CodedError{Code: "VERIFIED_ISOLATION_UNAVAILABLE"}
 	}
@@ -533,7 +547,7 @@ func (k *Kubernetes) Agent(ctx context.Context, id, method, path string, b []byt
 	if !sandboxReady(r) {
 		return 0, nil, shared.CodedError{Status: http.StatusServiceUnavailable, Code: "NOT_READY"}
 	}
-	return k.agent(ctx, r, method, path, b)
+	return k.agentReader(ctx, r, method, path, body, client)
 }
 func (k *Kubernetes) proxy(w http.ResponseWriter, r *http.Request, id, path, route string) {
 	resource, err := k.find(r.Context(), id)

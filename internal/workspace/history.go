@@ -92,7 +92,7 @@ func (m *Manager) redactHistoryContent(text string) (string, bool, bool) {
 }
 func (m *Manager) history(v shared.HistoryRecord) {
 	switch v.Kind {
-	case "user.message", "assistant.message", "tool.call", "tool.result", "run.started", "run.completed", "run.failed", "run.cancelled", "run.usage", "capture.gap", "message.delivery":
+	case "user.message", "assistant.message", "assistant.progress", "tool.call", "tool.result", "run.started", "run.completed", "run.failed", "run.cancelled", "run.usage", "capture.gap", "message.delivery":
 	default:
 		return
 	}
@@ -192,7 +192,45 @@ func (m *Manager) history(v shared.HistoryRecord) {
 	if n > 0 {
 		tx.Exec(`UPDATE history_state SET bytes_used=bytes_used+? WHERE id=1`, len(b))
 	}
-	tx.Commit()
+	if tx.Commit() == nil && n > 0 {
+		m.historyNotifyMu.Lock()
+		if m.historyChanged != nil {
+			close(m.historyChanged)
+			m.historyChanged = nil
+		}
+		m.historyNotifyMu.Unlock()
+	}
+}
+
+// Subscribe before checking the cursor so a commit between the check and wait
+// cannot be missed. The wait never holds a SQLite connection or worker lock.
+func (m *Manager) waitForHistory(ctx context.Context, episode string, after int64) error {
+	wait, cancel := context.WithTimeout(ctx, shared.HistoryWait)
+	defer cancel()
+	for {
+		m.historyNotifyMu.Lock()
+		if m.historyChanged == nil {
+			m.historyChanged = make(chan struct{})
+		}
+		changed := m.historyChanged
+		m.historyNotifyMu.Unlock()
+
+		var ready bool
+		err := m.db.QueryRowContext(wait, `SELECT EXISTS(SELECT 1 FROM agent_history WHERE episode_id=? AND seq>?)`, episode, after).Scan(&ready)
+		if wait.Err() != nil {
+			return ctx.Err()
+		}
+		if err != nil || ready {
+			return err
+		}
+		select {
+		case <-changed:
+		case <-wait.Done():
+			return ctx.Err()
+		case <-m.historyStop:
+			return http.ErrServerClosed
+		}
+	}
 }
 func (m *Manager) historyPage(w http.ResponseWriter, r *http.Request) {
 	values := map[string]int64{"after": 0, "before": 0, "until": 0, "limit": 20}
@@ -209,6 +247,23 @@ func (m *Manager) historyPage(w http.ResponseWriter, r *http.Request) {
 	if values["limit"] < 1 || values["limit"] > 20 {
 		shared.Error(w, 400, "INVALID_REQUEST")
 		return
+	}
+	episode := r.URL.Query().Get("episode")
+	if episode != "" && !shared.ValidID(episode) {
+		shared.Error(w, 400, "INVALID_REQUEST")
+		return
+	}
+	if wait := r.URL.Query().Get("wait"); wait != "" {
+		if wait != "1" || episode == "" || values["before"] != 0 || values["until"] != 0 || r.URL.Query().Get("order") == "desc" {
+			shared.Error(w, 400, "INVALID_REQUEST")
+			return
+		}
+		if err := m.waitForHistory(r.Context(), episode, values["after"]); err != nil {
+			if r.Context().Err() == nil {
+				shared.Error(w, 503, "STORAGE_UNAVAILABLE")
+			}
+			return
+		}
 	}
 	out := shared.HistoryPage{Records: []shared.HistoryRecord{}, SchemaVersion: 1}
 	var limited int
@@ -232,11 +287,7 @@ func (m *Manager) historyPage(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("order") == "desc" {
 		order = "DESC"
 	}
-	if episode := r.URL.Query().Get("episode"); episode != "" {
-		if !shared.ValidID(episode) {
-			shared.Error(w, 400, "INVALID_REQUEST")
-			return
-		}
+	if episode != "" {
 		q += ` AND episode_id=?`
 		args = append(args, episode)
 	}

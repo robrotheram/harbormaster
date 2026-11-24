@@ -2,10 +2,8 @@ package api
 
 import (
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -17,35 +15,9 @@ import (
 )
 
 func (s *Server) registerWorkConversation(mux *http.ServeMux, repo orchestration.Repository) {
-	mux.HandleFunc("GET /v1/work-items/{id}/attempts/{attempt}/history", func(w http.ResponseWriter, r *http.Request) {
-		project, ok := s.ProjectForRequest(w, r, r.URL.Query().Get("project_id"))
-		if !ok {
-			return
-		}
-		if project == "" {
-			shared.Error(w, 400, "PROJECT_REQUIRED")
-			return
-		}
-		ctx := r.Context()
-		attempt, err := repo.Attempt(ctx, project, r.PathValue("id"), r.PathValue("attempt"))
-		if err != nil {
-			workError(w, err)
-			return
-		}
-		if !shared.ValidID(attempt.TaskID) || !shared.ValidID(attempt.WorkspaceID) {
-			shared.Error(w, 409, "HISTORY_UNAVAILABLE")
-			return
-		}
-		ws, err := s.Store.Workspace(ctx, attempt.WorkspaceID)
-		if errors.Is(err, sql.ErrNoRows) {
-			// Attempt provenance survives workspace deletion.
-			ws = shared.Workspace{ID: attempt.WorkspaceID, State: "DELETED"}
-		} else if err != nil || !s.workspaceInProject(ws, project) {
-			shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
-			return
-		}
-		s.serveHistoryPage(w, r, ws, project, attempt.TaskID)
-	})
+	const history = "GET /v1/work-items/{id}/attempts/{attempt}/history"
+	mux.HandleFunc(history, s.workHistory(repo, false))
+	mux.HandleFunc(history+"/events", s.workHistory(repo, true))
 	mux.HandleFunc("GET /v1/work-items/{id}/instruction", func(w http.ResponseWriter, r *http.Request) {
 		project, ok := s.ProjectForRequest(w, r, r.URL.Query().Get("project_id"))
 		if !ok {
@@ -277,6 +249,7 @@ func (s *Server) registerWorkConversation(mux *http.ServeMux, repo orchestration
 			workError(w, err)
 			return
 		}
+		s.notifyWorkReady()
 		shared.JSON(w, 202, a)
 	})
 }

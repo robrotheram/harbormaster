@@ -138,7 +138,7 @@ func (s *Server) createWorkItem(ctx context.Context, actor principal, input work
 			return shared.WorkItem{}, false, shared.CodedError{Status: http.StatusBadRequest, Code: "INVALID_REQUEST"}
 		}
 	}
-	if input.Kind != "software" && input.Kind != "research" && input.Kind != "digest" || len(input.ArtifactPaths) > 32 {
+	if input.Kind != "software" && input.Kind != "research" && input.Kind != "digest" && input.Kind != shared.WorkKindDataScience || len(input.ArtifactPaths) > 32 {
 		return shared.WorkItem{}, false, shared.CodedError{Status: http.StatusBadRequest, Code: "INVALID_REQUEST"}
 	}
 	for _, p := range input.ArtifactPaths {

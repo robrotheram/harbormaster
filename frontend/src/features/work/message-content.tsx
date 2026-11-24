@@ -1,3 +1,5 @@
+import { visualizationReference } from "@/features/analysis/api";
+import { Visualization } from "@/features/analysis/visualization";
 import {
   useEffect,
   useMemo,
@@ -144,12 +146,14 @@ export function MessageContent({
   attempt,
   onAsk,
   embedData = false,
+  saveVisualizations = false,
 }: {
   content: string;
   project: string;
   attempt: Attempt;
   onAsk?: (message: string) => void;
   embedData?: boolean;
+  saveVisualizations?: boolean;
 }) {
   const components = useMemo<Components>(
     () => ({
@@ -161,6 +165,22 @@ export function MessageContent({
               children?: string;
             }>)
           : undefined;
+        if (code?.props.className === "language-harbormaster-visualization") {
+          const reference = visualizationReference(
+            String(code.props.children || ""),
+            attempt.workspace_id,
+          );
+          return reference ? (
+            <Visualization
+              project={project}
+              worker={reference.worker_id}
+              id={reference.artifact_id}
+              canSave={saveVisualizations}
+            />
+          ) : (
+            <p role="status">Invalid visualization reference.</p>
+          );
+        }
         return code?.props.className === "language-workbench-chart" ? (
           <ChartContent
             source={String(code.props.children || "")}
@@ -207,10 +227,12 @@ export function MessageContent({
       project,
       onAsk,
       embedData,
+      saveVisualizations,
       attempt.id,
       attempt.state,
       attempt.artifacts,
       attempt.work_item_id,
+      attempt.workspace_id,
     ],
   );
   if (
