@@ -2057,10 +2057,16 @@ test("catalog failure offers a retry without creating a thread", async ({
     ),
   );
   await page.goto("/app/projects/A/work");
-  await expect(page.getByLabel("Model", { exact: true })).toBeDisabled();
+  const retry = page.getByRole("button", { name: "Retry loading models" });
+  await expect(retry).toBeVisible();
+  const model = page.getByLabel("Model", { exact: true });
+  await expect(model).toBeDisabled();
   unavailable = false;
-  await page.getByRole("button", { name: "Retry loading models" }).click();
-  await expect(page.getByLabel("Model", { exact: true })).toBeEnabled();
+  await retry.click();
+  await expect(model).toBeEnabled();
+  await expect(
+    model.getByRole("option", { name: "fresh-model · Codex" }),
+  ).toHaveCount(1);
   expect(f.posts).toEqual([]);
 });
 
