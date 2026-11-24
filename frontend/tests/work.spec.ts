@@ -494,6 +494,7 @@ test("conversation is scoped to the selected task and project and fits narrow sc
     });
   }
   await page.setViewportSize({ width: 1440, height: 900 });
+  await page.getByLabel("Message to your agent").fill("Private project draft");
   await page
     .getByRole("button", { name: "Switch project: Research", exact: true })
     .click();
@@ -505,7 +506,10 @@ test("conversation is scoped to the selected task and project and fits narrow sc
       exact: true,
     }),
   ).toHaveCount(0);
-  await expect(page.getByLabel("Message to your agent")).toHaveValue("");
+  await expect(page.getByLabel("Message to your agent")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Create thread", exact: true }),
+  ).toBeVisible();
   f.state.foreignHistory = true;
   await page.goto("/app/projects/A/work?work=work_one");
   await expect(page.getByRole("alert").first()).toBeVisible();
