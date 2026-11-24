@@ -176,10 +176,7 @@ export function AnalysisVisualizations({
                         setSelection(key);
                       }}
                     >
-                      <Icon
-                        aria-hidden="true"
-                        className="size-4 shrink-0"
-                      />
+                      <Icon aria-hidden="true" className="size-4 shrink-0" />
                       <span className="min-w-0 [overflow-wrap:anywhere]">
                         {title(item)}
                         {item.usedInReport && (
