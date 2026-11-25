@@ -31,7 +31,11 @@ export function conversationTitle(
     })
       .split(/\r?\n/)
       .map((line) => line.trim())
-      .find(Boolean);
+      .find(
+        (line) =>
+          line &&
+          !/^Selected dataset for this request: dataset_\S+\.$/.test(line),
+      );
   const text = firstLine
     ?.replace(/^#{1,6}\s+/, "")
     .replace(/\s+/g, " ")

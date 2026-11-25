@@ -127,11 +127,15 @@ async function fixture(page: Page) {
     ["connections", "/app/connection-profiles", "Network profiles"],
     ["help", "/app/help", "Getting started"],
     ["repositories", "/app/repositories", "Connections"],
+    [
+      "assistant",
+      "/app/projects/audit/assistant?tab=hermes",
+      "Project assistant",
+    ],
     ...[
       ["board", "Overview"],
       ["work", "Project work"],
       ["workspaces", "Workers"],
-      ["hermes", "Project settings"],
       ["settings", "Project settings"],
     ].map(([key, title]) => [key, `/app/projects/audit/${key}`, title]),
   ];

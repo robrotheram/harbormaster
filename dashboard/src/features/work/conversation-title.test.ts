@@ -34,3 +34,12 @@ it("uses the current request from a generated follow-up specification", () => {
     ),
   ).toBe("Fix checkout validation");
 });
+
+it("skips generated dataset context in a thread title", () => {
+  expect(
+    conversationTitle(
+      item,
+      "Selected dataset for this request: dataset_abcd.\n\nCompare the totals.",
+    ),
+  ).toBe("Compare the totals.");
+});

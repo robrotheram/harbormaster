@@ -34,7 +34,8 @@ export function PageAccessibility() {
         // Let a closing navigation sheet or menu release its focus trap first.
         if (document.querySelector('[role="dialog"], [role="menu"]')) return;
         focusPending = false;
-        observer.observe(document.getElementById("root")!, {
+        observer.disconnect();
+        observer.observe(root, {
           childList: true,
           subtree: true,
           characterData: true,
@@ -59,7 +60,9 @@ export function PageAccessibility() {
       });
     };
     const observer = new MutationObserver(update);
-    observer.observe(document.getElementById("root")!, {
+    const root = document.getElementById("root")!;
+    // Navigation dialogs can finish closing in a portal outside the app root.
+    observer.observe(focusPending ? document.body : root, {
       childList: true,
       subtree: true,
       characterData: true,

@@ -105,7 +105,7 @@ import {
 } from "./conversation-api";
 import { WorkFiles } from "./work-files";
 import { WorkOutput, retainedVisuals } from "./work-output";
-import { workStatus } from "./stages";
+import { workStage, workStatus } from "./stages";
 import {
   reviewImageNote,
   reviewMessageText,
@@ -139,6 +139,22 @@ export function WorkConversation({
   setMessage: Dispatch<SetStateAction<string>>;
 }) {
   const client = useQueryClient();
+  const attachHeader = useCallback((header: HTMLElement | null) => {
+    const workbench = header?.closest<HTMLElement>(".conversation-workbench");
+    if (!header || !workbench) return;
+    const alignRail = () =>
+      workbench.style.setProperty(
+        "--thread-header-height",
+        `${header.getBoundingClientRect().height}px`,
+      );
+    alignRail();
+    const observer = new ResizeObserver(alignRail);
+    observer.observe(header);
+    return () => {
+      observer.disconnect();
+      workbench.style.removeProperty("--thread-header-height");
+    };
+  }, []);
   const key = useRequestKey();
   const [earlier, setEarlier] = useState(false);
   const [previewView, setPreviewView] = useState<PreviewView>();
@@ -146,6 +162,9 @@ export function WorkConversation({
   const revision = personal.editRevisions[id];
   const { focusComposer } = personal;
   const route = useSearch({ strict: false });
+  const lastWorkspaceTool = useRef<
+    Pick<typeof route, "view" | "artifact" | "dataset"> | undefined
+  >(undefined);
   const navigate = useNavigate();
   const [layout, setLayout] = useLayoutPreference<string>("output", "closed");
   const filesOpen = route.view === "files" && route.work === id;
@@ -207,6 +226,10 @@ export function WorkConversation({
     if (!workspaceVisible.current && !follow.current) setNewActivity(true);
   }, []);
   const showConversation = (latestMessage = false) => {
+    if (workspaceOpen)
+      lastWorkspaceTool.current = route.view
+        ? { view: route.view, artifact: route.artifact, dataset: route.dataset }
+        : undefined;
     setLayout("closed");
     if (route.view)
       void navigate({
@@ -225,6 +248,21 @@ export function WorkConversation({
           : personal.positions.current.get(id) || 0;
       if (latestMessage) el?.focus({ preventScroll: true });
     });
+  };
+  const reopenWorkspace = () => {
+    if (workspaceOpen) return;
+    if (lastWorkspaceTool.current) {
+      void navigate({
+        to: "/projects/$projectId/$section",
+        params: { projectId: project.id, section: "work" },
+        search: {
+          work: id,
+          attempt: route.attempt,
+          ...lastWorkspaceTool.current,
+        },
+        replace: true,
+      });
+    } else setLayout("workspace");
   };
   const showWorkspace = (
     view: "workspace" | "datasets" | "files" | "report",
@@ -291,6 +329,7 @@ export function WorkConversation({
   const fileAttempt = route.attempt
     ? attempts.find((a) => a.id === route.attempt)
     : latest;
+  const displayedAttempt = workspaceOpen ? fileAttempt : latest;
   const output = reply.attempt === fileAttempt?.id ? reply.content : "";
   const outputSources = replyOutputs(output);
   const visualFiles = fileAttempt
@@ -652,6 +691,8 @@ export function WorkConversation({
     !item.specification_path &&
     !!item.workspace_id;
   const canContinue = (emptyThread && controlsAgent) || canContinueWork(item);
+  const showWorkerPicker =
+    canContinue && !emptyThread && !revision && alternateWorkers.length > 0;
   const analysisLoading =
     (!!analysisOpen &&
       analysisReports.isPending &&
@@ -774,9 +815,41 @@ export function WorkConversation({
         )}
       </div>
     ) : null;
+  const viewSwitch = (
+    <div className="thread-view-switch" role="group" aria-label="Thread view">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        aria-pressed={!workspaceOpen}
+        onClick={() => showConversation(unreadReply)}
+      >
+        <MessageSquare size={15} />{" "}
+        <span className="thread-view-label">Conversation</span>
+        <span
+          className="thread-unread-dot"
+          data-unread={unreadReply}
+          aria-hidden="true"
+        />
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        aria-pressed={workspaceOpen}
+        onClick={reopenWorkspace}
+      >
+        <PanelRightOpen size={15} />{" "}
+        <span className="thread-view-label">Workspace</span>
+      </Button>
+      <span className="sr-only" role="status">
+        {unreadReply ? "New agent message" : ""}
+      </span>
+    </div>
+  );
   return (
     <section
-      className={`conversation-session visual-session unified-thread ${workspaceOpen ? "is-workspace-open" : ""}`}
+      className="conversation-session visual-session unified-thread"
       aria-label="Work conversation"
     >
       {subscriptionSettings && executionWorker && (
@@ -787,230 +860,260 @@ export function WorkConversation({
           onSaved={() => setSubscriptionSettings(false)}
         />
       )}
-      {changeRequest && (
-        <Modal
-          title="Request changes"
-          onClose={() => setChangeRequest(undefined)}
-          closeDisabled={mutation.isPending}
-        >
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (changeRequest.feedback.trim())
-                mutation.mutate("request-changes");
-            }}
-          >
-            <label>
-              What needs to change?
-              <Textarea
-                autoFocus
-                required
-                maxLength={1000}
-                value={changeRequest.feedback}
-                onChange={(event) =>
-                  setChangeRequest({
-                    ...changeRequest,
-                    feedback: event.target.value,
-                  })
-                }
-                disabled={mutation.isPending}
-              />
-            </label>
-            {mutation.error && <ErrorNotice error={mutation.error} />}
-            <Button
-              type="submit"
-              disabled={mutation.isPending || !changeRequest.feedback.trim()}
-            >
-              Send change request
-            </Button>
-          </form>
-        </Modal>
-      )}
       <div className="conversation-main">
-        <header className="conversation-thread-heading">
+        <header ref={attachHeader} className="conversation-thread-heading">
           <div className="conversation-heading-title">
             {navigation}
-            <div className="min-w-0">
+            <div className="thread-heading-summary min-w-0">
               <h2 title={title} className="line-clamp-2">
                 {title || `${label(item.kind)} conversation`}
               </h2>
-              {item.state !== "closed" && (
-                <div className="thread-heading-state">
-                  <State value={workStatus(item.state)} />
-                </div>
-              )}
+              {item.state !== "closed" &&
+                workStage(item.state) !== "review" && (
+                  <div className="thread-heading-state">
+                    <State value={workStatus(item.state)} />
+                  </div>
+                )}
             </div>
           </div>
-          {workspaceOpen &&
-            fileAttempt?.review_state === "changes_requested" && (
-              <span className="text-xs text-muted-foreground">
-                Changes requested. The controller can prepare the next revision.
-              </span>
-            )}
-          <div className="conversation-heading-actions">
-            <div
-              className="thread-view-switch"
-              role="group"
-              aria-label="Thread view"
+          <div className="thread-header-controls">
+            {viewSwitch}
+            <Responsibility
+              item={item}
+              running={running}
+              reviewActions={
+                workspaceOpen && canReview ? (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={mutation.isPending}
+                      onClick={() => mutation.mutate("accept")}
+                    >
+                      Approve this revision
+                    </Button>
+                    {!controlsAgent && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={mutation.isPending}
+                        onClick={() => {
+                          if (!latest) return;
+                          mutation.reset();
+                          setChangeRequest({
+                            attempt: latest.id,
+                            feedback: "",
+                          });
+                        }}
+                      >
+                        Request changes
+                      </Button>
+                    )}
+
+                    {mutation.isError && mutation.variables === "accept" && (
+                      <ErrorNotice error={mutation.error} />
+                    )}
+                    {changeRequest?.attempt === latest?.id && changeRequest && (
+                      <Modal
+                        title="Request changes"
+                        onClose={() => setChangeRequest(undefined)}
+                        closeDisabled={mutation.isPending}
+                      >
+                        <form
+                          onSubmit={(event) => {
+                            event.preventDefault();
+                            if (changeRequest.feedback.trim())
+                              mutation.mutate("request-changes");
+                          }}
+                        >
+                          <label>
+                            What needs to change?
+                            <Textarea
+                              autoFocus
+                              required
+                              maxLength={1000}
+                              value={changeRequest.feedback}
+                              onChange={(event) =>
+                                setChangeRequest({
+                                  ...changeRequest,
+                                  feedback: event.target.value,
+                                })
+                              }
+                              disabled={mutation.isPending}
+                            />
+                          </label>
+                          {mutation.error && (
+                            <ErrorNotice error={mutation.error} />
+                          )}
+                          <Button
+                            type="submit"
+                            disabled={
+                              mutation.isPending ||
+                              !changeRequest.feedback.trim()
+                            }
+                          >
+                            Send change request
+                          </Button>
+                        </form>
+                      </Modal>
+                    )}
+                  </>
+                ) : undefined
+              }
             >
-              <Button
-                variant="ghost"
-                size="sm"
-                aria-pressed={!workspaceOpen}
-                onClick={() => showConversation(unreadReply)}
-              >
-                <MessageSquare size={15} /> Conversation
-                {unreadReply && (
-                  <span
-                    className="thread-unread-dot"
-                    aria-label="New agent message"
-                  />
-                )}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                aria-pressed={workspaceOpen}
-                onClick={() => setLayout("workspace")}
-              >
-                <PanelRightOpen size={15} /> Workspace
-              </Button>
-            </div>
-            {workspaceOpen && canReview && (
-              <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={mutation.isPending}
-                  onClick={() => mutation.mutate("accept")}
+              {item.workspace_id ? (
+                <Link
+                  className="conversation-worker-link"
+                  to="/projects/$projectId/workspaces/$workerId"
+                  params={{
+                    projectId: project.id,
+                    workerId: item.workspace_id,
+                  }}
+                  title={item.workspace_id}
                 >
-                  Approve this revision
-                </Button>
-                {!controlsAgent && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={mutation.isPending}
-                    onClick={() => {
-                      if (!latest) return;
-                      mutation.reset();
-                      setChangeRequest({ attempt: latest.id, feedback: "" });
+                  <Server size={14} /> Worker: {worker?.name || "Task worker"}
+                </Link>
+              ) : (
+                <Link
+                  className="conversation-worker-link"
+                  to="/projects/$projectId/$section"
+                  params={{ projectId: project.id, section: "workspaces" }}
+                >
+                  <Server size={14} /> Project workers
+                </Link>
+              )}
+              {showWorkerPicker && (
+                <div className="space-y-2">
+                  <label
+                    htmlFor="work-followup-worker"
+                    className="text-xs font-medium"
+                  >
+                    Worker for next message
+                  </label>
+                  <NativeSelect
+                    id="work-followup-worker"
+                    aria-describedby={
+                      destination ? "work-followup-worker-hint" : undefined
+                    }
+                    value={destination || ""}
+                    disabled={running || mutation.isPending}
+                    onChange={(event) => {
+                      setMove(
+                        event.target.value
+                          ? { work: id, worker: event.target.value }
+                          : undefined,
+                      );
+                      setSelection(undefined);
                     }}
                   >
-                    Request changes
-                  </Button>
-                )}
-              </>
-            )}
+                    <option value="">{worker?.name || "Current worker"}</option>
+                    {alternateWorkers.map((candidate) => (
+                      <option value={candidate.id} key={candidate.id}>
+                        {candidate.name || candidate.id}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                  {destination && (
+                    <p id="work-followup-worker-hint">
+                      The next worker gets the recorded conversation. Files and
+                      running services stay on their worker.
+                    </p>
+                  )}
+                </div>
+              )}
+              <p>Created {date(item.created_at)}</p>
+              {owner && <p>Task assignee: {owner}</p>}
+            </Responsibility>
           </div>
         </header>
-        {(workspaceOpen ? fileAttempt : latest)?.review_feedback && (
-          <div className="task-guidance whitespace-pre-wrap">
-            <strong>Requested changes</strong>
-            <div>{(workspaceOpen ? fileAttempt : latest)?.review_feedback}</div>
+        {workspaceOpen && (
+          <div
+            className="thread-workspace-tools"
+            role="group"
+            aria-label="Workspace tools"
+          >
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-pressed={!filesOpen && !datasetsOpen && !reportOpen}
+              onClick={() => {
+                if (filesOpen || datasetsOpen || reportOpen) {
+                  void showWorkspace("workspace");
+                } else if (!dataScience && !desktop) setPreviewView("web");
+              }}
+            >
+              <PanelRightOpen size={15} />{" "}
+              {dataScience ? "Analysis" : "Preview"}
+            </Button>
+            {dataScience && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-pressed={datasetsOpen}
+                  onClick={() => void showWorkspace("datasets")}
+                >
+                  <Database size={15} /> Datasets
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-pressed={reportOpen}
+                  onClick={() => void showWorkspace("report")}
+                >
+                  <FileText size={15} /> Report
+                </Button>
+              </>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-pressed={filesOpen}
+              onClick={() => void showWorkspace("files")}
+            >
+              <FileText size={15} /> Files
+            </Button>
+            {filesOpen && attempts.length > 1 && latest && (
+              <NativeSelect
+                aria-label="File changes by run"
+                size="sm"
+                value={route.attempt ?? ""}
+                onChange={(event) =>
+                  void navigate({
+                    to: "/projects/$projectId/$section",
+                    params: { projectId: project.id, section: "work" },
+                    search: {
+                      work: id,
+                      attempt: event.target.value || undefined,
+                      view: "files",
+                    },
+                  })
+                }
+              >
+                <option value="">Latest changes</option>
+                {attempts
+                  .map((run, index) => (
+                    <option key={run.id} value={run.id}>
+                      Run {index + 1}
+                      {run.id === latest.id ? " (latest)" : ""}
+                    </option>
+                  ))
+                  .reverse()}
+              </NativeSelect>
+            )}
           </div>
         )}
-        <div
-          className="thread-workspace-tools"
-          role="group"
-          aria-label={workspaceOpen ? "Workspace tools" : "Conversation tools"}
-        >
-          {workspaceOpen && (
-            <>
-              <Button
-                variant="ghost"
-                size="sm"
-                aria-pressed={!filesOpen && !datasetsOpen && !reportOpen}
-                onClick={() => {
-                  if (filesOpen || datasetsOpen || reportOpen) {
-                    void showWorkspace("workspace");
-                  } else if (!dataScience && !desktop) setPreviewView("web");
-                }}
-              >
-                <PanelRightOpen size={15} />{" "}
-                {dataScience ? "Analysis" : "Preview"}
-              </Button>
-              {dataScience && (
-                <>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    aria-pressed={datasetsOpen}
-                    onClick={() => void showWorkspace("datasets")}
-                  >
-                    <Database size={15} /> Datasets
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    aria-pressed={reportOpen}
-                    onClick={() => void showWorkspace("report")}
-                  >
-                    <FileText size={15} /> Report
-                  </Button>
-                </>
-              )}
-              <Button
-                variant="ghost"
-                size="sm"
-                aria-pressed={filesOpen}
-                onClick={() => void showWorkspace("files")}
-              >
-                <FileText size={15} /> Files
-              </Button>
-              {filesOpen && attempts.length > 1 && latest && (
-                <NativeSelect
-                  aria-label="File changes by run"
-                  size="sm"
-                  value={route.attempt ?? ""}
-                  onChange={(event) =>
-                    void navigate({
-                      to: "/projects/$projectId/$section",
-                      params: { projectId: project.id, section: "work" },
-                      search: {
-                        work: id,
-                        attempt: event.target.value || undefined,
-                        view: "files",
-                      },
-                    })
-                  }
-                >
-                  <option value="">Latest changes</option>
-                  {attempts
-                    .map((run, index) => (
-                      <option key={run.id} value={run.id}>
-                        Run {index + 1}
-                        {run.id === latest.id ? " (latest)" : ""}
-                      </option>
-                    ))
-                    .reverse()}
-                </NativeSelect>
-              )}
-            </>
-          )}
-          <Responsibility item={item} running={running}>
-            {item.workspace_id ? (
-              <Link
-                className="conversation-worker-link"
-                to="/projects/$projectId/workspaces/$workerId"
-                params={{ projectId: project.id, workerId: item.workspace_id }}
-                title={item.workspace_id}
-              >
-                <Server size={14} /> Worker: {worker?.name || "Task worker"}
-              </Link>
-            ) : (
-              <Link
-                className="conversation-worker-link"
-                to="/projects/$projectId/$section"
-                params={{ projectId: project.id, section: "workspaces" }}
-              >
-                <Server size={14} /> Project workers
-              </Link>
-            )}
-            <p>Created {date(item.created_at)}</p>
-            {owner && <p>Task assignee: {owner}</p>}
-          </Responsibility>
-        </div>
+        {((workspaceOpen &&
+          fileAttempt?.review_state === "changes_requested") ||
+          displayedAttempt?.review_feedback) && (
+          <div className="task-guidance whitespace-pre-wrap">
+            <strong>Requested changes</strong>
+            <div>
+              {displayedAttempt?.review_feedback ||
+                "The controller can prepare the next revision."}
+            </div>
+          </div>
+        )}
         <div
           className="conversation-feed"
           hidden={workspaceOpen}
@@ -1357,166 +1460,96 @@ export function WorkConversation({
             />
           </div>
         )}
-        {workspaceOpen && unreadReply && (
-          <div className="thread-message-notice" role="status">
-            <MessageSquare size={16} />
-            <span>New agent message</span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => showConversation(true)}
-            >
-              View message
-            </Button>
-          </div>
-        )}
         {workspaceOpen && runAction && (
           <div className="thread-workspace-recovery">{runAction}</div>
         )}
-        <div
-          className="conversation-composer"
-          hidden={datasetsOpen || reportOpen}
-        >
-          {mutation.isError && mutation.variables !== "run" && (
-            <>
-              <ErrorNotice error={mutation.error} />
-              {subscriptionAction(mutation.error)}
-            </>
-          )}
-          {areas.length > 0 && (
-            <div className="workspace-feedback-draft">
-              <AreaComments
-                areas={areas}
-                disabled={running || capturingArea || mutation.isPending}
-                onChange={updateAreas}
-              />
-            </div>
-          )}
-          <Form
-            onSubmit={() => {
-              if (canSend) mutation.mutate("continue");
-            }}
-          >
-            <label className="sr-only" htmlFor="work-followup">
-              Message to your agent
-            </label>
-            <div className="conversation-compose-input">
-              {controlsAgent && shots.length > 0 && (
-                <ReviewScreenshots
-                  shots={shots}
-                  disabled={running || mutation.isPending || readingImage}
-                  onRemove={(index) =>
-                    updateShots(shots.filter((_, i) => i !== index))
-                  }
-                  onEdit={(index, trigger) =>
-                    setScreenshotEditor({ index, trigger })
-                  }
+        <footer className="thread-footer" hidden={datasetsOpen || reportOpen}>
+          <div className="conversation-composer">
+            {mutation.isError &&
+              mutation.variables !== "run" &&
+              mutation.variables !== "accept" &&
+              mutation.variables !== "request-changes" && (
+                <>
+                  <ErrorNotice error={mutation.error} />
+                  {subscriptionAction(mutation.error)}
+                </>
+              )}
+            {areas.length > 0 && (
+              <div className="workspace-feedback-draft">
+                <AreaComments
+                  areas={areas}
+                  disabled={running || capturingArea || mutation.isPending}
+                  onChange={updateAreas}
                 />
-              )}
-              {(imageError || shots.length > screenshotLimit) && (
-                <p role="alert" className="px-3 pt-2 text-xs text-destructive">
-                  {imageError ||
-                    "Remove a screenshot to make room for the annotated preview."}
-                </p>
-              )}
-              {analysisOpen &&
-                !route.attempt &&
-                !revision &&
-                !destination &&
-                analysisDataset && (
-                  <p className="truncate px-3 pt-2 text-xs text-muted-foreground">
-                    Dataset: {analysisDataset.name}
+              </div>
+            )}
+            <Form
+              onSubmit={() => {
+                if (canSend) mutation.mutate("continue");
+              }}
+            >
+              <label className="sr-only" htmlFor="work-followup">
+                Message to your agent
+              </label>
+              <div className="conversation-compose-input">
+                {controlsAgent && shots.length > 0 && (
+                  <ReviewScreenshots
+                    shots={shots}
+                    disabled={running || mutation.isPending || readingImage}
+                    onRemove={(index) =>
+                      updateShots(shots.filter((_, i) => i !== index))
+                    }
+                    onEdit={(index, trigger) =>
+                      setScreenshotEditor({ index, trigger })
+                    }
+                  />
+                )}
+                {(imageError || shots.length > screenshotLimit) && (
+                  <p
+                    role="alert"
+                    className="px-3 pt-2 text-xs text-destructive"
+                  >
+                    {imageError ||
+                      "Remove a screenshot to make room for the annotated preview."}
                   </p>
                 )}
-              {revision && (
-                <div className="px-3 pt-2">
-                  <div className="flex w-fit max-w-full items-center gap-1 rounded-md border px-2 text-xs">
-                    <span className="min-w-0 truncate">
-                      Editing {revision.title}
-                    </span>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-xs"
-                      aria-label="Clear visualization edit"
-                      onClick={clearEditRevision}
-                      disabled={mutation.isPending}
-                    >
-                      <X />
-                    </Button>
-                  </div>
-                  {!revisionOnWorker && (
-                    <p
-                      role="status"
-                      className="pt-1 text-xs text-muted-foreground"
-                    >
-                      Open a task on the original worker to request this edit.
+                {analysisOpen &&
+                  !route.attempt &&
+                  !revision &&
+                  !destination &&
+                  analysisDataset && (
+                    <p className="truncate px-3 pt-2 text-xs text-muted-foreground">
+                      Dataset: {analysisDataset.name}
                     </p>
                   )}
-                </div>
-              )}
-              <Textarea
-                ref={composer}
-                id="work-followup"
-                aria-invalid={messageTooLong || undefined}
-                aria-describedby={
-                  messageTooLong ? "work-followup-error" : undefined
-                }
-                rows={1}
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                onKeyDown={(e) => composerKeyDown(e, canSend)}
-                placeholder={
-                  running
-                    ? "Draft your next instruction…"
-                    : revision
-                      ? "Describe what to change…"
-                      : dataScience
-                        ? "Ask a question about your data or describe a chart…"
-                        : "Tell the agent what to do next…"
-                }
-                disabled={
-                  (!emptyThread && !item.latest_attempt_id) ||
-                  mutation.isPending
-                }
-              />
-              {canContinue &&
-                !emptyThread &&
-                !revision &&
-                alternateWorkers.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-2 px-2 pb-2">
-                    <NativeSelect
-                      aria-label="Worker for next message"
-                      value={destination || ""}
-                      disabled={running || mutation.isPending}
-                      onChange={(event) => {
-                        setMove(
-                          event.target.value
-                            ? { work: id, worker: event.target.value }
-                            : undefined,
-                        );
-                        setSelection(undefined);
-                      }}
-                    >
-                      <option value="">
-                        {worker?.name || "Current worker"}
-                      </option>
-                      {alternateWorkers.map((candidate) => (
-                        <option value={candidate.id} key={candidate.id}>
-                          {candidate.name || candidate.id}
-                        </option>
-                      ))}
-                    </NativeSelect>
-                    {destination && (
-                      <span className="text-xs text-muted-foreground">
-                        The next worker gets the recorded conversation. Files
-                        and running services stay on their worker.
+                {revision && (
+                  <div className="px-3 pt-2">
+                    <div className="flex w-fit max-w-full items-center gap-1 rounded-md border px-2 text-xs">
+                      <span className="min-w-0 truncate">
+                        Editing {revision.title}
                       </span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        aria-label="Clear visualization edit"
+                        onClick={clearEditRevision}
+                        disabled={mutation.isPending}
+                      >
+                        <X />
+                      </Button>
+                    </div>
+                    {!revisionOnWorker && (
+                      <p
+                        role="status"
+                        className="pt-1 text-xs text-muted-foreground"
+                      >
+                        Open a task on the original worker to request this edit.
+                      </p>
                     )}
                   </div>
                 )}
-              <div className="thread-composer-footer">
-                <div className="flex min-w-0 flex-wrap items-center gap-1">
+                <div className="thread-message-field">
                   {controlsAgent && latest && (
                     <>
                       <input
@@ -1532,6 +1565,7 @@ export function WorkConversation({
                       />
                       <Button
                         type="button"
+                        className="thread-attach"
                         size="icon"
                         variant="ghost"
                         aria-label="Attach screenshot"
@@ -1552,78 +1586,107 @@ export function WorkConversation({
                       </Button>
                     </>
                   )}
-                  <AgentSelection
-                    compact
-                    workspace={destination || item.workspace_id}
-                    provider={selection?.provider ?? item.provider ?? ""}
-                    model={selection?.model ?? item.model ?? ""}
-                    reasoning={
-                      selection
-                        ? selection.reasoning_effort || ""
-                        : item.reasoning_effort || ""
+                  <Textarea
+                    ref={composer}
+                    id="work-followup"
+                    aria-invalid={messageTooLong || undefined}
+                    aria-describedby={
+                      messageTooLong ? "work-followup-error" : undefined
                     }
-                    onReasoning={(effort, provider, model) =>
-                      setSelection({
-                        provider,
-                        model,
-                        reasoning_effort: effort,
-                      })
+                    rows={1}
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    onKeyDown={(e) => composerKeyDown(e, canSend)}
+                    placeholder={
+                      running
+                        ? "Draft your next instruction…"
+                        : revision
+                          ? "Describe what to change…"
+                          : dataScience
+                            ? "Ask a question about your data or describe a chart…"
+                            : "Tell the agent what to do next…"
                     }
-                    disabled={running || mutation.isPending}
+                    disabled={
+                      (!emptyThread && !item.latest_attempt_id) ||
+                      mutation.isPending
+                    }
                   />
                 </div>
-                <div className="conversation-compose-actions">
-                  {running ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="default"
-                      aria-label="Stop task"
-                      disabled={
-                        mutation.isPending ||
-                        latest?.state === "cancel_requested"
+                <div className="thread-composer-footer">
+                  <div className="thread-message-controls">
+                    <AgentSelection
+                      compact
+                      workspace={destination || item.workspace_id}
+                      provider={selection?.provider ?? item.provider ?? ""}
+                      model={selection?.model ?? item.model ?? ""}
+                      reasoning={
+                        selection
+                          ? selection.reasoning_effort || ""
+                          : item.reasoning_effort || ""
                       }
-                      onClick={() => mutation.mutate("cancel")}
-                    >
-                      <Square size={14} />
-                      {latest?.state === "cancel_requested"
-                        ? "Stopping…"
-                        : "Stop"}
-                    </Button>
-                  ) : (
-                    <Button
-                      disabled={!canSend}
-                      size="default"
-                      aria-label="Send"
-                    >
-                      {mutation.isPending ? (
-                        <Loader2 size={16} className="loading-spinner" />
+                      onReasoning={(effort, provider, model) =>
+                        setSelection({
+                          provider,
+                          model,
+                          reasoning_effort: effort,
+                        })
+                      }
+                      disabled={running || mutation.isPending}
+                    />
+                    <div className="conversation-compose-actions">
+                      {running ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="default"
+                          aria-label="Stop task"
+                          disabled={
+                            mutation.isPending ||
+                            latest?.state === "cancel_requested"
+                          }
+                          onClick={() => mutation.mutate("cancel")}
+                        >
+                          <Square size={14} />
+                          {latest?.state === "cancel_requested"
+                            ? "Stopping…"
+                            : "Stop"}
+                        </Button>
                       ) : (
-                        <ArrowUp size={16} />
+                        <Button
+                          disabled={!canSend}
+                          size="icon"
+                          aria-label="Send"
+                          title="Send"
+                        >
+                          {mutation.isPending ? (
+                            <Loader2 size={16} className="loading-spinner" />
+                          ) : (
+                            <ArrowUp size={16} />
+                          )}
+                        </Button>
                       )}
-                      Send
-                    </Button>
-                  )}
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-            {running && (
-              <p className="thread-composer-hint">
-                Stop the run to send new instructions.
-              </p>
-            )}
-            {messageTooLong && (
-              <p
-                id="work-followup-error"
-                className="text-sm text-destructive"
-                role="alert"
-              >
-                This follow-up exceeds 16 kB. Shorten it or split it into
-                separate messages.
-              </p>
-            )}
-          </Form>
-        </div>
+              {running && (
+                <p className="thread-composer-hint">
+                  Stop the run to send new instructions.
+                </p>
+              )}
+              {messageTooLong && (
+                <p
+                  id="work-followup-error"
+                  className="text-sm text-destructive"
+                  role="alert"
+                >
+                  This follow-up exceeds 16 kB. Shorten it or split it into
+                  separate messages.
+                </p>
+              )}
+            </Form>
+          </div>
+        </footer>
       </div>
       {screenshotEditor && shots[screenshotEditor.index] && (
         <ReviewScreenshotEditor

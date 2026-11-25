@@ -237,6 +237,16 @@ async function setup(
   return { writes, project, work, attempts };
 }
 
+async function openTaskSettings(page: Page) {
+  await page
+    .locator(".conversation-thread-heading")
+    .getByRole("button", { name: "Task settings" })
+    .click();
+  const settings = page.getByRole("dialog", { name: "Task settings" });
+  await expect(settings).toBeVisible();
+  return settings;
+}
+
 test("review shows only the current task result and guards stale decisions", async ({
   page,
 }) => {
@@ -268,7 +278,9 @@ test("review shows only the current task result and guards stale decisions", asy
   ).toHaveCount(0);
   const tools = page.getByRole("group", { name: "Workspace tools" });
   await expect(
-    tools.getByRole("button", { name: "Task settings" }),
+    page
+      .locator(".conversation-thread-heading")
+      .getByRole("button", { name: "Task settings" }),
   ).toBeVisible();
   await page.route(
     "**/ui-api/work-items/work_review/files?project_id=prj_review",
@@ -307,10 +319,12 @@ test("review shows only the current task result and guards stale decisions", asy
     ),
   ).toBeUndefined();
   await tools.getByRole("button", { name: "Preview", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: "Approve this revision" }),
-  ).toBeEnabled();
-  await page.getByRole("button", { name: "Approve this revision" }).click();
+  const settings = await openTaskSettings(page);
+  const approve = settings.getByRole("button", {
+    name: "Approve this revision",
+  });
+  await expect(approve).toBeEnabled();
+  await approve.click();
   await expect
     .poll(() => writes[0]?.body)
     .toEqual({
@@ -318,7 +332,7 @@ test("review shows only the current task result and guards stale decisions", asy
       accepted: true,
       expected_attempt_id: "attempt_new",
     });
-  await expect(page.getByRole("alert")).toContainText(
+  await expect(settings.getByRole("alert")).toContainText(
     "This work changed since you opened it",
   );
 });
@@ -365,7 +379,10 @@ test("preview setup starts only the server and keeps the review unchanged", asyn
     page.getByRole("heading", { name: "Make checkout clearer" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Approve this revision", exact: true }),
+    (await openTaskSettings(page)).getByRole("button", {
+      name: "Approve this revision",
+      exact: true,
+    }),
   ).toBeEnabled();
   await page.reload();
   await expect(
@@ -416,8 +433,11 @@ test("Workspace omits the close action and the old closed badge", async ({
 }) => {
   const { work, attempts, writes } = await setup(page);
   await expect(
-    page.getByRole("button", { name: "Approve this revision" }),
+    (await openTaskSettings(page)).getByRole("button", {
+      name: "Approve this revision",
+    }),
   ).toBeVisible();
+  await page.keyboard.press("Escape");
   await expect(
     page.getByRole("button", { name: "Close task", exact: true }),
   ).toHaveCount(0);
@@ -431,7 +451,9 @@ test("Workspace omits the close action and the old closed badge", async ({
   await expect(thread.getByText(/closed without approval/i)).toHaveCount(0);
   await expect(thread.getByText("Closed", { exact: true })).toHaveCount(0);
   await expect(
-    thread.getByRole("button", { name: "Approve this revision" }),
+    (await openTaskSettings(page)).getByRole("button", {
+      name: "Approve this revision",
+    }),
   ).toHaveCount(0);
   expect(writes).toHaveLength(0);
 });
@@ -512,7 +534,10 @@ test("preview gets a fresh single-use link after reopening or a readiness change
   await expect(frame).toBeVisible();
   await expect(frame).not.toHaveAttribute("src", third!);
   await expect(
-    page.getByRole("button", { name: "Approve this revision", exact: true }),
+    (await openTaskSettings(page)).getByRole("button", {
+      name: "Approve this revision",
+      exact: true,
+    }),
   ).toBeEnabled();
 });
 
@@ -655,7 +680,15 @@ test("screenshot markup and notes survive a failed send and retry", async ({
     .getByLabel("Message to your agent", { exact: true })
     .fill("Fix the highlighted layout.");
   const chooser = page.waitForEvent("filechooser");
-  await page.getByRole("button", { name: "Attach screenshot" }).click();
+  const attach = page.getByRole("button", { name: "Attach screenshot" });
+  const buttonBounds = (await attach.boundingBox())!;
+  const fieldBounds = (await page
+    .getByLabel("Message to your agent", { exact: true })
+    .boundingBox())!;
+  expect(buttonBounds.x + buttonBounds.width).toBeLessThanOrEqual(
+    fieldBounds.x,
+  );
+  await attach.click();
   await (
     await chooser
   ).setFiles({

@@ -75,10 +75,13 @@ const projectRoute = createRoute({
         },
         replace: true,
       });
-    if (params.section === "hermes")
+    if (
+      params.section === "hermes" ||
+      (params.section === "settings" && search.tab === "hermes")
+    )
       throw redirect({
         to: "/projects/$projectId/$section",
-        params: { projectId: params.projectId, section: "settings" },
+        params: { projectId: params.projectId, section: "assistant" },
         search: { tab: "hermes" },
         replace: true,
       });

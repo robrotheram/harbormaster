@@ -106,7 +106,7 @@ export function WorkspaceForm({
             </NativeSelect>
             <Link
               to="/projects/$projectId/$section"
-              params={{ projectId: project.id, section: "settings" }}
+              params={{ projectId: project.id, section: "assistant" }}
               search={{ tab: "hermes" }}
               className="text-xs font-normal underline underline-offset-4"
             >
