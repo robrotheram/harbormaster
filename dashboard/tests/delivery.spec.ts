@@ -116,7 +116,11 @@ test("board and review use real work and bind decisions to the inspected attempt
   await expect(
     page.getByRole("region", { name: "Task workspace" }),
   ).toBeVisible();
-  const accept = page.getByRole("button", { name: "Approve" });
+  await page.getByRole("button", { name: "Task settings" }).click();
+  const settings = page.getByRole("dialog", { name: "Task settings" });
+  const accept = settings.getByRole("button", {
+    name: "Approve this revision",
+  });
   await expect(accept).toBeEnabled();
   await accept.click();
   await expect
@@ -126,6 +130,8 @@ test("board and review use real work and bind decisions to the inspected attempt
       accepted: true,
       expected_attempt_id: "attempt_one",
     });
+  await page.keyboard.press("Escape");
+  await expect(settings).toHaveCount(0);
   await expect(
     page
       .locator(".conversation-thread-heading")

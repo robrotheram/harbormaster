@@ -9,6 +9,8 @@ export function PageAccessibility() {
   useEffect(() => {
     let focusPending = previousPath.current !== pathname;
     previousPath.current = pathname;
+    const overlaySelector = '[role="dialog"], [role="menu"]';
+    const navigationOverlay = document.querySelector(overlaySelector);
     let frame = 0;
     let currentHeading: HTMLElement | null = null;
     const update = () => {
@@ -32,7 +34,8 @@ export function PageAccessibility() {
       frame = requestAnimationFrame(() => {
         if (!heading.isConnected) return;
         // Let a closing navigation sheet or menu release its focus trap first.
-        if (document.querySelector('[role="dialog"], [role="menu"]')) return;
+        const overlay = document.querySelector(overlaySelector);
+        if (overlay && overlay === navigationOverlay) return;
         focusPending = false;
         observer.disconnect();
         observer.observe(root, {
@@ -40,8 +43,9 @@ export function PageAccessibility() {
           subtree: true,
           characterData: true,
         });
-        // Do not interrupt someone who began typing while the page loaded.
+        // Keep focus in controls opened or edited while the page loaded.
         if (
+          overlay ||
           document.activeElement?.matches(
             "input, textarea, select, [contenteditable=true]",
           )
