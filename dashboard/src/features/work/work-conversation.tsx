@@ -291,7 +291,7 @@ function ProjectConversations({ project }: { project: Project }) {
       <div className="conversation-search">
         <Search size={14} />
         <Input
-          className="h-8 pl-8 text-xs"
+          className="h-9 pl-8 text-xs"
           aria-label="Search threads"
           placeholder="Find a thread…"
           value={filter}
