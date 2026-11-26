@@ -68,7 +68,7 @@ test("Workspace keeps drafts through exact-revision review and Overview uses sav
     }
     return route.fulfill({ json });
   });
-  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto("/app/projects/A/work?work=work_one");
   await expect(
     page.getByRole("heading", { name: "Workspace invitations" }),
@@ -77,7 +77,7 @@ test("Workspace keeps drafts through exact-revision review and Overview uses sav
     page.getByRole("button", { name: "Workspace", exact: true }),
   ).toBeVisible();
   const area = await page.locator(".conversation-session").boundingBox();
-  expect(area!.width).toBeGreaterThanOrEqual(1440 * 0.75);
+  expect(area!.width).toBeGreaterThanOrEqual(1600 * 0.75);
   const composer = page.locator(".conversation-composer textarea");
   await composer.fill("Keep this unsent request");
   await page.getByRole("separator", { name: "Resize thread list" }).focus();
@@ -99,7 +99,17 @@ test("Workspace keeps drafts through exact-revision review and Overview uses sav
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Approve this revision" }),
-  ).toBeVisible();
+  ).toHaveCount(0);
+  await expect(
+    page.locator(".conversation-thread-heading").getByText("Awaiting review"),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Task settings" }).click();
+  const settings = page.getByRole("dialog", { name: "Task settings" });
+  const approve = settings.getByRole("button", {
+    name: "Approve this revision",
+  });
+  await expect(approve).toBeVisible();
+  await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Conversation", exact: true }).click();
   await expect(composer).toHaveValue("Keep this unsent request");
   await page.getByRole("link", { name: "Overview", exact: true }).click();
@@ -118,9 +128,10 @@ test("Workspace keeps drafts through exact-revision review and Overview uses sav
   ).toHaveCount(0);
   await expect(page.getByText("This revision was approved.")).toHaveCount(0);
   await expect(page.getByText("Previous output approved")).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "Approve this revision" }),
-  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Task settings" }).click();
+  await expect(settings).toBeVisible();
+  await expect(approve).toHaveCount(0);
+  await page.keyboard.press("Escape");
   await expect(
     page.getByRole("heading", { name: "Workspace invitations" }),
   ).toBeVisible();

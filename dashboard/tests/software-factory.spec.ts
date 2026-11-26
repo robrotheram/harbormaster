@@ -200,9 +200,21 @@ test("project factory filters work and clears project-specific UI when switching
   await expect(
     page.getByRole("button", { name: /^api-pagination\.md / }),
   ).toHaveCount(0);
-  await page
-    .getByRole("button", { name: "Project assistant", exact: true })
-    .click();
+  const projectAssistant = page
+    .getByRole("navigation", { name: "Project navigation" })
+    .getByRole("link", { name: "Project assistant", exact: true });
+  await expect(
+    page
+      .getByRole("complementary", { name: "Threads" })
+      .getByRole("link", { name: "Project assistant", exact: true }),
+  ).toHaveCount(0);
+  await projectAssistant.click();
+  await expect(page).toHaveURL(/projects\/atlas\/assistant$/);
+  await expect(projectAssistant).toHaveAttribute("aria-current", "page");
+  await expect(
+    page.getByRole("heading", { name: "Project assistant", level: 1 }),
+  ).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await page
     .getByRole("button", { name: "Work with Hermes", exact: true })
     .click();
@@ -210,7 +222,8 @@ test("project factory filters work and clears project-specific UI when switching
     "Hermes in Atlas platform",
   );
   await page.keyboard.press("Escape");
-  await page.keyboard.press("Escape");
+  await page.goBack();
+  await expect(page).toHaveURL(/projects\/atlas\/work$/);
   await page
     .getByRole("button", {
       name: "Switch project: Atlas platform",
@@ -230,9 +243,19 @@ test("project factory filters work and clears project-specific UI when switching
   await expect(
     page.getByText("specs/schema-validation.md", { exact: true }),
   ).toHaveCount(0);
-  await page
-    .getByRole("button", { name: "Project assistant", exact: true })
-    .click();
+  await projectAssistant.click();
+  await expect(page).toHaveURL(/projects\/sdk\/assistant$/);
+  await page.reload();
+  await page.getByRole("link", { name: "Set up Hermes", exact: true }).click();
+  await expect(page).toHaveURL(/projects\/sdk\/assistant\?tab=hermes$/);
+  await expect(
+    page.getByRole("tab", { name: "Hermes setup", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
+  await expect(
+    page.getByRole("tab", { name: "Agent", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("tab", { name: "Overview", exact: true }).click();
+  await expect(page).toHaveURL(/projects\/sdk\/assistant$/);
   await expect(
     page.getByRole("link", { name: "Set up Hermes", exact: true }),
   ).toBeVisible();
@@ -314,7 +337,7 @@ test("factory layout review at desktop and mobile widths", async ({ page }) => {
     ).toBeVisible();
     if (name === "project-work")
       await expect(
-        page.getByRole("button", { name: "Project assistant", exact: true }),
+        page.getByRole("link", { name: "Project assistant", exact: true }),
       ).toBeVisible();
     if (name === "infrastructure")
       await expect(
@@ -596,9 +619,21 @@ test("project sections stay in the sidebar and threads belong only to Workspace"
     .click();
   await expect(page).toHaveURL(/projects\/sdk\/workspaces$/);
   await expect(drawer).toHaveCount(0);
-  await page
-    .getByRole("button", { name: "Open navigation", exact: true })
+  const openNavigation = page.getByRole("button", {
+    name: "Open navigation",
+    exact: true,
+  });
+  await openNavigation.click();
+  await drawer
+    .getByRole("link", { name: "Project assistant", exact: true })
     .click();
+  await expect(page).toHaveURL(/projects\/sdk\/assistant$/);
+  await expect(
+    page.getByRole("heading", { name: "Project assistant", level: 1 }),
+  ).toBeFocused();
+  await expect(drawer).toHaveCount(0);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await openNavigation.click();
   await drawer.getByRole("link", { name: "Workspace", exact: true }).click();
   await page
     .getByRole("button", { name: "Switch thread", exact: true })
@@ -621,6 +656,30 @@ test("project-first sidebar stays fixed on global pages and remembers the projec
     exact: true,
   });
   await expect(switcher).toBeVisible();
+  const projectAssistant = sidebar.getByRole("link", {
+    name: "Project assistant",
+  });
+  await projectAssistant.hover();
+  const tooltip = page.getByRole("tooltip");
+  await expect(
+    page.getByRole("tooltip", { name: "Project assistant", exact: true }),
+  ).toBeVisible();
+  await switcher.hover();
+  await expect(
+    page.getByRole("tooltip", {
+      name: "Switch project: Developer SDK",
+      exact: true,
+    }),
+  ).toBeVisible();
+  const platform = sidebar.getByRole("button", { name: "Platform" });
+  await platform.hover();
+  await expect(
+    page.getByRole("tooltip", { name: "Platform", exact: true }),
+  ).toBeVisible();
+  await platform.click();
+  await expect(page.getByRole("menuitem", { name: "Health" })).toBeVisible();
+  await expect(tooltip).toHaveCount(0);
+  await page.keyboard.press("Escape");
   const measure = () =>
     sidebar
       .locator(
@@ -635,6 +694,8 @@ test("project-first sidebar stays fixed on global pages and remembers the projec
   await page
     .getByRole("button", { name: "Expand sidebar", exact: true })
     .click();
+  await projectAssistant.hover();
+  await expect(tooltip).toHaveCount(0);
   for (const collapsed of [false, true]) {
     if (collapsed) {
       await page

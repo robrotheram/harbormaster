@@ -235,10 +235,12 @@ test("an assigned reviewer requests revision without dispatching the controller'
     return route.fulfill({ json: { items: [] } });
   });
   await page.goto("/app/projects/A/reviews?work=work_one&attempt=attempt_one");
+  await page.getByRole("button", { name: "Task settings" }).click();
+  const settings = page.getByRole("dialog", { name: "Task settings" });
   await expect(
-    page.getByRole("button", { name: "Approve this revision" }),
+    settings.getByRole("button", { name: "Approve this revision" }),
   ).toBeEnabled();
-  await page
+  await settings
     .getByRole("button", { name: "Request changes", exact: true })
     .click();
   const submit = page.getByRole("button", { name: "Send change request" });
@@ -248,9 +250,14 @@ test("an assigned reviewer requests revision without dispatching the controller'
     .fill("Verify archive checksums.");
   await submit.click();
   await expect(
-    page.getByText(
-      "Changes requested. The controller can prepare the next revision.",
-    ),
+    page.getByRole("dialog", { name: "Request changes" }),
+  ).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(settings).toHaveCount(0);
+  await expect(
+    page.getByText("The controller can prepare the next revision.", {
+      exact: true,
+    }),
   ).toBeVisible();
   expect(writes).toEqual([
     {

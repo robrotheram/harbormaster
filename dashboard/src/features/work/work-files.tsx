@@ -107,6 +107,7 @@ export function WorkFiles({
       !pinnedAttempt && query?.queryKey[5] === undefined ? previous : undefined,
   });
   const captured = changes.data?.captured;
+  const bothListsFailed = !running && changes.isError && workspace.isError;
   const diffRun = changes.data?.run;
   const [filter, setFilter] = useState("");
   const [selection, setSelection] = useState<{ path: string; group: string }>();
@@ -200,6 +201,16 @@ export function WorkFiles({
           />
         </div>
         <div className="file-explorer-list">
+          {bothListsFailed && (
+            <ErrorNotice
+              error={workspace.error}
+              message="Could not load changed files or workspace files."
+              onRetry={() =>
+                void Promise.all([changes.refetch(), workspace.refetch()])
+              }
+              retrying={changes.isFetching || workspace.isFetching}
+            />
+          )}
           {matches.map(
             (group, i) =>
               (i < 2 || group.files.length > 0) && (
@@ -210,7 +221,7 @@ export function WorkFiles({
                   {i === 0 &&
                     (running ? (
                       <p>Changes appear after this run finishes.</p>
-                    ) : changes.isError ? (
+                    ) : bothListsFailed ? null : changes.isError ? (
                       <ErrorNotice
                         error={changes.error}
                         onRetry={() => void changes.refetch()}
@@ -232,6 +243,7 @@ export function WorkFiles({
                       </p>
                     ) : null)}
                   {i === 1 &&
+                    !bothListsFailed &&
                     (workspace.isError ? (
                       <ErrorNotice
                         error={workspace.error}

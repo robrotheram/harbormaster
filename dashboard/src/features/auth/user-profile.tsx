@@ -15,9 +15,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { SidebarTooltip } from "@/components/ui/tooltip";
 import { profileDetails, useUserSession } from "./session";
 
-export function UserProfileMenu() {
+export function UserProfileMenu({
+  sidebarTooltip = false,
+}: { sidebarTooltip?: boolean } = {}) {
   const session = useUserSession();
   const profile = profileDetails(session);
   const [open, setOpen] = useState(false);
@@ -54,30 +57,34 @@ export function UserProfileMenu() {
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className="operator-label user-profile-trigger"
-          aria-label={`User profile: ${profile.initials ? `${profile.initials} ` : ""}${profile.name} ${profile.detail}`}
-          title={`${profile.name} — ${profile.detail}`}
-        >
-          <span className="operator-avatar" aria-hidden="true">
-            {session.status === "loading" ? (
-              <LoaderCircle className="size-4 loading-spinner" />
-            ) : (
-              profile.initials || <UserRound size={16} />
-            )}
-          </span>{" "}
-          <span className="rail-label min-w-0 flex-1 text-left">
-            <span className="block truncate font-medium">{profile.name}</span>{" "}
-            <small className="truncate">{profile.detail}</small>
-          </span>
-          <ChevronsUpDown
-            className="rail-label size-3.5 shrink-0 text-muted-foreground"
-            aria-hidden="true"
-          />
-        </button>
-      </DropdownMenuTrigger>
+      <SidebarTooltip
+        label={`${profile.name} (${profile.detail})`}
+        enabled={sidebarTooltip}
+      >
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            className="operator-label user-profile-trigger"
+            aria-label={`User profile: ${profile.initials ? `${profile.initials} ` : ""}${profile.name} ${profile.detail}`}
+          >
+            <span className="operator-avatar" aria-hidden="true">
+              {session.status === "loading" ? (
+                <LoaderCircle className="size-4 loading-spinner" />
+              ) : (
+                profile.initials || <UserRound size={16} />
+              )}
+            </span>{" "}
+            <span className="rail-label min-w-0 flex-1 text-left">
+              <span className="block truncate font-medium">{profile.name}</span>{" "}
+              <small className="truncate">{profile.detail}</small>
+            </span>
+            <ChevronsUpDown
+              className="rail-label size-3.5 shrink-0 text-muted-foreground"
+              aria-hidden="true"
+            />
+          </button>
+        </DropdownMenuTrigger>
+      </SidebarTooltip>
       <DropdownMenuContent
         side="top"
         align="start"

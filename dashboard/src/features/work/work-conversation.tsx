@@ -17,11 +17,19 @@ import {
   Plus,
   Search,
   MessageSquare,
-  Bot,
-  PanelLeftOpen,
+  MessagesSquare,
   ChevronDown,
+  FlaskConical,
+  Globe,
+  Monitor,
+  Newspaper,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -32,15 +40,29 @@ import {
   DropdownMenuRadioItem,
 } from "@/components/ui/dropdown-menu";
 import { NativeSelect } from "@/components/ui/native-select";
-import { ErrorNotice, Form, Modal, useRequestKey } from "@/shared/components";
+import { ErrorNotice, Form, useRequestKey } from "@/shared/components";
 import { date, label } from "@/shared/format";
 import type { Project } from "@/shared/types";
 import { workspaceOptions } from "@/features/workspaces/api";
-import { ProjectCompanion } from "@/features/project-assistant/companion";
 import { WorkConversation } from "./work-thread";
 import { workApi, workKeys, workOptions, type WorkItem } from "./api";
 import { startsInWorkspace, workProfiles, type WorkProfile } from "./profiles";
 import { stages, workStage, workStatus, type WorkStage } from "./stages";
+
+const webThread = { label: "Web", Icon: Globe };
+const researchThread = { label: "Research", Icon: FlaskConical };
+const threadTypes = {
+  software: webThread,
+  desktop: { label: "Desktop", Icon: Monitor },
+  research: researchThread,
+  "data-science": researchThread,
+  digest: { label: "Digest", Icon: Newspaper },
+} satisfies Record<WorkItem["kind"], typeof webThread>;
+
+const minRailWidth = 200;
+const maxRailWidth = 280;
+const clampRailWidth = (width: number) =>
+  Math.max(minRailWidth, Math.min(maxRailWidth, width));
 
 export function Work({ project }: { project: Project }) {
   return <ProjectConversations key={project.id} project={project} />;
@@ -54,6 +76,13 @@ function ProjectConversations({ project }: { project: Project }) {
     "thread-width",
     252,
   );
+  const [panel, setPanel] = useLayoutPreference<"shown" | "hidden">(
+    "thread-panel",
+    "shown",
+  );
+  const panelHidden = panel === "hidden";
+  const hidePanelButton = useRef<HTMLButtonElement>(null);
+  const showPanelButton = useRef<HTMLButtonElement>(null);
   const rail = useRef<HTMLDivElement>(null);
   useEffect(() => {
     personal.setLastThread(selected);
@@ -75,7 +104,6 @@ function ProjectConversations({ project }: { project: Project }) {
     },
     [selected],
   );
-  const [assistant, setAssistant] = useState(false);
   const select = (id: string, openWorkspace = false) => {
     setWorklist(false);
     navigate({
@@ -117,6 +145,7 @@ function ProjectConversations({ project }: { project: Project }) {
       i.specification_path,
       i.id,
       i.kind,
+      threadTypes[i.kind]?.label || "",
       workProfiles.find((profile) => profile.kind === i.kind)?.label || "",
       titleState.owners.get(i.id) || "",
     ].some((v) => v.toLowerCase().includes(term)),
@@ -135,15 +164,134 @@ function ProjectConversations({ project }: { project: Project }) {
           : items.filter((item) => workStage(item.state) === id).length;
     return `${label} (${count})`;
   };
-  const renderWorkList = () => (
+  const togglePanel = () => {
+    const nextFocus = panelHidden ? hidePanelButton : showPanelButton;
+    setPanel(panelHidden ? "shown" : "hidden");
+    requestAnimationFrame(() => nextFocus.current?.focus());
+  };
+  const renderThread = (item: WorkItem, compact = false) => {
+    const title = titles.get(item.id) || conversationTitle(item);
+    const owner = titleState.owners.get(item.id);
+    const { label: type, Icon } = threadTypes[item.kind] ?? {
+      label: label(item.kind),
+      Icon: MessageSquare,
+    };
+    const status = workStatus(item.state);
+    const hasDraft = !!drafts[item.id]?.trim();
+    const details = [type, label(status), hasDraft && "Unsent draft"]
+      .filter(Boolean)
+      .join(". ");
+    const icon = (
+      <span className="thread-type-icon" aria-hidden="true">
+        <Icon size={15} />
+      </span>
+    );
+    const rowDetails = (
+      <>
+        <span className="thread-list-content">
+          <span className="conversation-work-name">{title}</span>
+          {(owner || hasDraft) && (
+            <span className="conversation-work-meta">
+              {hasDraft && <span className="thread-draft">Draft</span>}
+              {owner && (
+                <span className="truncate" title={owner}>
+                  {owner}
+                </span>
+              )}
+            </span>
+          )}
+        </span>
+        <span className="thread-list-trailing">
+          <time dateTime={item.created_at} title={date(item.created_at)}>
+            {new Date(item.created_at).toLocaleDateString(undefined, {
+              month: "short",
+              day: "numeric",
+            })}
+          </time>
+          <span
+            className="thread-state"
+            data-stage={workStage(item.state)}
+            data-state={status}
+            aria-hidden="true"
+          />
+        </span>
+      </>
+    );
+    const button = (
+      <button
+        key={item.id}
+        className={`conversation-work-item ${compact ? "" : "thread-row"} ${selected === item.id ? "is-selected" : ""}`}
+        onClick={() => select(item.id)}
+        aria-label={compact ? title : undefined}
+        aria-pressed={selected === item.id}
+        aria-description={details}
+        title={
+          compact
+            ? undefined
+            : [
+                title,
+                details,
+                date(item.created_at),
+                title === "Untitled conversation" && item.id,
+              ]
+                .filter(Boolean)
+                .join("\n")
+        }
+      >
+        {icon}
+        {!compact && rowDetails}
+      </button>
+    );
+    return compact ? (
+      <Tooltip key={item.id}>
+        <TooltipTrigger asChild>{button}</TooltipTrigger>
+        <TooltipContent
+          side="right"
+          sideOffset={8}
+          className="thread-tooltip w-64 max-w-xs border border-border bg-popover p-0 text-popover-foreground"
+          aria-label={[
+            details,
+            owner && `Assigned to ${owner}`,
+            date(item.created_at),
+          ]
+            .filter(Boolean)
+            .join(". ")}
+        >
+          <div className="thread-row">
+            {icon}
+            {rowDetails}
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    ) : (
+      button
+    );
+  };
+  const renderWorkList = (docked = false) => (
     <aside className="conversation-worklist" aria-label="Threads">
-      <Button className="w-full" onClick={() => select("")}>
-        <Plus size={14} /> New thread
-      </Button>
+      <div className="thread-list-actions">
+        <Button className="h-9 flex-1" onClick={() => select("")}>
+          <Plus size={14} /> New thread
+        </Button>
+        {docked && (
+          <Button
+            ref={hidePanelButton}
+            className="size-9"
+            variant="outline"
+            size="icon"
+            aria-label="Hide thread panel"
+            title="Hide thread panel"
+            aria-expanded="true"
+            onClick={togglePanel}
+          >
+            <MessagesSquare size={16} />
+          </Button>
+        )}
+      </div>
       <div className="conversation-search">
         <Search size={14} />
         <Input
-          className="h-8 pl-8 text-xs"
+          className="h-9 pl-8 text-xs"
           aria-label="Search threads"
           placeholder="Find a thread…"
           value={filter}
@@ -232,46 +380,7 @@ function ProjectConversations({ project }: { project: Project }) {
             </Button>
           </div>
         )}
-        {visible.map((item) => (
-          <button
-            key={item.id}
-            className={`conversation-work-item ${selected === item.id ? "is-selected" : ""}`}
-            onClick={() => select(item.id)}
-            aria-pressed={selected === item.id}
-            aria-description={
-              drafts[item.id]?.trim() ? "Unsent draft" : undefined
-            }
-            title={titles.get(item.id)}
-          >
-            <span className="conversation-work-name">
-              <span className="line-clamp-2">{titles.get(item.id)}</span>
-              {titles.get(item.id) === "Untitled conversation" && (
-                <small>{item.id}</small>
-              )}
-            </span>
-            <span className="conversation-work-meta">
-              <span>{titleState.owners.get(item.id) || "Unassigned"}</span>
-              {workStatus(item.state) !== "accepted" && (
-                <span
-                  className="thread-state"
-                  data-stage={workStage(item.state)}
-                  data-state={workStatus(item.state)}
-                >
-                  {label(workStatus(item.state))}
-                </span>
-              )}
-              {drafts[item.id]?.trim() && (
-                <span className="thread-draft">Draft</span>
-              )}
-              <time title={date(item.created_at)}>
-                {new Date(item.created_at).toLocaleDateString(undefined, {
-                  month: "short",
-                  day: "numeric",
-                })}
-              </time>
-            </span>
-          </button>
-        ))}
+        {visible.map((item) => renderThread(item))}
         {matches.length > 0 && (
           <div className="px-2 py-3 text-center">
             <p className="conversation-muted" role="status">
@@ -311,14 +420,9 @@ function ProjectConversations({ project }: { project: Project }) {
             </p>
           )}
       </div>
-      <div className="conversation-rail-footer">
-        <Button variant="ghost" size="sm" onClick={() => setAssistant(true)}>
-          <Bot size={14} /> Project assistant
-        </Button>
-      </div>
     </aside>
   );
-  const mobileNavigation = (
+  const threadNavigation = (
     <Button
       ref={threadSwitch}
       className="conversation-drawer-toggle"
@@ -329,70 +433,105 @@ function ProjectConversations({ project }: { project: Project }) {
       aria-expanded={worklist}
       onClick={() => setWorklist(true)}
     >
-      <PanelLeftOpen size={18} />
+      <MessagesSquare size={18} />
     </Button>
   );
+
   return (
     <div
       className="work-page"
       style={
         {
-          "--thread-rail-width": `${Math.max(240, Math.min(280, railWidth))}px`,
+          "--thread-rail-width": `${clampRailWidth(railWidth)}px`,
         } as CSSProperties
       }
     >
       <h1 className="sr-only">Project work</h1>
       <div
         className={`conversation-workbench ${selected ? "has-conversation" : ""}`}
+        data-thread-panel-hidden={panelHidden}
       >
-        <div className="conversation-thread-rail" ref={rail}>
-          <div id="thread-sidebar" className="conversation-rail-expanded">
-            {renderWorkList()}
-          </div>
-          <div
-            className="thread-resizer"
-            role="separator"
-            aria-label="Resize thread list"
-            aria-orientation="vertical"
-            aria-valuemin={240}
-            aria-valuemax={280}
-            aria-valuenow={railWidth}
-            tabIndex={0}
-            onKeyDown={(e) => {
-              if (["ArrowLeft", "ArrowRight"].includes(e.key)) {
+        {panelHidden ? (
+          <aside
+            className="conversation-thread-rail thread-rail-collapsed"
+            aria-label="Thread panel"
+          >
+            <div className="thread-rail-heading">
+              <Button
+                ref={showPanelButton}
+                className="thread-rail-restore size-9"
+                variant="outline"
+                size="icon"
+                aria-label="Show thread panel"
+                title="Show thread panel"
+                aria-expanded="false"
+                onClick={togglePanel}
+              >
+                <MessagesSquare size={16} />
+              </Button>
+            </div>
+
+            <div className="conversation-work-items">
+              {visible.map((item) => renderThread(item, true))}
+              {visible.length < matches.length && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Show more threads"
+                  title="Show more threads"
+                  onClick={() => setVisibleLimit((limit) => limit + 20)}
+                >
+                  <ChevronDown size={16} />
+                </Button>
+              )}
+            </div>
+          </aside>
+        ) : (
+          <div className="conversation-thread-rail" ref={rail}>
+            <div id="thread-sidebar" className="conversation-rail-expanded">
+              {renderWorkList(true)}
+            </div>
+            <div
+              className="thread-resizer"
+              role="separator"
+              aria-label="Resize thread list"
+              aria-orientation="vertical"
+              aria-valuemin={minRailWidth}
+              aria-valuemax={maxRailWidth}
+              aria-valuenow={clampRailWidth(railWidth)}
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Home" || e.key === "End") {
+                  e.preventDefault();
+                  setRailWidth(e.key === "Home" ? minRailWidth : maxRailWidth);
+                } else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+                  e.preventDefault();
+                  setRailWidth((w) =>
+                    clampRailWidth(w + (e.key === "ArrowRight" ? 4 : -4)),
+                  );
+                }
+              }}
+              onPointerDown={(e) => {
                 e.preventDefault();
-                setRailWidth((w) =>
-                  Math.max(
-                    240,
-                    Math.min(280, w + (e.key === "ArrowRight" ? 4 : -4)),
-                  ),
-                );
-              }
-            }}
-            onPointerDown={(e) => {
-              e.preventDefault();
-              e.currentTarget.setPointerCapture(e.pointerId);
-            }}
-            onPointerMove={(e) => {
-              if (
-                e.currentTarget.hasPointerCapture(e.pointerId) &&
-                rail.current
-              )
-                setRailWidth(
-                  Math.max(
-                    240,
-                    Math.min(
-                      280,
+                e.currentTarget.setPointerCapture(e.pointerId);
+              }}
+              onPointerMove={(e) => {
+                if (
+                  e.currentTarget.hasPointerCapture(e.pointerId) &&
+                  rail.current
+                )
+                  setRailWidth(
+                    clampRailWidth(
                       e.clientX - rail.current.getBoundingClientRect().left,
                     ),
-                  ),
-                );
-            }}
-            onPointerUp={(e) =>
-              e.currentTarget.releasePointerCapture(e.pointerId)
-            }
-          />
-        </div>
+                  );
+              }}
+              onPointerUp={(e) =>
+                e.currentTarget.releasePointerCapture(e.pointerId)
+              }
+            />
+          </div>
+        )}
         <Sheet open={worklist} onOpenChange={setWorklist}>
           <SheetContent
             side="left"
@@ -414,14 +553,14 @@ function ProjectConversations({ project }: { project: Project }) {
             id={selected}
             title={titles.get(selected)}
             owner={titleState.owners.get(selected)}
-            navigation={mobileNavigation}
+            navigation={threadNavigation}
             message={drafts[selected] || ""}
             setMessage={setThreadDraft}
           />
         ) : (
           <div className="new-thread-surface">
             <div className="new-thread-navigation">
-              {mobileNavigation}
+              {threadNavigation}
               <span>New thread</span>
             </div>
             <NewConversation
@@ -434,14 +573,6 @@ function ProjectConversations({ project }: { project: Project }) {
           </div>
         )}
       </div>
-      {assistant && (
-        <Modal
-          title={`Project assistant in ${project.name}`}
-          onClose={() => setAssistant(false)}
-        >
-          <ProjectCompanion project={project} />
-        </Modal>
-      )}
     </div>
   );
 }

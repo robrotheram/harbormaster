@@ -127,11 +127,15 @@ async function fixture(page: Page) {
     ["connections", "/app/connection-profiles", "Network profiles"],
     ["help", "/app/help", "Getting started"],
     ["repositories", "/app/repositories", "Connections"],
+    [
+      "assistant",
+      "/app/projects/audit/assistant?tab=hermes",
+      "Project assistant",
+    ],
     ...[
       ["board", "Overview"],
       ["work", "Project work"],
       ["workspaces", "Workers"],
-      ["hermes", "Project settings"],
       ["settings", "Project settings"],
     ].map(([key, title]) => [key, `/app/projects/audit/${key}`, title]),
   ];
@@ -201,7 +205,10 @@ test("all application pages preserve readable controls and fit narrow screens", 
           )
           .toEqual([]);
       }
-      const searches = page.locator('main input[aria-label^="Search"]:visible');
+      // The thread list suite checks its toolbar controls together.
+      const searches = page.locator(
+        'main input[aria-label^="Search"]:not([aria-label="Search threads"]):visible',
+      );
       for (const input of await searches.all())
         expect((await input.boundingBox())!.height).toBe(32);
       if (key === "infrastructure") {

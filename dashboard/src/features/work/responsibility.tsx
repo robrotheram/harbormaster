@@ -26,10 +26,12 @@ export const memberOptions = (project: string) => ({
 export function Responsibility({
   item,
   children,
+  reviewActions,
   running = false,
 }: {
   item: WorkItem;
   children?: ReactNode;
+  reviewActions?: ReactNode;
   running?: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -75,11 +77,12 @@ export function Responsibility({
         ref={trigger}
         className="thread-settings-trigger"
         variant="ghost"
-        size="sm"
+        size="icon"
         onClick={() => setOpen(true)}
         aria-label="Task settings"
+        title="Task settings"
       >
-        <Settings2 size={16} /> <span>Settings</span>
+        <Settings2 size={16} />
       </Button>
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent
@@ -96,6 +99,12 @@ export function Responsibility({
             </SheetDescription>
           </SheetHeader>
           <div className="thread-settings-body">
+            {reviewActions && (
+              <section className="space-y-2">
+                <h3>Review revision</h3>
+                <div className="flex flex-wrap gap-2">{reviewActions}</div>
+              </section>
+            )}
             {children && (
               <section className="thread-environment">
                 <h3>Environment</h3>

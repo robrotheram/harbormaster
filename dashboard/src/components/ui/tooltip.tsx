@@ -47,10 +47,47 @@ function TooltipContent({
         {...props}
       >
         {children}
-        <TooltipPrimitive.Arrow className="z-50 size-2.5 translate-y-[calc(-50%_-_2px)] rotate-45 rounded-[2px] bg-foreground fill-foreground" />
+        <TooltipPrimitive.Arrow
+          data-slot="tooltip-arrow"
+          className="z-50 size-2.5 translate-y-[calc(-50%_-_2px)] rotate-45 rounded-[2px] bg-foreground fill-foreground"
+        />
       </TooltipPrimitive.Content>
     </TooltipPrimitive.Portal>
   );
 }
 
-export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider };
+function SidebarTooltip({
+  label,
+  children,
+  enabled = true,
+}: {
+  label: string;
+  children: React.ReactElement;
+  enabled?: boolean;
+}) {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <Tooltip
+      open={enabled && open}
+      onOpenChange={(next) => setOpen(enabled && next)}
+      disableHoverableContent
+    >
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent
+        side="right"
+        sideOffset={8}
+        className="sidebar-tooltip max-w-xs break-words border border-border bg-popover text-popover-foreground"
+      >
+        {label}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+export {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider,
+  SidebarTooltip,
+};

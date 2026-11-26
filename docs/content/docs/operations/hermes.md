@@ -9,10 +9,10 @@ real VM import check must pass before Hermes appears as available in the UI.
 
 ## Use the workspace agent
 
-1. Open a project. Select **Settings**, then **Hermes setup**.
+1. In the project sidebar, select **Project assistant**. Open **Hermes setup**.
 2. In **Agent**, choose **Workspace agent**, enter an approved model, and choose an approved connection profile. To enable both workspace and Matrix use, choose **Workspace agent and Matrix bot** and complete the fields in **Matrix** before saving.
 3. Select **Save settings**, then **Start Hermes**.
-4. Open **Workspace**, then **Project assistant**. Select **Work with Hermes** and submit an instruction.
+4. In **Project assistant**, open **Overview**. Select **Work with Hermes** and submit an instruction.
 
 Provider requests use
 the existing Workbench Codex subscription gateway and its host-held native login.

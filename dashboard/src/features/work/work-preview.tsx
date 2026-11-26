@@ -98,6 +98,23 @@ export function WorkPreview({
       ),
     refetchInterval: 3000,
   });
+  const [lastApplicationError, setLastApplicationError] = useState<{
+    workspace: string;
+    project: string;
+    error: Error;
+  }>();
+  useEffect(() => {
+    if (query.error)
+      setLastApplicationError({ workspace, project, error: query.error });
+    else if (query.isSuccess) setLastApplicationError(undefined);
+  }, [project, workspace, query.error, query.isSuccess]);
+  const applicationError =
+    query.error ??
+    (query.isPending &&
+    lastApplicationError?.workspace === workspace &&
+    lastApplicationError.project === project
+      ? lastApplicationError.error
+      : undefined);
   const transientDesktopError =
     mode === "desktop" &&
     query.error instanceof APIError &&
@@ -306,60 +323,64 @@ export function WorkPreview({
         !query.isPending &&
         !detected.isPending));
   const tabs = [
-    mode === "desktop"
-      ? { id: "desktop", text: "Desktop", icon: Monitor }
-      : { id: "web", text: "Web", icon: Globe },
+    { id: "web", text: "Web", icon: Globe },
     ...(output
       ? [{ id: "output", text: "Output", icon: FileText } as const]
       : []),
   ] as const satisfies readonly {
-    id: PreviewView | "desktop";
+    id: PreviewView;
     text: string;
     icon: typeof Globe;
   }[];
   return (
     <aside className="work-visual-pane" aria-label="Preview workspace">
       <div className="visual-toolbar preview-toolbar">
-        <div className="visual-tabs" role="tablist" aria-label="Preview mode">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              role="tab"
-              aria-selected={(showOutput ? "output" : mode) === tab.id}
-              onClick={() => {
-                if (tab.id !== "desktop") onViewChange(tab.id);
-              }}
-            >
-              <tab.icon size={14} />
-              {tab.text}
-            </button>
-          ))}
-        </div>
+        {mode === "desktop" ? (
+          <span className="desktop-preview-label">
+            <Monitor size={14} aria-hidden="true" /> Workspace desktop
+          </span>
+        ) : (
+          <div className="visual-tabs" role="tablist" aria-label="Preview mode">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={(showOutput ? "output" : mode) === tab.id}
+                onClick={() => onViewChange(tab.id)}
+              >
+                <tab.icon size={14} />
+                {tab.text}
+              </button>
+            ))}
+          </div>
+        )}
         {!showOutput && (
           <>
-            <select
-              aria-label="Preview application"
-              value={selected?.id || ""}
-              onChange={(e) => {
-                setSelectedID(e.target.value);
-                setRefresh((v) => v + 1);
-              }}
-            >
-              <option value="" disabled>
-                {mode === "desktop"
-                  ? "Workspace desktop"
-                  : "Application preview"}
-              </option>
-              {active.map((a) => (
-                <option key={a.id} value={a.id}>
+            {(mode === "web" || active.length > 1) && (
+              <select
+                aria-label="Preview application"
+                value={selected?.id || ""}
+                onChange={(e) => {
+                  setSelectedID(e.target.value);
+                  setRefresh((v) => v + 1);
+                }}
+              >
+                <option value="" disabled>
                   {mode === "desktop"
-                    ? "Linux desktop"
-                    : a.application.directory}{" "}
-                  · {a.application.port}
+                    ? "Workspace desktop"
+                    : "Application preview"}
                 </option>
-              ))}
-            </select>
+                {active.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {mode === "desktop"
+                      ? "Linux desktop"
+                      : a.application.directory}{" "}
+                    · {a.application.port}
+                  </option>
+                ))}
+              </select>
+            )}
             {selected?.ready &&
               url &&
               mode === "web" &&
@@ -368,15 +389,17 @@ export function WorkPreview({
                 origin: new URL(url).origin,
                 service: selected.id,
               })}
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Reload preview"
-              disabled={!selected?.ready || desktopInSeparateTab}
-              onClick={() => setRefresh((v) => v + 1)}
-            >
-              <RefreshCw size={14} />
-            </Button>
+            {(mode === "web" || selected) && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Reload preview"
+                disabled={!selected?.ready || desktopInSeparateTab}
+                onClick={() => setRefresh((v) => v + 1)}
+              >
+                <RefreshCw size={14} />
+              </Button>
+            )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -523,14 +546,29 @@ export function WorkPreview({
             Click an element to describe a change in the conversation.
           </p>
         )}
-        {query.isError && !desktopConnected && !desktopInSeparateTab ? (
+        {applicationError && !desktopConnected && !desktopInSeparateTab ? (
           <PreviewUnavailable>
             <ErrorNotice
-              error={query.error}
+              error={applicationError}
               message="Workbench could not check which apps are running on the worker."
-              onRetry={() => void query.refetch()}
-              retrying={query.isFetching}
             />
+            <Button
+              type="button"
+              variant="outline"
+              disabled={query.isFetching}
+              onClick={() => void query.refetch()}
+            >
+              <RefreshCw
+                aria-hidden="true"
+                className={
+                  query.isFetching ? "motion-safe:animate-spin" : undefined
+                }
+              />
+              {query.isFetching ? "Checking…" : "Try again"}
+            </Button>
+            <span className="sr-only" role="status">
+              {query.isFetching ? "Checking for running applications…" : ""}
+            </span>
           </PreviewUnavailable>
         ) : query.data?.workspace_stopped ? (
           <PreviewUnavailable>
@@ -546,18 +584,13 @@ export function WorkPreview({
           </PreviewUnavailable>
         ) : query.isPending ||
           (!selected && mode === "web" && forward.isPending) ? (
-          <div className="visual-empty" role="status">
-            <RefreshCw
-              aria-hidden="true"
-              size={22}
-              className="motion-safe:animate-spin"
-            />
-            <p>
+          <PreviewUnavailable>
+            <PreviewStatus>
               {forward.isPending
                 ? "Connecting to the detected app…"
                 : "Checking for running applications…"}
-            </p>
-          </div>
+            </PreviewStatus>
+          </PreviewUnavailable>
         ) : selected ? (
           <div
             className={`visual-browser ${phone && mode === "web" ? "is-phone" : ""}`}
@@ -591,39 +624,31 @@ export function WorkPreview({
                 onConnection={setConnection}
               />
             ) : (
-              <div className="visual-empty" role="status">
-                <RefreshCw
-                  aria-hidden="true"
-                  size={22}
-                  className="motion-safe:animate-spin"
-                />
-                <p>
+              <PreviewUnavailable>
+                <PreviewStatus>
                   {mode === "desktop"
                     ? "Starting desktop…"
                     : "Waiting for the app to respond…"}
-                </p>
-              </div>
+                </PreviewStatus>
+              </PreviewUnavailable>
             )}
           </div>
         ) : (
-          <div className="visual-empty">
-            {apps.length ? (
-              <CircleAlert aria-hidden="true" size={24} />
-            ) : mode === "desktop" ? (
-              <Monitor aria-hidden="true" size={24} />
-            ) : (
-              <Globe aria-hidden="true" size={24} />
-            )}
-            <h3>
-              {apps.length
-                ? "Preview unavailable"
-                : mode === "desktop"
-                  ? "Workspace desktop"
-                  : "No running app yet"}
-            </h3>
+          <PreviewUnavailable
+            title={
+              mode === "desktop"
+                ? "Desktop is stopped"
+                : apps.length
+                  ? "Preview unavailable"
+                  : "No running app yet"
+            }
+            icon={
+              mode === "desktop" ? Monitor : apps.length ? CircleAlert : Globe
+            }
+          >
             <p>
               {mode === "desktop"
-                ? "Run and interact with Linux desktop apps alongside your agent."
+                ? "Start the desktop session to open Linux apps from this workspace."
                 : restartable
                   ? `The app on port ${restartable.application.port} is no longer connected. Restart it with its saved settings or check the logs.`
                   : apps.length
@@ -653,7 +678,9 @@ export function WorkPreview({
             >
               <Play size={14} />
               {mode === "desktop"
-                ? "Start worker desktop"
+                ? mutation.isPending
+                  ? "Starting desktop…"
+                  : "Start worker desktop"
                 : detectedPort
                   ? "Open detected app"
                   : restartable
@@ -668,7 +695,7 @@ export function WorkPreview({
             {mode === "web" && detected.isError && (
               <small>Automatic port detection is unavailable.</small>
             )}
-          </div>
+          </PreviewUnavailable>
         )}
       </div>
       {logs && (
@@ -776,13 +803,34 @@ export function WorkPreview({
   );
 }
 
-function PreviewUnavailable({ children }: { children: ReactNode }) {
+function PreviewStatus({ children }: { children: ReactNode }) {
+  return (
+    <p role="status" className="flex items-center gap-2">
+      <RefreshCw
+        aria-hidden="true"
+        size={14}
+        className="shrink-0 motion-safe:animate-spin"
+      />
+      {children}
+    </p>
+  );
+}
+
+function PreviewUnavailable({
+  children,
+  title = "Preview unavailable",
+  icon: Icon = CircleAlert,
+}: {
+  children: ReactNode;
+  title?: string;
+  icon?: typeof CircleAlert;
+}) {
   return (
     <div className="visual-empty">
       <div className="preview-recovery">
         <h3>
-          <CircleAlert aria-hidden="true" size={18} />
-          Preview unavailable
+          <Icon aria-hidden="true" size={18} />
+          {title}
         </h3>
         {children}
       </div>
@@ -853,14 +901,9 @@ function ConnectedPreview({
     );
   if (!url)
     return (
-      <div className="visual-empty" role="status">
-        <RefreshCw
-          aria-hidden="true"
-          size={22}
-          className="motion-safe:animate-spin"
-        />
-        <p>Connecting preview…</p>
-      </div>
+      <PreviewUnavailable>
+        <PreviewStatus>Connecting preview…</PreviewStatus>
+      </PreviewUnavailable>
     );
   return (
     <iframe

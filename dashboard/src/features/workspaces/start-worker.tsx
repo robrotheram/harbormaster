@@ -139,7 +139,7 @@ export function StartWorker({
                 to="/projects/$projectId/$section"
                 params={{
                   projectId: workspace.project_id,
-                  section: "settings",
+                  section: "assistant",
                 }}
                 search={{ tab: "hermes" }}
               >

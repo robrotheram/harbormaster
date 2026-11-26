@@ -4,8 +4,7 @@ import { ProjectAudit } from "@/features/history/project-audit";
 import { ProjectMembers } from "./members";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { Tabs } from "radix-ui";
-import { Bot, ClipboardList, Settings2 } from "lucide-react";
-import { lazy, Suspense } from "react";
+import { ClipboardList, Settings2 } from "lucide-react";
 import { projectsApi } from "./api";
 import { keys } from "@/shared/query-keys";
 import { useNavigate, useSearch } from "@tanstack/react-router";
@@ -16,12 +15,6 @@ import { ErrorNotice, Modal, Form } from "@/shared/components";
 import { request } from "@/shared/http";
 import type { Project } from "@/shared/types";
 
-const HermesSettings = lazy(() =>
-  import("@/features/project-assistant/hermes").then((m) => ({
-    default: m.HermesSettings,
-  })),
-);
-
 export function ProjectSettings({ project }: { project: Project }) {
   const search = useSearch({ from: "/projects/$projectId/$section" });
   const navigate = useNavigate();
@@ -31,13 +24,13 @@ export function ProjectSettings({ project }: { project: Project }) {
         <h1>Project settings</h1>
       </div>
       <Tabs.Root
-        value={search.tab ?? "general"}
+        value={search.tab === "audit" ? "audit" : "general"}
         onValueChange={(tab) =>
           void navigate({
             to: "/projects/$projectId/$section",
             params: { projectId: project.id, section: "settings" },
             search: {
-              tab: tab === "hermes" || tab === "audit" ? tab : undefined,
+              tab: tab === "audit" ? tab : undefined,
             },
           })
         }
@@ -46,10 +39,6 @@ export function ProjectSettings({ project }: { project: Project }) {
           <Tabs.Trigger value="general">
             <Settings2 aria-hidden="true" className="size-4 shrink-0" />
             General
-          </Tabs.Trigger>
-          <Tabs.Trigger value="hermes">
-            <Bot aria-hidden="true" className="size-4 shrink-0" />
-            Hermes setup
           </Tabs.Trigger>
           <Tabs.Trigger value="audit">
             <ClipboardList aria-hidden="true" className="size-4 shrink-0" />
@@ -61,14 +50,6 @@ export function ProjectSettings({ project }: { project: Project }) {
           className="pt-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <GeneralSettings key={project.id} project={project} />
-        </Tabs.Content>
-        <Tabs.Content
-          value="hermes"
-          className="pt-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <Suspense fallback={<p role="status">Loading Hermes setup…</p>}>
-            <HermesSettings project={project} />
-          </Suspense>
         </Tabs.Content>
         <Tabs.Content
           value="audit"

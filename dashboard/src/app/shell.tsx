@@ -1,7 +1,7 @@
 import { PersonalWorkProvider } from "@/features/work/personal-work";
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import {
   Boxes,
   Plus,
@@ -21,6 +21,7 @@ import {
   Settings2,
   Layers3,
   ListChecks,
+  Bot,
   X,
 } from "lucide-react";
 import {
@@ -33,6 +34,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { SidebarTooltip } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Sheet,
@@ -95,6 +97,11 @@ const GettingStarted = lazy(() =>
 const Work = lazy(() =>
   import("@/features/work/work").then((m) => ({ default: m.Work })),
 );
+const ProjectCompanion = lazy(() =>
+  import("@/features/project-assistant/companion").then((m) => ({
+    default: m.ProjectCompanion,
+  })),
+);
 const Delivery = lazy(() =>
   import("@/features/delivery/delivery").then((m) => ({ default: m.Delivery })),
 );
@@ -108,6 +115,7 @@ const sections = [
   { id: "work", label: "Workspace", icon: ListChecks },
   { id: "workspaces", label: "Workers", icon: Boxes },
   { id: "settings", label: "Settings", icon: Settings2 },
+  { id: "assistant", label: "Project assistant", icon: Bot },
 ] as const;
 
 export function ProjectShell({
@@ -134,6 +142,9 @@ export function ProjectShell({
   const navigate = useNavigate();
   const [create, setCreate] = useState(false);
   const [mobile, setMobile] = useState(false);
+  const mobileTrigger = useRef<HTMLButtonElement>(null);
+  const pathname = useLocation({ select: (location) => location.pathname });
+  const mobileOpenedAt = useRef(pathname);
   const [systemOpen, setSystemOpen] = useState(false);
   const healthQuery = useQuery({ ...snapshotOptions(), enabled: systemOpen });
   const observedServices = healthQuery.data?.services?.items;
@@ -241,56 +252,61 @@ export function ProjectShell({
       localStorage.setItem("workbench.last-project", navigationProject.id);
     } catch {}
   }, [navigationProject?.id]);
+  const sidebarTooltips = collapsed && !mobile;
+  const sidebarAction = collapsed ? "Expand sidebar" : "Collapse sidebar";
   const factoryNavigation = (
     <nav
       aria-label="Factory navigation"
       className="shrink-0 px-2.5 pt-3 space-y-1"
     >
-      <Link
-        to="/"
-        aria-label="Projects"
-        title="Projects"
-        aria-current={
-          !projectID && !globalSettings && !globalPage ? "page" : undefined
-        }
-        className={cn(
-          "factory-nav",
-          !projectID && !globalSettings && !globalPage && "is-active",
-        )}
-        onClick={() => setMobile(false)}
-      >
-        <FolderGit2 />
-        <span className="rail-label">Projects</span>
-      </Link>
+      <SidebarTooltip label="Projects" enabled={sidebarTooltips}>
+        <Link
+          to="/"
+          aria-label="Projects"
+          aria-current={
+            !projectID && !globalSettings && !globalPage ? "page" : undefined
+          }
+          className={cn(
+            "factory-nav",
+            !projectID && !globalSettings && !globalPage && "is-active",
+          )}
+          onClick={() => setMobile(false)}
+        >
+          <FolderGit2 />
+          <span className="rail-label">Projects</span>
+        </Link>
+      </SidebarTooltip>
       {(navigationProject || projects.isError) && (
         <>
-          <Link
-            to="/workers"
-            aria-label="Workers"
-            title="Workers"
-            aria-current={infrastructure ? "page" : undefined}
-            className={cn("factory-nav", infrastructure && "is-active")}
-            onClick={() => setMobile(false)}
-          >
-            <Boxes />
-            <span className="rail-label">Workers</span>
-          </Link>
+          <SidebarTooltip label="Workers" enabled={sidebarTooltips}>
+            <Link
+              to="/workers"
+              aria-label="Workers"
+              aria-current={infrastructure ? "page" : undefined}
+              className={cn("factory-nav", infrastructure && "is-active")}
+              onClick={() => setMobile(false)}
+            >
+              <Boxes />
+              <span className="rail-label">Workers</span>
+            </Link>
+          </SidebarTooltip>
           <DropdownMenu open={systemOpen} onOpenChange={setSystemOpen}>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className={cn(
-                  "factory-nav system-menu-trigger",
-                  (globalSettings || services || repositories) && "is-active",
-                )}
-                aria-label="Platform"
-                title="Platform"
-              >
-                <Server />
-                <span className="rail-label">Platform</span>
-                <ChevronDown className="rail-label ml-auto" />
-              </button>
-            </DropdownMenuTrigger>
+            <SidebarTooltip label="Platform" enabled={sidebarTooltips}>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className={cn(
+                    "factory-nav system-menu-trigger",
+                    (globalSettings || services || repositories) && "is-active",
+                  )}
+                  aria-label="Platform"
+                >
+                  <Server />
+                  <span className="rail-label">Platform</span>
+                  <ChevronDown className="rail-label ml-auto" />
+                </button>
+              </DropdownMenuTrigger>
+            </SidebarTooltip>
             <DropdownMenuContent
               side="top"
               align="start"
@@ -366,40 +382,45 @@ export function ProjectShell({
           </span>
         </Link>
         {!mobile && (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="sidebar-collapse ml-auto hidden lg:inline-flex"
-            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            aria-expanded={!collapsed}
-            aria-controls="factory-sidebar"
-            onClick={() => setCollapsed((value) => !value)}
-          >
-            {collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
-          </Button>
+          <SidebarTooltip label={sidebarAction}>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="sidebar-collapse ml-auto hidden lg:inline-flex"
+              aria-label={sidebarAction}
+              aria-expanded={!collapsed}
+              aria-controls="factory-sidebar"
+              onClick={() => setCollapsed((value) => !value)}
+            >
+              {collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
+            </Button>
+          </SidebarTooltip>
         )}
       </div>
       {navigationProject ? (
         <>
           <div className="project-switcher">
             <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  className="project-switcher-button"
-                  aria-label={`Switch project: ${navigationProject.name}`}
-                  title={`Switch project: ${navigationProject.name}`}
-                >
-                  <span className="project-glyph" aria-hidden="true">
-                    <FolderGit2 size={14} />
-                  </span>
-                  <span className="rail-label truncate">
-                    {navigationProject.name}
-                  </span>
-                  <ChevronDown className="rail-label ml-auto size-4 shrink-0" />
-                </Button>
-              </DropdownMenuTrigger>
+              <SidebarTooltip
+                label={`Switch project: ${navigationProject.name}`}
+                enabled={sidebarTooltips}
+              >
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    className="project-switcher-button"
+                    aria-label={`Switch project: ${navigationProject.name}`}
+                  >
+                    <span className="project-glyph" aria-hidden="true">
+                      <FolderGit2 size={14} />
+                    </span>
+                    <span className="rail-label truncate">
+                      {navigationProject.name}
+                    </span>
+                    <ChevronDown className="rail-label ml-auto size-4 shrink-0" />
+                  </Button>
+                </DropdownMenuTrigger>
+              </SidebarTooltip>
               <DropdownMenuContent align="start" className="w-64">
                 <DropdownMenuLabel>Projects</DropdownMenuLabel>
                 {projects.data?.map((p) => (
@@ -431,31 +452,35 @@ export function ProjectShell({
           </div>
           <nav aria-label="Project navigation" className="project-section-list">
             {sections.map((item) => (
-              <Link
+              <SidebarTooltip
                 key={item.id}
-                to="/projects/$projectId/$section"
-                params={{ projectId: navigationProject.id, section: item.id }}
-                className={cn(
-                  "factory-nav project-section-nav",
-                  inProject && section === item.id && "is-active",
-                )}
-                aria-label={item.label}
-                title={item.label}
-                aria-current={
-                  inProject && section === item.id ? "page" : undefined
-                }
-                onClick={() => setMobile(false)}
+                label={item.label}
+                enabled={sidebarTooltips}
               >
-                <item.icon size={16} />
-                <span className="rail-label">{item.label}</span>
-              </Link>
+                <Link
+                  to="/projects/$projectId/$section"
+                  params={{ projectId: navigationProject.id, section: item.id }}
+                  className={cn(
+                    "factory-nav project-section-nav",
+                    inProject && section === item.id && "is-active",
+                  )}
+                  aria-label={item.label}
+                  aria-current={
+                    inProject && section === item.id ? "page" : undefined
+                  }
+                  onClick={() => setMobile(false)}
+                >
+                  <item.icon size={16} />
+                  <span className="rail-label">{item.label}</span>
+                </Link>
+              </SidebarTooltip>
             ))}
           </nav>
         </>
       ) : null}
       <div className="rail-bottom">
         <div className="project-global-links">{factoryNavigation}</div>
-        <UserProfileMenu />
+        <UserProfileMenu sidebarTooltip={sidebarTooltips} />
       </div>
     </div>
   );
@@ -475,11 +500,8 @@ export function ProjectShell({
           aria-describedby={undefined}
           onCloseAutoFocus={(e) => {
             e.preventDefault();
-            document
-              .querySelector<HTMLButtonElement>(
-                '[aria-label="Open navigation"]',
-              )
-              ?.focus();
+            if (mobileOpenedAt.current === pathname)
+              mobileTrigger.current?.focus();
           }}
         >
           <SheetTitle className="sr-only">Factory navigation</SheetTitle>
@@ -496,11 +518,15 @@ export function ProjectShell({
         <header className="factory-header">
           <div className="project-identity flex min-w-0 items-center gap-2.5">
             <Button
+              ref={mobileTrigger}
               variant="ghost"
               size="icon-lg"
               className="shell-toggle size-[44px] lg:hidden [&_svg]:size-[18px]"
               aria-label="Open navigation"
-              onClick={() => setMobile(true)}
+              onClick={() => {
+                mobileOpenedAt.current = pathname;
+                setMobile(true);
+              }}
             >
               <Menu />
             </Button>
@@ -718,6 +744,7 @@ function ProjectView({
   if (section === "team") return <Delivery project={project} />;
   if (section === "settings") return <ProjectSettings project={project} />;
   if (section === "work") return <Work project={project} />;
+  if (section === "assistant") return <ProjectCompanion project={project} />;
   return <Workspaces project={project} />;
 }
 
