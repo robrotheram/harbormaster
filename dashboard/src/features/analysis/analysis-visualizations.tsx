@@ -18,6 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Empty, ErrorNotice, Modal } from "@/shared/components";
+import { exitFullscreenWithin } from "@/shared/fullscreen";
 import type {
   VisualizationReference,
   VisualizationRevision,
@@ -77,6 +78,7 @@ export function AnalysisVisualizations({
   );
   const actionMovedFocus = useRef(false);
   const actionsTrigger = useRef<HTMLButtonElement>(null);
+  const resultPane = useRef<HTMLDivElement>(null);
   const deleteTrigger = useRef<HTMLElement | null>(null);
   const [unavailable, setUnavailable] = useState("");
   const [deleting, setDeleting] = useState<AnalysisResult>();
@@ -150,7 +152,7 @@ export function AnalysisVisualizations({
         </p>
       )}
       {selected ? (
-        <div className="grid min-w-0 overflow-hidden rounded-md border bg-card lg:grid-cols-[clamp(16rem,22vw,18rem)_minmax(0,1fr)]">
+        <div className="grid min-w-0 overflow-hidden rounded-md border bg-card lg:analysis-pane-columns">
           <aside className="min-w-0 border-b lg:border-r lg:border-b-0">
             <h2 className="border-b px-3 py-3 text-sm font-semibold">
               Visualizations
@@ -208,7 +210,10 @@ export function AnalysisVisualizations({
               })}
             </ul>
           </aside>
-          <div className="analysis-result flex min-w-0 flex-col">
+          <div
+            ref={resultPane}
+            className="analysis-result flex min-w-0 flex-col"
+          >
             <Visualization
               key={selectedKey}
               className="m-0 flex flex-1 flex-col rounded-none border-0 bg-transparent"
@@ -241,8 +246,9 @@ export function AnalysisVisualizations({
                     >
                       {onAsk && selected.worker_id === worker && (
                         <DropdownMenuItem
-                          onSelect={() => {
+                          onSelect={async () => {
                             actionMovedFocus.current = true;
+                            await exitFullscreenWithin(resultPane.current);
                             onAsk(selected);
                           }}
                         >
@@ -250,8 +256,10 @@ export function AnalysisVisualizations({
                         </DropdownMenuItem>
                       )}
                       <DropdownMenuItem
-                        onSelect={() => {
-                          actionMovedFocus.current = onRevise({
+                        onSelect={async () => {
+                          actionMovedFocus.current = true;
+                          await exitFullscreenWithin(resultPane.current);
+                          const started = onRevise({
                             worker_id: selected.worker_id,
                             artifact_id: selected.artifact_id,
                             report_paths:
@@ -260,8 +268,10 @@ export function AnalysisVisualizations({
                                 : selected.reportPaths,
                             title: title(selected),
                           });
-                          if (!actionMovedFocus.current)
+                          if (!started) {
                             setUnavailable(reportReference(selected));
+                            actionsTrigger.current?.focus();
+                          }
                         }}
                       >
                         <MessageSquare />

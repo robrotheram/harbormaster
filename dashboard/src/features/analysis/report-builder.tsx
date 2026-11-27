@@ -94,8 +94,8 @@ export function ReportBuilder({
   }
 
   return (
-    <div className="min-w-0 px-4 py-5 sm:px-6">
-      <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 px-4 pt-5 pb-6 sm:px-6">
         <h2 className="text-lg font-semibold">
           {source ? "Edit report" : "New report"}
         </h2>
@@ -117,13 +117,21 @@ export function ReportBuilder({
         </div>
       </header>
       {busy && (
-        <p role="status" className="mb-4 text-sm text-muted-foreground">
+        <p
+          role="status"
+          className="shrink-0 px-4 pb-4 text-sm text-muted-foreground sm:px-6"
+        >
           Saving report…
         </p>
       )}
-      {error !== undefined && <ErrorNotice error={error} />}
+      {error !== undefined && (
+        <div className="shrink-0 px-4 pb-4 sm:px-6">
+          <ErrorNotice error={error} />
+        </div>
+      )}
       <form
         id={formId}
+        className="min-h-0 flex-1 overflow-auto overscroll-contain px-4 pb-5 sm:px-6"
         onSubmit={(event) => {
           event.preventDefault();
           void save();

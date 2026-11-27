@@ -713,6 +713,16 @@ test("desktop development opens directly to the worker desktop and keeps it on m
   await expect(
     page.frameLocator('iframe[title="Workspace desktop"]').getByRole("heading"),
   ).toHaveText("Desktop connected");
+  const desktopPane = page.getByRole("complementary", {
+    name: "Preview workspace",
+  });
+  const desktopFrame = page.locator('iframe[title="Workspace desktop"]');
+  const desktopURL = await desktopFrame.getAttribute("src");
+  await desktopPane.getByRole("button", { name: "Enter fullscreen" }).click();
+  await expect(desktopPane.and(page.locator(":fullscreen"))).toBeVisible();
+  await desktopPane.getByRole("button", { name: "Exit fullscreen" }).click();
+  await expect(desktopPane.and(page.locator(":fullscreen"))).toHaveCount(0);
+  await expect(desktopFrame).toHaveAttribute("src", desktopURL!);
   expect(
     f.posts.find((p) => p.path.endsWith("/applications"))?.body.application,
   ).toEqual({
@@ -798,6 +808,11 @@ test("preview selection adds a draft only from the selected frame and reload ren
     .click();
   const frame = page.frameLocator('iframe[title="Application preview"]');
   await expect(frame.getByRole("button")).toBeVisible();
+  const previewPane = page.getByRole("complementary", {
+    name: "Preview workspace",
+  });
+  await previewPane.getByRole("button", { name: "Enter fullscreen" }).click();
+  await expect(previewPane.and(page.locator(":fullscreen"))).toBeVisible();
   await previewTool(page, "Select element to change");
   await page.evaluate(() =>
     window.postMessage(
@@ -813,6 +828,7 @@ test("preview selection adds a draft only from the selected frame and reload ren
   );
   await expect(page.getByLabel("Message to your agent")).toHaveValue("");
   await frame.getByRole("button").click();
+  await expect(previewPane.and(page.locator(":fullscreen"))).toHaveCount(0);
   await expect(page.getByLabel("Message to your agent")).toHaveValue(
     'Change #hero on / ("Build something"): ',
   );
@@ -3057,10 +3073,16 @@ test("uploads worker data and sends only paginated preview requests", async ({
       const query = req.postDataJSON();
       previews.push(query);
       const more = !query.cursor && !query.filters;
+      const rows =
+        query.filters?.[0]?.op === "is_null"
+          ? []
+          : query.cursor
+            ? [[1, 4]]
+            : [[2, 3]];
       return route.fulfill({
         json: {
           columns,
-          rows: query.cursor ? [[1, 4]] : [[2, 3]],
+          rows,
           has_more: more,
           next_cursor: more ? "cursor-2" : null,
           truncated: false,
@@ -3098,6 +3120,37 @@ test("uploads worker data and sends only paginated preview requests", async ({
       sort: [{ field: "x", direction: "asc" }],
       filters: [{ field: "x", op: "contains", value: "2" }],
     });
+  await expect(
+    page.getByRole("status").filter({ hasText: "Page 1" }),
+  ).toBeVisible();
+
+  const previewCount = previews.length;
+  await page.getByRole("button", { name: "Columns", exact: true }).click();
+  const columnY = page.getByRole("menuitemcheckbox", {
+    name: "y",
+    exact: true,
+  });
+  await columnY.click();
+  await expect(columnY).toHaveAttribute("aria-checked", "false");
+  await expect(
+    page.getByRole("menuitemcheckbox", { name: "x", exact: true }),
+  ).toBeDisabled();
+  await expect(page.getByRole("columnheader", { name: /^y/ })).toHaveCount(0);
+  await columnY.press("Escape");
+  expect(previews).toHaveLength(previewCount);
+
+  await page.getByLabel("Match", { exact: true }).selectOption("is_null");
+  await expect(page.getByLabel("Value", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Apply filter" }).click();
+  await expect(
+    page.getByRole("cell", { name: "No matching rows." }),
+  ).toBeVisible();
+  expect(previews.at(-1)?.filters).toEqual([{ field: "x", op: "is_null" }]);
+  await page.getByRole("button", { name: "Clear filter" }).click();
+  await page.getByLabel("Rows per page").selectOption("25");
+  await expect
+    .poll(() => previews.at(-1))
+    .toEqual({ limit: 25, sort: [{ field: "x", direction: "asc" }] });
 });
 
 test("renders the same worker chart in a reply and a report, then handles missing worker data", async ({
@@ -3579,9 +3632,20 @@ test("worker visualizations persist across runs and can be deleted individually"
   );
 
   await page.goto("/app/projects/A/work?work=work_one&view=workspace");
-  const editDetails = page
-    .getByRole("region", { name: titles.chart_original })
-    .getByRole("button", { name: "Edit visualization details" });
+  const visualization = page.getByRole("region", {
+    name: titles.chart_original,
+  });
+  const chart = visualization.locator("[data-analysis-plot]");
+  await expect(chart).toBeVisible();
+  const chartHeight = (await chart.boundingBox())!.height;
+  await visualization.getByRole("button", { name: "Enter fullscreen" }).click();
+  await expect(visualization.and(page.locator(":fullscreen"))).toBeVisible();
+  expect((await chart.boundingBox())!.height).toBeGreaterThan(chartHeight);
+  await visualization.getByRole("button", { name: "Exit fullscreen" }).click();
+  await expect(visualization.and(page.locator(":fullscreen"))).toHaveCount(0);
+  const editDetails = visualization.getByRole("button", {
+    name: "Edit visualization details",
+  });
   const dialog = page.getByRole("dialog", {
     name: "Edit visualization details",
   });
@@ -3852,7 +3916,7 @@ test("groups captured revisions under a single task report", async ({
   expect(await readFile((await html.path())!, "utf8")).toContain(
     "data:image/svg+xml,",
   );
-  const scroller = page.getByRole("region", { name: "Report", exact: true });
+  const scroller = page.getByRole("region", { name: "Report body" });
   const chart = article.getByRole("img", { name: "Counts by hour" });
   await chart.evaluate((img) => {
     img.dataset.scrollTest = "original";
@@ -4012,6 +4076,39 @@ test("opens and revises a report visualization from the unified Analysis workspa
   });
   const results = library.getByRole("list", { name: "Visualization list" });
   await expect(results.getByRole("listitem")).toHaveCount(2);
+  const explorerHeading = library.getByRole("heading", {
+    name: "Explore data",
+  });
+  const visualizationsHeading = library.getByRole("heading", {
+    name: "Visualizations",
+    exact: true,
+  });
+  await expect(explorerHeading).toBeVisible();
+  await expect(visualizationsHeading).toBeVisible();
+  const [explorerText, visualizationsText] = await explorerHeading
+    .or(visualizationsHeading)
+    .evaluateAll((headings) =>
+      headings.map((heading) => {
+        const range = document.createRange();
+        range.selectNodeContents(heading);
+        return range.getBoundingClientRect().left;
+      }),
+    );
+  expect(explorerText).toBe(visualizationsText);
+  const table = library.getByRole("region", { name: "Squirrel density" });
+  const browseDatasets = library.getByRole("button", {
+    name: "Browse datasets",
+  });
+  const tableHeading = table.getByRole("heading", { name: "Squirrel density" });
+  await expect(browseDatasets).toBeVisible();
+  await expect(tableHeading).toBeVisible();
+  expect((await browseDatasets.boundingBox())?.x).toBe(
+    (await tableHeading.boundingBox())?.x,
+  );
+  await expect(
+    table.getByRole("cell", { name: "3", exact: true }),
+  ).toBeVisible();
+  await expect(table.getByLabel("Rows per page")).toHaveValue("25");
   await expect(
     results.getByRole("button", { name: /^Squirrel density/ }),
   ).toContainText("Used in report");
@@ -4352,6 +4449,22 @@ test("exports a report with findings, a bounded table, a chart, and a map", asyn
       report.getByRole("img", { name: "Reading totals" }).first(),
     ).toHaveAttribute("src", /^data:image\/svg\+xml,/);
 
+    const reportBody = page.getByRole("region", { name: "Report body" });
+    const edit = page.getByRole("button", { name: "Edit", exact: true });
+    const exportButton = page.getByRole("button", {
+      name: "Export",
+      exact: true,
+    });
+    const editTop = (await edit.boundingBox())?.y;
+    const exportTop = (await exportButton.boundingBox())?.y;
+    await reportBody.hover();
+    await page.mouse.wheel(0, 600);
+    await expect
+      .poll(() => reportBody.evaluate((body) => body.scrollTop))
+      .toBeGreaterThan(0);
+    expect((await edit.boundingBox())?.y).toBe(editTop);
+    expect((await exportButton.boundingBox())?.y).toBe(exportTop);
+
     async function download(label: string, file: string) {
       await page.getByRole("button", { name: "Export", exact: true }).click();
       const pending = page.waitForEvent("download");
@@ -4430,6 +4543,7 @@ test("exports a report with findings, a bounded table, a chart, and a map", asyn
 test("selecting Research / Data Science starts in the analysis workspace", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
   const f = await conversationFixture(page);
   f.item.kind = "data-science";
   await page.route("**/workspaces/ws_one/analysis/datasets?**", (route) =>
@@ -4519,9 +4633,19 @@ test("selecting Research / Data Science starts in the analysis workspace", async
     "data-science",
   );
   const explorer = workspace.getByRole("region", { name: "Explore data" });
-  await expect(
-    explorer.getByRole("combobox", { name: "Dataset to explore" }),
-  ).toHaveValue("dataset_sensor");
+  const datasetSelect = explorer.getByRole("combobox", {
+    name: "Dataset to explore",
+  });
+  await expect(datasetSelect).toHaveValue("dataset_sensor");
+  const heading = (await explorer.getByRole("heading").boundingBox())!;
+  const datasetControl = (await datasetSelect.boundingBox())!;
+  const newVisualization = (await explorer
+    .getByRole("button", { name: "New visualization" })
+    .boundingBox())!;
+  expect(datasetControl.y).toBe(newVisualization.y);
+  expect(heading.y + heading.height / 2).toBeCloseTo(
+    datasetControl.y + datasetControl.height / 2,
+  );
   await explorer.getByRole("button", { name: "Profile dataset" }).click();
   const composer = page.getByRole("textbox", { name: "Message to your agent" });
   await expect(composer).toHaveValue(/Profile dataset dataset_sensor/);

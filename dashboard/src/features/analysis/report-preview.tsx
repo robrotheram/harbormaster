@@ -183,8 +183,8 @@ export function ReportPreview({
   }
 
   return (
-    <div className="min-w-0 px-4 py-5 sm:px-6">
-      <header className="mb-4 flex flex-wrap items-center justify-end gap-2">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <header className="flex shrink-0 flex-wrap items-center justify-end gap-2 px-4 pt-5 pb-4 sm:px-6">
         {versionPicker && <div className="mr-auto">{versionPicker}</div>}
         <div className="flex items-center gap-2">
           {onEdit && (
@@ -235,30 +235,38 @@ export function ReportPreview({
         </div>
       </header>
       {error !== undefined && (
-        <ErrorNotice error={error} message="Could not export the PDF." />
+        <div className="shrink-0 px-4 pb-3 sm:px-6">
+          <ErrorNotice error={error} message="Could not export the PDF." />
+        </div>
       )}
-      {report.parts.some((part) => part.unavailable) && (
-        <p role="status" className="mb-3 text-sm text-muted-foreground">
-          The report marks any results it could not load.
-        </p>
-      )}
-      <div className="bg-muted/40 p-2 sm:p-5">
-        <article
-          aria-label="Report content"
-          tabIndex={-1}
-          ref={article}
-          className="analysis-report-document border border-black/10"
-        >
-          <ReportEmbeds.Provider value={embeds}>
-            <Markdown
-              skipHtml
-              remarkPlugins={[remarkGfm]}
-              components={markdownComponents}
-            >
-              {report.markdown}
-            </Markdown>
-          </ReportEmbeds.Provider>
-        </article>
+      <div
+        role="region"
+        aria-label="Report body"
+        className="min-h-0 flex-1 overflow-auto overscroll-contain px-4 pb-5 sm:px-6"
+      >
+        {report.parts.some((part) => part.unavailable) && (
+          <p role="status" className="mb-3 text-sm text-muted-foreground">
+            The report marks any results it could not load.
+          </p>
+        )}
+        <div className="bg-muted/40 p-2 sm:p-5">
+          <article
+            aria-label="Report content"
+            tabIndex={-1}
+            ref={article}
+            className="analysis-report-document border border-black/10"
+          >
+            <ReportEmbeds.Provider value={embeds}>
+              <Markdown
+                skipHtml
+                remarkPlugins={[remarkGfm]}
+                components={markdownComponents}
+              >
+                {report.markdown}
+              </Markdown>
+            </ReportEmbeds.Provider>
+          </article>
+        </div>
       </div>
     </div>
   );

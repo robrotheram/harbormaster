@@ -1,14 +1,42 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import {
+  columnVisibilityFeature,
+  rowSortingFeature,
+  tableFeatures,
+  useTable,
+  type ColumnDef,
+  type SortingState,
+} from "@tanstack/react-table";
+import { ArrowDown, ArrowUp, ArrowUpDown, Columns3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 import { privateContentOptions } from "@/shared/private-content";
 import { DataError, DataNotice } from "./data-state";
-import type { DataPage, PreviewRequest, TableSpec } from "./api";
+import type { Cell, DataPage, PreviewRequest, TableSpec } from "./api";
 
-const control =
-  "h-9 min-w-0 max-w-full rounded-md border bg-background px-2 focus-visible:outline-2 focus-visible:outline-ring";
 type Filter = NonNullable<PreviewRequest["filters"]>[number];
+
+const features = tableFeatures({ columnVisibilityFeature, rowSortingFeature });
+const emptyRows: Cell[][] = [];
+// Keep arbitrary dataset names (including "__proto__") safe as table state keys.
+const fieldPrefix = "field:";
 
 export function DataTable({
   project,
@@ -25,16 +53,22 @@ export function DataTable({
   compact?: boolean;
   load: (params: PreviewRequest, signal: AbortSignal) => Promise<DataPage>;
 }) {
-  const [limit, setLimit] = useState(spec.page_size || 100);
+  const initialLimit = spec.page_size || 100;
+  const [limit, setLimit] = useState(initialLimit);
   const [cursors, setCursors] = useState<string[]>([]);
-  const [sort, setSort] = useState<PreviewRequest["sort"]>();
+  const [sorting, setSorting] = useState<SortingState>([]);
   const [filter, setFilter] = useState<Filter>();
   const [filterField, setFilterField] = useState("");
   const [filterOp, setFilterOp] = useState<Filter["op"]>("contains");
   const [filterValue, setFilterValue] = useState("");
-  const params = {
+  const params: PreviewRequest = {
     limit,
-    sort,
+    sort: sorting.length
+      ? sorting.map(({ id, desc }) => ({
+          field: id.slice(fieldPrefix.length),
+          direction: desc ? "desc" : "asc",
+        }))
+      : undefined,
     filters: filter ? [filter] : undefined,
     cursor: cursors.at(-1),
   };
@@ -47,68 +81,138 @@ export function DataTable({
   });
   const data = query.data;
   const busy = query.isFetching;
+  const schema = data?.columns;
+  const field = filterField || filter?.field || schema?.[0]?.name || "";
+  const needsValue = filterOp === "contains" || filterOp === "eq";
+
+  const columns = useMemo(
+    (): ColumnDef<typeof features, Cell[]>[] =>
+      (schema ?? []).map(({ name, type }, index) => ({
+        id: fieldPrefix + name,
+        accessorFn: (row) => row[index],
+        header: ({ column }) => {
+          const direction = column.getIsSorted();
+          const SortIcon =
+            direction === "asc"
+              ? ArrowUp
+              : direction === "desc"
+                ? ArrowDown
+                : ArrowUpDown;
+          return (
+            <>
+              {column.getCanSort() ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="-ml-1.5 h-7 max-w-full justify-start px-1.5 text-sm"
+                  onClick={column.getToggleSortingHandler()}
+                >
+                  <span className="truncate" title={name}>
+                    {name}
+                  </span>
+                  <SortIcon
+                    aria-hidden="true"
+                    className={cn(
+                      "size-3.5",
+                      !direction && "text-muted-foreground",
+                    )}
+                  />
+                </Button>
+              ) : (
+                <span className="block truncate py-1" title={name}>
+                  {name}
+                </span>
+              )}
+              <span className="block text-xs font-normal text-muted-foreground">
+                {type}
+              </span>
+            </>
+          );
+        },
+      })),
+    [schema],
+  );
+  const table = useTable({
+    features,
+    columns,
+    data: data?.rows ?? emptyRows,
+    state: { sorting },
+    onSortingChange: (updater) => {
+      setSorting(updater);
+      setCursors([]);
+    },
+    manualSorting: true,
+    enableSorting: !!spec.sortable,
+    enableMultiSort: false,
+    sortDescFirst: false,
+  });
+  const visibleCount = table.getVisibleLeafColumns().length;
+  const nextCursor = data?.next_cursor;
+
   return (
-    <div className="min-w-0 space-y-3 text-sm" aria-busy={busy}>
-      <div className="flex flex-wrap items-end justify-between gap-3">
+    <div className="min-w-0 space-y-2 text-sm" aria-busy={busy}>
+      <div className="flex flex-wrap items-center gap-2 empty:hidden">
         {spec.filterable && (
           <form
-            className="flex min-w-0 flex-wrap items-end gap-2"
+            className="flex min-w-0 flex-wrap items-center gap-2"
             onSubmit={(event) => {
               event.preventDefault();
-              if (!filterField) return;
+              if (!field) return;
               setFilter({
-                field: filterField,
+                field,
                 op: filterOp,
-                value:
-                  filterOp === "contains" || filterOp === "eq"
-                    ? filterValue
-                    : undefined,
+                value: needsValue ? filterValue : undefined,
               });
               setCursors([]);
             }}
           >
-            <label className="grid min-w-0 gap-1">
-              Filter column
-              <select
-                className={control}
-                value={filterField}
-                onChange={(e) => setFilterField(e.target.value)}
-              >
-                <option value="">Choose column</option>
-                {data?.columns.map(({ name }) => (
-                  <option key={name}>{name}</option>
-                ))}
-              </select>
-            </label>
-            <label className="grid min-w-0 gap-1">
-              Match
-              <select
-                className={control}
-                value={filterOp}
-                onChange={(e) => setFilterOp(e.target.value as Filter["op"])}
-              >
-                <option value="contains">Contains</option>
-                <option value="eq">Equals</option>
-                <option value="is_null">Is null</option>
-                <option value="is_not_null">Is present</option>
-              </select>
-            </label>
-            {(filterOp === "contains" || filterOp === "eq") && (
-              <label className="grid min-w-0 gap-1">
-                Value
-                <Input
-                  value={filterValue}
-                  maxLength={512}
-                  onChange={(e) => setFilterValue(e.target.value)}
-                />
-              </label>
+            <NativeSelect
+              aria-label="Filter column"
+              size="sm"
+              wrapperClassName="w-36 max-w-full"
+              value={field}
+              disabled={!schema?.length}
+              onChange={(event) => setFilterField(event.target.value)}
+            >
+              {!schema?.length && (
+                <option value={field}>{field || "Column"}</option>
+              )}
+              {schema?.map(({ name }) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </NativeSelect>
+            <NativeSelect
+              aria-label="Match"
+              size="sm"
+              wrapperClassName="w-auto max-w-full"
+              value={filterOp}
+              onChange={(event) =>
+                setFilterOp(event.target.value as Filter["op"])
+              }
+            >
+              <option value="contains">Contains</option>
+              <option value="eq">Equals</option>
+              <option value="is_null">Is null</option>
+              <option value="is_not_null">Is present</option>
+            </NativeSelect>
+            {needsValue && (
+              <Input
+                aria-label="Value"
+                placeholder="Filter value…"
+                className="h-8 w-48 max-w-full"
+                value={filterValue}
+                maxLength={512}
+                onChange={(event) => setFilterValue(event.target.value)}
+              />
             )}
-            <Button size="lg" variant="outline" disabled={!filterField || busy}>
+            <Button type="submit" variant="outline" disabled={!field}>
               Apply filter
             </Button>
             {filter && (
               <Button
-                size="lg"
                 type="button"
                 variant="ghost"
                 onClick={() => {
@@ -122,26 +226,36 @@ export function DataTable({
             )}
           </form>
         )}
-        <label className="grid min-w-0 gap-1">
-          Rows per page
-          <select
-            className={control}
-            value={limit}
-            onChange={(e) => {
-              setLimit(Number(e.target.value));
-              setCursors([]);
-            }}
-          >
-            {[...new Set([25, 50, 100, 250, 500, spec.page_size || 100])]
-              .sort((a, b) => a - b)
-              .map((n) => (
-                <option key={n}>{n}</option>
+        {columns.length > 1 && (
+          <DropdownMenu modal={false}>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" variant="outline" className="ml-auto">
+                <Columns3 /> Columns
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="max-w-72">
+              {table.getAllLeafColumns().map((column) => (
+                <DropdownMenuCheckboxItem
+                  key={column.id}
+                  checked={column.getIsVisible()}
+                  disabled={visibleCount === 1 && column.getIsVisible()}
+                  onCheckedChange={(checked) =>
+                    column.toggleVisibility(checked)
+                  }
+                  onSelect={(event) => event.preventDefault()}
+                  className="[overflow-wrap:anywhere]"
+                >
+                  {column.id.slice(fieldPrefix.length)}
+                </DropdownMenuCheckboxItem>
               ))}
-          </select>
-        </label>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
       {filter && (
-        <p className="text-muted-foreground">Filtered by {filter.field}.</p>
+        <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">
+          Filtered by {filter.field}.
+        </p>
       )}
       {query.isError ? (
         <DataError
@@ -156,31 +270,27 @@ export function DataTable({
       ) : (
         <>
           <DataNotice data={data} />
-          <div
-            className={
-              compact
-                ? "max-h-[min(40dvh,26rem)] overflow-auto rounded-md border"
-                : "max-h-[30rem] overflow-auto rounded-md border"
-            }
-            tabIndex={0}
-            role="region"
-            aria-label="Data rows"
+          <Table
+            containerProps={{
+              className: cn(
+                "overflow-auto rounded-md border",
+                compact ? "max-h-[min(40dvh,26rem)]" : "max-h-[30rem]",
+              ),
+              tabIndex: 0,
+              role: "region",
+              "aria-label": "Data rows",
+            }}
           >
-            <table className="w-full text-left">
-              <thead className="sticky top-0 bg-muted">
-                <tr>
-                  {data.columns.map(({ name, type }) => {
-                    const direction =
-                      sort?.[0]?.field === name ? sort[0].direction : undefined;
+            <TableHeader className="sticky top-0 z-10 bg-muted">
+              {table.getHeaderGroups().map((group) => (
+                <TableRow key={group.id} className="hover:bg-transparent">
+                  {group.headers.map((header) => {
+                    const direction = header.column.getIsSorted();
                     return (
-                      <th
-                        className={
-                          compact
-                            ? "min-w-24 whitespace-nowrap px-3 py-2 align-top font-medium"
-                            : "min-w-24 px-3 py-2 align-top font-medium"
-                        }
-                        key={name}
+                      <TableHead
+                        key={header.id}
                         scope="col"
+                        className="h-auto min-w-24 max-w-80 px-3 py-1.5 align-top"
                         aria-sort={
                           direction
                             ? direction === "asc"
@@ -189,54 +299,27 @@ export function DataTable({
                             : undefined
                         }
                       >
-                        {spec.sortable ? (
-                          <button
-                            type="button"
-                            className="text-left hover:underline"
-                            onClick={() => {
-                              setSort(
-                                direction === "desc"
-                                  ? undefined
-                                  : [
-                                      {
-                                        field: name,
-                                        direction:
-                                          direction === "asc" ? "desc" : "asc",
-                                      },
-                                    ],
-                              );
-                              setCursors([]);
-                            }}
-                          >
-                            {name}
-                            {direction === "asc"
-                              ? " ↑"
-                              : direction === "desc"
-                                ? " ↓"
-                                : ""}
-                          </button>
-                        ) : (
-                          name
-                        )}
-                        <span className="block text-xs font-normal text-muted-foreground">
-                          {type}
-                        </span>
-                      </th>
+                        <table.FlexRender header={header} />
+                      </TableHead>
                     );
                   })}
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {data.rows.map((row, i) => (
-                  <tr key={i}>
-                    {row.map((value, j) => (
-                      <td
-                        key={j}
-                        className={
+                </TableRow>
+              ))}
+            </TableHeader>
+            <TableBody>
+              {table.getRowModel().rows.map((row) => (
+                <TableRow key={row.id}>
+                  {row.getVisibleCells().map((cell) => {
+                    const value = cell.getValue();
+                    return (
+                      <TableCell
+                        key={cell.id}
+                        className={cn(
+                          "max-w-80 px-3 align-top tabular-nums",
                           compact
-                            ? "max-w-80 truncate px-3 py-1.5 align-top tabular-nums"
-                            : "max-w-80 px-3 py-2 align-top tabular-nums [overflow-wrap:anywhere]"
-                        }
+                            ? "truncate py-1.5"
+                            : "py-2 whitespace-normal [overflow-wrap:anywhere]",
+                        )}
                         title={
                           compact && value !== null ? String(value) : undefined
                         }
@@ -246,41 +329,69 @@ export function DataTable({
                         ) : (
                           String(value)
                         )}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {data.rows.length === 0 && (
-              <p className="p-3 text-muted-foreground">No matching rows.</p>
-            )}
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={!cursors.length || busy}
-              onClick={() => setCursors(cursors.slice(0, -1))}
-            >
-              Previous
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={!data.next_cursor || busy}
-              onClick={() => {
-                if (data.next_cursor)
-                  setCursors([...cursors, data.next_cursor]);
-              }}
-            >
-              Next
-            </Button>
+                      </TableCell>
+                    );
+                  })}
+                </TableRow>
+              ))}
+              {!data.rows.length && (
+                <TableRow>
+                  <TableCell
+                    colSpan={Math.max(visibleCount, 1)}
+                    className="h-20 text-center text-muted-foreground"
+                  >
+                    {filter ? "No matching rows." : "No rows to display."}
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
             <span role="status" className="text-muted-foreground">
               {busy
                 ? "Loading rows…"
-                : `Page ${cursors.length + 1} · ${data.rows.length} rows`}
+                : `Page ${cursors.length + 1} · ${data.rows.length} ${data.rows.length === 1 ? "row" : "rows"}`}
             </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="flex items-center gap-2 text-muted-foreground">
+                Rows per page
+                <NativeSelect
+                  size="sm"
+                  wrapperClassName="w-auto"
+                  value={limit}
+                  onChange={(event) => {
+                    setLimit(Number(event.target.value));
+                    setCursors([]);
+                  }}
+                >
+                  {[...new Set([25, 50, 100, 250, 500, initialLimit])]
+                    .sort((a, b) => a - b)
+                    .map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                </NativeSelect>
+              </label>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!cursors.length || busy}
+                onClick={() => setCursors(cursors.slice(0, -1))}
+              >
+                Previous
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!nextCursor || busy}
+                onClick={() => {
+                  if (nextCursor) setCursors([...cursors, nextCursor]);
+                }}
+              >
+                Next
+              </Button>
+            </div>
           </div>
         </>
       )}

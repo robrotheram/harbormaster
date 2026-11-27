@@ -30,96 +30,101 @@ export function AnalysisExplorer({
   return (
     <section
       aria-labelledby="analysis-explore-heading"
-      className="mx-4 mt-5 grid min-w-0 gap-3 rounded-md border bg-card px-4 py-3 sm:mx-6"
+      className="mx-4 mt-5 min-w-0 rounded-md border bg-card sm:mx-6"
     >
-      <h2 id="analysis-explore-heading" className="font-semibold">
-        Explore data
-      </h2>
-      {datasets.isSuccess && !items.length && (
-        <p className="text-sm text-muted-foreground">
-          Upload a CSV or Parquet file to start exploring.
-        </p>
-      )}
-      <div className="flex flex-wrap items-center gap-2">
-        {items.length > 0 && (
-          <NativeSelect
-            aria-label="Dataset to explore"
-            wrapperClassName="max-w-full flex-1 basis-52 sm:max-w-sm"
-            value={dataset?.dataset_id ?? ""}
-            onChange={(event) => onSelect(event.target.value)}
-          >
-            <option value="">Any dataset</option>
-            {items.map((item) => (
-              <option key={item.dataset_id} value={item.dataset_id}>
-                {item.name}
-              </option>
-            ))}
-          </NativeSelect>
-        )}
-        <Button
-          type="button"
-          size="lg"
-          variant="outline"
-          aria-expanded={dataset ? expanded : undefined}
-          aria-controls={dataset && expanded ? previewId : undefined}
-          onClick={() => (dataset ? setExpanded(!expanded) : onBrowse())}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2 lg:analysis-pane-columns lg:grid lg:gap-0 lg:p-0">
+        <h2
+          id="analysis-explore-heading"
+          className="text-sm font-semibold lg:flex lg:items-center lg:self-stretch lg:border-r lg:px-3"
         >
-          <Database />{" "}
-          {dataset
-            ? expanded
-              ? "Hide rows"
-              : "Preview rows"
-            : "Browse datasets"}
-        </Button>
-        {!items.length && datasets.isFetching && (
-          <span role="status" className="text-sm text-muted-foreground">
-            Loading datasets…
-          </span>
-        )}
-        {datasets.isError && (
+          Explore data
+        </h2>
+        <div className="flex min-w-0 flex-auto flex-wrap items-center gap-2 lg:px-4 lg:py-2">
+          {items.length > 0 && (
+            <NativeSelect
+              aria-label="Dataset to explore"
+              wrapperClassName="basis-full sm:flex-1 sm:basis-36"
+              value={dataset?.dataset_id ?? ""}
+              onChange={(event) => onSelect(event.target.value)}
+            >
+              <option value="">Any dataset</option>
+              {items.map((item) => (
+                <option key={item.dataset_id} value={item.dataset_id}>
+                  {item.name}
+                </option>
+              ))}
+            </NativeSelect>
+          )}
           <Button
             type="button"
             size="lg"
-            variant="ghost"
-            onClick={() => void datasets.refetch()}
+            variant="outline"
+            aria-expanded={dataset ? expanded : undefined}
+            aria-controls={dataset && expanded ? previewId : undefined}
+            onClick={() => (dataset ? setExpanded(!expanded) : onBrowse())}
           >
-            Retry dataset list
+            <Database />{" "}
+            {dataset
+              ? expanded
+                ? "Hide rows"
+                : "Preview rows"
+              : "Browse datasets"}
           </Button>
-        )}
-        {onDraft && (
-          <>
+          {!items.length && datasets.isFetching && (
+            <span role="status" className="text-sm text-muted-foreground">
+              Loading datasets…
+            </span>
+          )}
+          {datasets.isError && (
             <Button
               type="button"
               size="lg"
-              variant="outline"
-              disabled={!dataset}
-              onClick={() => {
-                if (dataset)
+              variant="ghost"
+              onClick={() => void datasets.refetch()}
+            >
+              Retry dataset list
+            </Button>
+          )}
+          {onDraft && (
+            <>
+              <Button
+                type="button"
+                size="lg"
+                variant="outline"
+                disabled={!dataset}
+                onClick={() => {
+                  if (dataset)
+                    onDraft(
+                      `Profile dataset ${dataset.dataset_id}. Identify the unit of observation, summarize the main distributions and missingness, and flag duplicates, outliers, or coverage limits that could change the analysis.`,
+                    );
+                }}
+              >
+                <ScanSearch /> Profile dataset
+              </Button>
+              <Button
+                type="button"
+                size="lg"
+                variant="outline"
+                onClick={() =>
                   onDraft(
-                    `Profile dataset ${dataset.dataset_id}. Identify the unit of observation, summarize the main distributions and missingness, and flag duplicates, outliers, or coverage limits that could change the analysis.`,
-                  );
-              }}
-            >
-              <ScanSearch /> Profile dataset
-            </Button>
-            <Button
-              type="button"
-              size="lg"
-              variant="outline"
-              onClick={() =>
-                onDraft(
-                  dataset &&
-                    `Create a visualization from dataset ${dataset.dataset_id} that shows a pattern worth investigating. Explain the measure, grouping, and how you handled missing values.`,
-                )
-              }
-            >
-              <ChartNoAxesCombined /> New visualization
-            </Button>
-          </>
-        )}
+                    dataset &&
+                      `Create a visualization from dataset ${dataset.dataset_id} that shows a pattern worth investigating. Explain the measure, grouping, and how you handled missing values.`,
+                  )
+                }
+              >
+                <ChartNoAxesCombined /> New visualization
+              </Button>
+            </>
+          )}
+          {datasets.isSuccess && !items.length && (
+            <p className="text-sm text-muted-foreground">
+              Upload a CSV or Parquet file to start exploring.
+            </p>
+          )}
+        </div>
       </div>
       {dataset && expanded && (
-        <div className="min-w-0 border-t pt-3">
+        <div className="min-w-0 border-t px-3 py-3">
           <DatasetPreview
             id={previewId}
             project={project}

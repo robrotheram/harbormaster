@@ -22,6 +22,7 @@ import {
   CircleAlert,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { FullscreenButton } from "@/components/ui/fullscreen-button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ErrorNotice, Form, Modal, useRequestKey } from "@/shared/components";
@@ -32,6 +33,7 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { APIError, request } from "@/shared/http";
+import { exitFullscreenWithin } from "@/shared/fullscreen";
 import { privateContentOptions } from "@/shared/private-content";
 
 import { ApplicationLogs, type Application } from "./application-logs";
@@ -66,6 +68,7 @@ export function WorkPreview({
   const client = useQueryClient();
   const key = useRequestKey();
   const frame = useRef<HTMLIFrameElement>(null);
+  const pane = useRef<HTMLElement>(null);
   const nonce = useRef("");
   const selectionMenuClosing = useRef(false);
   const popup = useRef<Window | null>(null);
@@ -241,7 +244,7 @@ export function WorkPreview({
     nonce.current = "";
     if (!url) return;
     const origin = new URL(url).origin;
-    const receive = (event: MessageEvent) => {
+    const receive = async (event: MessageEvent) => {
       if (
         event.source !== frame.current?.contentWindow ||
         event.origin !== origin ||
@@ -259,6 +262,7 @@ export function WorkPreview({
         return;
       nonce.current = "";
       setInspecting(false);
+      await exitFullscreenWithin(pane.current);
       onSelection(
         `Change ${selector.slice(0, 200)} on ${path.slice(0, 200)}${text ? ` ("${text.slice(0, 300)}")` : ""}: `,
       );
@@ -333,7 +337,12 @@ export function WorkPreview({
     icon: typeof Globe;
   }[];
   return (
-    <aside className="work-visual-pane" aria-label="Preview workspace">
+    <aside
+      ref={pane}
+      className="work-visual-pane"
+      aria-label="Preview workspace"
+      data-fullscreen-pane
+    >
       <div className="visual-toolbar preview-toolbar">
         {mode === "desktop" ? (
           <span className="desktop-preview-label">
@@ -347,7 +356,10 @@ export function WorkPreview({
                 type="button"
                 role="tab"
                 aria-selected={(showOutput ? "output" : mode) === tab.id}
-                onClick={() => onViewChange(tab.id)}
+                onClick={() => {
+                  if (tab.id === "output") exitFullscreenWithin(pane.current);
+                  onViewChange(tab.id);
+                }}
               >
                 <tab.icon size={14} />
                 {tab.text}
@@ -400,6 +412,10 @@ export function WorkPreview({
                 <RefreshCw size={14} />
               </Button>
             )}
+            <FullscreenButton
+              target={pane}
+              disabled={!url || desktopInSeparateTab}
+            />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -704,8 +720,9 @@ export function WorkPreview({
           initialID={selected?.id || apps[0]?.id || ""}
           error={query.isError ? query.error : undefined}
           onClose={() => setLogs(false)}
-          onDebug={(message) => {
+          onDebug={async (message) => {
             setLogs(false);
+            await exitFullscreenWithin(pane.current);
             onSelection(message);
           }}
         />

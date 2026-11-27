@@ -1914,6 +1914,9 @@
   min-height: 0;
   background: var(--card);
 }
+.work-visual-pane:fullscreen {
+  overflow: hidden;
+}
 .visual-tabs {
   display: flex;
   flex: none;
@@ -5183,6 +5186,9 @@
   min-height: 0;
   overflow: auto;
 }
+.thread-workspace.thread-report {
+  overflow: hidden;
+}
 .thread-workspace-tools {
   display: flex;
   flex: none;
@@ -5211,6 +5217,9 @@
   max-width: 60rem;
   margin-inline: auto;
 }
+@utility analysis-pane-columns {
+  grid-template-columns: clamp(16rem, 22vw, 18rem) minmax(0, 1fr);
+}
 .analysis-result [data-analysis-plot] {
   height: clamp(19rem, 52dvh, 30rem);
   max-height: none;
@@ -5220,6 +5229,18 @@
   display: flex;
   flex: 1 0 auto;
   flex-direction: column;
+}
+.analysis-visualization:fullscreen {
+  display: block;
+  margin: 0;
+  overflow: auto;
+}
+.analysis-visualization:fullscreen [data-analysis-plot] {
+  height: max(16rem, calc(100dvh - 8rem));
+  max-height: none;
+}
+.analysis-visualization:fullscreen [data-slot="table-container"] {
+  max-height: max(12rem, calc(100dvh - 12rem));
 }
 @media (min-width: 768px) {
   .analysis-result [data-analysis-plot] {

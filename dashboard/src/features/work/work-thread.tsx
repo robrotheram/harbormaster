@@ -1415,7 +1415,7 @@ export function WorkConversation({
           </section>
         )}
         {reportOpen && (
-          <section className="thread-workspace" aria-label="Report">
+          <section className="thread-workspace thread-report" aria-label="Report">
             <Suspense
               fallback={
                 <p role="status" className="p-4 text-sm">

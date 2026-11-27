@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useFullscreenPortal } from "@/shared/fullscreen";
 import { cn } from "@/lib/utils";
 import { XIcon } from "lucide-react";
 import { Dialog as DialogPrimitive } from "radix-ui";
@@ -55,8 +56,9 @@ function DialogContent({
   showCloseButton?: boolean;
   closeButtonDisabled?: boolean;
 }) {
+  const container = useFullscreenPortal();
   return (
-    <DialogPortal data-slot="dialog-portal">
+    <DialogPortal data-slot="dialog-portal" container={container}>
       <DialogOverlay />
       <DialogPrimitive.Content
         data-slot="dialog-content"

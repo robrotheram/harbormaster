@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
-import { lazy, Suspense, type ReactNode } from "react";
+import { lazy, Suspense, useRef, type ReactNode } from "react";
+import { FullscreenButton } from "@/components/ui/fullscreen-button";
 import { useQuery } from "@tanstack/react-query";
 import { privateContentOptions } from "@/shared/private-content";
 import { analysisAPI, type ArtifactSpec } from "./api";
@@ -33,6 +34,7 @@ export function Visualization({
   actions?: ReactNode;
   className?: string;
 }) {
+  const pane = useRef<HTMLElement>(null);
   const api = analysisAPI(project, worker);
   const query = useVisualizationSpec(project, worker, id);
   const personal = useVisualizationDetails(project);
@@ -85,9 +87,11 @@ export function Visualization({
   if (!title) return content;
   return (
     <section
+      ref={pane}
       aria-label={title}
+      data-fullscreen-pane
       className={cn(
-        "my-3 min-w-0 space-y-3 rounded-md border bg-card p-3 sm:p-4",
+        "analysis-visualization my-3 min-w-0 space-y-3 rounded-md border bg-card p-3 sm:p-4",
         className,
       )}
     >
@@ -112,7 +116,10 @@ export function Visualization({
             </p>
           )}
         </div>
-        {actions}
+        <div className="flex shrink-0 items-start gap-2">
+          {spec && <FullscreenButton target={pane} />}
+          {actions}
+        </div>
       </header>
       {content}
     </section>

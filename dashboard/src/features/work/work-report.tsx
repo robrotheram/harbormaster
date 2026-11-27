@@ -128,12 +128,12 @@ export function WorkReport({
   }
 
   return (
-    <div className="grid min-w-0 lg:grid-cols-[14rem_minmax(0,1fr)]">
+    <div className="grid min-h-0 min-w-0 flex-1 grid-rows-[auto_minmax(0,1fr)] lg:grid-cols-[14rem_minmax(0,1fr)] lg:grid-rows-1">
       <aside
         aria-label="Reports"
-        className="min-w-0 border-b px-3 py-4 lg:min-h-[70vh] lg:border-r lg:border-b-0"
+        className="flex min-h-0 min-w-0 flex-col border-b px-3 py-4 lg:border-r lg:border-b-0"
       >
-        <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="mb-3 flex shrink-0 items-center justify-between gap-2">
           <h2 className="px-1 text-sm font-semibold">Reports</h2>
           {editable && (
             <Button
@@ -146,7 +146,7 @@ export function WorkReport({
           )}
         </div>
         {!!reports.length && (
-          <ul className="grid gap-1">
+          <ul className="grid max-h-[20dvh] min-h-0 gap-1 overflow-y-auto overscroll-contain lg:max-h-none">
             {reports.map((report) => {
               const key = reportKey(report);
               const active =
@@ -176,7 +176,7 @@ export function WorkReport({
           </ul>
         )}
       </aside>
-      <div className="min-w-0">
+      <div className="flex min-h-0 min-w-0 flex-col">
         {library.isError && (
           <div className="px-4 pt-4 sm:px-6">
             <ErrorNotice
