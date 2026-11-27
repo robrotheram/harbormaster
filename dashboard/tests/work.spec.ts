@@ -3237,7 +3237,7 @@ test("renders the same worker chart in a reply and a report, then handles missin
   );
   await page.goto("/app/projects/A/work?work=work_one");
   const chart = page.getByRole("region", { name: "Sensor anomaly histogram" });
-  await expect(chart.locator("svg")).toBeVisible();
+  await expect(chart.locator("svg:not([aria-hidden='true'])")).toBeVisible();
   await conversationTool(page, "Files");
   const files = page.getByRole("region", { name: "Task files" });
   await files
@@ -3247,7 +3247,7 @@ test("renders the same worker chart in a reply and a report, then handles missin
   await expect(
     files
       .getByRole("region", { name: "Sensor anomaly histogram" })
-      .locator("svg"),
+      .locator("svg:not([aria-hidden='true'])"),
   ).toBeVisible();
   workerExists = false;
   await page.reload();
