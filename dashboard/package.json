@@ -32,7 +32,7 @@
     "echarts": "^6.1.0",
     "ghostty-web": "0.4.0",
     "html2canvas": "1.4.1",
-    "lucide-react": "^1.77.0",
+    "lucide-react": "^1.78.0",
     "maplibre-gl": "^6.19.0",
     "pdfmake": "^0.3.15",
     "radix-ui": "^1.8.1",
