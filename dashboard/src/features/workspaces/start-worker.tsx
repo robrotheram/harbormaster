@@ -4,18 +4,19 @@ import { Link } from "@tanstack/react-router";
 import { Check, CircleAlert, Loader2, Play, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ErrorNotice, Modal } from "@/shared/components";
+import { APIError } from "@/shared/http";
 import type { Workspace } from "@/shared/types";
 import { workspacesApi } from "./api";
 
 export function StartWorker({
   workspace,
   onClose,
-  onStarted,
+  onStartRequested,
   onSettings,
 }: {
   workspace: Workspace;
   onClose: () => void;
-  onStarted: () => void;
+  onStartRequested: (ready: boolean) => Promise<void>;
   onSettings: () => void;
 }) {
   const query = useQuery({
@@ -43,11 +44,15 @@ export function StartWorker({
     setStarting(true);
     setError(undefined);
     try {
-      await workspacesApi.start(workspace.id, key);
-      onStarted();
+      const result = await workspacesApi.start(workspace.id, key);
+      await onStartRequested(result.ready);
     } catch (err) {
-      setError(err);
-      await query.refetch();
+      if (err instanceof APIError && err.code === "NOT_READY") {
+        await onStartRequested(false);
+      } else {
+        setError(err);
+        await query.refetch();
+      }
     } finally {
       setStarting(false);
     }

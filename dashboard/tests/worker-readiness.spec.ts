@@ -19,9 +19,11 @@ async function fixture(page: Page) {
     updated_at: "2026-11-11T12:00:00Z",
   };
   const state = {
+    worker,
     canStart: false,
     failCheck: false,
     failStart: false,
+    startPending: false,
     checks: 0,
     starts: [] as { idempotency_key: string }[],
   };
@@ -77,6 +79,10 @@ async function fixture(page: Page) {
           status: 503,
           json: { code: "RUNTIME_UNAVAILABLE" },
         });
+      if (state.startPending) {
+        worker.state = "STARTING";
+        return route.fulfill({ status: 503, json: { code: "NOT_READY" } });
+      }
       worker.state = "READY";
       worker.ready = true;
       return route.fulfill({ json: worker });
@@ -140,6 +146,41 @@ test("worker startup is read-only until checks pass and the user starts it", asy
   ).toBeEnabled();
   expect(state.starts).toHaveLength(1);
   expect(state.starts[0].idempotency_key).toBeTruthy();
+});
+
+test("a slow start follows worker readiness without another start or a reload", async ({
+  page,
+}) => {
+  await page.clock.install();
+  const state = await fixture(page);
+  state.canStart = true;
+  state.startPending = true;
+  await page.getByRole("link", { name: /^Open worker / }).click();
+  await page
+    .getByRole("button", { name: "Check & start", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("Startup checks passed");
+  await dialog
+    .getByRole("button", { name: "Start worker", exact: true })
+    .click();
+  await expect(dialog).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Starting…", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("region", { name: "Worker terminal" }),
+  ).toHaveText("Waiting for the worker to become ready…");
+  await expect(page.getByRole("alert")).toHaveCount(0);
+
+  state.worker.state = "READY";
+  state.worker.ready = true;
+  await page.clock.fastForward(10000);
+  await expect(
+    page.getByRole("button", { name: "Stop worker", exact: true }),
+  ).toBeEnabled();
+  expect(state.starts).toHaveLength(1);
+  expect(state.checks).toBe(1);
 });
 
 test("unavailable checks fail closed and failed starts can be retried safely", async ({

@@ -93,18 +93,18 @@ function WorkerDetail({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState<unknown>();
-  const refresh = useCallback(() => {
-    void client.invalidateQueries({ queryKey: keys.project(project.id) });
-  }, [client, project.id]);
+  const refresh = useCallback(
+    () => client.invalidateQueries({ queryKey: keys.project(project.id) }),
+    [client, project.id],
+  );
   const openSettings = () => {
     setDialog(undefined);
     void navigate({ to: workerRoute, params, search: { panel: "settings" } });
   };
   const consoleEnabled = worker.console_enabled || worker.agent_kind === "t3";
   const schedulingBlocked = worker.startup_reason === "WORKSPACE_UNSCHEDULABLE";
-  const transitioning =
-    (worker.state === "STARTING" && !schedulingBlocked) ||
-    worker.state === "STOPPING";
+  const starting = worker.state === "STARTING" && !schedulingBlocked;
+  const transitioning = starting || worker.state === "STOPPING";
   const name = worker.name || worker.id;
 
   async function operate(action: "stop" | "open" | "pair" | "enable") {
@@ -208,7 +208,7 @@ function WorkerDetail({
               disabled={busy || transitioning}
               onClick={() => setDialog("start")}
             >
-              {worker.state === "STARTING" && !schedulingBlocked
+              {starting
                 ? "Starting…"
                 : worker.state === "STOPPING"
                   ? "Stopping…"
@@ -257,7 +257,11 @@ function WorkerDetail({
             aria-label="Worker terminal"
             className="rounded-md border bg-card p-5 text-sm text-muted-foreground"
           >
-            Start the worker to connect to its terminal.
+            {starting ? (
+              <p role="status">Waiting for the worker to become ready…</p>
+            ) : (
+              "Start the worker to connect to its terminal."
+            )}
           </section>
         ))}
       {panel === "datasets" && (
@@ -405,10 +409,11 @@ function WorkerDetail({
           workspace={worker}
           onClose={() => setDialog(undefined)}
           onSettings={openSettings}
-          onStarted={() => {
+          onStartRequested={async (ready) => {
+            setError(undefined);
+            setMessage(ready ? "Worker started." : "");
+            await refresh();
             setDialog(undefined);
-            setMessage("Worker started.");
-            refresh();
           }}
         />
       )}
