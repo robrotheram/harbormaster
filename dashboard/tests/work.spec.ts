@@ -1461,15 +1461,38 @@ test("thread list shows types and can be hidden and restored", async ({
 
   await page.setViewportSize({ width: 1366, height: 650 });
   await expect(hide).toBeHidden();
-  await page
-    .getByRole("button", { name: "Switch thread", exact: true })
-    .click();
+  await expect(collapsed).toHaveCSS("width", "48px");
+  const switchThread = collapsed.getByRole("button", { name: "Switch thread" });
+  await expect(switchThread).toHaveCSS("width", "36px");
+  await expect(switchThread).toHaveCSS("height", "36px");
+  await expect(compactDesktop).toHaveCSS("height", "44px");
+  await compactDesktop.click();
+  await expect(compactDesktop).toHaveAttribute("aria-pressed", "true");
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(switchThread).toHaveCSS("width", "36px");
+  await expect(switchThread).toHaveCSS("height", "36px");
+  const switchBounds = (await switchThread.boundingBox())!;
+  const railBounds = (await collapsed.boundingBox())!;
+  expect(switchBounds.x - railBounds.x).toBeGreaterThan(5);
+  expect(
+    railBounds.x + railBounds.width - switchBounds.x - switchBounds.width,
+  ).toBeGreaterThan(5);
+  await page.mouse.click(
+    switchBounds.x - 3,
+    switchBounds.y + switchBounds.height / 2,
+  );
   await expect(gallery).toBeVisible();
   await expectControlHeight("44px");
   await create.click();
   await expect(
     page.getByRole("heading", { name: "New thread", exact: true }),
   ).toBeVisible();
+  await expect(switchThread).toBeFocused();
+  await expect(compactGallery).toBeVisible();
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await expect(hide).toBeVisible();
+  await expect(resize).toHaveAttribute("aria-valuenow", "200");
   expect(f.errors).toEqual([]);
 });
 

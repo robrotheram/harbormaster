@@ -2895,10 +2895,7 @@
   min-height: 0;
   padding: 16px 12px 12px;
 }
-.conversation-drawer-toggle {
-  display: none;
-}
-.work-page .conversation-workbench[data-thread-panel-hidden="true"] {
+.work-page .conversation-workbench[data-thread-rail-compact="true"] {
   --thread-rail-width: 48px;
 }
 .thread-rail-collapsed {
@@ -2935,17 +2932,23 @@
 .thread-rail-collapsed .thread-type-icon {
   width: 26px;
 }
-
-@media (max-width: 1199px) {
-  .work-page .conversation-workbench {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .conversation-thread-rail {
-    display: none;
-  }
-  .conversation-drawer-toggle {
-    display: inline-flex;
-  }
+.conversation-workbench[data-thread-drawer="true"] .thread-rail-heading {
+  min-height: 48px;
+}
+.conversation-workbench[data-thread-drawer="true"]
+  .thread-rail-collapsed
+  .conversation-work-item {
+  width: 44px;
+  height: 44px;
+}
+.thread-rail-heading > button {
+  position: relative;
+}
+.thread-rail-heading > button::after {
+  /* Extend the tap target past the button's outline. */
+  content: "";
+  position: absolute;
+  inset: -5px;
 }
 .conversation-thread-rail .conversation-work-item,
 .conversation-thread-drawer .conversation-work-item {
@@ -3097,16 +3100,6 @@
 .work-page .conversation-composer {
   padding-block: 16px;
 }
-@media (max-width: 1199px) {
-  .conversation-heading-title .conversation-drawer-toggle,
-  .new-thread-navigation .conversation-drawer-toggle {
-    display: inline-flex;
-    flex-shrink: 0;
-    min-width: 44px;
-    min-height: 44px;
-  }
-}
-
 /* The reading column stays centred even when the feed gains a scrollbar. */
 .work-page .conversation-feed {
   scrollbar-gutter: stable both-edges;
@@ -3238,12 +3231,6 @@
   .conversation-mobile-switch {
     align-items: center;
   }
-  .conversation-mobile-switch .conversation-drawer-toggle {
-    display: inline-flex;
-    padding: 0;
-    margin-right: 4px;
-    flex-shrink: 0;
-  }
   .work-page .conversation-preview-toggle {
     display: none;
   }
@@ -3252,9 +3239,6 @@
   }
   .conversation-mobile-switch button {
     min-height: 44px;
-  }
-  .conversation-mobile-switch .conversation-drawer-toggle {
-    width: 44px;
   }
 }
 @media (max-width: 600px) {
@@ -5086,20 +5070,6 @@
   }
 }
 
-/* Keep the thread drawer at the same breakpoint in both thread views. */
-@media (1200px <= width < 1600px),
-  (1600px <= width <= 1920px) and (height <= 920px) {
-  .work-page .conversation-workbench.has-conversation {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .conversation-workbench.has-conversation > .conversation-thread-rail {
-    display: none;
-  }
-  .has-conversation .conversation-drawer-toggle {
-    display: inline-flex;
-    flex-shrink: 0;
-  }
-}
 /* Conversation and workspace share one persistent composer. */
 .work-page .visual-session.unified-thread {
   --thread-gutter: 24px;

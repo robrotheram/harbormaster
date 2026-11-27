@@ -125,7 +125,6 @@ export function WorkConversation({
   project,
   id,
   title,
-  navigation,
   message,
   setMessage,
   owner,
@@ -134,7 +133,6 @@ export function WorkConversation({
   id: string;
   title?: string;
   owner?: string;
-  navigation?: ReactNode;
   message: string;
   setMessage: Dispatch<SetStateAction<string>>;
 }) {
@@ -670,7 +668,6 @@ export function WorkConversation({
   if (itemQuery.isError)
     return (
       <section className="conversation-main">
-        {navigation}
         <ErrorNotice
           error={itemQuery.error}
           onRetry={() => void itemQuery.refetch()}
@@ -681,7 +678,6 @@ export function WorkConversation({
   if (!item)
     return (
       <section className="conversation-main" role="status">
-        {navigation}
         Loading conversation…
       </section>
     );
@@ -863,7 +859,6 @@ export function WorkConversation({
       <div className="conversation-main">
         <header ref={attachHeader} className="conversation-thread-heading">
           <div className="conversation-heading-title">
-            {navigation}
             <div className="thread-heading-summary min-w-0">
               <h2 title={title} className="line-clamp-2">
                 {title || `${label(item.kind)} conversation`}

@@ -8,7 +8,9 @@ import {
   useEffect,
   type CSSProperties,
   useCallback,
+  useMemo,
   useRef,
+  useSyncExternalStore,
   type SetStateAction,
 } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -64,6 +66,26 @@ const maxRailWidth = 280;
 const clampRailWidth = (width: number) =>
   Math.max(minRailWidth, Math.min(maxRailWidth, width));
 
+function useThreadDrawer(hasConversation: boolean) {
+  const media = useMemo(
+    () =>
+      window.matchMedia(
+        hasConversation
+          ? "(width < 1600px), (width <= 1920px) and (height <= 920px)"
+          : "(width < 1200px)",
+      ),
+    [hasConversation],
+  );
+  const subscribe = useCallback(
+    (onChange: () => void) => {
+      media.addEventListener("change", onChange);
+      return () => media.removeEventListener("change", onChange);
+    },
+    [media],
+  );
+  return useSyncExternalStore(subscribe, () => media.matches);
+}
+
 export function Work({ project }: { project: Project }) {
   return <ProjectConversations key={project.id} project={project} />;
 }
@@ -80,7 +102,8 @@ function ProjectConversations({ project }: { project: Project }) {
     "thread-panel",
     "shown",
   );
-  const panelHidden = panel === "hidden";
+  const usesDrawer = useThreadDrawer(Boolean(selected));
+  const compactRail = usesDrawer || panel === "hidden";
   const hidePanelButton = useRef<HTMLButtonElement>(null);
   const showPanelButton = useRef<HTMLButtonElement>(null);
   const rail = useRef<HTMLDivElement>(null);
@@ -92,7 +115,6 @@ function ProjectConversations({ project }: { project: Project }) {
   const [visibleLimit, setVisibleLimit] = useState(20);
   const [stage, setStage] = useState<WorkStage>("all");
   const [worklist, setWorklist] = useState(false);
-  const threadSwitch = useRef<HTMLButtonElement>(null);
   const { drafts, setDrafts } = personal;
   const setThreadDraft = useCallback(
     (value: SetStateAction<string>) => {
@@ -165,8 +187,8 @@ function ProjectConversations({ project }: { project: Project }) {
     return `${label} (${count})`;
   };
   const togglePanel = () => {
-    const nextFocus = panelHidden ? hidePanelButton : showPanelButton;
-    setPanel(panelHidden ? "shown" : "hidden");
+    const nextFocus = compactRail ? hidePanelButton : showPanelButton;
+    setPanel(compactRail ? "shown" : "hidden");
     requestAnimationFrame(() => nextFocus.current?.focus());
   };
   const renderThread = (item: WorkItem, compact = false) => {
@@ -422,21 +444,7 @@ function ProjectConversations({ project }: { project: Project }) {
       </div>
     </aside>
   );
-  const threadNavigation = (
-    <Button
-      ref={threadSwitch}
-      className="conversation-drawer-toggle"
-      variant="ghost"
-      size="icon-sm"
-      aria-label="Switch thread"
-      title="Threads"
-      aria-expanded={worklist}
-      onClick={() => setWorklist(true)}
-    >
-      <MessagesSquare size={18} />
-    </Button>
-  );
-
+  const showThreadsLabel = usesDrawer ? "Switch thread" : "Show thread panel";
   return (
     <div
       className="work-page"
@@ -449,9 +457,10 @@ function ProjectConversations({ project }: { project: Project }) {
       <h1 className="sr-only">Project work</h1>
       <div
         className={`conversation-workbench ${selected ? "has-conversation" : ""}`}
-        data-thread-panel-hidden={panelHidden}
+        data-thread-rail-compact={compactRail}
+        data-thread-drawer={usesDrawer}
       >
-        {panelHidden ? (
+        {compactRail ? (
           <aside
             className="conversation-thread-rail thread-rail-collapsed"
             aria-label="Thread panel"
@@ -459,13 +468,13 @@ function ProjectConversations({ project }: { project: Project }) {
             <div className="thread-rail-heading">
               <Button
                 ref={showPanelButton}
-                className="thread-rail-restore size-9"
                 variant="outline"
-                size="icon"
-                aria-label="Show thread panel"
-                title="Show thread panel"
-                aria-expanded="false"
-                onClick={togglePanel}
+                size="icon-lg"
+                aria-label={showThreadsLabel}
+                title={usesDrawer ? "Threads" : showThreadsLabel}
+                aria-haspopup={usesDrawer ? "dialog" : undefined}
+                aria-expanded={usesDrawer && worklist}
+                onClick={usesDrawer ? () => setWorklist(true) : togglePanel}
               >
                 <MessagesSquare size={16} />
               </Button>
@@ -477,6 +486,7 @@ function ProjectConversations({ project }: { project: Project }) {
                 <Button
                   variant="ghost"
                   size="icon"
+                  className={usesDrawer ? "size-11" : undefined}
                   aria-label="Show more threads"
                   title="Show more threads"
                   onClick={() => setVisibleLimit((limit) => limit + 20)}
@@ -538,7 +548,7 @@ function ProjectConversations({ project }: { project: Project }) {
             className="conversation-thread-drawer w-[320px] max-w-[calc(100vw-24px)] p-4"
             onCloseAutoFocus={(event) => {
               event.preventDefault();
-              threadSwitch.current?.focus();
+              (showPanelButton.current ?? hidePanelButton.current)?.focus();
             }}
             aria-describedby={undefined}
           >
@@ -553,16 +563,12 @@ function ProjectConversations({ project }: { project: Project }) {
             id={selected}
             title={titles.get(selected)}
             owner={titleState.owners.get(selected)}
-            navigation={threadNavigation}
             message={drafts[selected] || ""}
             setMessage={setThreadDraft}
           />
         ) : (
           <div className="new-thread-surface">
-            <div className="new-thread-navigation">
-              {threadNavigation}
-              <span>New thread</span>
-            </div>
+            <div className="new-thread-navigation">New thread</div>
             <NewConversation
               project={project}
               onCreated={(item) => {
