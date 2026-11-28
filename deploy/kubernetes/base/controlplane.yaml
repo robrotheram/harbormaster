@@ -21,6 +21,7 @@ spec:
         image: ghcr.io/robrotheram/harbormaster/controlplane
         ports:
         - containerPort: 8080
+        - containerPort: 8443
         env:
         - name: CONTROLLER_URL
           value: http://runtime-controller.harbormaster.svc:8080
@@ -54,6 +55,22 @@ spec:
               name: controlplane-secrets
               key: credential_encryption_key
               optional: true
+        - name: SUBSCRIPTION_GATEWAY_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: controlplane-secrets
+              key: subscription_gateway_token
+              optional: true
+        - name: GATEWAY_SERVICE_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: controlplane-secrets
+              key: gateway_service_token
+              optional: true
+        - name: SUBSCRIPTION_RESOLVER_CERT_FILE
+          value: /run/subscription-resolver/tls.crt
+        - name: SUBSCRIPTION_RESOLVER_KEY_FILE
+          value: /run/subscription-resolver/tls.key
         - name: CONTROLLER_TOKEN_FILE
           value: /run/secrets/controller_token
         - name: DATABASE_URL_FILE
@@ -87,6 +104,9 @@ spec:
           readOnly: true
         - name: tmp
           mountPath: /tmp
+        - name: subscription-resolver-tls
+          mountPath: /run/subscription-resolver
+          readOnly: true
       volumes:
       - name: secrets
         secret:
@@ -94,6 +114,10 @@ spec:
       - name: tmp
         emptyDir:
           sizeLimit: 64Mi
+      - name: subscription-resolver-tls
+        secret:
+          secretName: subscription-resolver-tls
+          optional: true
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
@@ -116,3 +140,6 @@ spec:
   - name: read
     port: 8081
     targetPort: 8081
+  - name: subscriptions
+    port: 8443
+    targetPort: 8443

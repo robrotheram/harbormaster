@@ -7,6 +7,7 @@ import (
 	"agent-workbench/internal/shared"
 	"agent-workbench/internal/store"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"io"
@@ -25,8 +26,8 @@ func main() {
 		os.Exit(1)
 	}
 	runtimeToken, e := shared.Secret("CONTROLLER_TOKEN")
-	if e != nil || runtimeToken == "" {
-		slog.Error("controller token required")
+	if e != nil || runtimeToken == "" || runtimeToken == token {
+		slog.Error("a distinct controller token is required")
 		os.Exit(1)
 	}
 	dsn, e := shared.Secret("DATABASE_URL")
@@ -61,11 +62,15 @@ func main() {
 			os.Exit(1)
 		}
 		for credential, project := range projectTokens {
-			if len(credential) < 32 || strings.ContainsAny(credential, " \r\n\t") || credential == token || !shared.ValidID(project) {
+			if len(credential) < 32 || strings.ContainsAny(credential, " \r\n\t") || credential == token || credential == runtimeToken || !shared.ValidID(project) {
 				slog.Error("invalid project token configuration")
 				os.Exit(1)
 			}
 		}
+	}
+	used := map[string]bool{token: true, runtimeToken: true}
+	for projectToken := range projectTokens {
+		used[projectToken] = true
 	}
 	subscriptionToken, err := shared.Secret("SUBSCRIPTION_GATEWAY_TOKEN")
 	if err != nil {
@@ -74,11 +79,25 @@ func main() {
 	}
 	controller := shared.Env("CONTROLLER_URL", "http://runtime-controller:8080")
 	var verifySubscriptionGrant func(context.Context, string, string, string) bool
+	var resolverCert tls.Certificate
+	subscriptionOnly := os.Getenv("GATEWAY_MODE") == "subscription"
+	if subscriptionOnly && subscriptionToken == "" {
+		slog.Error("subscription mode requires a resolver credential")
+		os.Exit(1)
+	}
 	if subscriptionToken != "" {
 		serviceToken, secretErr := shared.Secret("GATEWAY_SERVICE_TOKEN")
 		verify, verifierErr := gateway.NewVerifier(controller, serviceToken)
-		if secretErr != nil || verifierErr != nil || len(subscriptionToken) < 32 || subscriptionToken == serviceToken || subscriptionToken == token || subscriptionToken == runtimeToken {
+		if secretErr != nil || verifierErr != nil || len(subscriptionToken) < 32 || strings.ContainsAny(subscriptionToken, " \r\n\t") ||
+			subscriptionToken == serviceToken || used[subscriptionToken] || used[serviceToken] {
 			slog.Error("subscription resolver requires its own credential and runtime verification")
+			os.Exit(1)
+		}
+		used[subscriptionToken] = true
+		used[serviceToken] = true
+		resolverCert, err = tls.LoadX509KeyPair(os.Getenv("SUBSCRIPTION_RESOLVER_CERT_FILE"), os.Getenv("SUBSCRIPTION_RESOLVER_KEY_FILE"))
+		if err != nil {
+			slog.Error("subscription resolver TLS certificate or key unavailable")
 			os.Exit(1)
 		}
 		verifySubscriptionGrant = func(ctx context.Context, grant, workspace, project string) bool {
@@ -117,7 +136,6 @@ func main() {
 		creators[strings.ToLower(strings.TrimSpace(email))] = true
 	}
 	keys := map[string]string{}
-	used := map[string]bool{token: true, runtimeToken: true}
 	for _, name := range []string{"DASHBOARD_READ_TOKEN", "DASHBOARD_HUMAN_SIGNING_KEY", "PROJECT_SIGNING_KEY", "DASHBOARD_LOCAL_OPERATOR_TOKEN"} {
 		value, err := shared.Secret(name)
 		if err != nil || (value != "" && (len(value) < 32 || used[value] || strings.ContainsAny(value, " \r\n\t"))) {
@@ -139,7 +157,7 @@ func main() {
 			os.Exit(1)
 		}
 	}
-	server := api.New(db, controllerclient.NewClient(controller, runtimeToken), api.Config{Version: os.Getenv("HARBORMASTER_VERSION"), DashboardReadToken: keys["DASHBOARD_READ_TOKEN"], DashboardLocalOperatorToken: keys["DASHBOARD_LOCAL_OPERATOR_TOKEN"], HumanSigningKey: keys["DASHBOARD_HUMAN_SIGNING_KEY"], ProjectSigningKey: keys["PROJECT_SIGNING_KEY"], ProjectCreatorEmails: creators, MaxProjectsPerUser: int(shared.IntEnv("MAX_PROJECTS_PER_USER", 5)), MaxRunningPerUser: int(shared.IntEnv("MAX_RUNNING_WORKSPACES_PER_USER", 2)), CredentialKeys: credentialKeys, RequireScopedCredentials: true, SubscriptionGatewayToken: subscriptionToken, RequireAgentSelection: os.Getenv("GATEWAY_MODE") == "subscription", VerifySubscriptionGrant: verifySubscriptionGrant, ProvisionProjectNamespaces: shared.Env("PROVISION_PROJECT_NAMESPACES", "false") == "true", SharedWorkspaceID: os.Getenv("SHARED_WORKSPACE_ID"), WorkspaceMemory: shared.IntEnv("WORKSPACE_MEMORY_BYTES", 1<<30), MemoryQuota: shared.IntEnv("MEMORY_QUOTA_BYTES", 4<<30), Token: token, ProjectTokens: projectTokens, HealthEndpoints: map[string]string{"Runtime controller": shared.Env("CONTROLLER_URL", "http://runtime-controller:8080") + "/healthz", "Inference gateway": "http://inference-gateway:8080/healthz", "Credential broker": "http://credential-broker:8080/healthz", "GitHub egress gateway": "http://egress-gateway:8080/healthz", "MCP": "http://mcp:8080/healthz"}})
+	server := api.New(db, controllerclient.NewClient(controller, runtimeToken), api.Config{Version: os.Getenv("HARBORMASTER_VERSION"), DashboardReadToken: keys["DASHBOARD_READ_TOKEN"], DashboardLocalOperatorToken: keys["DASHBOARD_LOCAL_OPERATOR_TOKEN"], HumanSigningKey: keys["DASHBOARD_HUMAN_SIGNING_KEY"], ProjectSigningKey: keys["PROJECT_SIGNING_KEY"], ProjectCreatorEmails: creators, MaxProjectsPerUser: int(shared.IntEnv("MAX_PROJECTS_PER_USER", 5)), MaxRunningPerUser: int(shared.IntEnv("MAX_RUNNING_WORKSPACES_PER_USER", 2)), CredentialKeys: credentialKeys, RequireScopedCredentials: true, SubscriptionGatewayToken: subscriptionToken, RequireAgentSelection: subscriptionOnly, DefaultWorkProvider: os.Getenv("WORKSPACE_AGENT"), VerifySubscriptionGrant: verifySubscriptionGrant, ProvisionProjectNamespaces: shared.Env("PROVISION_PROJECT_NAMESPACES", "false") == "true", SharedWorkspaceID: os.Getenv("SHARED_WORKSPACE_ID"), WorkspaceMemory: shared.IntEnv("WORKSPACE_MEMORY_BYTES", 1<<30), MemoryQuota: shared.IntEnv("MEMORY_QUOTA_BYTES", 4<<30), Token: token, ProjectTokens: projectTokens, HealthEndpoints: map[string]string{"Runtime controller": shared.Env("CONTROLLER_URL", "http://runtime-controller:8080") + "/healthz", "Inference gateway": "http://inference-gateway:8080/healthz", "Credential broker": "http://credential-broker:8080/healthz", "GitHub egress gateway": "http://egress-gateway:8080/healthz", "MCP": "http://mcp:8080/healthz"}})
 	if os.Getenv("SHARED_WORKSPACE_ID") != "" {
 		if _, err := server.EnsureSharedWorkspace(ctx); err != nil {
 			slog.Error("shared workspace provisioning failed")
@@ -148,6 +166,14 @@ func main() {
 	}
 	var workers sync.WaitGroup
 	workers.Go(func() { server.Run(ctx) })
+	if subscriptionToken != "" {
+		workers.Go(func() {
+			if shared.ServeTLSContext(ctx, ":8443", server.SubscriptionResolverHandler(), resolverCert) != nil {
+				slog.Error("subscription resolver listener stopped")
+				cancel()
+			}
+		})
+	}
 	workers.Go(func() {
 		if shared.ServeContext(ctx, shared.Env("READ_LISTEN_ADDR", ":8081"), server.DashboardHandler()) != nil {
 			slog.Error("dashboard read listener stopped")

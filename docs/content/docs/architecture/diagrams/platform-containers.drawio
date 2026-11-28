@@ -148,15 +148,6 @@
         <mxCell id="item-34" value="Allowed outbound destinations" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#b4c2d8;fontStyle=0;html=0;fontFamily=Arial;" vertex="1" parent="egress">
           <mxGeometry x="12" y="34" width="185" height="24" as="geometry" />
         </mxCell>
-        <mxCell id="vault" value="" style="rounded=1;arcSize=10;fillColor=#183432;strokeColor=#5c9a90;strokeWidth=1.2;html=0;fontFamily=Arial;" vertex="1" parent="1">
-          <mxGeometry x="661" y="745" width="209" height="63" as="geometry" />
-        </mxCell>
-        <mxCell id="item-35" value="Vault" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=16;fontColor=#f0f3f9;fontStyle=1;html=0;fontFamily=Arial;" vertex="1" parent="vault">
-          <mxGeometry x="12" y="8" width="185" height="24" as="geometry" />
-        </mxCell>
-        <mxCell id="item-36" value="Scoped upstream secrets" style="text;strokeColor=none;fillColor=none;whiteSpace=none;align=left;verticalAlign=middle;spacing=0;fontSize=13;fontColor=#b4c2d8;fontStyle=0;html=0;fontFamily=Arial;" vertex="1" parent="vault">
-          <mxGeometry x="12" y="34" width="185" height="24" as="geometry" />
-        </mxCell>
         <mxCell id="remote-api" value="" style="rounded=1;arcSize=10;fillColor=#242832;strokeColor=#606b7e;strokeWidth=1.2;html=0;fontFamily=Arial;" vertex="1" parent="1">
           <mxGeometry x="289" y="868" width="354" height="59" as="geometry" />
         </mxCell>
@@ -223,23 +214,6 @@
             <Array as="points">
               <mxPoint x="632" y="657" />
               <mxPoint x="632" y="702" />
-            </Array>
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="item-51" value="" style="edgeStyle=segmentEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=0;endArrow=block;endFill=1;endSize=7;strokeWidth=1.5;strokeColor=#8497b6;fontSize=12;fontFamily=Arial;fontColor=#b4c2d8;labelBackgroundColor=#14171d;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;dashed=1;dashPattern=5 4;" edge="1" parent="1" source="vault" target="inference">
-          <mxGeometry relative="1" as="geometry">
-            <Array as="points">
-              <mxPoint x="880" y="776" />
-              <mxPoint x="880" y="555" />
-            </Array>
-            <mxPoint x="0" y="4" as="offset" />
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="item-52" value="" style="edgeStyle=segmentEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=0;endArrow=block;endFill=1;endSize=7;strokeWidth=1.5;strokeColor=#8497b6;fontSize=12;fontFamily=Arial;fontColor=#b4c2d8;labelBackgroundColor=#14171d;exitX=1;exitY=0.3;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;dashed=1;dashPattern=5 4;" edge="1" parent="1" source="vault" target="broker">
-          <mxGeometry relative="1" as="geometry">
-            <Array as="points">
-              <mxPoint x="875" y="764" />
-              <mxPoint x="875" y="628" />
             </Array>
           </mxGeometry>
         </mxCell>

@@ -2,11 +2,14 @@
 Package gateway implements the nonstreaming OpenAI-compatible inference endpoint.
 
 Configuration is loaded by ConfigFromEnv. Required environment variables are
-GATEWAY_MODE (fixture or upstream), GATEWAY_CONFIG (JSON file), and
+GATEWAY_MODE (fixture, upstream, or subscription), GATEWAY_CONFIG (JSON file), and
 GATEWAY_SERVICE_TOKEN_FILE. CONTROLLER_URL defaults to
-http://runtime-controller:8080. Upstream mode additionally requires
-INFERENCE_API_KEY_FILE. Secrets are read from files only. Both binaries listen
-on :8080 and expose public GET /healthz.
+http://runtime-controller:8080. Upstream mode requires INFERENCE_API_KEY_FILE.
+A subscriptions policy enables native provider routes backed by saved worker
+bindings. It requires an HTTPS SUBSCRIPTION_RESOLVER_URL and either
+SUBSCRIPTION_GATEWAY_TOKEN or SUBSCRIPTION_GATEWAY_TOKEN_FILE. A private issuer
+requires SUBSCRIPTION_RESOLVER_CA_FILE. Subscription mode enables only the native routes
+for inference. The gateway listens on :8080 and exposes GET /healthz.
 
 config.example.json shows the JSON policy shape. Its example.invalid hosts and
 RFC 5737 IPs must be replaced for real use. Fixture mode requires only models;
@@ -28,6 +31,6 @@ additionally require allow_private:true. DNS answers outside the policy are skip
 the transport connects only to a checked IP while retaining original TLS hostname
 verification. Redirects and environment proxies are disabled. ca_file optionally
 selects a PEM CA bundle; TLS verification cannot be disabled. For a private
-Vault or test upstream, set both its narrow CIDR and allow_private:true.
+upstream, set both its narrow CIDR and allow_private:true.
 */
 package gateway

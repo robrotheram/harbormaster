@@ -88,7 +88,7 @@ func (c *codexCatalog) models(ctx context.Context, cred subscriptionCredential) 
 }
 
 func newCodexCatalog(c Config) (*codexCatalog, error) {
-	if c.Subscriptions == nil || !c.Subscriptions.UserAccounts {
+	if c.Subscriptions == nil {
 		return nil, nil
 	}
 	policy := c.Subscriptions.Providers["codex"]

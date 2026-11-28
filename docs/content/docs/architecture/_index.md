@@ -40,7 +40,7 @@ The diagram shows platform roles. Transports and the components present vary by 
 | Project | Membership, worker ownership, work items, approved integrations, and exchange grants. |
 | Platform PostgreSQL | Project configuration, lifecycle and task metadata, references, and a [private recorded history cache](../workspace-history.md). |
 | Worker storage | Files, native agent state, task instructions and results, analysis datasets, and published artifacts. |
-| Vault or configured secret files | Scoped upstream credentials and certificate keys used by trusted services. |
+| Mounted secrets | Upstream API keys and client certificates used by the gateways. |
 
 Project-access checks apply before worker dispatch. The dashboard’s operational snapshot has its own credential and field allowlist. Same-project [file handoffs](contracts.md#dashboard) are explicit copies. Cross-project [assistant exchanges](assistant-exchanges.md) use approved operation grants and selected export bodies.
 

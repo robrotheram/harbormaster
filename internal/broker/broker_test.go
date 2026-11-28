@@ -27,6 +27,9 @@ import (
 )
 
 func verify(_ context.Context, token, audience string) (gateway.Identity, error) {
+	if audience == "broker" && token == "foreign-project" {
+		return gateway.Identity{WorkspaceID: "ws-foreign", ProjectID: "foreign", PrincipalID: "alice"}, nil
+	}
 	if audience != "broker" || (token != "alice" && token != "bob" && token != "unconfigured") {
 		return gateway.Identity{}, errors.New("denied")
 	}
@@ -36,8 +39,8 @@ func fixtureConfig() Config {
 	return Config{Mode: "fixture", Verify: verify,
 		Operations: map[string]Operation{"lookup": {Parameters: map[string]Parameter{"record_id": {Type: "string", Required: true, MaxLength: 16}}}},
 		Principals: map[string]PrincipalPolicy{
-			"alice": {Operations: map[string]Permission{"lookup": {ApprovedCases: []string{"CASE-1"}, VaultPath: "identities/alice"}}},
-			"bob":   {Operations: map[string]Permission{"lookup": {ApprovedCases: []string{"CASE-2"}, VaultPath: "identities/bob"}}},
+			"alice": {Operations: map[string]Permission{"lookup": {ApprovedCases: []string{"CASE-1"}, Projects: []string{"default"}, Certificate: "alice"}}},
+			"bob":   {Operations: map[string]Permission{"lookup": {ApprovedCases: []string{"CASE-2"}, Projects: []string{"default"}, Certificate: "bob"}}},
 		},
 	}
 }
@@ -48,6 +51,7 @@ func request(h http.Handler, operation, token, body string) *httptest.ResponseRe
 	r := httptest.NewRequest("POST", "/v1/operations/"+operation, strings.NewReader(body))
 	r.Header.Set("Authorization", "Bearer "+token)
 	r.Header.Set("X-Principal-ID", "alice")
+	r.Header.Set("X-Project-ID", "default")
 	r.Header.Set("X-Workspace-ID", "ws-alice")
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
@@ -165,7 +169,7 @@ func policyForCA(t *testing.T, caPEM []byte) gateway.NetworkPolicy {
 	}
 	return gateway.NetworkPolicy{AllowedCIDRs: []string{"127.0.0.1/32"}, AllowPrivate: true, CAFile: path}
 }
-func TestVaultMTLSIdentityIsolation(t *testing.T) {
+func TestBrokerMTLSIdentityIsolation(t *testing.T) {
 	ca := makeCA(t)
 	serverCert, _, _ := ca.issue(t, "upstream", true)
 	_, aliceCert, aliceKey := ca.issue(t, "alice", false)
@@ -187,7 +191,7 @@ func TestVaultMTLSIdentityIsolation(t *testing.T) {
 		mu.Lock()
 		identities = append(identities, peer)
 		mu.Unlock()
-		if r.URL.Path != "/records/lookup" || r.Method != "POST" || r.Header.Get("Authorization") != "" || r.Header.Get("X-Vault-Token") != "" {
+		if r.URL.Path != "/records/lookup" || r.Method != "POST" || r.Header.Get("Authorization") != "" {
 			t.Error("unexpected upstream route or headers")
 		}
 		var body map[string]any
@@ -200,31 +204,18 @@ func TestVaultMTLSIdentityIsolation(t *testing.T) {
 	upstream.TLS = &tls.Config{Certificates: []tls.Certificate{serverCert}, ClientAuth: tls.RequireAndVerifyClientCert, ClientCAs: pool, MinVersion: tls.VersionTLS12}
 	upstream.StartTLS()
 	defer upstream.Close()
-	var vaultHits atomic.Int32
-	vault := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		vaultHits.Add(1)
-		if r.Method != "GET" || r.Header.Get("X-Vault-Token") != "vault-test-token" {
-			t.Error("unexpected Vault request")
-		}
-		cert, key := "", ""
-		switch r.URL.Path {
-		case "/v1/secret/data/identities/alice":
-			cert, key = aliceCert, aliceKey
-		case "/v1/secret/data/identities/bob":
-			cert, key = bobCert, bobKey
-		default:
-			t.Error("unexpected certificate path")
-			w.WriteHeader(404)
-			return
-		}
-		shared.JSON(w, 200, map[string]any{"data": map[string]any{"data": map[string]string{"certificate": cert, "private_key": key}}})
-	}))
-	defer vault.Close()
 	c := fixtureConfig()
 	c.Mode = "upstream"
-	c.VaultAddr = vault.URL
-	c.VaultToken = "vault-test-token"
-	c.Vault = VaultConfig{Mount: "secret", Network: policyForCA(t, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: vault.Certificate().Raw}))}
+	c.certificateDir = t.TempDir()
+	alicePEM := filepath.Join(c.certificateDir, "alice.pem")
+	for path, pem := range map[string]string{
+		alicePEM: aliceCert + aliceKey,
+		filepath.Join(c.certificateDir, "bob.pem"): bobCert + bobKey,
+	} {
+		if err := os.WriteFile(path, []byte(pem), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	op := c.Operations["lookup"]
 	op.Origin = upstream.URL
 	op.Path = "/records/lookup"
@@ -248,8 +239,23 @@ func TestVaultMTLSIdentityIsolation(t *testing.T) {
 	if w := request(h, "lookup", "unconfigured", validBody); w.Code != 404 {
 		t.Fatal("missing policy allowed")
 	}
-	if vaultHits.Load() != 3 {
-		t.Fatal("Vault fetched before authorization or certificate unexpectedly reused")
+	if w := request(h, "lookup", "foreign-project", validBody); w.Code != 404 {
+		t.Fatal("matching principal and case authorized a foreign project")
+	}
+	if err := os.Remove(alicePEM); err != nil {
+		t.Fatal(err)
+	}
+	if w := request(h, "lookup", "alice", validBody); w.Code != 503 || strings.Contains(w.Body.String(), alicePEM) {
+		t.Fatal("missing certificate failure was not sanitized")
+	}
+	if err := os.WriteFile(alicePEM, []byte(aliceCert+bobKey), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if w := request(h, "lookup", "alice", validBody); w.Code != 503 || strings.Contains(w.Body.String(), "PRIVATE KEY") {
+		t.Fatal("mismatched key failure was not sanitized")
+	}
+	if err := os.WriteFile(alicePEM, []byte(aliceCert+aliceKey), 0600); err != nil {
+		t.Fatal(err)
 	}
 	redirect.Store(true)
 	if w := request(h, "lookup", "alice", validBody); w.Code != 503 || redirectHits.Load() != 0 {
@@ -261,36 +267,28 @@ func TestVaultMTLSIdentityIsolation(t *testing.T) {
 		t.Fatal("certificate identity leaked across requests")
 	}
 }
-func TestBrokerRedirectsAndVaultFailure(t *testing.T) {
-	var targetHits atomic.Int32
-	target := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { targetHits.Add(1) }))
-	defer target.Close()
-	vault := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, target.URL, 307) }))
-	defer vault.Close()
+func TestBrokerRejectsInvalidCertificateNames(t *testing.T) {
 	c := fixtureConfig()
 	c.Mode = "upstream"
-	c.VaultAddr = vault.URL
-	c.VaultToken = "sensitive-vault-token"
-	policy := policyForCA(t, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: vault.Certificate().Raw}))
-	c.Vault = VaultConfig{Mount: "secret", Network: policy}
 	op := c.Operations["lookup"]
-	op.Origin = target.URL
+	op.Origin = "https://example.test"
 	op.Path = "/lookup"
 	op.Method = "POST"
-	op.Network = policy
+	op.Network = gateway.NetworkPolicy{AllowedCIDRs: []string{"203.0.113.7/32"}}
 	c.Operations["lookup"] = op
-	h, err := NewHandler(c)
-	if err != nil {
+	if _, err := NewHandler(c); err != nil {
 		t.Fatal(err)
 	}
-	w := request(h, "lookup", "alice", validBody)
-	if w.Code != 503 || strings.Contains(w.Body.String(), "sensitive-vault-token") || targetHits.Load() != 0 {
-		t.Fatal("Vault redirect or error leaked")
-	}
-	for _, path := range []string{"../root", "identities/%2e%2e/root", "identities/alice?x=y", "/identities/alice"} {
-		c.Principals["alice"] = PrincipalPolicy{Operations: map[string]Permission{"lookup": {ApprovedCases: []string{"CASE-1"}, VaultPath: path}}}
+	for _, path := range []string{"", "../root", "%2e%2e", "alice.pem", "/alice"} {
+		c.Principals["alice"] = PrincipalPolicy{Operations: map[string]Permission{"lookup": {ApprovedCases: []string{"CASE-1"}, Projects: []string{"default"}, Certificate: path}}}
 		if _, err := NewHandler(c); err == nil {
-			t.Fatal("unsafe Vault path accepted")
+			t.Fatal("invalid certificate name accepted")
+		}
+	}
+	for _, projects := range [][]string{nil, {"*"}} {
+		c.Principals["alice"] = PrincipalPolicy{Operations: map[string]Permission{"lookup": {ApprovedCases: []string{"CASE-1"}, Projects: projects, Certificate: "alice"}}}
+		if _, err := NewHandler(c); err == nil {
+			t.Fatal("upstream policy accepted projects", projects)
 		}
 	}
 }
@@ -312,8 +310,7 @@ func TestConfigFromEnvExample(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("GATEWAY_MODE", "upstream")
-	t.Setenv("VAULT_TOKEN_FILE", filepath.Join(t.TempDir(), "missing"))
-	if _, err := ConfigFromEnv(); err == nil {
-		t.Fatal("missing Vault token accepted")
+	if _, err := ConfigFromEnv(); err != nil {
+		t.Fatal(err)
 	}
 }

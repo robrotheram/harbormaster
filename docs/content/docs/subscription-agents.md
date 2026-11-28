@@ -48,18 +48,16 @@ User-subscription endpoints are unavailable to project/MCP credentials.
 Migration 14 preserves existing saved Codex credentials as a named default account,
 with their existing worker bindings and encryption context intact.
 
-Enable `subscriptions.user_accounts` and configure provider models and network
-policy in inference-gateway. Set the gateway's `CONTROLPLANE_URL` and the
-runtime controller's `CODEX_MODEL` and `CLAUDE_MODEL`. There is no API-billing
-fallback.
+Add a `subscriptions.providers` policy to the inference gateway config. Set the
+runtime controller's `CODEX_MODEL` and `CLAUDE_MODEL` to the approved model names
+for the providers you enable.
 
-Provision a random resolver credential of at least 32 characters as
-`SUBSCRIPTION_GATEWAY_TOKEN_FILE` on inference-gateway and controlplane only.
-It must differ from the runtime gateway, controller and admin tokens.
-Controlplane also needs `GATEWAY_SERVICE_TOKEN_FILE` to verify the forwarded
-inference grant with the controller. The resolver matches the verified workspace
-and project to the stored worker before returning its credential. Roll out
-controlplane and inference-gateway together after mounting the new token.
+Give the inference gateway and control plane the same random
+`SUBSCRIPTION_GATEWAY_TOKEN` of at least 32 characters. Use a value distinct
+from other service credentials and encryption keys. The control plane uses
+the controller's gateway service token to verify the forwarded worker grant.
+The resolver matches the verified workspace and project to the stored worker.
+It returns credentials only through its HTTPS listener on port 8443.
 
 New imports use the controlplane-only encryption key when configured. Set
 `CREDENTIAL_ENCRYPTION_KEY_FILE` for a single persistent key, or set
@@ -75,90 +73,50 @@ route. For retained Kubernetes workers, update the suspended Sandbox image/model
 template before restarting; controller defaults do not rewrite existing templates.
 No user login is bundled in deployment manifests.
 
-## Legacy operator-managed credentials
+## Configure Compose
 
-Deployments without `subscriptions.user_accounts` can still use the provider CLI
-and Vault procedure below. The former automatic setup/repair commands remain removed.
+Copy `deploy/config/inference.json` to a file under `.local/` and add the
+providers you use. For example, this policy enables Codex and keeps fixture
+inference available.
 
-## Local development
-
-Run `make bootstrap`, then `docker compose up -d --wait vault`. Use the Vault CLI
-inside that container (`docker compose exec vault sh`) with:
-
-```sh
-export VAULT_ADDR=https://vault:8200
-export VAULT_CACERT=/vault/tls/cert.pem
-vault status
+```json
+{
+  "models": ["fixture"],
+  "subscriptions": {
+    "providers": {
+      "codex": {
+        "models": ["gpt-6.1-sol"],
+        "network": {"allowed_hosts": ["chatgpt.com"]}
+      }
+    }
+  }
+}
 ```
 
-For a new Vault, initialize it once with `vault operator init`, securely retain the
-recovery material, and unseal using `vault operator unseal`'s interactive prompt.
-For an existing Vault, use its existing recovery material; never reinitialize it.
-Authenticate using `vault login`'s interactive prompt. Do not put tokens or unseal
-keys in command arguments, shell history, source control or application logs.
+For Claude, add a `claude` provider with your approved model and
+`api.anthropic.com` as the allowed host. Set `INFERENCE_POLICY_FILE` in `.env` to
+the policy path. Set `INFERENCE_GATEWAY_MODE=subscription` if every task must
+select a native agent.
 
-Enable a dedicated KV v2 mount named `subscription-auth` if it does not exist:
+Run `make up` to provision the resolver token and apply the configuration.
+Then import your login in **Connections** and bind it in the worker's settings.
+After a gateway is recreated, open each running worker in the dashboard to
+reconcile its network attachment.
 
-```sh
-vault secrets enable -path=subscription-auth -version=2 kv
-```
+Bootstrap creates a local resolver certificate valid for one year. Before it
+expires, move both `subscription_resolver_tls` and `subscription_resolver_ca`
+out of `.local/secrets` to protected storage. Run `make bootstrap`, then
+`docker compose up -d --no-deps --force-recreate --wait controlplane inference-gateway`.
 
-The gateway policy requires only these paths:
+## Configure Kubernetes
 
-```hcl
-path "subscription-auth/data/local-operator/codex" { capabilities = ["read"] }
-path "subscription-auth/data/local-operator/claude" { capabilities = ["read"] }
-```
+Set `GATEWAY_MODE=subscription` on the inference gateway and control plane for
+a subscription-only deployment. Provision the resolver certificate, trust
+bundle, and credentials before rolling out both services.
+[Kubernetes subscription configuration](operations/kubernetes.md#configure-the-subscription-resolver)
 
-Install that policy as `workbench-subscriptions` with `vault policy write`. Create
-an orphan periodic token with that policy (`vault token create -orphan
--policy=workbench-subscriptions -period=24h`). Save its client token in
-`.local/secrets/subscription_vault_token`. That file must be readable by the
-container user; keep its parent directories mode 0700. Recovery/root credentials
-must never be mounted into the gateway. Recreate only the gateway when replacing
-its token; the gateway renews its own lease during normal operation.
+## Replace an expired login
 
-Sign in using the native Codex or Claude CLI in your trusted operator environment.
-Codex ChatGPT credentials are in `$CODEX_HOME/auth.json` (default `~/.codex/auth.json`);
-Claude subscription credentials are in `$CLAUDE_CONFIG_DIR/.credentials.json`
-(default `~/.claude/.credentials.json`). Copy only the current access token into
-Vault, using a private JSON file with `vault kv put <path> @<file>`:
-
-| Vault path | Fields |
-| --- | --- |
-| `subscription-auth/local-operator/codex` | `access_token`, `account_id`, `expires_at` |
-| `subscription-auth/local-operator/claude` | `access_token`, `expires_at` |
-
-`expires_at` is the Unix expiry in seconds. Codex requires ChatGPT auth and its
-account binding; Claude's saved `expiresAt` is milliseconds and must be divided
-by 1000. Never copy refresh tokens, API keys or entire login files. Reject missing
-or expired access tokens. Remove the temporary import file after use.
-
-Configure exact provider model IDs and public destination CIDRs in a private copy
-of `deploy/config/inference.json`; see its `subscriptions` schema and
-[the gateway configuration](../../../deploy/config/inference.json). Point
-`INFERENCE_POLICY_FILE` at that copy and set `WORKSPACE_AGENT`, `CODEX_MODEL` and/or
-`CLAUDE_MODEL` in `.env`. DNS changes require reviewing and updating destination
-CIDRs. Apply configuration with:
-
-```sh
-DOCKER_SOCKET_GID="$(stat -c %g /var/run/docker.sock)" docker compose up -d --build --wait inference-gateway runtime-controller controlplane mcp
-```
-
-Create new workspaces to receive changed agent defaults. After recreating a gateway,
-open each running workspace in the dashboard to reconcile its network attachment.
-Existing workspace files and project state are retained.
-
-## Kubernetes reference environment
-
-Use the cluster's established Vault and secret provisioning procedures. The
-Kustomize overlay consumes existing Secrets; it does not run local-development
-bootstrap commands. See [the Kubernetes guide](k3s.md).
-
-## Recovery
-
-Check Vault seal state and the gateway token lease first. Unseal with the existing
-recovery keys, or replace an expired gateway token using operator authority. Refresh
-expired provider logins through the native CLI, then replace only the corresponding
-Vault access-token record. There is no API-billing fallback. Recreate the gateway
-only when its mounted Vault token changes, then reopen running workspaces.
+Sign in again through Codex or Claude Code. Open **Connections**, edit the
+existing subscription, and import the new login. Workers already bound to that
+subscription pick up the replacement automatically.

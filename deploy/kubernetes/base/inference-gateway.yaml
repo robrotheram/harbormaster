@@ -26,8 +26,6 @@ spec:
         env:
         - name: CONTROLLER_URL
           value: http://runtime-controller.harbormaster.svc:8080
-        - name: CONTROLPLANE_URL
-          value: http://controlplane:8080
         - name: CONTROLPLANE_READ_URL
           value: http://controlplane:8081
         - name: GATEWAY_MODE
@@ -36,8 +34,16 @@ spec:
           value: /etc/workbench/inference-gateway.json
         - name: GATEWAY_SERVICE_TOKEN_FILE
           value: /run/secrets/gateway_service_token
-        - name: SUBSCRIPTION_VAULT_TOKEN_FILE
-          value: /run/secrets/subscription_vault_token
+        - name: SUBSCRIPTION_GATEWAY_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: inference-gateway-secrets
+              key: subscription_gateway_token
+              optional: true
+        - name: SUBSCRIPTION_RESOLVER_URL
+          value: https://controlplane:8443
+        - name: SUBSCRIPTION_RESOLVER_CA_FILE
+          value: /run/subscription-resolver/ca.crt
         securityContext:
           allowPrivilegeEscalation: false
           readOnlyRootFilesystem: true
@@ -71,6 +77,9 @@ spec:
         - name: config
           mountPath: /etc/workbench
           readOnly: true
+        - name: subscription-resolver-ca
+          mountPath: /run/subscription-resolver
+          readOnly: true
       volumes:
       - name: secrets
         secret:
@@ -81,6 +90,10 @@ spec:
       - name: config
         secret:
           secretName: inference-gateway-config
+      - name: subscription-resolver-ca
+        configMap:
+          name: subscription-resolver-ca
+          optional: true
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001

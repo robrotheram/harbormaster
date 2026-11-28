@@ -5,16 +5,11 @@ package gateway
 import (
 	"agent-workbench/internal/shared"
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
-	"os"
-	"slices"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -24,9 +19,9 @@ type SubscriptionProvider struct {
 	Network        NetworkPolicy `json:"network"`
 }
 type SubscriptionConfig struct {
+	// Retain the field for existing saved-account configurations.
 	UserAccounts bool                            `json:"user_accounts,omitempty"`
 	Providers    map[string]SubscriptionProvider `json:"providers"`
-	Principals   map[string][]string             `json:"principals"`
 }
 type subscriptionCredential struct {
 	AccessToken string `json:"access_token"`
@@ -34,70 +29,16 @@ type subscriptionCredential struct {
 	ExpiresAt   int64  `json:"expires_at"`
 }
 
-func subscriptionVaultClient(address, caFile string) (*http.Client, error) {
-	u, err := HTTPSOrigin(address)
-	if err != nil || caFile == "" || u == nil {
-		return nil, ErrDenied
-	}
-	b, err := os.ReadFile(caFile)
-	if err != nil {
-		return nil, ErrDenied
-	}
-	pool := x509.NewCertPool()
-	if !pool.AppendCertsFromPEM(b) {
-		return nil, ErrDenied
-	}
-	return &http.Client{Timeout: 5 * time.Second, CheckRedirect: NoRedirect, Transport: &http.Transport{Proxy: nil, TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: pool}}}, nil
+func (c subscriptionCredential) valid() bool {
+	return c.AccessToken != "" && !strings.ContainsAny(c.AccessToken, " \r\n\t") && c.ExpiresAt > time.Now().Add(30*time.Second).Unix()
 }
 
 func registerSubscriptions(mux *http.ServeMux, c Config, catalog *codexCatalog) error {
 	if c.Subscriptions == nil {
 		return nil
 	}
-	if len(c.Subscriptions.Providers) == 0 || (!c.Subscriptions.UserAccounts && (len(c.Subscriptions.Principals) == 0 || c.SubscriptionVaultToken == "")) || (c.Subscriptions.UserAccounts && c.ResolveSubscription == nil) {
+	if len(c.Subscriptions.Providers) == 0 || c.ResolveSubscription == nil {
 		return ErrDenied
-	}
-	var vc *http.Client
-	var err error
-	if !c.Subscriptions.UserAccounts {
-		vc, err = subscriptionVaultClient(c.SubscriptionVaultAddr, c.SubscriptionVaultCA)
-		if err != nil {
-			return err
-		}
-	}
-	var renewalMu sync.Mutex
-	var renewedAt time.Time
-	renew := func(ctx context.Context) error {
-		renewalMu.Lock()
-		defer renewalMu.Unlock()
-		if time.Since(renewedAt) < time.Hour {
-			return nil
-		}
-		req, err := http.NewRequestWithContext(ctx, "POST", strings.TrimRight(c.SubscriptionVaultAddr, "/")+"/v1/auth/token/renew-self", strings.NewReader(`{}`))
-		if err != nil {
-			return ErrDenied
-		}
-		req.Header.Set("X-Vault-Token", c.SubscriptionVaultToken)
-		res, err := vc.Do(req)
-		if err != nil {
-			return ErrDenied
-		}
-		defer res.Body.Close()
-		if res.StatusCode != 200 {
-			return ErrDenied
-		}
-		renewedAt = time.Now()
-		return nil
-	}
-	for principal, providers := range c.Subscriptions.Principals {
-		if !safeSubscriptionPart(principal) {
-			return ErrDenied
-		}
-		for _, provider := range providers {
-			if _, ok := c.Subscriptions.Providers[provider]; !ok {
-				return ErrDenied
-			}
-		}
 	}
 	for provider, policy := range c.Subscriptions.Providers {
 		origin := ""
@@ -134,11 +75,6 @@ func registerSubscriptions(mux *http.ServeMux, c Config, catalog *codexCatalog) 
 				shared.Error(w, 401, "UNAUTHORIZED")
 				return
 			}
-			allowed := c.Subscriptions.UserAccounts || slices.Contains(c.Subscriptions.Principals[id.PrincipalID], provider)
-			if !allowed || !safeSubscriptionPart(id.PrincipalID) {
-				shared.Error(w, 403, "NOT_FOUND_OR_FORBIDDEN")
-				return
-			}
 			query := r.URL.Query()
 			for k, v := range query {
 				if provider != "claude" || k != "beta" || len(v) != 1 || v[0] != "true" {
@@ -158,48 +94,12 @@ func registerSubscriptions(mux *http.ServeMux, c Config, catalog *codexCatalog) 
 				shared.Error(w, 400, "INVALID_REQUEST")
 				return
 			}
-			// The path is selected by a registered handler; no caller URL, Vault
-			// path, principal, authorization or identity header is forwarded.
+			// The registered route selects the upstream path. The gateway
+			// supplies the provider identity and credential.
 			ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
 			defer cancel()
-			var cred subscriptionCredential
-			if c.Subscriptions.UserAccounts {
-				var resolveErr error
-				cred, resolveErr = c.ResolveSubscription(ctx, id.WorkspaceID, provider, grant)
-				if resolveErr != nil {
-					shared.Error(w, 503, "PROVIDER_LOGIN_REQUIRED")
-					return
-				}
-			} else {
-				if renew(ctx) != nil {
-					shared.Error(w, 503, "CREDENTIAL_UNAVAILABLE")
-					return
-				}
-				vreq, err := http.NewRequestWithContext(ctx, "GET", strings.TrimRight(c.SubscriptionVaultAddr, "/")+"/v1/subscription-auth/data/"+id.PrincipalID+"/"+provider, nil)
-				if err != nil {
-					shared.Error(w, 503, "CREDENTIAL_UNAVAILABLE")
-					return
-				}
-				vreq.Header.Set("X-Vault-Token", c.SubscriptionVaultToken)
-				vres, err := vc.Do(vreq)
-				if err != nil {
-					shared.Error(w, 503, "CREDENTIAL_UNAVAILABLE")
-					return
-				}
-				vb, verr := ReadBounded(vres.Body, 64<<10)
-				vres.Body.Close()
-				var secret struct {
-					Data struct {
-						Data subscriptionCredential `json:"data"`
-					} `json:"data"`
-				}
-				if verr != nil || vres.StatusCode != 200 || json.Unmarshal(vb, &secret) != nil {
-					shared.Error(w, 503, "PROVIDER_LOGIN_REQUIRED")
-					return
-				}
-				cred = secret.Data.Data
-			}
-			if cred.AccessToken == "" || strings.ContainsAny(cred.AccessToken, " \r\n\t") || cred.ExpiresAt <= time.Now().Add(30*time.Second).Unix() {
+			cred, err := c.ResolveSubscription(ctx, id.WorkspaceID, provider, grant)
+			if err != nil || !cred.valid() {
 				shared.Error(w, 503, "PROVIDER_LOGIN_REQUIRED")
 				return
 			}
@@ -228,15 +128,8 @@ func registerSubscriptions(mux *http.ServeMux, c Config, catalog *codexCatalog) 
 					case <-upstreamCtx.Done():
 						return
 					case <-ticker.C:
-						if c.Subscriptions.UserAccounts {
-							current, err := c.ResolveSubscription(upstreamCtx, id.WorkspaceID, provider, grant)
-							if err != nil || current.AccessToken != cred.AccessToken || current.AccountID != cred.AccountID {
-								stop()
-								return
-							}
-							continue
-						}
-						if _, err := c.Verify(upstreamCtx, grant, "inference"); err != nil {
+						current, err := c.ResolveSubscription(upstreamCtx, id.WorkspaceID, provider, grant)
+						if err != nil || current.AccessToken != cred.AccessToken || current.AccountID != cred.AccountID {
 							stop()
 							return
 						}
@@ -319,16 +212,4 @@ func registerSubscriptions(mux *http.ServeMux, c Config, catalog *codexCatalog) 
 		}
 	}
 	return nil
-}
-
-func safeSubscriptionPart(s string) bool {
-	if len(s) == 0 || len(s) > 128 {
-		return false
-	}
-	for _, r := range s {
-		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' || r == '-') {
-			return false
-		}
-	}
-	return true
 }

@@ -293,7 +293,7 @@ const messages: Record<string, string> = {
   INVALID_AGENT_RESPONSE:
     "The native agent returned an unreadable result. Check this worker’s activity logs before retrying.",
   CREDENTIAL_UNAVAILABLE:
-    "The service could not read or use a saved credential. Ask an administrator to check the credential encryption configuration and, for deployments that use Vault, its connection.",
+    "The service could not read or use a saved credential. Ask an administrator to check the credential encryption configuration.",
   IDEMPOTENCY_CONFLICT:
     "A previous request used this key with different settings. Change the form and submit a new request.",
   NOT_FOUND_OR_FORBIDDEN:

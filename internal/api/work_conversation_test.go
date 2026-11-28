@@ -33,6 +33,7 @@ func waitWorkReview(t *testing.T, s *Server, project, id string) shared.WorkItem
 
 func TestWorkConversationFollowupPreservesHistoryAndDeduplicates(t *testing.T) {
 	s, rt := setup(t)
+	s.cfg.SubscriptionGatewayToken = "configured-resolver"
 	project := domainProject(t, s, "conversation")
 	foreign := domainProject(t, s, "foreign-conversation")
 	var item shared.WorkItem

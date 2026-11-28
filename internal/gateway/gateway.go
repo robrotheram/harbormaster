@@ -13,18 +13,15 @@ import (
 )
 
 type Config struct {
-	ResolveSubscription    func(context.Context, string, string, string) (subscriptionCredential, error) `json:"-"`
-	Mode                   string                                                                        `json:"-"`
-	Models                 []string                                                                      `json:"models"`
-	Origin                 string                                                                        `json:"origin,omitempty"`
-	Network                NetworkPolicy                                                                 `json:"network,omitempty"`
-	APIKey                 string                                                                        `json:"-"`
-	Verify                 Verifier                                                                      `json:"-"`
-	Subscriptions          *SubscriptionConfig                                                           `json:"subscriptions,omitempty"`
-	SubscriptionVaultAddr  string                                                                        `json:"-"`
-	SubscriptionVaultCA    string                                                                        `json:"-"`
-	SubscriptionVaultToken string                                                                        `json:"-"`
-	subscriptionHTTP       *http.Client
+	ResolveSubscription func(context.Context, string, string, string) (subscriptionCredential, error) `json:"-"`
+	Mode                string                                                                        `json:"-"`
+	Models              []string                                                                      `json:"models"`
+	Origin              string                                                                        `json:"origin,omitempty"`
+	Network             NetworkPolicy                                                                 `json:"network,omitempty"`
+	APIKey              string                                                                        `json:"-"`
+	Verify              Verifier                                                                      `json:"-"`
+	Subscriptions       *SubscriptionConfig                                                           `json:"subscriptions,omitempty"`
+	subscriptionHTTP    *http.Client
 }
 
 func ConfigFromEnv() (Config, error) {
@@ -45,20 +42,12 @@ func ConfigFromEnv() (Config, error) {
 	if err != nil {
 		return c, err
 	}
-	if c.Subscriptions != nil && c.Subscriptions.UserAccounts {
+	if c.Subscriptions != nil {
 		resolverToken, secretErr := shared.Secret("SUBSCRIPTION_GATEWAY_TOKEN")
 		if secretErr != nil || len(resolverToken) < 32 || resolverToken == token {
 			return c, ErrDenied
 		}
-		c.ResolveSubscription, err = newSubscriptionResolver(os.Getenv("CONTROLPLANE_URL"), resolverToken)
-		if err != nil {
-			return c, err
-		}
-	}
-	if c.Subscriptions != nil && !c.Subscriptions.UserAccounts {
-		c.SubscriptionVaultAddr = os.Getenv("SUBSCRIPTION_VAULT_ADDR")
-		c.SubscriptionVaultCA = os.Getenv("SUBSCRIPTION_VAULT_CA_FILE")
-		c.SubscriptionVaultToken, err = ReadSecret(os.Getenv("SUBSCRIPTION_VAULT_TOKEN_FILE"))
+		c.ResolveSubscription, err = newSubscriptionResolver(os.Getenv("SUBSCRIPTION_RESOLVER_URL"), resolverToken, os.Getenv("SUBSCRIPTION_RESOLVER_CA_FILE"))
 		if err != nil {
 			return c, err
 		}

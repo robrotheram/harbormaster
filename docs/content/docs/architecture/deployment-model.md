@@ -6,9 +6,9 @@ Start with the expected data and isolation requirements. The runtime determines 
 
 ## Kubernetes reference deployment
 
-![Reference deployment with authenticated ingress, platform services in the platform namespace, and a Kata worker sandbox with a retained persistent volume in its project namespace. PostgreSQL and Vault are configured dependencies.](diagrams/reference-deployment.svg)
+![Reference deployment with authenticated ingress, platform services in the platform namespace, and a Kata worker sandbox with a retained persistent volume in its project namespace. The control plane connects to PostgreSQL.](diagrams/reference-deployment.svg)
 
-The controller creates workspaces through Agent Sandbox and forwards requests to ready workers. Kata provides VM-backed execution. NetworkPolicy and infrastructure admission rules constrain access to worker pods. The diagram shows a deployment with project namespace provisioning enabled. Retained worker PVCs use `ReadWriteOncePod`. PostgreSQL and Vault are configured dependencies. Their placement depends on the installation.
+The controller creates workspaces through Agent Sandbox and forwards requests to ready workers. Kata provides VM-backed execution. NetworkPolicy and infrastructure admission rules constrain access to worker pods. The diagram shows a deployment with project namespace provisioning enabled. Retained worker PVCs use `ReadWriteOncePod`. The control plane connects to PostgreSQL.
 
 Run one control-plane replica. It owns the metadata transitions and scheduler. Size the worker pool and quota separately from platform service resources. Check whether the chosen CNI and storage driver implement the controls before accepting workloads. [Kubernetes setup](../operations/kubernetes.md) · [Cluster dependencies](../operations/cluster-dependencies.md)
 
@@ -16,7 +16,7 @@ Run one control-plane replica. It owns the metadata transitions and scheduler. S
 
 ![The local clients reach Compose services through loopback. The trusted runtime controller uses the Docker socket, forwards worker API requests, and keeps worker data on a retained volume.](diagrams/docker-deployment.svg)
 
-Compose runs the dashboard, control plane, MCP, gateways, PostgreSQL, and Vault on a single host. The controller owns the Docker socket. It creates workspace containers, private networks, and persistent volumes. Use this deployment for development and synthetic workloads. See [Docker isolation limits](security.md#important-unverified-boundaries).
+Compose runs the dashboard, control plane, MCP, gateways, and PostgreSQL on a single host. The controller owns the Docker socket. It creates workspace containers, private networks, and persistent volumes. Use this deployment for development and synthetic workloads. See [Docker isolation limits](security.md#important-unverified-boundaries).
 
 ## Firecracker host deployment
 

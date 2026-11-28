@@ -3,6 +3,7 @@ package shared
 import (
 	"context"
 	"crypto/subtle"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"io"
@@ -104,6 +105,18 @@ func ServeContext(ctx context.Context, addr string, h http.Handler) error {
 		return err
 	}
 	slog.Info("listening", "address", addr)
+	return ServeListener(ctx, listener, h, 10*time.Second)
+}
+
+func ServeTLSContext(ctx context.Context, addr string, h http.Handler, cert tls.Certificate) error {
+	listener, err := tls.Listen("tcp", addr, &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS12,
+	})
+	if err != nil {
+		return err
+	}
+	slog.Info("listening with TLS", "address", addr)
 	return ServeListener(ctx, listener, h, 10*time.Second)
 }
 

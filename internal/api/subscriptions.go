@@ -112,6 +112,12 @@ func (s *Server) registerSubscriptions(mux *http.ServeMux) {
 
 // Only the inference gateway's separate service credential can resolve a
 // worker binding. This route is absent from the browser and project MCP surface.
+func (s *Server) SubscriptionResolverHandler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /internal/subscriptions/resolve", s.resolveSubscription)
+	return mux
+}
+
 func (s *Server) resolveSubscription(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
@@ -124,7 +130,7 @@ func (s *Server) resolveSubscription(w http.ResponseWriter, r *http.Request) {
 		Provider    string `json:"provider"`
 		Grant       string `json:"grant"`
 	}
-	if !decodeRouteBody(w, r, &input) {
+	if !shared.Decode(w, r, &input, 4096) {
 		return
 	}
 	if input.Provider == "" {
@@ -178,13 +184,16 @@ func (s *Server) validSubscription(ctx context.Context, owner, id, provider stri
 // An explicit worker binding wins. A personal default only fills an empty slot
 // during an authorized human run, so background work never borrows a credential.
 func (s *Server) prepareWorkSubscription(r *http.Request, workspace, provider string) error {
-	if provider == "" && s.cfg.RequireAgentSelection {
-		return agentSelectionRequired
+	if provider == "" {
+		if s.cfg.RequireAgentSelection {
+			return agentSelectionRequired
+		}
+		provider = s.cfg.DefaultWorkProvider
 	}
-	if s.cfg.SubscriptionGatewayToken == "" || workspace == "" {
+	if provider == "" || s.cfg.SubscriptionGatewayToken == "" || workspace == "" {
 		return nil
 	}
-	if provider == "" || provider == "hermes" {
+	if provider == "hermes" {
 		provider = "codex"
 	}
 	ctx := r.Context()

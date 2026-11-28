@@ -52,11 +52,31 @@ Create the platform Secrets in the `harbormaster` namespace through your secret 
 | --- | --- |
 | `controlplane-secrets` | Supply `database_url`, `control_token`, and `controller_token`. For hosted dashboard and project access, supply the scoped values below. |
 | `runtime-controller-secrets` | Supply `controller_token` matching the control plane, plus `grant_secret` and `gateway_service_token`. |
-| `inference-gateway-secrets`, `credential-broker-secrets`, and `egress-gateway-secrets` | Supply the controller's `gateway_service_token`. Add the provider or Vault credentials required by each gateway's configuration. |
+| `inference-gateway-secrets`, `credential-broker-secrets`, and `egress-gateway-secrets` | Supply the controller's `gateway_service_token`. For upstream inference, mount the provider API key. For broker operations, add a `<name>.pem` key for each configured client certificate and private key. |
 | `inference-gateway-config` and `credential-broker-config` | Supply `inference-gateway.json` and `credential-broker.json` respectively. Include CA files if the policy needs them. |
 | `egress-gateway-config` | Create the Secret if the Deployment retains the base volume reference. The current egress service gets its destination policy from the runtime grant. |
 | `dashboard-secrets` | Supply the scoped credentials below and the WorkOS keys if you use the example's AuthKit patch. |
 | `mcp-secrets` | Supply `mcp_token` for the default project and `project_signing_key` matching the control plane. |
+
+## Configure the subscription resolver
+
+For native subscriptions, set the same `subscription_gateway_token` in
+`controlplane-secrets` and `inference-gateway-secrets`. Add the controller's
+`gateway_service_token` to `controlplane-secrets` and set
+`credential_encryption_key` there.
+
+1. Issue a server certificate for the `controlplane` DNS name. Create the
+   `subscription-resolver-tls` Secret in `harbormaster` with the certificate
+   chain as `tls.crt` and its private key as `tls.key`.
+2. Create the `subscription-resolver-ca` ConfigMap in `harbormaster` with the
+   trusted issuer certificate in `ca.crt`. For a self-signed server certificate,
+   use that certificate as the trust anchor.
+3. Roll out the control plane and inference gateway together. The gateway
+   connects to `https://controlplane:8443` and verifies the server certificate.
+   Update the resolver URL if you issue the certificate for a different service
+   DNS name. Restart both deployments after rotating the certificate or CA.
+
+For provider policy and worker setup, see [subscription credentials](../subscription-agents.md).
 
 ## Configure hosted dashboard access
 

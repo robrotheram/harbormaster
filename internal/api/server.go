@@ -33,6 +33,7 @@ type Config struct {
 	CredentialKeys              CredentialKeys
 	SubscriptionGatewayToken    string
 	RequireAgentSelection       bool
+	DefaultWorkProvider         string
 	VerifySubscriptionGrant     func(context.Context, string, string, string) bool
 	ProvisionProjectNamespaces  bool
 	SharedWorkspaceID           string
@@ -205,7 +206,6 @@ func (s *Server) Handler() http.Handler {
 	s.registerWork(secured)
 	s.registerForges(secured)
 	s.registerSubscriptions(secured)
-	mux.HandleFunc("POST /internal/subscriptions/resolve", s.resolveSubscription)
 	s.registerBoard(secured)
 	s.registerCoordinationRuntime(secured)
 	s.registerAnalysis(secured)

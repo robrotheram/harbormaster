@@ -2,20 +2,34 @@ package gateway
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 )
 
-func newSubscriptionResolver(origin, token string) (func(context.Context, string, string, string) (subscriptionCredential, error), error) {
+func newSubscriptionResolver(origin, token, caFile string) (func(context.Context, string, string, string) (subscriptionCredential, error), error) {
 	u, err := url.Parse(origin)
-	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || token == "" {
+	if err != nil || u.Host == "" || u.Scheme != "https" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || token == "" {
 		return nil, ErrDenied
 	}
+	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
+	if caFile != "" {
+		pem, err := os.ReadFile(caFile)
+		if err != nil {
+			return nil, ErrDenied
+		}
+		tlsConfig.RootCAs = x509.NewCertPool()
+		if !tlsConfig.RootCAs.AppendCertsFromPEM(pem) {
+			return nil, ErrDenied
+		}
+	}
 	u.Path = "/internal/subscriptions/resolve"
-	client := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{Proxy: nil}, CheckRedirect: NoRedirect}
+	client := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: tlsConfig}, CheckRedirect: NoRedirect}
 	return func(ctx context.Context, workspace, provider, grant string) (subscriptionCredential, error) {
 		body, _ := json.Marshal(map[string]string{"workspace_id": workspace, "provider": provider, "grant": grant})
 		req, err := http.NewRequestWithContext(ctx, "POST", u.String(), strings.NewReader(string(body)))

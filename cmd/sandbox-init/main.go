@@ -228,7 +228,7 @@ func main() {
 	must(e)
 	var env map[string]string
 	must(json.Unmarshal(b, &env))
-	// The supervisor needs its grant; it receives no host/Vault/provider secret.
+	// Pass the workspace grant to the supervisor.
 	if e := unix.Unmount("/boot-config", 0); e != nil {
 		panic(fmt.Errorf("unmount bootstrap config: %w", e))
 	}

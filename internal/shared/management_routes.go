@@ -159,7 +159,6 @@ var managementRoutes = []managementRoute{
 	{http.MethodPost, "/v1/exchange-exports/{id}/submit", 4096, 1024, noSharedHuman},
 	{http.MethodPost, "/v1/note-publications", 100000, 70000, noSharedHuman},
 	{http.MethodPost, "/v1/file-handoffs", 4096, 4096, noSharedHuman},
-	{http.MethodPost, "/internal/subscriptions/resolve", 0, 4096, noSharedHuman},
 }
 
 var apiBodyLimits = func() map[string]int64 {

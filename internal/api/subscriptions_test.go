@@ -28,9 +28,6 @@ func TestMultipleSubscriptionsArePrivateAndProviderScoped(t *testing.T) {
 	call := func(method, path, user, body string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, path, strings.NewReader(body))
 		r.Header.Set("Authorization", "Bearer "+s.cfg.Token)
-		if strings.HasPrefix(path, "/internal/") {
-			r.Header.Set("Authorization", "Bearer gateway-only")
-		}
 		r.Header.Set(subscriptionUserHeader, user)
 		w := httptest.NewRecorder()
 		s.Handler().ServeHTTP(w, r)
@@ -60,6 +57,13 @@ func TestMultipleSubscriptionsArePrivateAndProviderScoped(t *testing.T) {
 	}
 	probe := httptest.NewRequest("POST", "/", nil)
 	probe = probe.WithContext(context.WithValue(probe.Context(), principalKey{}, principal{human: shared.HumanIdentity{ID: "user_alice"}}))
+	if err := s.prepareWorkSubscription(probe, worker.ID, ""); err != nil {
+		t.Fatal("fixture work should not require a subscription with the resolver enabled", err)
+	}
+	s.cfg.DefaultWorkProvider = "claude"
+	if err := s.prepareWorkSubscription(probe, worker.ID, ""); err != subscriptionRequired {
+		t.Fatal("a native default should require a subscription", err)
+	}
 	s.cfg.RequireAgentSelection = true
 	if err := s.prepareWorkSubscription(probe, worker.ID, ""); err != (shared.CodedError{Status: 409, Code: "AGENT_SELECTION_REQUIRED"}) {
 		t.Fatal("subscription-only work should require an agent selection", err)
@@ -94,13 +98,22 @@ func TestMultipleSubscriptionsArePrivateAndProviderScoped(t *testing.T) {
 	if load("user_bob", a) != 409 || load("user_bob", other) != 409 {
 		t.Fatal("another user took over")
 	}
-	resolve := func(provider string) *httptest.ResponseRecorder {
-		return call("POST", "/internal/subscriptions/resolve", "", fmt.Sprintf(`{"workspace_id":%q,"provider":%q,"grant":"live"}`, worker.ID, provider))
+	const resolverPath = "/internal/subscriptions/resolve"
+	resolver := s.SubscriptionResolverHandler()
+	resolve := func(provider, grant string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("POST", resolverPath, strings.NewReader(fmt.Sprintf(`{"workspace_id":%q,"provider":%q,"grant":%q}`, worker.ID, provider, grant)))
+		r.Header.Set("Authorization", "Bearer gateway-only")
+		w := httptest.NewRecorder()
+		resolver.ServeHTTP(w, r)
+		return w
 	}
-	if got := call("POST", "/internal/subscriptions/resolve", "", fmt.Sprintf(`{"workspace_id":%q,"provider":"codex","grant":"revoked"}`, worker.ID)); got.Code != 401 {
+	if w := call("POST", resolverPath, "", "{}"); w.Code != 404 {
+		t.Fatal("resolver is exposed on the main API", w.Code)
+	}
+	if got := resolve("codex", "revoked"); got.Code != 401 {
 		t.Fatal("resolver accepted a revoked workspace grant")
 	}
-	if resolve("codex").Code != 200 || resolve("claude").Code != 200 {
+	if resolve("codex", "live").Code != 200 || resolve("claude", "live").Code != 200 {
 		t.Fatal("provider resolution failed")
 	}
 	res := call("GET", "/v1/subscriptions", "user_alice", "")
@@ -132,16 +145,16 @@ func TestMultipleSubscriptionsArePrivateAndProviderScoped(t *testing.T) {
 	if res := call("POST", "/v1/subscriptions/"+a+"/delete", "user_alice", "{}"); res.Code != 200 {
 		t.Fatal("delete unused")
 	}
-	if resolve("codex").Code != 200 {
+	if resolve("codex", "live").Code != 200 {
 		t.Fatal("deleting unused account removed active one")
 	}
 	if res := call("POST", path+"unload", "user_alice", `{"provider":"claude"}`); res.Code != 200 {
 		t.Fatal("unload")
 	}
-	if resolve("claude").Code != 503 || resolve("codex").Code != 200 {
+	if resolve("claude", "live").Code != 503 || resolve("codex", "live").Code != 200 {
 		t.Fatal("unload not provider scoped")
 	}
-	if res := call("POST", "/v1/subscriptions/"+b+"/delete", "user_alice", "{}"); res.Code != 200 || resolve("codex").Code != 503 {
+	if res := call("POST", "/v1/subscriptions/"+b+"/delete", "user_alice", "{}"); res.Code != 200 || resolve("codex", "live").Code != 503 {
 		t.Fatal("delete did not revoke")
 	}
 	if load("user_bob", other) != 200 {

@@ -25,8 +25,8 @@ The controller is trusted to manage host compute. Workers can run agent-supplied
 - Only the trusted runtime controller receives the Docker socket. It exposes fixed lifecycle operations and a bounded workspace API forwarder, not arbitrary Docker requests, images, mounts, runtime flags or host paths.
 - Each workspace receives its own container, internal network and persistent volume; it runs as a non-root user with a read-only root filesystem, dropped capabilities, no new privileges and CPU/memory/PID bounds.
 - Workspace grants are derived from a controller-held secret and a container generation. Gateways validate them against currently running, deployment-owned containers. The controller rejects new requests using a stopped container's grant.
-- Separate inference and certificate-broker processes; no provider certificate private key or Vault credential is intentionally given to the workspace. Gateways accept named destinations/operations rather than arbitrary URLs.
-- The inference gateway resolves Codex and Claude subscriptions through a saved worker binding or a scoped Vault record. It enforces provider, model, and destination allowlists. Workers receive generation grants. Active inference streams recheck authorization and stop after revocation. See [subscription credentials](../subscription-agents.md).
+- Separate processes handle inference and certificate-backed operations. Provider credentials and certificate keys stay in trusted services. Gateways accept named destinations and operations.
+- The inference gateway resolves Codex and Claude subscriptions through a saved worker binding. It enforces provider, model, and destination allowlists. Workers receive generation grants. Active inference streams recheck authorization and stop after revocation. See [subscription credentials](../subscription-agents.md).
 - The dashboard read credential grants access to the allowlisted operational snapshot. Hosted project routes use separate signed human claims. The [history cache](../workspace-history.md) contains private recorded content and requires project authorization.
 - MCP and the management API require provisioned credentials. Local mode uses one operator identity. Hosted project operations also check project membership.
 - The local launcher uses workspace-specific browser origins and scoped, one-use connection tickets. It forwards native T3 HTTP/WebSocket traffic to that workspace, with native credentials held by the workspace supervisor. The local dashboard requires Basic authentication and carries local operator authority.
@@ -57,7 +57,7 @@ The Docker socket grants root-equivalent host authority to the runtime controlle
 1. Pin and verify the selected Kubernetes Kata/VMM/storage combination, one VM per workspace, guest-root containment, resource bounds and host backend confinement.
 2. Enforce and test host-side deny rules covering forwarding, host INPUT, DNS and IPv6; gateway loss, policy failure and daemon restarts must preserve denial.
 3. Verify real hosted identity, project membership, credential scope, and revocation in the target installation.
-4. Provision real approved inference/provider credentials and scoped Vault access; review which workspace data may leave through inference/results.
+4. Provision approved provider credentials and broker certificates for the integrations you enable. Review which workspace data may leave through inference and results.
 5. Revalidate native T3 browser/HTTP/WebSocket access, disconnect/reconnect, cold starts and provider compatibility under the chosen microVM and host policies. Native browser access and desktop pairing/token exchange/WebSocket calls have functional Docker checks; remote exposure remains a separate gate.
 
 No test involving mocks or ordinary containers establishes these gates. Review [Docker daemon security](https://docs.docker.com/engine/security/) and the [Kata threat model](https://github.com/kata-containers/kata-containers/blob/main/docs/threat-model/threat-model.md) before changing this boundary.
@@ -75,8 +75,7 @@ CONNECT checks the destination. Encrypted paths, methods, and payloads are opaqu
 Fully open is an explicit per-workspace opt-out from destination restrictions. It
 adds a separate owned non-internal Docker bridge and normal external DNS; native
 tools use direct networking, including TCP/UDP, SSH, Internet and reachable LAN/host
-services. No runtime socket, Vault token or provider credential is added. Private
-homes and volumes retain project ownership, but unrestricted networking is not a
+services. Private homes and volumes retain project ownership, but unrestricted networking is not a
 network confidentiality boundary between projects or against the host.
 
 The workspace must be stopped before changing into or out of fully open mode. On

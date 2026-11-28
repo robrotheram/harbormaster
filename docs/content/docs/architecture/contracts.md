@@ -58,9 +58,9 @@ Runtime management endpoints require the controller token. The Docker runtime co
 The inference gateway and credential broker are separate services. Each uses port 8080 and exposes `GET /healthz`. The dedicated egress gateway handles HTTP forwarding and CONNECT.
 
 - Inference: `POST /v1/chat/completions`, OpenAI-compatible messages/tools/model, nonstreaming response. Explicit allowlisted origin/model from file. `GATEWAY_MODE=fixture` provides visibly labeled deterministic synthetic inference. `GATEWAY_MODE=upstream` uses fixed configured HTTPS origin (no client URL). Native subscription protocol routes are separate from this endpoint.
-- Broker: `POST /v1/operations/{operation}` with validated named parameters; fixture mode returns synthetic data. Upstream fixed origins, operation templates and certificate references in file config. Vault holds certificate/private key; no arbitrary URL/Vault path supplied by client.
+- Broker: `POST /v1/operations/{operation}` with validated named parameters; fixture mode returns synthetic data. The policy fixes the upstream origin, operation path, and client certificate. The broker reads the certificate and key from a mounted PEM file.
 - Both authenticate workspace tokens by calling trusted controller `POST /v1/grants/verify` using gateway service credential (`GATEWAY_SERVICE_TOKEN_FILE`). Request `{token,audience}` audience inference or broker. Response `{workspace_id,project_id,principal_id}` on success; fail closed on errors. Controller keeps workspace grants in memory derived from stable secret, binds to current running generation; no access when stopped. Tests may inject a verifier function. Gateways configuration may pass trusted URLs only via env/file, never request fields. Controller URL `http://runtime-controller:8080`.
-- Environment: `GATEWAY_MODE`, `GATEWAY_CONFIG` (JSON policy), `CONTROLLER_URL`, `GATEWAY_SERVICE_TOKEN_FILE`; inference upstream credential `INFERENCE_API_KEY_FILE`; broker `VAULT_ADDR`, `VAULT_TOKEN_FILE`. Credential files supplied by operator. No generated fake credentials representing external services.
+- Environment: `GATEWAY_MODE`, `GATEWAY_CONFIG` (JSON policy), `CONTROLLER_URL`, `GATEWAY_SERVICE_TOKEN_FILE`; inference upstream credential `INFERENCE_API_KEY_FILE`; broker client certificate and key mounted at `/run/secrets/<name>.pem`. The operator supplies upstream credentials.
 
 ## MCP
 
@@ -94,7 +94,7 @@ An `egress` grant is issued/verified only for an enabled, running generation.
 The dedicated egress service accepts HTTP and CONNECT only to destinations in the workspace policy;
 DNS resolution and public-address validation happen there. The supervisor exposes
 a credential-free loopback proxy to native tools and injects its workspace grant
-on the internal hop. It never gives Git a provider/Vault credential. Active
+on the internal hop. Active
 tunnels revalidate authority every five seconds with a five-second verifier
 timeout. Destination approval covers the encrypted host, not HTTP paths.
 

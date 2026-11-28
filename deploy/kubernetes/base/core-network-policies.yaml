@@ -35,12 +35,22 @@ spec:
         matchExpressions:
         - key: app
           operator: In
-          values: [dashboard, mcp, hermes-mcp, runtime-controller, inference-gateway]
+          values: [dashboard, mcp, hermes-mcp, runtime-controller]
         - key: workbench.workspace
           operator: DoesNotExist
     ports:
     - protocol: TCP
       port: 8080
+  - from:
+    - podSelector:
+        matchLabels:
+          app: inference-gateway
+        matchExpressions:
+        - key: workbench.workspace
+          operator: DoesNotExist
+    ports:
+    - protocol: TCP
+      port: 8443
   - from:
     - podSelector:
         matchExpressions:

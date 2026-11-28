@@ -14,7 +14,7 @@ func prepare(cfg Config, provider string) (invocation, string) {
 	if os.MkdirAll(home, 0700) != nil {
 		return invocation{}, "STORAGE_UNAVAILABLE"
 	}
-	// Only a generation-bound workspace grant, never provider or Vault credentials.
+	// The native agent uses a generation-bound workspace grant.
 	path := cfg.ToolPath
 	if path == "" {
 		path = "/usr/local/bin:/usr/bin:/bin"

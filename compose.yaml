@@ -37,6 +37,8 @@ services:
     <<: *app
     build: {context: ., target: platform, args: {SERVICE: controlplane}}
     environment:
+      GATEWAY_MODE: ${INFERENCE_GATEWAY_MODE:-${GATEWAY_MODE:-fixture}}
+      WORKSPACE_AGENT: ${WORKSPACE_AGENT:-}
       SHARED_WORKSPACE_ID: ${SHARED_WORKSPACE_ID:-}
       WORKSPACE_MEMORY_BYTES: ${WORKSPACE_MEMORY_BYTES:-1073741824}
       MEMORY_QUOTA_BYTES: ${MEMORY_QUOTA_BYTES:-4294967296}
@@ -49,8 +51,12 @@ services:
       PROJECT_SIGNING_KEY_FILE: /run/secrets/project_signing_key
       DATABASE_URL_FILE: /run/secrets/database_url
       CONTROLLER_URL: http://runtime-controller-management:8080
-    secrets: [control_token, controller_token, database_url, credential_encryption_key, project_signing_key, dashboard_read_token, dashboard_local_operator_token]
-    networks: [metadata, management, dashboard, ingress, host-access]
+      GATEWAY_SERVICE_TOKEN_FILE: /run/secrets/gateway_service_token
+      SUBSCRIPTION_GATEWAY_TOKEN_FILE: /run/secrets/subscription_gateway_token
+      SUBSCRIPTION_RESOLVER_CERT_FILE: /run/secrets/subscription_resolver_tls
+      SUBSCRIPTION_RESOLVER_KEY_FILE: /run/secrets/subscription_resolver_tls
+    secrets: [gateway_service_token, subscription_gateway_token, subscription_resolver_tls, control_token, controller_token, database_url, credential_encryption_key, project_signing_key, dashboard_read_token, dashboard_local_operator_token]
+    networks: [metadata, management, dashboard, ingress, subscriptions, host-access]
     ports: ["127.0.0.1:${CONTROL_PORT:-8090}:8080"]
     depends_on:
       postgres: {condition: service_healthy}
@@ -134,16 +140,16 @@ services:
     container_name: ${DEPLOYMENT_ID:-awb}-inference-gateway
     build: {context: ., target: platform, args: {SERVICE: inference-gateway}}
     environment:
-      GATEWAY_MODE: ${GATEWAY_MODE:-fixture}
+      GATEWAY_MODE: ${INFERENCE_GATEWAY_MODE:-${GATEWAY_MODE:-fixture}}
       GATEWAY_CONFIG: /etc/workbench/inference.json
       CONTROLLER_URL: http://runtime-controller-management:8080
       GATEWAY_SERVICE_TOKEN_FILE: /run/secrets/gateway_service_token
-      SUBSCRIPTION_VAULT_ADDR: https://vault:8200
-      SUBSCRIPTION_VAULT_CA_FILE: /etc/workbench/vault-ca.pem
-      SUBSCRIPTION_VAULT_TOKEN_FILE: /run/secrets/subscription_vault_token
-    secrets: [gateway_service_token, subscription_vault_token]
-    volumes: ["${INFERENCE_POLICY_FILE:-./deploy/config/inference.json}:/etc/workbench/inference.json:ro", ./.local/vault-tls/cert.pem:/etc/workbench/vault-ca.pem:ro]
-    networks: [management, credentials, upstream]
+      SUBSCRIPTION_GATEWAY_TOKEN_FILE: /run/secrets/subscription_gateway_token
+      SUBSCRIPTION_RESOLVER_URL: https://controlplane:8443
+      SUBSCRIPTION_RESOLVER_CA_FILE: /run/secrets/subscription_resolver_ca
+    secrets: [gateway_service_token, subscription_gateway_token, subscription_resolver_ca]
+    volumes: ["${INFERENCE_POLICY_FILE:-./deploy/config/inference.json}:/etc/workbench/inference.json:ro"]
+    networks: [management, subscriptions, upstream]
 
   egress-gateway:
     <<: *app
@@ -164,34 +170,9 @@ services:
       GATEWAY_CONFIG: /etc/workbench/broker.json
       CONTROLLER_URL: http://runtime-controller-management:8080
       GATEWAY_SERVICE_TOKEN_FILE: /run/secrets/gateway_service_token
-      VAULT_ADDR: https://vault:8200
     secrets: [gateway_service_token]
     volumes: [./deploy/config/broker.json:/etc/workbench/broker.json:ro]
-    networks: [management, credentials, upstream]
-
-  vault:
-    mem_limit: 1g
-    pids_limit: 256
-    image: hashicorp/vault:2.2@sha256:dfa48c2fa2b0099ccb47681ec5c4804bf5aec9d6879ecfee07ad4b92a5427ad6
-    user: vault
-    restart: unless-stopped
-    # The image entrypoint already loads /vault/config. Do not load it twice.
-    command: [server]
-    environment:
-      SKIP_CHOWN: "1"
-      SKIP_SETCAP: "1"
-    cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
-    volumes: [vault:/vault/file, ./deploy/config/vault.hcl:/vault/config/vault.hcl:ro, ./.local/vault-tls/cert.pem:/vault/tls/cert.pem:ro]
-    secrets: [vault_tls_key]
-    networks: [credentials]
-    # Sealed/uninitialized is expected until the operator provisions Vault.
-    # Exit 2 means its listener is available; exit 1 means a connection error.
-    healthcheck:
-      test: [CMD-SHELL, "VAULT_CACERT=/vault/tls/cert.pem vault status -address=https://vault:8200 >/dev/null 2>&1; status=$$?; [ $$status -eq 0 ] || [ $$status -eq 2 ]"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
+    networks: [management, upstream]
 
   workspace-image:
     profiles: [build]
@@ -205,7 +186,7 @@ networks:
   management: {internal: true}
   dashboard: {internal: true}
   ingress: {internal: true}
-  credentials: {internal: true}
+  subscriptions: {internal: true}
   build-only: {internal: true}
   upstream: {}
   # Docker needs a non-internal bridge to publish these trusted entrypoints.
@@ -214,18 +195,18 @@ networks:
 
 volumes:
   metadata: {}
-  vault: {}
 
 secrets:
   control_token: {file: ./.local/secrets/control_token}
   controller_token: {file: ./.local/secrets/controller_token}
   gateway_service_token: {file: ./.local/secrets/gateway_service_token}
+  subscription_gateway_token: {file: ./.local/secrets/subscription_gateway_token}
+  subscription_resolver_tls: {file: ./.local/secrets/subscription_resolver_tls}
+  subscription_resolver_ca: {file: ./.local/secrets/subscription_resolver_ca}
   grant_secret: {file: ./.local/secrets/grant_secret}
   mcp_token: {file: ./.local/secrets/mcp_token}
   postgres_password: {file: ./.local/secrets/postgres_password}
   database_url: {file: ./.local/secrets/database_url}
-  subscription_vault_token: {file: ./.local/secrets/subscription_vault_token}
-  vault_tls_key: {file: ./.local/secrets/vault_tls_key}
   dashboard_local_password: {file: ./.local/secrets/dashboard_local_password}
   dashboard_local_operator_token: {file: ./.local/secrets/dashboard_local_operator_token}
   dashboard_read_token: {file: ./.local/secrets/dashboard_read_token}

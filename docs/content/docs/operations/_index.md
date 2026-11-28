@@ -8,8 +8,8 @@ linkTitle = "Operations"
 Run one control-plane replica. Its lifecycle locks and quota reservations are
 process-local; increasing replicas is not a supported availability strategy.
 PostgreSQL holds platform metadata. Workspace volumes hold private SQLite state,
-files and agent homes. Vault holds integration credentials. These are separate
-recovery units; backing up PostgreSQL alone does not back up user work.
+files, and agent homes. PostgreSQL backups cover metadata and encrypted credentials.
+Back up workspace volumes separately to preserve user work.
 
 The default Compose deployment is a local development installation. Keep its
 published ports bound to loopback. The local dashboard requires the operator password. Hosted deployments combine approved sign-in with project membership for project routes. See [deployment setup](../deployment.md) and the [backend acceptance requirements](../architecture/_index.md#backend-support) before serving a shared installation.
@@ -49,9 +49,9 @@ release's image digests. Stop the control plane before taking the final metadata
 backup so scheduling/lifecycle writes cannot race the recovery checkpoint.
 
 Take a PostgreSQL logical backup with `pg_dump` and verify it can be restored to
-an isolated PostgreSQL instance. Snapshot stopped workspace volumes and Vault
-storage using the selected runtime/storage driver's supported procedure. Keep
-`.local/secrets`, Vault unseal material and deployment configuration in encrypted,
+an isolated PostgreSQL instance. Snapshot stopped workspace volumes using the
+storage driver's supported procedure. Keep `.local/secrets`, mounted credentials,
+and deployment configuration in encrypted,
 access-controlled backup storage, separately from source control. Treat all
 backups as sensitive. Do not copy live SQLite database files without a consistent
 SQLite backup or a stopped workspace.
@@ -63,6 +63,23 @@ previous images. Do not run an old binary against an unverified newer schema.
 Restoring state does not undo external side effects such as commits or provider
 requests; reconcile them before resuming work. Never use
 `docker compose down --volumes` as an upgrade or troubleshooting step.
+
+### Upgrade from a deployment that uses Vault
+
+Before upgrading, keep a recovery copy of the old deployment and its Vault data.
+
+1. For native subscriptions, remove `principals` from the gateway's `subscriptions`
+   policy and configure the HTTPS resolver. After rollout, import fresh provider login
+   files in **Connections** and bind the accounts to the workers that use them.
+   See [subscription setup](../subscription-agents.md).
+2. For real broker operations, put each existing client certificate chain and
+   private key in a mounted PEM file. Replace the permission's `vault_path` with
+   a `certificate` name. Set `projects` to the approved project IDs and remove
+   the top-level `vault` policy. See
+   [gateway configuration](gateway-configuration.md).
+3. For Compose, run `make bootstrap` to create the resolver credential before
+   recreating the services. Once the replacement credentials work, stop the old
+   Vault container. Preserve its data volume for rollback.
 
 ### Pre-release database recreation
 
@@ -82,7 +99,7 @@ If startup reports an incompatible pre-release schema, create fresh metadata and
    with its original backup and images.
 4. Verify workspace creation and recreate the remaining platform metadata the
    deployment needs, including schedules and integration bindings. Preserve
-   Vault and unrelated volumes.
+   unrelated volumes.
 
 ## Security release upgrade
 
@@ -106,8 +123,6 @@ Start with `docker compose ps` and `docker compose logs --since=15m --tail=200`.
 `/healthz` is service-specific liveness/readiness; a healthy process does not
 establish upstream login validity, successful agent execution or isolation.
 Check workspace activity and the selected runtime when a task cannot progress.
-Vault may be healthy while sealed: its Compose probe intentionally accepts that
-state. Unseal/provision it before enabling real integrations.
 
 Standalone HTTP services handle SIGINT/SIGTERM, drain active requests for ten
 seconds and then cancel remaining request contexts. Compose allows thirty

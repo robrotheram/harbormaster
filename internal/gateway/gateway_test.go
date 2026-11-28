@@ -245,3 +245,65 @@ func TestConfigFromEnvExample(t *testing.T) {
 		t.Fatal("missing upstream secret accepted")
 	}
 }
+
+func TestSubscriptionConfigFromEnv(t *testing.T) {
+	dir := t.TempDir()
+	policyPath := filepath.Join(dir, "inference.json")
+	serviceTokenPath := filepath.Join(dir, "gateway-token")
+	resolverTokenPath := filepath.Join(dir, "resolver-token")
+	const resolverToken = "separate-subscription-resolver-token"
+	for path, data := range map[string]string{
+		policyPath:        `{"models":["fixture"],"subscriptions":{"providers":{"codex":{"models":["selected"],"network":{"allowed_hosts":["chatgpt.com"]}}}}}`,
+		serviceTokenPath:  "test-service-token",
+		resolverTokenPath: resolverToken,
+	} {
+		if err := os.WriteFile(path, []byte(data), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var resolutions atomic.Int32
+	controlplane := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/internal/subscriptions/resolve" || r.Header.Get("Authorization") != "Bearer "+resolverToken {
+			t.Error("unexpected resolver request")
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		resolutions.Add(1)
+		w.Write([]byte(`{"access_token":"test-access"}`))
+	}))
+	defer controlplane.Close()
+	t.Setenv("GATEWAY_CONFIG", policyPath)
+	t.Setenv("GATEWAY_MODE", "subscription")
+	t.Setenv("GATEWAY_SERVICE_TOKEN_FILE", serviceTokenPath)
+	t.Setenv("SUBSCRIPTION_GATEWAY_TOKEN_FILE", resolverTokenPath)
+	t.Setenv("SUBSCRIPTION_RESOLVER_URL", "http://"+strings.TrimPrefix(controlplane.URL, "https://"))
+	if _, err := ConfigFromEnv(); err == nil {
+		t.Fatal("plaintext resolver was accepted")
+	}
+	t.Setenv("SUBSCRIPTION_RESOLVER_URL", controlplane.URL)
+	t.Setenv("SUBSCRIPTION_RESOLVER_CA_FILE", "")
+	untrusted, err := ConfigFromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := untrusted.ResolveSubscription(context.Background(), "worker", "codex", "grant"); err == nil || resolutions.Load() != 0 {
+		t.Fatal("resolver credential reached an untrusted TLS endpoint")
+	}
+	caPath := filepath.Join(dir, "resolver-ca.pem")
+	if err := os.WriteFile(caPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: controlplane.Certificate().Raw}), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SUBSCRIPTION_RESOLVER_CA_FILE", caPath)
+
+	c, err := ConfigFromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewHandler(c); err != nil {
+		t.Fatal(err)
+	}
+	cred, err := c.ResolveSubscription(context.Background(), "worker", "codex", "grant")
+	if err != nil || cred.AccessToken != "test-access" {
+		t.Fatal("gateway could not resolve the saved subscription")
+	}
+}

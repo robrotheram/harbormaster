@@ -1,15 +1,11 @@
 package gateway
 
 import (
-	"agent-workbench/internal/shared"
 	"context"
 	"encoding/json"
-	"encoding/pem"
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -25,34 +21,21 @@ func TestSubscriptionCredentialBoundary(t *testing.T) {
 	expiry.Store(time.Now().Add(time.Hour).Unix())
 	var reads, calls atomic.Int32
 	var slow atomic.Bool
-	vault := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("X-Vault-Token") != "read-only-vault-token" {
-			t.Error("wrong Vault authority")
-			w.WriteHeader(403)
-			return
-		}
-		if r.URL.Path == "/v1/auth/token/renew-self" {
-			shared.JSON(w, 200, map[string]any{})
-			return
-		}
-		if r.URL.Path != "/v1/subscription-auth/data/alice/codex" && r.URL.Path != "/v1/subscription-auth/data/alice/claude" {
-			t.Error("unapproved secret path")
-			w.WriteHeader(403)
-			return
-		}
-		reads.Add(1)
-		shared.JSON(w, 200, map[string]any{"data": map[string]any{"data": subscriptionCredential{AccessToken: "upstream-secret-marker", AccountID: "real-account", ExpiresAt: expiry.Load()}}})
-	}))
-	defer vault.Close()
-	ca := filepath.Join(t.TempDir(), "ca.pem")
-	os.WriteFile(ca, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: vault.Certificate().Raw}), 0600)
-	cfg := Config{Mode: "fixture", Models: []string{"fixture"}, SubscriptionVaultAddr: vault.URL, SubscriptionVaultCA: ca, SubscriptionVaultToken: "read-only-vault-token",
-		Subscriptions: &SubscriptionConfig{Providers: map[string]SubscriptionProvider{"codex": {Models: []string{"approved-codex"}, Network: NetworkPolicy{AllowedCIDRs: []string{"203.0.113.7/32"}}}, "claude": {Models: []string{"approved-claude"}, Network: NetworkPolicy{AllowedCIDRs: []string{"203.0.113.8/32"}}}}, Principals: map[string][]string{"alice": {"codex", "claude"}}},
+	cfg := Config{Mode: "fixture", Models: []string{"fixture"},
+		Subscriptions: &SubscriptionConfig{Providers: map[string]SubscriptionProvider{"codex": {Models: []string{"approved-codex"}, Network: NetworkPolicy{AllowedCIDRs: []string{"203.0.113.7/32"}}}, "claude": {Models: []string{"approved-claude"}, Network: NetworkPolicy{AllowedCIDRs: []string{"203.0.113.8/32"}}}}},
 		Verify: func(_ context.Context, token, audience string) (Identity, error) {
 			if token != "workspace-grant" || audience != "inference" {
 				return Identity{}, ErrDenied
 			}
 			return Identity{PrincipalID: "alice", ProjectID: "default", WorkspaceID: "ws-a"}, nil
+		},
+		ResolveSubscription: func(_ context.Context, workspace, provider, grant string) (subscriptionCredential, error) {
+			if workspace != "ws-a" || (provider != "codex" && provider != "claude") || grant != "workspace-grant" {
+				t.Error("unexpected credential lookup")
+				return subscriptionCredential{}, ErrDenied
+			}
+			reads.Add(1)
+			return subscriptionCredential{AccessToken: "upstream-secret-marker", AccountID: "real-account", ExpiresAt: expiry.Load()}, nil
 		},
 	}
 	cfg.subscriptionHTTP = &http.Client{CheckRedirect: NoRedirect, Transport: subscriptionRoundTrip(func(r *http.Request) (*http.Response, error) {
@@ -60,7 +43,7 @@ func TestSubscriptionCredentialBoundary(t *testing.T) {
 		if slow.Load() {
 			time.Sleep(250 * time.Millisecond)
 		}
-		if r.Header.Get("Authorization") != "Bearer upstream-secret-marker" || r.Header.Get("X-Vault-Token") != "" || r.Header.Get("X-Api-Key") != "" || r.Header.Get("X-Identity") != "" {
+		if r.Header.Get("Authorization") != "Bearer upstream-secret-marker" || r.Header.Get("X-Untrusted-Token") != "" || r.Header.Get("X-Api-Key") != "" || r.Header.Get("X-Identity") != "" {
 			t.Error("credential boundary failed")
 		}
 		switch r.URL.Host {
@@ -86,7 +69,7 @@ func TestSubscriptionCredentialBoundary(t *testing.T) {
 		r := httptest.NewRequest("POST", path, strings.NewReader(`{"model":"`+model+`","stream":true}`))
 		r.Header.Set("Authorization", "Bearer "+token)
 		r.Header.Set("ChatGPT-Account-Id", "forged")
-		r.Header.Set("X-Vault-Token", "forged")
+		r.Header.Set("X-Untrusted-Token", "forged")
 		r.Header.Set("X-Api-Key", "forged")
 		r.Header.Set("X-Identity", "bob")
 		r.Header.Set("Anthropic-Beta", "oauth-capability,example-beta")
@@ -109,7 +92,7 @@ func TestSubscriptionCredentialBoundary(t *testing.T) {
 		}
 	}
 	if reads.Load() != before {
-		t.Fatal("invalid request reached Vault")
+		t.Fatal("invalid request reached the credential resolver")
 	}
 	t.Run("native responses survive the short server write timeout", func(t *testing.T) {
 		slow.Store(true)
@@ -154,18 +137,6 @@ func TestSubscriptionCredentialBoundary(t *testing.T) {
 	}
 	if calls.Load() != 4 {
 		t.Fatal("expired or denied request reached provider")
-	}
-}
-
-func TestSubscriptionRequiresVerifiedVaultTLS(t *testing.T) {
-	for _, url := range []string{"http://vault:8200", "https://vault:8200/other", "https://user:password@vault:8200"} {
-		if _, err := subscriptionVaultClient(url, ""); err == nil {
-			t.Fatal("invalid Vault address accepted")
-		}
-	}
-	var config Config
-	if json.Unmarshal([]byte(`{"subscriptions":{"providers":{},"principals":{}}}`), &config) != nil {
-		t.Fatal("config decode failed")
 	}
 }
 

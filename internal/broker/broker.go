@@ -5,12 +5,11 @@ import (
 	"agent-workbench/internal/gateway"
 	"agent-workbench/internal/shared"
 	"bytes"
-	"context"
 	"crypto/tls"
 	"encoding/json"
 	"net/http"
-	"net/url"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -31,23 +30,18 @@ type Operation struct {
 }
 type Permission struct {
 	ApprovedCases []string `json:"approved_cases"`
-	VaultPath     string   `json:"vault_path,omitempty"`
+	Projects      []string `json:"projects,omitempty"`
+	Certificate   string   `json:"certificate,omitempty"`
 }
 type PrincipalPolicy struct {
 	Operations map[string]Permission `json:"operations"`
 }
-type VaultConfig struct {
-	Mount   string                `json:"mount"`
-	Network gateway.NetworkPolicy `json:"network"`
-}
 type Config struct {
-	Mode       string                     `json:"-"`
-	Operations map[string]Operation       `json:"operations"`
-	Principals map[string]PrincipalPolicy `json:"principals"`
-	Vault      VaultConfig                `json:"vault,omitempty"`
-	VaultAddr  string                     `json:"-"`
-	VaultToken string                     `json:"-"`
-	Verify     gateway.Verifier           `json:"-"`
+	Mode           string                     `json:"-"`
+	Operations     map[string]Operation       `json:"operations"`
+	Principals     map[string]PrincipalPolicy `json:"principals"`
+	Verify         gateway.Verifier           `json:"-"`
+	certificateDir string
 }
 type Input struct {
 	CaseID        string                     `json:"case_id"`
@@ -81,13 +75,6 @@ func ConfigFromEnv() (Config, error) {
 		controller = "http://runtime-controller:8080"
 	}
 	c.Verify, err = gateway.NewVerifier(controller, token)
-	if err != nil {
-		return c, err
-	}
-	if c.Mode == "upstream" {
-		c.VaultAddr = os.Getenv("VAULT_ADDR")
-		c.VaultToken, err = gateway.ReadSecret(os.Getenv("VAULT_TOKEN_FILE"))
-	}
 	return c, err
 }
 func NewHandler(c Config) (http.Handler, error) {
@@ -131,24 +118,18 @@ func NewHandler(c Config) (http.Handler, error) {
 					return nil, gateway.ErrDenied
 				}
 			}
-			if c.Mode == "upstream" && !fixedPath(p.VaultPath) {
+			for _, project := range p.Projects {
+				if !shared.ValidID(project) {
+					return nil, gateway.ErrDenied
+				}
+			}
+			if c.Mode == "upstream" && (len(p.Projects) == 0 || !shared.ValidID(p.Certificate)) {
 				return nil, gateway.ErrDenied
 			}
 		}
 	}
-	var vaultClient *http.Client
-	vaultOrigin := ""
-	if c.Mode == "upstream" {
-		u, err := gateway.HTTPSOrigin(c.VaultAddr)
-		if err != nil || c.VaultToken == "" || !shared.ValidID(c.Vault.Mount) {
-			return nil, gateway.ErrDenied
-		}
-		vaultOrigin = u.String()
-		tr, err := c.Vault.Network.Transport(nil)
-		if err != nil {
-			return nil, err
-		}
-		vaultClient = &http.Client{Transport: tr, Timeout: 10 * time.Second, CheckRedirect: gateway.NoRedirect}
+	if c.certificateDir == "" {
+		c.certificateDir = "/run/secrets"
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { shared.JSON(w, 200, map[string]string{"status": "ok"}) })
@@ -163,6 +144,10 @@ func NewHandler(c Config) (http.Handler, error) {
 		policy, hasPrincipal := c.Principals[id.PrincipalID]
 		permission, hasPermission := policy.Operations[name]
 		if !ok || !hasPrincipal || !hasPermission {
+			shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
+			return
+		}
+		if len(permission.Projects) > 0 && !slices.Contains(permission.Projects, id.ProjectID) {
 			shared.Error(w, 404, "NOT_FOUND_OR_FORBIDDEN")
 			return
 		}
@@ -184,9 +169,7 @@ func NewHandler(c Config) (http.Handler, error) {
 			shared.JSON(w, 200, map[string]any{"mode": "fixture", "synthetic": true, "operation": name, "principal_id": id.PrincipalID, "workspace_id": id.WorkspaceID, "project_id": id.ProjectID, "case_id": in.CaseID, "parameters": in.Parameters})
 			return
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-		defer cancel()
-		cert, err := fetchCertificate(ctx, vaultClient, vaultOrigin, c.Vault.Mount, permission.VaultPath, c.VaultToken)
+		cert, err := loadCertificate(filepath.Join(c.certificateDir, permission.Certificate+".pem"))
 		if err != nil {
 			shared.Error(w, 503, "UPSTREAM_UNAVAILABLE")
 			return
@@ -201,7 +184,7 @@ func NewHandler(c Config) (http.Handler, error) {
 		defer tr.CloseIdleConnections()
 		client := &http.Client{Transport: tr, Timeout: 20 * time.Second, CheckRedirect: gateway.NoRedirect}
 		payload, _ := json.Marshal(map[string]any{"case_id": in.CaseID, "justification": in.Justification, "parameters": in.Parameters, "principal_id": id.PrincipalID, "workspace_id": id.WorkspaceID, "project_id": id.ProjectID})
-		req, err := http.NewRequestWithContext(ctx, op.Method, endpoints[name], bytes.NewReader(payload))
+		req, err := http.NewRequestWithContext(r.Context(), op.Method, endpoints[name], bytes.NewReader(payload))
 		if err != nil {
 			shared.Error(w, 503, "UPSTREAM_UNAVAILABLE")
 			return
@@ -276,42 +259,15 @@ func validInput(in Input, op Operation) bool {
 	}
 	return true
 }
-func fetchCertificate(ctx context.Context, client *http.Client, origin, mount, path, token string) (tls.Certificate, error) {
-	var empty tls.Certificate
-	// Both mount and path were validated at construction, and originate in policy.
-	u, err := url.Parse(origin)
+func loadCertificate(path string) (tls.Certificate, error) {
+	file, err := os.Open(path)
 	if err != nil {
-		return empty, gateway.ErrDenied
+		return tls.Certificate{}, err
 	}
-	u.Path = "/v1/" + mount + "/data/" + path
-	req, err := http.NewRequestWithContext(ctx, "GET", u.String(), nil)
+	defer file.Close()
+	pem, err := gateway.ReadBounded(file, 256<<10)
 	if err != nil {
-		return empty, gateway.ErrDenied
+		return tls.Certificate{}, err
 	}
-	req.Header.Set("X-Vault-Token", token)
-	res, err := client.Do(req)
-	if err != nil {
-		return empty, gateway.ErrDenied
-	}
-	defer res.Body.Close()
-	b, err := gateway.ReadBounded(res.Body, 256<<10)
-	if err != nil || res.StatusCode != 200 {
-		return empty, gateway.ErrDenied
-	}
-	var kv struct {
-		Data struct {
-			Data struct {
-				Certificate string `json:"certificate"`
-				PrivateKey  string `json:"private_key"`
-			} `json:"data"`
-		} `json:"data"`
-	}
-	if json.Unmarshal(b, &kv) != nil {
-		return empty, gateway.ErrDenied
-	}
-	cert, err := tls.X509KeyPair([]byte(kv.Data.Data.Certificate), []byte(kv.Data.Data.PrivateKey))
-	if err != nil {
-		return empty, gateway.ErrDenied
-	}
-	return cert, nil
+	return tls.X509KeyPair(pem, pem)
 }

@@ -3,7 +3,6 @@ package operator
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -13,7 +12,7 @@ import (
 	"testing"
 )
 
-func TestBootstrapPreservesCredentialsAndTLS(t *testing.T) {
+func TestBootstrapPreservesCredentials(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, ".env.example"), []byte("EXAMPLE=true\n"), 0600); err != nil {
 		t.Fatal(err)
@@ -21,10 +20,16 @@ func TestBootstrapPreservesCredentialsAndTLS(t *testing.T) {
 	if err := Bootstrap(root, io.Discard); err != nil {
 		t.Fatal(err)
 	}
-	tokenPath := filepath.Join(root, ".local/secrets/control_token")
+	tokenPath := filepath.Join(root, ".local/secrets/subscription_gateway_token")
 	token, _ := os.ReadFile(tokenPath)
-	if len(token) != 64 {
+	gatewayToken, _ := os.ReadFile(filepath.Join(root, ".local/secrets/gateway_service_token"))
+	if len(token) != 64 || len(gatewayToken) != 64 || bytes.Equal(token, gatewayToken) {
 		t.Fatal("invalid token")
+	}
+	caPath := filepath.Join(root, ".local/secrets/subscription_resolver_ca")
+	ca, err := os.ReadFile(caPath)
+	if err != nil || !bytes.Contains(ca, []byte("BEGIN CERTIFICATE")) || bytes.Contains(ca, []byte("PRIVATE KEY")) {
+		t.Fatal("resolver trust file must contain a certificate only")
 	}
 	if err := Bootstrap(root, io.Discard); err != nil {
 		t.Fatal(err)
@@ -33,10 +38,10 @@ func TestBootstrapPreservesCredentialsAndTLS(t *testing.T) {
 	if !bytes.Equal(token, again) {
 		t.Fatal("rotated existing credentials")
 	}
-	if _, err := tls.LoadX509KeyPair(filepath.Join(root, ".local/vault-tls/cert.pem"), filepath.Join(root, ".local/secrets/vault_tls_key")); err != nil {
-		t.Fatal(err)
+	if again, err := os.ReadFile(caPath); err != nil || !bytes.Equal(ca, again) {
+		t.Fatal("rotated existing resolver certificate")
 	}
-	for _, dir := range []string{".local", ".local/secrets", ".local/vault-tls"} {
+	for _, dir := range []string{".local", ".local/secrets"} {
 		info, err := os.Stat(filepath.Join(root, dir))
 		if err != nil || info.Mode().Perm() != 0700 {
 			t.Fatal("unprotected directory", dir)

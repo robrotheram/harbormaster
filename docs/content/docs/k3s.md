@@ -38,7 +38,7 @@ Pre-create SERVICE-secrets for each service in its namespace, with lowercase
 keys matching the TOKEN_FILE names in the rendered environment (for example
 controller_token). Gateway SERVICE-config Secrets supply inference-gateway.json
 and credential-broker.json plus required CA files at /etc/workbench. No provider
-credential belongs in workspace manifests. Keep Vault external and backed up.
+credential belongs in workspace manifests. See [how to provision platform Secrets](operations/kubernetes.md#provision-secrets).
 Supply a PostgreSQL endpoint and configure its TLS connection URL in the
 controlplane database_url Secret. The reference runs CloudNativePG. No dashboard or workspace receives it.
 

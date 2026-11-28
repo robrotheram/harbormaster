@@ -17,17 +17,11 @@
     "local-operator": {
       "operations": {
         "case_lookup": {
+          "projects": ["default"],
           "approved_cases": ["CASE-001"],
-          "vault_path": "identities/local-operator/case-lookup"
+          "certificate": "local-operator-case-lookup"
         }
       }
-    }
-  },
-  "vault": {
-    "mount": "secret",
-    "network": {
-      "allowed_cidrs": ["203.0.113.30/32"],
-      "allow_private": false
     }
   }
 }
